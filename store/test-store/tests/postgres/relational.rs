@@ -540,11 +540,11 @@ macro_rules! assert_entity_eq {
 }
 
 /// Test harness for running database integration tests.
-fn run_test<F>(test: F)
+async fn run_test<F>(test: F)
 where
-    F: FnOnce(&mut PgConnection, &Layout),
+    F: AsyncFnOnce(&mut PgConnection, &Layout),
 {
-    run_test_with_conn(|conn| {
+    run_test_with_conn(async |conn| {
         // Reset state before starting
         remove_schema(conn);
 
@@ -552,13 +552,14 @@ where
         let layout = create_schema(conn);
 
         // Run test
-        test(conn, &layout);
-    });
+        test(conn, &layout).await;
+    })
+    .await;
 }
 
-#[test]
-fn find() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn find() {
+    run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
 
         // Happy path: find existing entity
@@ -581,12 +582,13 @@ fn find() {
             )
             .expect("Failed to read Scalar[noone]");
         assert!(entity.is_none());
-    });
+    })
+    .await;
 }
 
-#[test]
-fn insert_null_fulltext_fields() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn insert_null_fulltext_fields() {
+    run_test(async |conn, layout| {
         insert_entity(
             conn,
             layout,
@@ -604,12 +606,13 @@ fn insert_null_fulltext_fields() {
             .expect("Failed to read NullableStrings[one]")
             .unwrap();
         assert_entity_eq!(scrub(&EMPTY_NULLABLESTRINGS_ENTITY), entity);
-    });
+    })
+    .await;
 }
 
-#[test]
-fn update() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn update() {
+    run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
 
         // Update with overwrite
@@ -636,12 +639,13 @@ fn update() {
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
-    });
+    })
+    .await;
 }
 
-#[test]
-fn update_many() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn update_many() {
+    run_test(async |conn, layout| {
         let mut one = SCALAR_ENTITY.clone();
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
@@ -729,13 +733,14 @@ fn update_many() {
             new_three.get("color"),
             Some(&Value::String("red".to_string()))
         );
-    });
+    })
+    .await;
 }
 
 /// Test that we properly handle BigDecimal values with a negative scale.
-#[test]
-fn serialize_bigdecimal() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn serialize_bigdecimal() {
+    run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
 
         // Update with overwrite
@@ -766,15 +771,16 @@ fn serialize_bigdecimal() {
                 .unwrap();
             assert_entity_eq!(entity, actual);
         }
-    });
+    })
+    .await;
 }
 
-#[test]
-fn enum_arrays() {
+#[tokio::test]
+async fn enum_arrays() {
     // We had an issue where we would read an array of enums back as a
     // single string; for this test, we would get back the string
     // "{yellow,red,BLUE}" instead of the array ["yellow", "red", "BLUE"]
-    run_test(|conn, layout| {
+    run_test(async |conn, layout| {
         let spectrum = entity! { THINGS_SCHEMA =>
             id: "rainbow",
             main: "yellow",
@@ -802,7 +808,8 @@ fn enum_arrays() {
             .expect("Failed to read Spectrum[rainbow]")
             .unwrap();
         assert_entity_eq!(spectrum, actual);
-    });
+    })
+    .await
 }
 
 fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
@@ -821,9 +828,9 @@ fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
         .len()
 }
 
-#[test]
-fn delete() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn delete() {
+    run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
@@ -853,12 +860,13 @@ fn delete() {
             .expect("Failed to delete");
         assert_eq!(1, count);
         assert_eq!(1, count_scalar_entities(conn, layout));
-    });
+    })
+    .await;
 }
 
-#[test]
-fn insert_many_and_delete_many() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn insert_many_and_delete_many() {
+    run_test(async |conn, layout| {
         let one = SCALAR_ENTITY.clone();
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
@@ -882,61 +890,54 @@ fn insert_many_and_delete_many() {
             .expect("Failed to delete");
         assert_eq!(2, num_removed);
         assert_eq!(1, count_scalar_entities(conn, layout));
-    });
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn layout_cache() {
-    // We need to use `block_on` to call the `create_test_subgraph` function which must be called
-    // from a sync context, so we replicate what we do `spawn_module`.
-    let runtime = tokio::runtime::Handle::current();
-    std::thread::spawn(move || {
-        run_test_with_conn(|conn| {
-            let _runtime_guard = runtime.enter();
+    run_test_with_conn(async |conn| {
+        let id = DeploymentHash::new("primaryLayoutCache").unwrap();
+        let _loc = create_test_subgraph(&id, THINGS_GQL).await;
+        let site = Arc::new(primary_mirror().find_active_site(&id).unwrap().unwrap());
+        let table_name = SqlName::verbatim("scalar".to_string());
 
-            let id = DeploymentHash::new("primaryLayoutCache").unwrap();
-            let _loc = graph::block_on(create_test_subgraph(&id, THINGS_GQL));
-            let site = Arc::new(primary_mirror().find_active_site(&id).unwrap().unwrap());
-            let table_name = SqlName::verbatim("scalar".to_string());
+        let cache = LayoutCache::new(Duration::from_millis(10));
 
-            let cache = LayoutCache::new(Duration::from_millis(10));
+        // Without an entry, account_like is false
+        let layout = cache
+            .get(&LOGGER, conn, site.clone())
+            .expect("we can get the layout");
+        let table = layout.table(&table_name).unwrap();
+        assert_eq!(false, table.is_account_like);
 
-            // Without an entry, account_like is false
-            let layout = cache
-                .get(&LOGGER, conn, site.clone())
-                .expect("we can get the layout");
-            let table = layout.table(&table_name).unwrap();
-            assert_eq!(false, table.is_account_like);
+        set_account_like(conn, site.as_ref(), &table_name, true)
+            .expect("we can set 'scalar' to account-like");
+        sleep(Duration::from_millis(50));
 
-            set_account_like(conn, site.as_ref(), &table_name, true)
-                .expect("we can set 'scalar' to account-like");
-            sleep(Duration::from_millis(50));
+        // Flip account_like to true
+        let layout = cache
+            .get(&LOGGER, conn, site.clone())
+            .expect("we can get the layout");
+        let table = layout.table(&table_name).unwrap();
+        assert_eq!(true, table.is_account_like);
 
-            // Flip account_like to true
-            let layout = cache
-                .get(&LOGGER, conn, site.clone())
-                .expect("we can get the layout");
-            let table = layout.table(&table_name).unwrap();
-            assert_eq!(true, table.is_account_like);
+        // Set it back to false
+        set_account_like(conn, site.as_ref(), &table_name, false)
+            .expect("we can set 'scalar' to account-like");
+        sleep(Duration::from_millis(50));
 
-            // Set it back to false
-            set_account_like(conn, site.as_ref(), &table_name, false)
-                .expect("we can set 'scalar' to account-like");
-            sleep(Duration::from_millis(50));
-
-            let layout = cache
-                .get(&LOGGER, conn, site)
-                .expect("we can get the layout");
-            let table = layout.table(&table_name).unwrap();
-            assert_eq!(false, table.is_account_like);
-        })
+        let layout = cache
+            .get(&LOGGER, conn, site)
+            .expect("we can get the layout");
+        let table = layout.table(&table_name).unwrap();
+        assert_eq!(false, table.is_account_like);
     })
-    .join()
-    .unwrap();
+    .await;
 }
 
-#[test]
-fn conflicting_entity() {
+#[tokio::test]
+async fn conflicting_entity() {
     // `id` is the id of an entity to create, `cat`, `dog`, and `ferret` are
     // the names of the types for which to check entity uniqueness
     fn check(
@@ -984,17 +985,18 @@ fn conflicting_entity() {
         assert_eq!(None, conflict);
     }
 
-    run_test(|mut conn, layout| {
+    run_test(async |mut conn, layout| {
         let id = Value::String("fred".to_string());
         check(&mut conn, layout, id, "Cat", "Dog", "Ferret", 0);
 
         let id = Value::Bytes(scalar::Bytes::from_str("0xf1ed").unwrap());
         check(&mut conn, layout, id, "ByteCat", "ByteDog", "ByteFerret", 1);
     })
+    .await
 }
 
-#[test]
-fn revert_block() {
+#[tokio::test]
+async fn revert_block() {
     fn check_fred(conn: &mut PgConnection, layout: &Layout) {
         let id = "fred";
 
@@ -1093,10 +1095,11 @@ fn revert_block() {
         assert_all_marties(conn, 1);
     }
 
-    run_test(|conn, layout| {
+    run_test(async |conn, layout| {
         check_fred(conn, layout);
         check_marty(conn, layout);
-    });
+    })
+    .await;
 }
 
 struct QueryChecker<'a> {
@@ -1199,12 +1202,12 @@ impl EasyOrder for EntityQuery {
     }
 }
 
-#[test]
+#[tokio::test]
 #[should_panic(
     expected = "layout.query failed to execute query: FulltextQueryInvalidSyntax(\"syntax error in tsquery: \\\"Jono 'a\\\"\")"
 )]
-fn check_fulltext_search_syntax_error() {
-    run_test(move |mut conn, layout| {
+async fn check_fulltext_search_syntax_error() {
+    run_test(async |mut conn, layout| {
         QueryChecker::new(&mut conn, layout).check(
             vec!["1"],
             user_query().filter(EntityFilter::Fulltext(
@@ -1212,12 +1215,13 @@ fn check_fulltext_search_syntax_error() {
                 "Jono 'a".into(),
             )),
         );
-    });
+    })
+    .await;
 }
 
-#[test]
-fn check_block_finds() {
-    run_test(move |mut conn, layout| {
+#[tokio::test]
+async fn check_block_finds() {
+    run_test(async |mut conn, layout| {
         let checker = QueryChecker::new(&mut conn, layout);
 
         update_user_entity(
@@ -1253,12 +1257,13 @@ fn check_block_finds() {
                 vec!["1"],
                 user_query().filter(EntityFilter::ChangeBlockGte(1)),
             );
-    });
+    })
+    .await;
 }
 
-#[test]
-fn check_find() {
-    run_test(move |mut conn, layout| {
+#[tokio::test]
+async fn check_find() {
+    run_test(async |mut conn, layout| {
         // find with interfaces
         let types = vec![&*CAT_TYPE, &*DOG_TYPE];
         let checker = QueryChecker::new(&mut conn, layout)
@@ -1751,6 +1756,7 @@ fn check_find() {
                 user_query().filter(EntityFilter::Or(vec![EntityFilter::And(vec![])])),
             );
     })
+    .await
 }
 
 // We call our test strings aN so that
@@ -1811,8 +1817,8 @@ impl<'a> FilterChecker<'a> {
     }
 }
 
-#[test]
-fn check_filters() {
+#[tokio::test]
+async fn check_filters() {
     let (a1, a2, a2b, a3) = ferrets();
 
     fn filter_eq(name: &str) -> EntityFilter {
@@ -1863,7 +1869,7 @@ fn check_filters() {
         )
     }
 
-    run_test(move |conn, layout| {
+    run_test(async |conn, layout| {
         let mut checker = FilterChecker::new(conn, layout);
 
         checker
@@ -1934,5 +1940,6 @@ fn check_filters() {
             .check(vec!["a1", "a2", "a2b", "a3"], filter_block_gte(0))
             .check(vec!["a1"], filter_block_gte(1))
             .check(vec![], filter_block_gte(BLOCK_NUMBER_MAX));
-    });
+    })
+    .await;
 }
