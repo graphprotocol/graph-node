@@ -181,7 +181,7 @@ impl DeploymentStore {
     // indexes are created later on, when the subgraph has synced. In case this parameter is None, all
     // indexes are created with the default creation strategy for a new subgraph, and also from the very
     // start.
-    pub(crate) fn create_deployment(
+    pub(crate) async fn create_deployment(
         &self,
         schema: &InputSchema,
         deployment: DeploymentCreate,
