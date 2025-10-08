@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::deployment_store::{DeploymentStore, ReplicaId};
+use async_trait::async_trait;
 use graph::components::store::{DeploymentId, QueryPermit, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
 use graph::data::store::QueryObject;

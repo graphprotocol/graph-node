@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use anyhow::{Context, Error};
+use async_trait::async_trait;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
 use graph::blockchain::{
@@ -32,8 +33,8 @@ use graph::{
     components::store::DeploymentLocator,
     firehose,
     prelude::{
-        async_trait, o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls,
-        Logger, LoggerFactory,
+        o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls, Logger,
+        LoggerFactory,
     },
 };
 use prost::Message;

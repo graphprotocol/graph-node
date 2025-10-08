@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-async-trait = "0.1.50"
+async-trait = { workspace = true }
 blake3 = "1.8"
 chrono = { workspace = true }
 derive_more = { version = "2.0.1", features = ["full"] }

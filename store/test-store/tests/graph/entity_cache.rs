@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockTime;
 use graph::components::store::{
@@ -480,7 +481,8 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
             node_id,
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
-        ).await
+        )
+        .await
         .unwrap();
 
     // 1 account 3 wallets

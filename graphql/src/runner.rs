@@ -1,13 +1,15 @@
 use std::sync::Arc;
 use std::time::Instant;
 
+use async_trait::async_trait;
+
 use crate::metrics::GraphQLMetrics;
 use crate::prelude::{QueryExecutionOptions, StoreResolver};
 use crate::query::execute_query;
 use graph::futures03::future;
 use graph::prelude::MetricsRegistry;
 use graph::prelude::{
-    async_trait, o, CheapClone, DeploymentState, GraphQLMetrics as GraphQLMetricsTrait,
+    o, CheapClone, DeploymentState, GraphQLMetrics as GraphQLMetricsTrait,
     GraphQlRunner as GraphQlRunnerTrait, Logger, Query, QueryExecutionError, ENV_VARS,
 };
 use graph::{data::graphql::load_manager::LoadManager, prelude::QueryStoreManager};

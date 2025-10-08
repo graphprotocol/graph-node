@@ -1,9 +1,11 @@
 use anyhow::anyhow;
+use async_trait::async_trait;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::sql_types::Text;
 use diesel::{insert_into, update};
+
 use graph::components::store::ChainHeadStore;
 use graph::data::store::ethereum::call;
 use graph::derive::CheapClone;
@@ -27,9 +29,9 @@ use graph::blockchain::{Block, BlockHash, ChainIdentifier, ExtendedBlockPtr};
 use graph::cheap_clone::CheapClone;
 use graph::prelude::web3::types::{H256, U256};
 use graph::prelude::{
-    async_trait, serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber,
-    BlockPtr, CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait, Error,
-    EthereumCallCache, StoreError,
+    serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber, BlockPtr,
+    CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait, Error, EthereumCallCache,
+    StoreError,
 };
 use graph::{ensure, internal_error};
 

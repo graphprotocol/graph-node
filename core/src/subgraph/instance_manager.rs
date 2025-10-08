@@ -9,6 +9,7 @@ use crate::subgraph::Decoder;
 use std::collections::BTreeSet;
 
 use crate::subgraph::runner::SubgraphRunner;
+use async_trait::async_trait;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
 use graph::components::link_resolver::LinkResolverContext;

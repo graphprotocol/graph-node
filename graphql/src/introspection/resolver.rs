@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use graph::components::store::QueryPermit;
 use graph::data::graphql::ext::{FieldExt, TypeDefinitionExt};
 use graph::data::query::Trace;

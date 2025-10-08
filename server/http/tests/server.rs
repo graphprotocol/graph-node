@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use graph::http::StatusCode;
 use std::time::Duration;
 

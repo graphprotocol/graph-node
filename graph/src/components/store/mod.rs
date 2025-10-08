@@ -28,6 +28,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+use async_trait::async_trait;
+
 use crate::blockchain::{Block, BlockHash, BlockPtr};
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
@@ -38,7 +40,6 @@ use crate::data_source::CausalityRegion;
 use crate::derive::CheapClone;
 use crate::env::ENV_VARS;
 use crate::internal_error;
-use crate::prelude::async_trait;
 use crate::prelude::{s, Attribute, DeploymentHash, ValueType};
 use crate::schema::{ast as sast, EntityKey, EntityType, InputSchema};
 use crate::util::stats::MovingStats;

@@ -1,5 +1,6 @@
 use crate::{chain::BlockFinality, ENV_VARS};
 use crate::{EthereumAdapter, EthereumAdapterTrait as _};
+use async_trait::async_trait;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockchainKind;
 use graph::components::network_provider::ChainName;
@@ -9,8 +10,8 @@ use graph::{
     blockchain::{BlockHash, BlockIngestor, BlockPtr, IngestorError},
     cheap_clone::CheapClone,
     prelude::{
-        async_trait, error, ethabi::ethereum_types::H256, info, tokio, trace, warn, ChainStore,
-        Error, EthereumBlockWithCalls, LogCode, Logger,
+        error, ethabi::ethereum_types::H256, info, tokio, trace, warn, ChainStore, Error,
+        EthereumBlockWithCalls, LogCode, Logger,
     },
 };
 use std::{sync::Arc, time::Duration};

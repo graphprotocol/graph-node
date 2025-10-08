@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::blockchain::BlockHash;
 use crate::blockchain::ChainIdentifier;
 use crate::components::network_provider::ChainName;
 use crate::components::store::ChainIdStore;
-use crate::prelude::async_trait;
 
 /// Additional requirements for stores that are necessary for provider checks.
 #[async_trait]
