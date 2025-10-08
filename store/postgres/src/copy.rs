@@ -1033,7 +1033,7 @@ impl Connection {
     /// Opportunistically create an extra worker if we have more tables to
     /// copy and there are idle fdw connections. If there are no more tables
     /// or no idle connections, this will return `None`.
-    fn extra_worker(
+    async fn extra_worker(
         &mut self,
         state: &mut CopyState,
         progress: &Arc<CopyProgress>,
@@ -1042,7 +1042,8 @@ impl Connection {
         // we remove the table from the state and could drop it otherwise
         let Some(conn) = self
             .pool
-            .try_get_fdw(&self.logger, ENV_VARS.store.batch_worker_wait)
+            .try_get_fdw_async(&self.logger, ENV_VARS.store.batch_worker_wait)
+            .await
         else {
             return None;
         };
@@ -1132,7 +1133,7 @@ impl Connection {
                 if workers.len() >= self.workers {
                     break;
                 }
-                let Some(worker) = self.extra_worker(&mut state, &progress) else {
+                let Some(worker) = self.extra_worker(&mut state, &progress).await else {
                     break;
                 };
                 workers.add(worker);

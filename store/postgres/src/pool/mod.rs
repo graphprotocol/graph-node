@@ -409,7 +409,7 @@ impl ConnectionPool {
 
     /// Get a connection from the pool for foreign data wrapper access if
     /// one is available
-    pub fn try_get_fdw(
+    fn try_get_fdw(
         &self,
         logger: &Logger,
         timeout: Duration,
@@ -737,7 +737,7 @@ impl PoolInner {
     /// Get a connection from the fdw pool if one is available. We wait for
     /// `timeout` for a connection which should be set just big enough to
     /// allow establishing a connection
-    pub fn try_get_fdw(
+    fn try_get_fdw(
         &self,
         logger: &Logger,
         timeout: Duration,
