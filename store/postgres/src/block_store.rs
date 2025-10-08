@@ -586,27 +586,6 @@ impl BlockStore {
         Ok(())
     }
 
-    /// Updates the chains table of the primary shard. This table is replicated to other shards and
-    /// has to be refreshed afterwards for the update to be reflected.
-    pub fn set_chain_identifier(
-        &self,
-        chain_id: ChainName,
-        ident: &ChainIdentifier,
-    ) -> Result<(), StoreError> {
-        use primary::chains as c;
-
-        let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let mut conn = primary_pool.get()?;
-
-        diesel::update(c::table.filter(c::name.eq(chain_id.as_str())))
-            .set((
-                c::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
-                c::net_version.eq(&ident.net_version),
-            ))
-            .execute(&mut conn)?;
-
-        Ok(())
-    }
     pub async fn create_chain_store(
         &self,
         network: &str,
