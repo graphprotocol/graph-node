@@ -88,8 +88,8 @@ impl DeploymentSearch {
         }
     }
 
-    pub fn lookup(&self, primary: &ConnectionPool) -> Result<Vec<Deployment>, anyhow::Error> {
-        let mut conn = primary.get()?;
+    pub async fn lookup(&self, primary: &ConnectionPool) -> Result<Vec<Deployment>, anyhow::Error> {
+        let mut conn = primary.get_async().await?;
         self.lookup_with_conn(&mut conn)
     }
 
@@ -144,7 +144,7 @@ impl DeploymentSearch {
     }
 
     /// Finds all [`Deployment`]s for this [`DeploymentSearch`].
-    pub fn find(
+    pub async fn find(
         &self,
         pool: ConnectionPool,
         current: bool,
@@ -154,7 +154,7 @@ impl DeploymentSearch {
         let current = current || used;
         let pending = pending || used;
 
-        let deployments = self.lookup(&pool)?;
+        let deployments = self.lookup(&pool).await?;
         // Filter by status; if neither `current` or `pending` are set, list
         // all deployments
         let deployments: Vec<_> = deployments
@@ -170,9 +170,10 @@ impl DeploymentSearch {
     }
 
     /// Finds a single deployment locator for the given deployment identifier.
-    pub fn locate_unique(&self, pool: &ConnectionPool) -> anyhow::Result<DeploymentLocator> {
+    pub async fn locate_unique(&self, pool: &ConnectionPool) -> anyhow::Result<DeploymentLocator> {
         let mut locators: Vec<DeploymentLocator> = HashSet::<DeploymentLocator>::from_iter(
-            self.lookup(pool)?
+            self.lookup(pool)
+                .await?
                 .into_iter()
                 .map(|deployment| deployment.locator()),
         )

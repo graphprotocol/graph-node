@@ -6,7 +6,7 @@ use graph_store_postgres::ConnectionPool;
 
 use crate::manager::catalog;
 
-pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
+pub async fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
     fn query(conn: &mut PgConnection) -> Result<Vec<(String, i64, i64)>, anyhow::Error> {
         use catalog::pg_catalog::pg_stat_database as d;
         use diesel::dsl::*;
@@ -31,7 +31,7 @@ pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
     }
 
     let mut speeds = HashMap::new();
-    let mut conn = pool.get()?;
+    let mut conn = pool.get_async().await?;
     for (datname, all_txn, write_txn) in query(&mut conn)? {
         speeds.insert(datname, (all_txn, write_txn));
     }
