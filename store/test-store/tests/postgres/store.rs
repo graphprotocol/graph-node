@@ -181,7 +181,8 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
             node_id,
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
-        ).await
+        )
+        .await
         .unwrap();
 
     let test_entity_1 = create_test_entity(
@@ -530,7 +531,7 @@ impl QueryChecker {
         Self { store }
     }
 
-    fn check(self, expected_entity_ids: Vec<&str>, query: EntityQuery) -> Self {
+    async fn check(self, expected_entity_ids: Vec<&str>, query: EntityQuery) -> Self {
         let expected_entity_ids: Vec<String> =
             expected_entity_ids.into_iter().map(str::to_owned).collect();
 
@@ -538,6 +539,7 @@ impl QueryChecker {
             .store
             .subgraph_store()
             .find(query)
+            .await
             .expect("store.find failed to execute query");
 
         let entity_ids: Vec<_> = entities
@@ -588,32 +590,38 @@ fn find() {
                 vec!["2"],
                 user_query().filter(EntityFilter::Contains("name".into(), "ind".into())),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query().filter(EntityFilter::Equal("name".to_owned(), "Cindini".into())),
             )
+            .await
             .check(
                 vec!["1", "3"],
                 user_query()
                     .filter(EntityFilter::Not("name".to_owned(), "Cindini".into()))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["3"],
                 user_query().filter(EntityFilter::GreaterThan("name".to_owned(), "Kundi".into())),
             )
+            .await
             .check(
                 vec!["2", "1"],
                 user_query()
                     .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
                     .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query()
@@ -622,6 +630,7 @@ fn find() {
                     .first(1)
                     .skip(1),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -631,24 +640,28 @@ fn find() {
                     ]))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
                     .filter(EntityFilter::EndsWith("name".to_owned(), "ini".into()))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
                     .filter(EntityFilter::NotEndsWith("name".to_owned(), "ini".into()))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query()
                     .filter(EntityFilter::In("name".to_owned(), vec!["Johnton".into()]))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -657,7 +670,8 @@ fn find() {
                         vec!["Shaqueeena".into()],
                     ))
                     .desc("name"),
-            );
+            )
+            .await;
 
         // Filter tests with float attributes
         QueryChecker::new(store.clone())
@@ -668,6 +682,7 @@ fn find() {
                     Value::BigDecimal(184.4.into()),
                 )),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
@@ -677,6 +692,7 @@ fn find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::GreaterThan(
@@ -684,6 +700,7 @@ fn find() {
                     Value::BigDecimal(160.0.into()),
                 )),
             )
+            .await
             .check(
                 vec!["2", "3"],
                 user_query()
@@ -693,6 +710,7 @@ fn find() {
                     ))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
@@ -702,6 +720,7 @@ fn find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -713,6 +732,7 @@ fn find() {
                     .first(1)
                     .skip(1),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
@@ -726,6 +746,7 @@ fn find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -738,7 +759,8 @@ fn find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
         // Filter tests with int attributes
         QueryChecker::new(store.clone())
             .check(
@@ -747,12 +769,14 @@ fn find() {
                     .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67_i32)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
                     .filter(EntityFilter::Not("age".to_owned(), Value::Int(67_i32)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::GreaterThan(
@@ -760,6 +784,7 @@ fn find() {
                     Value::Int(43_i32),
                 )),
             )
+            .await
             .check(
                 vec!["2", "1"],
                 user_query()
@@ -769,12 +794,14 @@ fn find() {
                     ))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2", "3"],
                 user_query()
                     .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(50_i32)))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2", "3"],
                 user_query()
@@ -784,12 +811,14 @@ fn find() {
                     ))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
                     .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(50_i32)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -798,6 +827,7 @@ fn find() {
                     .first(1)
                     .skip(1),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -808,6 +838,7 @@ fn find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["3"],
                 user_query()
@@ -817,7 +848,8 @@ fn find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
         // Filter tests with bool attributes
         QueryChecker::new(store.clone())
             .check(
@@ -826,12 +858,14 @@ fn find() {
                     .filter(EntityFilter::Equal("coffee".to_owned(), Value::Bool(true)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1", "3"],
                 user_query()
                     .filter(EntityFilter::Not("coffee".to_owned(), Value::Bool(true)))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -842,6 +876,7 @@ fn find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
@@ -851,7 +886,8 @@ fn find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
         // Misc filter tests
         QueryChecker::new(store)
             .check(
@@ -863,6 +899,7 @@ fn find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
@@ -872,6 +909,7 @@ fn find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
@@ -881,12 +919,14 @@ fn find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
                     .filter(EntityFilter::Not("favorite_color".to_owned(), Value::Null))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -896,14 +936,23 @@ fn find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(vec!["3", "2", "1"], user_query().asc("weight"))
+            .await
             .check(vec!["1", "2", "3"], user_query().desc("weight"))
+            .await
             .check(vec!["1", "2", "3"], user_query().asc("id"))
+            .await
             .check(vec!["3", "2", "1"], user_query().desc("id"))
+            .await
             .check(vec!["3", "2", "1"], user_query().asc("age"))
+            .await
             .check(vec!["1", "2", "3"], user_query().desc("age"))
+            .await
             .check(vec!["2", "1", "3"], user_query().asc("name"))
+            .await
             .check(vec!["3", "1", "2"], user_query().desc("name"))
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -912,7 +961,8 @@ fn find() {
                         EntityFilter::Equal("id".to_owned(), Value::from("2")),
                     ])]))
                     .asc("id"),
-            );
+            )
+            .await;
     });
 }
 
@@ -933,6 +983,7 @@ async fn check_basic_revert(store: Arc<DieselStore>, deployment: &DeploymentLoca
     let returned_entities = store
         .subgraph_store()
         .find(this_query.clone())
+        .await
         .expect("store.find operation failed");
 
     // There should be 1 user returned in results
@@ -995,6 +1046,7 @@ fn revert_block_with_delete() {
         let returned_entities = store
             .subgraph_store()
             .find(this_query.clone())
+            .await
             .expect("store.find operation failed");
 
         // There should be 1 entity returned in results
@@ -1302,6 +1354,7 @@ fn handle_large_string_with_index() {
         let ids: Vec<_> = store
             .subgraph_store()
             .find(query)
+            .await
             .expect("Could not find entity")
             .iter()
             .map(|e| e.id())
@@ -1320,6 +1373,7 @@ fn handle_large_string_with_index() {
         let ids: Vec<_> = store
             .subgraph_store()
             .find(query)
+            .await
             .expect("Could not find entity")
             .iter()
             .map(|e| e.id())
@@ -1407,6 +1461,7 @@ fn handle_large_bytea_with_index() {
         let ids: Vec<_> = store
             .subgraph_store()
             .find(query)
+            .await
             .expect("Could not find entity")
             .iter()
             .map(|e| e.id())
@@ -1425,6 +1480,7 @@ fn handle_large_bytea_with_index() {
         let ids: Vec<_> = store
             .subgraph_store()
             .find(query)
+            .await
             .expect("Could not find entity")
             .iter()
             .map(|e| e.id())
@@ -1522,12 +1578,13 @@ impl WindowQuery {
         WindowQuery(query, self.1).default_window()
     }
 
-    fn expect(&self, mut expected_ids: Vec<&str>, qid: &str) {
+    async fn expect(&self, mut expected_ids: Vec<&str>, qid: &str) {
         let query = self.0.clone();
         let store = &self.1;
         let unordered = matches!(query.order, EntityOrder::Unordered);
         let mut entity_ids = store
             .find(query)
+            .await
             .expect("store.find failed to execute query")
             .into_iter()
             .map(|entity| match entity.get("id") {
@@ -1596,35 +1653,41 @@ fn window() {
         // Get the first 2 entries in each 'color group'
         WindowQuery::new(&store)
             .first(2)
-            .expect(vec!["10", "11", "4", "5", "2", "7", "9"], "q1");
+            .expect(vec!["10", "11", "4", "5", "2", "7", "9"], "q1")
+            .await;
 
         WindowQuery::new(&store)
             .first(1)
-            .expect(vec!["10", "4", "2", "9"], "q2");
+            .expect(vec!["10", "4", "2", "9"], "q2")
+            .await;
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
-            .expect(vec!["11", "5", "7"], "q3");
+            .expect(vec!["11", "5", "7"], "q3")
+            .await;
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
             .desc("id")
-            .expect(vec!["10", "5", "7"], "q4");
+            .expect(vec!["10", "5", "7"], "q4")
+            .await;
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
             .desc("favorite_color")
-            .expect(vec!["10", "5", "7"], "q5");
+            .expect(vec!["10", "5", "7"], "q5")
+            .await;
 
         WindowQuery::new(&store)
             .first(1)
             .skip(1)
             .desc("favorite_color")
             .above(25)
-            .expect(vec!["4", "2"], "q6");
+            .expect(vec!["4", "2"], "q6")
+            .await;
 
         // Check queries for interfaces
         WindowQuery::new(&store)
@@ -1633,14 +1696,16 @@ fn window() {
             .desc("favorite_color")
             .above(12)
             .against_color_and_age()
-            .expect(vec!["10", "5", "8"], "q7");
+            .expect(vec!["10", "5", "8"], "q7")
+            .await;
 
         WindowQuery::new(&store)
             .first(1)
             .asc("age")
             .above(12)
             .against_color_and_age()
-            .expect(vec!["11", "5", "p2", "9"], "q8");
+            .expect(vec!["11", "5", "p2", "9"], "q8")
+            .await;
 
         WindowQuery::new(&store)
             .unordered()
@@ -1649,7 +1714,8 @@ fn window() {
             .expect(
                 vec!["10", "11", "2", "4", "5", "6", "7", "8", "9", "p2"],
                 "q9",
-            );
+            )
+            .await;
     });
 }
 
@@ -1665,6 +1731,7 @@ fn find_at_block() {
             let entities = store
                 .subgraph_store()
                 .find(query)
+                .await
                 .expect("store.find failed to execute query");
 
             assert_eq!(1, entities.len());

@@ -787,7 +787,7 @@ impl Layout {
     }
 
     /// order is a tuple (attribute, value_type, direction)
-    pub fn query<T: crate::relational_queries::FromEntityData>(
+    pub async fn query<T: crate::relational_queries::FromEntityData>(
         &self,
         logger: &Logger,
         conn: &mut PgConnection,

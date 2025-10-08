@@ -199,7 +199,7 @@ impl Job for UnusedJob {
 
         let start = Instant::now();
 
-        if let Err(e) = self.store.record_unused_deployments() {
+        if let Err(e) = self.store.record_unused_deployments().await {
             error!(logger, "failed to record unused deployments"; "error" => e.to_string());
             return;
         }

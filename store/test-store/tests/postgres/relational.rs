@@ -661,7 +661,7 @@ async fn update_many() {
         );
 
         // confidence test: there should be 3 scalar entities in store right now
-        assert_eq!(3, count_scalar_entities(conn, layout));
+        assert_eq!(3, count_scalar_entities(conn, layout).await);
 
         // update with overwrite
         one.set("string", "updated").unwrap();
@@ -812,7 +812,7 @@ async fn enum_arrays() {
     .await
 }
 
-fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
+async fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
     let filter = EntityFilter::Or(vec![
         EntityFilter::Equal("bool".into(), true.into()),
         EntityFilter::Equal("bool".into(), false.into()),
@@ -823,6 +823,7 @@ fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
     query.range.first = None;
     layout
         .query::<Entity>(&LOGGER, conn, query)
+        .await
         .map(|(entities, _)| entities)
         .expect("Count query failed")
         .len()
@@ -846,7 +847,7 @@ async fn delete() {
             .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
-        assert_eq!(2, count_scalar_entities(conn, layout));
+        assert_eq!(2, count_scalar_entities(conn, layout).await);
 
         // Delete entity two
         entity_keys
@@ -859,7 +860,7 @@ async fn delete() {
             .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
-        assert_eq!(1, count_scalar_entities(conn, layout));
+        assert_eq!(1, count_scalar_entities(conn, layout).await);
     })
     .await;
 }
@@ -877,7 +878,7 @@ async fn insert_many_and_delete_many() {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![one, two, three]);
 
         // confidence test: there should be 3 scalar entities in store right now
-        assert_eq!(3, count_scalar_entities(conn, layout));
+        assert_eq!(3, count_scalar_entities(conn, layout).await);
 
         // Delete entities with ids equal to "two" and "three"
         let entity_keys: Vec<_> = vec!["two", "three"]
@@ -889,7 +890,7 @@ async fn insert_many_and_delete_many() {
             .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(2, num_removed);
-        assert_eq!(1, count_scalar_entities(conn, layout));
+        assert_eq!(1, count_scalar_entities(conn, layout).await);
     })
     .await;
 }
@@ -1037,7 +1038,7 @@ async fn revert_block() {
         assert_fred(conn, "one");
     }
 
-    fn check_marty(conn: &mut PgConnection, layout: &Layout) {
+    async fn check_marty(conn: &mut PgConnection, layout: &Layout) {
         let set_marties = |conn: &mut PgConnection, from, to| {
             for block in from..=to {
                 let id = format!("marty-{}", block);
@@ -1050,7 +1051,9 @@ async fn revert_block() {
             }
         };
 
-        let assert_marties = |conn: &mut PgConnection, max_block, except: Vec<BlockNumber>| {
+        let assert_marties = async |conn: &mut PgConnection,
+                                    max_block,
+                                    except: Vec<BlockNumber>| {
             let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
             let collection = EntityCollection::All(vec![(MINK_TYPE.clone(), AttributeNames::All)]);
             let filter = EntityFilter::StartsWith("id".to_string(), Value::from("marty"));
@@ -1060,6 +1063,7 @@ async fn revert_block() {
                 .order(EntityOrder::Ascending("order".to_string(), ValueType::Int));
             let marties: Vec<Entity> = layout
                 .query(&LOGGER, conn, query)
+                .await
                 .map(|(entities, _)| entities)
                 .expect("loading all marties works");
 
@@ -1076,28 +1080,29 @@ async fn revert_block() {
             }
         };
 
-        let assert_all_marties =
-            |conn: &mut PgConnection, max_block| assert_marties(conn, max_block, vec![]);
+        let assert_all_marties = async |conn: &mut PgConnection, max_block| {
+            assert_marties(conn, max_block, vec![]).await
+        };
 
         set_marties(conn, 0, 4);
-        assert_all_marties(conn, 4);
+        assert_all_marties(conn, 4).await;
 
         layout.revert_block(conn, 3).unwrap();
-        assert_all_marties(conn, 2);
+        assert_all_marties(conn, 2).await;
         layout.revert_block(conn, 2).unwrap();
-        assert_all_marties(conn, 1);
+        assert_all_marties(conn, 1).await;
 
         set_marties(conn, 4, 4);
         // We don't have entries for 2 and 3 anymore
-        assert_marties(conn, 4, vec![2, 3]);
+        assert_marties(conn, 4, vec![2, 3]).await;
 
         layout.revert_block(conn, 2).unwrap();
-        assert_all_marties(conn, 1);
+        assert_all_marties(conn, 1).await;
     }
 
     run_test(async |conn, layout| {
         check_fred(conn, layout);
-        check_marty(conn, layout);
+        check_marty(conn, layout).await;
     })
     .await;
 }
@@ -1131,13 +1136,14 @@ impl<'a> QueryChecker<'a> {
         Self { conn, layout }
     }
 
-    fn check(self, expected_entity_ids: Vec<&'static str>, mut query: EntityQuery) -> Self {
+    async fn check(self, expected_entity_ids: Vec<&'static str>, mut query: EntityQuery) -> Self {
         let q = query.clone();
         let unordered = matches!(query.order, EntityOrder::Unordered);
         query.block = BLOCK_NUMBER_MAX;
         let entities = self
             .layout
             .query::<Entity>(&LOGGER, self.conn, query)
+            .await
             .expect("layout.query failed to execute query")
             .0;
 
@@ -1208,13 +1214,15 @@ impl EasyOrder for EntityQuery {
 )]
 async fn check_fulltext_search_syntax_error() {
     run_test(async |mut conn, layout| {
-        QueryChecker::new(&mut conn, layout).check(
-            vec!["1"],
-            user_query().filter(EntityFilter::Fulltext(
-                "userSearch".into(),
-                "Jono 'a".into(),
-            )),
-        );
+        QueryChecker::new(&mut conn, layout)
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::Fulltext(
+                    "userSearch".into(),
+                    "Jono 'a".into(),
+                )),
+            )
+            .await;
     })
     .await;
 }
@@ -1247,16 +1255,19 @@ async fn check_block_finds() {
                 vec![],
                 user_query().filter(EntityFilter::ChangeBlockGte(BLOCK_NUMBER_MAX)),
             )
+            .await
             // Initial block, we should get here all data
             .check(
                 vec!["1", "2", "3"],
                 user_query().filter(EntityFilter::ChangeBlockGte(0)),
             )
+            .await
             // Block with an update, we should have one only
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::ChangeBlockGte(1)),
-            );
+            )
+            .await;
     })
     .await;
 }
@@ -1268,16 +1279,22 @@ async fn check_find() {
         let types = vec![&*CAT_TYPE, &*DOG_TYPE];
         let checker = QueryChecker::new(&mut conn, layout)
             .check(vec!["garfield", "pluto"], query(&types))
+            .await
             .check(vec!["pluto", "garfield"], query(&types).desc("name"))
+            .await
             .check(
                 vec!["garfield"],
                 query(&types)
                     .filter(EntityFilter::StartsWith("name".into(), Value::from("Gar")))
                     .desc("name"),
             )
+            .await
             .check(vec!["pluto", "garfield"], query(&types).desc("id"))
+            .await
             .check(vec!["garfield", "pluto"], query(&types).asc("id"))
-            .check(vec!["garfield", "pluto"], query(&types).unordered());
+            .await
+            .check(vec!["garfield", "pluto"], query(&types).unordered())
+            .await;
 
         // fulltext
         let checker = checker
@@ -1285,13 +1302,15 @@ async fn check_find() {
                 vec!["3"],
                 user_query().filter(EntityFilter::Fulltext("userSearch".into(), "Shaq:*".into())),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::Fulltext(
                     "userSearch".into(),
                     "Jono & achangedemail@email.com".into(),
                 )),
-            );
+            )
+            .await;
         // Test with a second fulltext search; we had a bug that caused only
         // one search index to be populated (see issue #4794)
         let checker = checker
@@ -1302,13 +1321,15 @@ async fn check_find() {
                     "Shaq:*".into(),
                 )),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::Fulltext(
                     "userSearch2".into(),
                     "Jono & achangedemail@email.com".into(),
                 )),
-            );
+            )
+            .await;
 
         // list contains
         fn drinks_query(v: Vec<&str>) -> EntityQuery {
@@ -1318,11 +1339,16 @@ async fn check_find() {
 
         let checker = checker
             .check(vec!["2"], drinks_query(vec!["beer"]))
+            .await
             // Reverse of how we stored it
             .check(vec!["3"], drinks_query(vec!["tea", "coffee"]))
+            .await
             .check(vec![], drinks_query(vec!["beer", "tea"]))
+            .await
             .check(vec![], drinks_query(vec!["beer", "water"]))
-            .check(vec![], drinks_query(vec!["beer", "wine", "water"]));
+            .await
+            .check(vec![], drinks_query(vec!["beer", "wine", "water"]))
+            .await;
 
         // list not contains
         let checker = checker
@@ -1334,6 +1360,7 @@ async fn check_find() {
                     vec!["beer"].into(),
                 )),
             )
+            .await
             // Users 2 do not have "tea" on its drinks list.
             .check(
                 vec!["2"],
@@ -1341,7 +1368,8 @@ async fn check_find() {
                     "drinks".into(),
                     vec!["tea"].into(),
                 )),
-            );
+            )
+            .await;
 
         // string attributes
         let checker = checker
@@ -1349,10 +1377,12 @@ async fn check_find() {
                 vec!["2"],
                 user_query().filter(EntityFilter::Contains("name".into(), "ind".into())),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query().filter(EntityFilter::Equal("name".to_owned(), "Cindini".into())),
             )
+            .await
             // Test that we can order by id
             .check(
                 vec!["2"],
@@ -1360,28 +1390,33 @@ async fn check_find() {
                     .filter(EntityFilter::Equal("name".to_owned(), "Cindini".into()))
                     .desc("id"),
             )
+            .await
             .check(
                 vec!["1", "3"],
                 user_query()
                     .filter(EntityFilter::Not("name".to_owned(), "Cindini".into()))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["3"],
                 user_query().filter(EntityFilter::GreaterThan("name".to_owned(), "Kundi".into())),
             )
+            .await
             .check(
                 vec!["2", "1"],
                 user_query()
                     .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
                     .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query()
@@ -1390,6 +1425,7 @@ async fn check_find() {
                     .first(1)
                     .skip(1),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1399,18 +1435,21 @@ async fn check_find() {
                     ]))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
                     .filter(EntityFilter::EndsWith("name".to_owned(), "ini".into()))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
                     .filter(EntityFilter::NotEndsWith("name".to_owned(), "ini".into()))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query()
@@ -1420,10 +1459,12 @@ async fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec![],
                 user_query().filter(EntityFilter::In("name".to_owned(), vec![])),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -1432,7 +1473,8 @@ async fn check_find() {
                         vec!["Shaqueeena".into()],
                     ))
                     .desc("name"),
-            );
+            )
+            .await;
         // float attributes
         let checker = checker
             .check(
@@ -1442,6 +1484,7 @@ async fn check_find() {
                     Value::BigDecimal(184.4.into()),
                 )),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
@@ -1451,6 +1494,7 @@ async fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::GreaterThan(
@@ -1458,6 +1502,7 @@ async fn check_find() {
                     Value::BigDecimal(160.0.into()),
                 )),
             )
+            .await
             .check(
                 vec!["2", "3"],
                 user_query()
@@ -1467,6 +1512,7 @@ async fn check_find() {
                     ))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
@@ -1476,6 +1522,7 @@ async fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1487,6 +1534,7 @@ async fn check_find() {
                     .first(1)
                     .skip(1),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
@@ -1500,6 +1548,7 @@ async fn check_find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1512,15 +1561,18 @@ async fn check_find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
 
         // int 8 attributes
-        let checker = checker.check(
-            vec!["3"],
-            user_query()
-                .filter(EntityFilter::Equal("visits".to_owned(), Value::Int(22_i32)))
-                .desc("name"),
-        );
+        let checker = checker
+            .check(
+                vec!["3"],
+                user_query()
+                    .filter(EntityFilter::Equal("visits".to_owned(), Value::Int(22_i32)))
+                    .desc("name"),
+            )
+            .await;
 
         // int attributes
         let checker = checker
@@ -1530,12 +1582,14 @@ async fn check_find() {
                     .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67_i32)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
                     .filter(EntityFilter::Not("age".to_owned(), Value::Int(67_i32)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::GreaterThan(
@@ -1543,6 +1597,7 @@ async fn check_find() {
                     Value::Int(43_i32),
                 )),
             )
+            .await
             .check(
                 vec!["2", "1"],
                 user_query()
@@ -1552,12 +1607,14 @@ async fn check_find() {
                     ))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2", "3"],
                 user_query()
                     .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(50_i32)))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2", "3"],
                 user_query()
@@ -1567,12 +1624,14 @@ async fn check_find() {
                     ))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
                     .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(50_i32)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1581,6 +1640,7 @@ async fn check_find() {
                     .first(1)
                     .skip(1),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -1591,6 +1651,7 @@ async fn check_find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["3"],
                 user_query()
@@ -1600,7 +1661,8 @@ async fn check_find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
 
         // bool attributes
         let checker = checker
@@ -1610,12 +1672,14 @@ async fn check_find() {
                     .filter(EntityFilter::Equal("coffee".to_owned(), Value::Bool(true)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1", "3"],
                 user_query()
                     .filter(EntityFilter::Not("coffee".to_owned(), Value::Bool(true)))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1626,6 +1690,7 @@ async fn check_find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
@@ -1635,7 +1700,8 @@ async fn check_find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
         // misc tests
         let checker = checker
             .check(
@@ -1647,6 +1713,7 @@ async fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["3"],
                 user_query()
@@ -1656,12 +1723,14 @@ async fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
                     .filter(EntityFilter::Not("favorite_color".to_owned(), Value::Null))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -1671,6 +1740,7 @@ async fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -1680,16 +1750,27 @@ async fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(vec!["3", "2", "1"], user_query().asc("weight"))
+            .await
             .check(vec!["1", "2", "3"], user_query().desc("weight"))
+            .await
             .check(vec!["1", "2", "3"], user_query().unordered())
+            .await
             .check(vec!["1", "2", "3"], user_query().asc("id"))
+            .await
             .check(vec!["3", "2", "1"], user_query().desc("id"))
+            .await
             .check(vec!["1", "2", "3"], user_query().unordered())
+            .await
             .check(vec!["3", "2", "1"], user_query().asc("age"))
+            .await
             .check(vec!["1", "2", "3"], user_query().desc("age"))
+            .await
             .check(vec!["2", "1", "3"], user_query().asc("name"))
+            .await
             .check(vec!["3", "1", "2"], user_query().desc("name"))
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -1698,7 +1779,8 @@ async fn check_find() {
                         EntityFilter::Equal("id".to_owned(), Value::from("2")),
                     ])]))
                     .asc("id"),
-            );
+            )
+            .await;
 
         // enum attributes
         let checker = checker
@@ -1711,12 +1793,14 @@ async fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query()
                     .filter(EntityFilter::Not("favorite_color".to_owned(), "red".into()))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1727,6 +1811,7 @@ async fn check_find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query()
@@ -1736,7 +1821,8 @@ async fn check_find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
 
         // empty and / or
 
@@ -1750,11 +1836,13 @@ async fn check_find() {
                 vec![],
                 user_query().filter(EntityFilter::And(vec![EntityFilter::Or(vec![])])),
             )
+            .await
             // An empty 'and' is 'true'
             .check(
                 vec!["1", "2", "3"],
                 user_query().filter(EntityFilter::Or(vec![EntityFilter::And(vec![])])),
-            );
+            )
+            .await;
     })
     .await
 }
@@ -1791,7 +1879,11 @@ impl<'a> FilterChecker<'a> {
         Self { conn, layout }
     }
 
-    fn check(&mut self, expected_entity_ids: Vec<&'static str>, filter: EntityFilter) -> &mut Self {
+    async fn check(
+        &mut self,
+        expected_entity_ids: Vec<&'static str>,
+        filter: EntityFilter,
+    ) -> &mut Self {
         let expected_entity_ids: Vec<String> =
             expected_entity_ids.into_iter().map(str::to_owned).collect();
 
@@ -1800,6 +1892,7 @@ impl<'a> FilterChecker<'a> {
         let entities = self
             .layout
             .query::<Entity>(&LOGGER, self.conn, query)
+            .await
             .expect("layout.query failed to execute query")
             .0;
 
@@ -1874,55 +1967,91 @@ async fn check_filters() {
 
         checker
             .check(vec!["a1"], filter_eq(&a1))
+            .await
             .check(vec!["a2"], filter_eq(&a2))
+            .await
             .check(vec!["a2b"], filter_eq(&a2b))
-            .check(vec!["a3"], filter_eq(&a3));
+            .await
+            .check(vec!["a3"], filter_eq(&a3))
+            .await;
 
         checker
             .check(vec!["a2", "a2b", "a3"], filter_not(&a1))
+            .await
             .check(vec!["a1", "a2b", "a3"], filter_not(&a2))
+            .await
             .check(vec!["a1", "a2", "a3"], filter_not(&a2b))
-            .check(vec!["a1", "a2", "a2b"], filter_not(&a3));
+            .await
+            .check(vec!["a1", "a2", "a2b"], filter_not(&a3))
+            .await;
 
         checker
             .check(vec![], filter_lt(&a1))
+            .await
             .check(vec!["a1"], filter_lt(&a2))
+            .await
             .check(vec!["a1", "a2", "a3"], filter_lt(&a2b))
-            .check(vec!["a1", "a2"], filter_lt(&a3));
+            .await
+            .check(vec!["a1", "a2"], filter_lt(&a3))
+            .await;
 
         checker
             .check(vec!["a1"], filter_le(&a1))
+            .await
             .check(vec!["a1", "a2"], filter_le(&a2))
+            .await
             .check(vec!["a1", "a2", "a2b", "a3"], filter_le(&a2b))
-            .check(vec!["a1", "a2", "a3"], filter_le(&a3));
+            .await
+            .check(vec!["a1", "a2", "a3"], filter_le(&a3))
+            .await;
 
         checker
             .check(vec!["a2", "a2b", "a3"], filter_gt(&a1))
+            .await
             .check(vec!["a2b", "a3"], filter_gt(&a2))
+            .await
             .check(vec![], filter_gt(&a2b))
-            .check(vec!["a2b"], filter_gt(&a3));
+            .await
+            .check(vec!["a2b"], filter_gt(&a3))
+            .await;
 
         checker
             .check(vec!["a1", "a2", "a2b", "a3"], filter_ge(&a1))
+            .await
             .check(vec!["a2", "a2b", "a3"], filter_ge(&a2))
+            .await
             .check(vec!["a2b"], filter_ge(&a2b))
-            .check(vec!["a2b", "a3"], filter_ge(&a3));
+            .await
+            .check(vec!["a2b", "a3"], filter_ge(&a3))
+            .await;
 
         checker
             .check(vec!["a1"], filter_in(vec![&a1]))
+            .await
             .check(vec!["a2"], filter_in(vec![&a2]))
+            .await
             .check(vec!["a2b"], filter_in(vec![&a2b]))
+            .await
             .check(vec!["a3"], filter_in(vec![&a3]))
+            .await
             .check(vec!["a1", "a2"], filter_in(vec![&a1, &a2]))
-            .check(vec!["a1", "a3"], filter_in(vec![&a1, &a3]));
+            .await
+            .check(vec!["a1", "a3"], filter_in(vec![&a1, &a3]))
+            .await;
 
         checker
             .check(vec!["a2", "a2b", "a3"], filter_not_in(vec![&a1]))
+            .await
             .check(vec!["a1", "a2b", "a3"], filter_not_in(vec![&a2]))
+            .await
             .check(vec!["a1", "a2", "a3"], filter_not_in(vec![&a2b]))
+            .await
             .check(vec!["a1", "a2", "a2b"], filter_not_in(vec![&a3]))
+            .await
             .check(vec!["a2b", "a3"], filter_not_in(vec![&a1, &a2]))
-            .check(vec!["a2", "a2b"], filter_not_in(vec![&a1, &a3]));
+            .await
+            .check(vec!["a2", "a2b"], filter_not_in(vec![&a1, &a3]))
+            .await;
 
         update_entity_at(
             checker.conn,
@@ -1938,8 +2067,11 @@ async fn check_filters() {
 
         checker
             .check(vec!["a1", "a2", "a2b", "a3"], filter_block_gte(0))
+            .await
             .check(vec!["a1"], filter_block_gte(1))
-            .check(vec![], filter_block_gte(BLOCK_NUMBER_MAX));
+            .await
+            .check(vec![], filter_block_gte(BLOCK_NUMBER_MAX))
+            .await;
     })
     .await;
 }

@@ -57,11 +57,11 @@ pub fn list(
     Ok(())
 }
 
-pub fn record(store: Arc<SubgraphStore>) -> Result<(), Error> {
+pub async fn record(store: Arc<SubgraphStore>) -> Result<(), Error> {
     let mut list = make_list();
 
     println!("Recording unused deployments. This might take a while.");
-    let recorded = store.record_unused_deployments()?;
+    let recorded = store.record_unused_deployments().await?;
 
     for unused in store.list_unused_deployments(unused::Filter::New)? {
         if recorded.iter().any(|r| r.subgraph == unused.deployment) {

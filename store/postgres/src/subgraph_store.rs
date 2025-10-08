@@ -872,7 +872,7 @@ impl SubgraphStoreInner {
 
     /// Look for new unused deployments and add them to the `unused_deployments`
     /// table
-    pub fn record_unused_deployments(&self) -> Result<Vec<DeploymentDetail>, StoreError> {
+    pub async fn record_unused_deployments(&self) -> Result<Vec<DeploymentDetail>, StoreError> {
         let deployments = self.primary_conn()?.detect_unused_deployments()?;
 
         // deployments_by_shard takes an empty vec to mean 'give me everything',
@@ -893,7 +893,7 @@ impl SubgraphStoreInner {
                 .into_iter()
                 .map(|site| site.deployment.to_string())
                 .collect();
-            details.extend(store.deployment_details(ids)?);
+            details.extend(store.deployment_details(ids).await?);
         }
 
         self.primary_conn()?.update_unused_deployments(&details)?;
@@ -929,7 +929,7 @@ impl SubgraphStoreInner {
         }
 
         if removable {
-            store.drop_deployment(&site)?;
+            store.drop_deployment(&site).await?;
 
             self.primary_conn()?.drop_site(site.as_ref())?;
         } else {
@@ -940,12 +940,20 @@ impl SubgraphStoreInner {
         Ok(())
     }
 
-    pub fn status_for_id(&self, id: graph::components::store::DeploymentId) -> status::Info {
+    pub async fn status_for_id(&self, id: graph::components::store::DeploymentId) -> status::Info {
         let filter = status::Filter::DeploymentIds(vec![id]);
-        self.status(filter).unwrap().into_iter().next().unwrap()
+        self.status(filter)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap()
     }
 
-    pub(crate) fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
+    pub(crate) async fn status(
+        &self,
+        filter: status::Filter,
+    ) -> Result<Vec<status::Info>, StoreError> {
         let sites = match filter {
             status::Filter::SubgraphName(name) => {
                 let deployments = self.mirror.deployments_for_subgraph(&name)?;
@@ -981,18 +989,18 @@ impl SubgraphStoreInner {
                 .stores
                 .get(&shard)
                 .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
-            infos.extend(store.deployment_statuses(&sites)?);
+            infos.extend(store.deployment_statuses(&sites).await?);
         }
         self.mirror.fill_assignments(&mut infos)?;
         Ok(infos)
     }
 
-    pub(crate) fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
+    pub(crate) async fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
         if let Some((deployment_id, created_at)) = self.mirror.version_info(version)? {
             let id = DeploymentHash::new(deployment_id.clone())
                 .map_err(|id| internal_error!("illegal deployment id {}", id))?;
             let (store, site) = self.store(&id)?;
-            let statuses = store.deployment_statuses(&[site.clone()])?;
+            let statuses = store.deployment_statuses(&[site.clone()]).await?;
             let status = statuses
                 .first()
                 .ok_or_else(|| StoreError::DeploymentNotFound(deployment_id.clone()))?;
@@ -1049,14 +1057,22 @@ impl SubgraphStoreInner {
         join_all(self.stores.values().map(|store| store.vacuum())).await
     }
 
-    pub fn rewind(&self, id: DeploymentHash, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+    pub async fn rewind(
+        &self,
+        id: DeploymentHash,
+        block_ptr_to: BlockPtr,
+    ) -> Result<(), StoreError> {
         let (store, site) = self.store(&id)?;
-        store.rewind(site, block_ptr_to)
+        store.rewind(site, block_ptr_to).await
     }
 
-    pub fn truncate(&self, id: DeploymentHash, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+    pub async fn truncate(
+        &self,
+        id: DeploymentHash,
+        block_ptr_to: BlockPtr,
+    ) -> Result<(), StoreError> {
         let (store, site) = self.store(&id)?;
-        store.truncate(site, block_ptr_to)
+        store.truncate(site, block_ptr_to).await
     }
 
     pub(crate) async fn get_proof_of_indexing(
@@ -1123,12 +1139,12 @@ impl SubgraphStoreInner {
 
     // Only used by tests
     #[cfg(debug_assertions)]
-    pub fn find(
+    pub async fn find(
         &self,
         query: graph::prelude::EntityQuery,
     ) -> Result<Vec<graph::prelude::Entity>, graph::prelude::QueryExecutionError> {
         let (store, site) = self.store(&query.subgraph_id)?;
-        store.find(site, query)
+        store.find(site, query).await
     }
 
     pub fn locate_in_shard(
@@ -1185,7 +1201,7 @@ impl SubgraphStoreInner {
     /// Set the statistics target for columns `columns` in `deployment`. If
     /// `entity` is `Some`, only set it for the table for that entity, if it
     /// is `None`, set it for all tables in the deployment.
-    pub fn set_stats_target(
+    pub async fn set_stats_target(
         &self,
         deployment: &DeploymentLocator,
         entity: Option<&str>,
@@ -1193,7 +1209,7 @@ impl SubgraphStoreInner {
         target: i32,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&deployment.hash)?;
-        store.set_stats_target(site, entity, columns, target)
+        store.set_stats_target(site, entity, columns, target).await
     }
 
     pub async fn create_manual_index(

@@ -107,7 +107,7 @@ impl QueryStoreManager for Store {
 #[async_trait]
 impl StatusStore for Store {
     async fn status(&self, filter: status::Filter) -> Result<Vec<status::Info>, StoreError> {
-        let mut infos = self.subgraph_store.status(filter)?;
+        let mut infos = self.subgraph_store.status(filter).await?;
         let ptrs = self.block_store.chain_head_pointers().await?;
         for info in &mut infos {
             for chain in &mut info.chains {
@@ -118,7 +118,7 @@ impl StatusStore for Store {
     }
 
     async fn version_info(&self, version_id: &str) -> Result<VersionInfo, StoreError> {
-        let mut info = self.subgraph_store.version_info(version_id)?;
+        let mut info = self.subgraph_store.version_info(version_id).await?;
 
         info.total_ethereum_blocks_count = self.block_store.chain_head_block(&info.network).await?;
 

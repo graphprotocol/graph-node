@@ -265,7 +265,7 @@ impl DeploymentStore {
 
     // Remove the data and metadata for the deployment `site`. This operation
     // is not reversible
-    pub(crate) fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
+    pub(crate) async fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
         conn.transaction(|conn| {
             crate::deployment::drop_schema(conn, &site.namespace)?;
@@ -276,7 +276,7 @@ impl DeploymentStore {
         })
     }
 
-    pub(crate) fn execute_query<T: FromEntityData>(
+    pub(crate) async fn execute_query<T: FromEntityData>(
         &self,
         conn: &mut PgConnection,
         site: Arc<Site>,
@@ -288,7 +288,7 @@ impl DeploymentStore {
             .logger
             .cheap_clone()
             .unwrap_or_else(|| self.logger.cheap_clone());
-        layout.query(&logger, conn, query)
+        layout.query(&logger, conn, query).await
     }
 
     pub(crate) fn execute_sql(
@@ -559,7 +559,7 @@ impl DeploymentStore {
         deployment::block_ptr(conn, &site)
     }
 
-    pub(crate) fn deployment_details(
+    pub(crate) async fn deployment_details(
         &self,
         ids: Vec<String>,
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
@@ -567,7 +567,7 @@ impl DeploymentStore {
         conn.transaction(|conn| -> Result<_, StoreError> { detail::deployment_details(conn, ids) })
     }
 
-    pub fn deployment_details_for_id(
+    pub async fn deployment_details_for_id(
         &self,
         locator: &DeploymentLocator,
     ) -> Result<DeploymentDetail, StoreError> {
@@ -578,7 +578,7 @@ impl DeploymentStore {
         })
     }
 
-    pub(crate) fn deployment_statuses(
+    pub(crate) async fn deployment_statuses(
         &self,
         sites: &[Arc<Site>],
     ) -> Result<Vec<status::Info>, StoreError> {
@@ -596,7 +596,7 @@ impl DeploymentStore {
         deployment::exists_and_synced(&mut conn, id.as_str())
     }
 
-    pub(crate) fn deployment_synced(
+    pub(crate) async fn deployment_synced(
         &self,
         id: &DeploymentHash,
         block_ptr: BlockPtr,
@@ -686,7 +686,7 @@ impl DeploymentStore {
         Ok((default, targets))
     }
 
-    pub(crate) fn set_stats_target(
+    pub(crate) async fn set_stats_target(
         &self,
         site: Arc<Site>,
         entity: Option<&str>,
@@ -857,7 +857,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         req: PruneRequest,
     ) -> Result<Box<dyn PruneReporter>, StoreError> {
-        fn do_prune(
+        async fn do_prune(
             store: Arc<DeploymentStore>,
             mut conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
             site: Arc<Site>,
@@ -886,7 +886,9 @@ impl DeploymentStore {
 
             cancel.check_cancel()?;
 
-            layout.prune(&store.logger, reporter.as_mut(), &mut conn, &req, cancel)?;
+            layout
+                .prune(&store.logger, reporter.as_mut(), &mut conn, &req, cancel)
+                .await?;
             Ok(reporter)
         }
 
@@ -896,7 +898,7 @@ impl DeploymentStore {
             // deployment is reassigned to another node, that node won't
             // kick off a pruning run while this node might still be pruning
             if advisory_lock::try_lock_pruning(conn, &site)? {
-                let res = do_prune(store, conn, site.cheap_clone(), cancel, req, reporter);
+                let res = do_prune(store, conn, site.cheap_clone(), cancel, req, reporter).await;
                 advisory_lock::unlock_pruning(conn, &site)?;
                 res
             } else {
@@ -1011,10 +1013,10 @@ impl DeploymentStore {
                             AttributeNames::All,
                         )]),
                     );
-                    let entities = store
-                        .execute_query::<Entity>(conn, site, query)
-                        .map(|(entities, _)| entities)
-                        .map_err(anyhow::Error::from)?;
+                    let entities =
+                        graph::block_on(store.execute_query::<Entity>(conn, site, query))
+                            .map(|(entities, _)| entities)
+                            .map_err(anyhow::Error::from)?;
 
                     Ok(Some((entities, block_ptr)))
                 })
@@ -1121,17 +1123,18 @@ impl DeploymentStore {
 
     // Only used by tests
     #[cfg(debug_assertions)]
-    pub(crate) fn find(
+    pub(crate) async fn find(
         &self,
         site: Arc<Site>,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
         let mut conn = self.get_conn()?;
         self.execute_query(&mut conn, site, query)
+            .await
             .map(|(entities, _)| entities)
     }
 
-    pub(crate) fn transact_block_operations(
+    pub(crate) async fn transact_block_operations(
         self: &Arc<Self>,
         logger: &Logger,
         site: Arc<Site>,
@@ -1355,7 +1358,7 @@ impl DeploymentStore {
         })
     }
 
-    pub(crate) fn truncate(
+    pub(crate) async fn truncate(
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
@@ -1385,7 +1388,11 @@ impl DeploymentStore {
         )
     }
 
-    pub(crate) fn rewind(&self, site: Arc<Site>, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+    pub(crate) async fn rewind(
+        &self,
+        site: Arc<Site>,
+        block_ptr_to: BlockPtr,
+    ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
 
         let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())?;
@@ -1644,7 +1651,8 @@ impl DeploymentStore {
         if ENV_VARS.postpone_attribute_index_creation {
             // check if all indexes are valid and recreate them if they aren't
             self.load_indexes(site.clone())?
-                .recreate_invalid_indexes(&mut conn, &dst)?;
+                .recreate_invalid_indexes(&mut conn, &dst)
+                .await?;
         }
 
         // Make sure the block pointer is set. This is important for newly
@@ -1664,7 +1672,7 @@ impl DeploymentStore {
     //
     // - There's no fatal error for the subgraph
     // - The error is NOT deterministic
-    pub(crate) fn unfail_deterministic_error(
+    pub(crate) async fn unfail_deterministic_error(
         &self,
         site: Arc<Site>,
         current_ptr: &BlockPtr,
@@ -1761,7 +1769,7 @@ impl DeploymentStore {
     //
     // - There's no fatal error for the subgraph
     // - The error IS deterministic
-    pub(crate) fn unfail_non_deterministic_error(
+    pub(crate) async fn unfail_non_deterministic_error(
         &self,
         site: Arc<Site>,
         current_ptr: &BlockPtr,

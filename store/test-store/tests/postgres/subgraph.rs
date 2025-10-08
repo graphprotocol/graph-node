@@ -676,7 +676,7 @@ fn subgraph_non_fatal_error() {
             .unwrap();
         assert!(count() == 1);
 
-        let info = subgraph_store.status_for_id(deployment.id);
+        let info = subgraph_store.status_for_id(deployment.id).await;
 
         assert!(info.non_fatal_errors.len() == 1);
         assert!(info.health == SubgraphHealth::Unhealthy);
@@ -695,7 +695,7 @@ fn subgraph_non_fatal_error() {
             .unwrap();
         assert!(count() == 2);
 
-        let info = subgraph_store.status_for_id(deployment.id);
+        let info = subgraph_store.status_for_id(deployment.id).await;
 
         assert!(info.non_fatal_errors.len() == 1);
         assert!(info.health == SubgraphHealth::Unhealthy);

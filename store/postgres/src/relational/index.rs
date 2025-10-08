@@ -818,7 +818,7 @@ impl IndexList {
         Ok(arr)
     }
 
-    pub fn recreate_invalid_indexes(
+    pub async fn recreate_invalid_indexes(
         &self,
         conn: &mut PgConnection,
         layout: &Layout,

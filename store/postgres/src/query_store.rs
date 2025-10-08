@@ -58,6 +58,7 @@ impl QueryStoreTrait for QueryStore {
         let wait = start.elapsed();
         self.store
             .execute_query(&mut conn, self.site.clone(), query)
+            .await
             .map(|(entities, mut trace)| {
                 trace.conn_wait(wait);
                 (entities, trace)
