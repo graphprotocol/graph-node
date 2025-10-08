@@ -648,6 +648,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
                         net_version: NETWORK_VERSION.to_string(),
                         genesis_block_hash: GENESIS_PTR.hash.clone(),
                     })
+                    .await
                     .expect("unable to set identifier");
                 }
                 None => {

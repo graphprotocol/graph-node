@@ -1759,14 +1759,14 @@ impl ChainStore {
         matches!(self.status, ChainStatus::Ingestible)
     }
 
-    fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
-        self.pool.get().map_err(Error::from)
+    async fn get_conn(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+        self.pool.get_async().await.map_err(Error::from)
     }
 
-    pub(crate) fn create(&self, ident: &ChainIdentifier) -> Result<(), Error> {
+    pub(crate) async fn create(&self, ident: &ChainIdentifier) -> Result<(), Error> {
         use public::ethereum_networks::dsl::*;
 
-        let mut conn = self.get_conn()?;
+        let mut conn = self.get_conn().await?;
         conn.transaction(|conn| {
             insert_into(ethereum_networks)
                 .values((
@@ -1786,9 +1786,9 @@ impl ChainStore {
         Ok(())
     }
 
-    pub fn update_name(&self, name: &str) -> Result<(), Error> {
+    pub async fn update_name(&self, name: &str) -> Result<(), Error> {
         use public::ethereum_networks as n;
-        let mut conn = self.get_conn()?;
+        let mut conn = self.get_conn().await?;
         conn.transaction(|conn| {
             update(n::table.filter(n::name.eq(&self.chain)))
                 .set(n::name.eq(name))
@@ -1797,11 +1797,11 @@ impl ChainStore {
         })
     }
 
-    pub(crate) fn drop_chain(&self) -> Result<(), Error> {
+    pub(crate) async fn drop_chain(&self) -> Result<(), Error> {
         use diesel::dsl::delete;
         use public::ethereum_networks as n;
 
-        let mut conn = self.get_conn()?;
+        let mut conn = self.get_conn().await?;
         conn.transaction(|conn| {
             self.storage.drop_storage(conn, &self.chain)?;
 
@@ -1810,7 +1810,7 @@ impl ChainStore {
         })
     }
 
-    pub fn chain_head_pointers(
+    pub async fn chain_head_pointers(
         conn: &mut PgConnection,
     ) -> Result<HashMap<String, BlockPtr>, StoreError> {
         use public::ethereum_networks as n;
@@ -1830,13 +1830,13 @@ impl ChainStore {
         Ok(HashMap::from_iter(pointers))
     }
 
-    pub fn chain_head_block(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
+    pub async fn chain_head_block(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
         use public::ethereum_networks as n;
 
         let number: Option<i64> = n::table
             .filter(n::name.eq(chain))
             .select(n::head_block_number)
-            .first::<Option<i64>>(&mut self.get_conn()?)
+            .first::<Option<i64>>(&mut self.get_conn().await?)
             .optional()?
             .flatten();
 
@@ -1852,10 +1852,10 @@ impl ChainStore {
         )
     }
 
-    pub(crate) fn set_chain_identifier(&self, ident: &ChainIdentifier) -> Result<(), Error> {
+    pub(crate) async fn set_chain_identifier(&self, ident: &ChainIdentifier) -> Result<(), Error> {
         use public::ethereum_networks as n;
 
-        let mut conn = self.pool.get()?;
+        let mut conn = self.pool.get_async().await?;
 
         diesel::update(n::table.filter(n::name.eq(&self.chain)))
             .set((
@@ -1868,8 +1868,11 @@ impl ChainStore {
     }
 
     #[cfg(debug_assertions)]
-    pub fn set_chain_identifier_for_tests(&self, ident: &ChainIdentifier) -> Result<(), Error> {
-        self.set_chain_identifier(ident)
+    pub async fn set_chain_identifier_for_tests(
+        &self,
+        ident: &ChainIdentifier,
+    ) -> Result<(), Error> {
+        self.set_chain_identifier(ident).await
     }
 
     /// Store the given chain as the blocks for the `network` set the
@@ -1881,7 +1884,11 @@ impl ChainStore {
         genesis_hash: &str,
         chain: Vec<Arc<dyn Block>>,
     ) -> Vec<(BlockPtr, BlockHash)> {
-        let mut conn = self.pool.get().expect("can get a database connection");
+        let mut conn = self
+            .pool
+            .get_async()
+            .await
+            .expect("can get a database connection");
 
         self.storage.remove_chain(&mut conn, &self.chain);
         self.recent_blocks_cache.clear();
@@ -1894,6 +1901,7 @@ impl ChainStore {
             net_version: "0".to_string(),
             genesis_block_hash: BlockHash::try_from(genesis_hash).expect("valid block hash"),
         })
+        .await
         .expect("unable to set chain identifier");
 
         use public::ethereum_networks as n;
@@ -1908,27 +1916,27 @@ impl ChainStore {
         self.recent_blocks_cache.blocks()
     }
 
-    pub fn delete_blocks(&self, block_hashes: &[&H256]) -> Result<usize, Error> {
-        let mut conn = self.get_conn()?;
+    pub async fn delete_blocks(&self, block_hashes: &[&H256]) -> Result<usize, Error> {
+        let mut conn = self.get_conn().await?;
         self.storage
             .delete_blocks_by_hash(&mut conn, &self.chain, block_hashes)
     }
 
-    pub fn cleanup_shallow_blocks(&self, lowest_block: i32) -> Result<(), StoreError> {
-        let mut conn = self.get_conn()?;
+    pub async fn cleanup_shallow_blocks(&self, lowest_block: i32) -> Result<(), StoreError> {
+        let mut conn = self.get_conn().await?;
         self.storage
             .cleanup_shallow_blocks(&mut conn, lowest_block)?;
         Ok(())
     }
 
     // remove_cursor delete the chain_store cursor and return true if it was present
-    pub fn remove_cursor(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
-        let mut conn = self.get_conn()?;
+    pub async fn remove_cursor(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
+        let mut conn = self.get_conn().await?;
         self.storage.remove_cursor(&mut conn, chain)
     }
 
-    pub fn truncate_block_cache(&self) -> Result<(), StoreError> {
-        let mut conn = self.get_conn()?;
+    pub async fn truncate_block_cache(&self) -> Result<(), StoreError> {
+        let mut conn = self.get_conn().await?;
         self.storage.truncate_block_cache(&mut conn)?;
         Ok(())
     }
@@ -2038,7 +2046,7 @@ impl ChainHeadStore for ChainStore {
         ethereum_networks
             .select(head_block_cursor)
             .filter(name.eq(&self.chain))
-            .load::<Option<String>>(&mut self.get_conn()?)
+            .load::<Option<String>>(&mut self.get_conn().await?)
             .map(|rows| {
                 rows.first()
                     .map(|cursor_opt| cursor_opt.as_ref().cloned())
@@ -2412,7 +2420,7 @@ impl ChainStoreTrait for ChainStore {
         //
         // See 8b6ad0c64e244023ac20ced7897fe666
 
-        let mut conn = self.get_conn()?;
+        let mut conn = self.get_conn().await?;
         let query = "
             select coalesce(
                    least(a.block,
@@ -2455,7 +2463,7 @@ impl ChainStoreTrait for ChainStore {
         &self,
         number: BlockNumber,
     ) -> Result<Vec<BlockHash>, Error> {
-        let mut conn = self.get_conn()?;
+        let mut conn = self.get_conn().await?;
         self.storage
             .block_hashes_by_block_number(&mut conn, &self.chain, number)
     }
@@ -2465,7 +2473,7 @@ impl ChainStoreTrait for ChainStore {
         number: BlockNumber,
         hash: &BlockHash,
     ) -> Result<usize, Error> {
-        let mut conn = self.get_conn()?;
+        let mut conn = self.get_conn().await?;
         self.storage
             .confirm_block_hash(&mut conn, &self.chain, number, hash)
     }
@@ -2510,8 +2518,8 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn clear_call_cache(&self, from: BlockNumber, to: BlockNumber) -> Result<(), Error> {
-        let mut conn = self.get_conn()?;
-        if let Some(head) = self.chain_head_block(&self.chain)? {
+        let mut conn = self.get_conn().await?;
+        if let Some(head) = self.chain_head_block(&self.chain).await? {
             self.storage.clear_call_cache(&mut conn, head, from, to)?;
         }
         Ok(())
@@ -2774,7 +2782,7 @@ impl EthereumCallCache for ChainStore {
         block: BlockPtr,
     ) -> Result<Option<call::Response>, Error> {
         let id = contract_call_id(req, &block);
-        let conn = &mut *self.get_conn()?;
+        let conn = &mut *self.get_conn().await?;
         let return_value = conn.transaction::<_, Error, _>(|conn| {
             if let Some((return_value, update_accessed_at)) =
                 self.storage.get_call_and_access(conn, id.as_ref())?
@@ -2809,7 +2817,7 @@ impl EthereumCallCache for ChainStore {
             .collect();
         let id_refs: Vec<_> = ids.iter().map(|id| id.as_slice()).collect();
 
-        let conn = &mut *self.get_conn()?;
+        let conn = &mut *self.get_conn().await?;
         let rows = conn
             .transaction::<_, Error, _>(|conn| self.storage.get_calls_and_access(conn, &id_refs))?;
 
@@ -2838,7 +2846,7 @@ impl EthereumCallCache for ChainStore {
     }
 
     async fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
-        let conn = &mut *self.get_conn()?;
+        let conn = &mut *self.get_conn().await?;
         conn.transaction::<_, Error, _>(|conn| self.storage.get_calls_in_block(conn, block))
     }
 
@@ -2857,19 +2865,23 @@ impl EthereumCallCache for ChainStore {
             return Ok(());
         };
         let id = contract_call_id(&call, &block);
-        graph::spawn_blocking_allow_panic(move || {
-            let conn = &mut *self.get_conn()?;
-            conn.transaction(|conn| {
-                self.storage.set_call(
-                    conn,
-                    id.as_ref(),
-                    call.address.as_ref(),
-                    block.number,
-                    &return_value,
-                )
+        let this = self.cheap_clone();
+        self.pool
+            .with_conn(move |conn, _| {
+                conn.transaction::<_, CancelableError<anyhow::Error>, _>(|conn| {
+                    this.storage
+                        .set_call(
+                            conn,
+                            id.as_ref(),
+                            call.address.as_ref(),
+                            block.number,
+                            &return_value,
+                        )
+                        .map_err(Into::into)
+                })
+                .map_err(Into::into)
             })
-        })
-        .await??;
+            .await?;
         Ok(())
     }
 }

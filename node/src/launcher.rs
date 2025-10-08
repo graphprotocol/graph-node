@@ -139,7 +139,10 @@ async fn build_blockchain_map(
     Arc::new(blockchain_map)
 }
 
-fn cleanup_ethereum_shallow_blocks(blockchain_map: &BlockchainMap, network_store: &Arc<Store>) {
+async fn cleanup_ethereum_shallow_blocks(
+    blockchain_map: &BlockchainMap,
+    network_store: &Arc<Store>,
+) {
     match blockchain_map
         .get_all_by_kind::<graph_chain_ethereum::Chain>(BlockchainKind::Ethereum)
         .ok()
@@ -159,6 +162,7 @@ fn cleanup_ethereum_shallow_blocks(blockchain_map: &BlockchainMap, network_store
             network_store
                 .block_store()
                 .cleanup_ethereum_shallow_blocks(eth_network_names)
+                .await
                 .unwrap();
         }
         // This code path only happens if the downcast on the blockchain map fails, that
@@ -476,7 +480,7 @@ pub async fn run(
 
         // see comment on cleanup_ethereum_shallow_blocks
         if !opt.disable_block_ingestor {
-            cleanup_ethereum_shallow_blocks(&blockchain_map, &network_store);
+            cleanup_ethereum_shallow_blocks(&blockchain_map, &network_store).await;
         }
 
         let graphql_server = build_graphql_server(
