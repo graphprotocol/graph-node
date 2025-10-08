@@ -372,7 +372,7 @@ impl DeploymentStore {
         Ok(count)
     }
 
-    /// Execute a closure with a connection to the database.
+    /// Execute an async closure with a connection to the database.
     ///
     /// # API
     ///   The API of using a closure to bound the usage of the connection serves several
@@ -412,22 +412,6 @@ impl DeploymentStore {
     ///   * This task will panic if the supplied closure panics
     ///   * This task will panic if the supplied closure returns Err(Cancelled)
     ///     when the supplied cancel token is not cancelled.
-    #[allow(dead_code)]
-    pub(crate) async fn with_conn<T: Send + 'static>(
-        &self,
-        f: impl 'static
-            + Send
-            + FnOnce(
-                &mut PooledConnection<ConnectionManager<PgConnection>>,
-                &CancelHandle,
-            ) -> Result<T, CancelableError<StoreError>>,
-    ) -> Result<T, StoreError> {
-        self.pool.with_conn(f).await
-    }
-
-    /// An async version of `with_conn`. The supplied closure is async and
-    /// is run as a blocking task. The same caveats as for `with_conn`
-    /// apply.
     pub(crate) async fn with_conn_async<T: Send + 'static>(
         &self,
         f: impl 'static
