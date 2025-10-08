@@ -337,12 +337,12 @@ pub async fn status(
     let deployment = search.locate_unique(&primary_pool).await?;
 
     let viewer = store.subgraph_store().prune_viewer(&deployment).await?;
-    let runs = viewer.runs()?;
+    let runs = viewer.runs().await?;
     if runs.is_empty() {
         return Err(anyhow!("No prune runs found for deployment {deployment}"));
     }
     let run = run.unwrap_or(*runs.last().unwrap());
-    let Some((state, table_states)) = viewer.state(run)? else {
+    let Some((state, table_states)) = viewer.state(run).await? else {
         let runs = match runs.len() {
             0 => unreachable!("we checked that runs is not empty"),
             1 => format!("There is only one prune run #{}", runs[0]),
