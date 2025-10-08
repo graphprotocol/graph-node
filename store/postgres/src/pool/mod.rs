@@ -310,7 +310,7 @@ impl ConnectionPool {
         }
     }
 
-    /// Execute a closure with a connection to the database.
+    /// Execute an async closure with a connection to the database.
     ///
     /// # API
     ///   The API of using a closure to bound the usage of the connection serves several
@@ -350,22 +350,6 @@ impl ConnectionPool {
     ///   * This task will panic if the supplied closure panics
     ///   * This task will panic if the supplied closure returns Err(Cancelled)
     ///     when the supplied cancel token is not cancelled.
-    pub(crate) async fn with_conn<T: Send + 'static>(
-        &self,
-        f: impl 'static
-            + Send
-            + FnOnce(
-                &mut PooledConnection<ConnectionManager<PgConnection>>,
-                &CancelHandle,
-            ) -> Result<T, CancelableError<StoreError>>,
-    ) -> Result<T, StoreError> {
-        let pool = self.get_ready()?;
-        pool.with_conn(f).await
-    }
-
-    /// An async version of `with_conn`. The supplied closure is async and
-    /// is run as a blocking task. The same caveats as for `with_conn`
-    /// apply.
     pub(crate) async fn with_conn_async<T: Send + 'static>(
         &self,
         f: impl 'static
@@ -605,7 +589,7 @@ impl PoolInner {
         }
     }
 
-    /// Execute a closure with a connection to the database.
+    /// Execute an async closure with a connection to the database.
     ///
     /// # API
     ///   The API of using a closure to bound the usage of the connection serves several
@@ -645,57 +629,6 @@ impl PoolInner {
     ///   * This task will panic if the supplied closure panics
     ///   * This task will panic if the supplied closure returns Err(Cancelled)
     ///     when the supplied cancel token is not cancelled.
-    pub(crate) async fn with_conn<T: Send + 'static>(
-        &self,
-        f: impl 'static
-            + Send
-            + FnOnce(
-                &mut PooledConnection<ConnectionManager<PgConnection>>,
-                &CancelHandle,
-            ) -> Result<T, CancelableError<StoreError>>,
-    ) -> Result<T, StoreError> {
-        let _permit = self.limiter.acquire().await;
-        let pool = self.clone();
-
-        let cancel_guard = CancelGuard::new();
-        let cancel_handle = cancel_guard.handle();
-
-        let result = graph::spawn_blocking_allow_panic(move || {
-            // It is possible time has passed between scheduling on the
-            // threadpool and being executed. Time to check for cancel.
-            cancel_handle.check_cancel()?;
-
-            // A failure to establish a connection is propagated as though the
-            // closure failed.
-            let mut conn = pool
-                .get()
-                .map_err(|_| CancelableError::Error(StoreError::DatabaseUnavailable))?;
-
-            // It is possible time has passed while establishing a connection.
-            // Time to check for cancel.
-            cancel_handle.check_cancel()?;
-
-            f(&mut conn, &cancel_handle)
-        })
-        .await
-        .unwrap(); // Propagate panics, though there shouldn't be any.
-
-        drop(cancel_guard);
-
-        // Finding cancel isn't technically unreachable, since there is nothing
-        // stopping the supplied closure from returning Canceled even if the
-        // supplied handle wasn't canceled. That would be very unexpected, the
-        // doc comment for this function says we will panic in this scenario.
-        match result {
-            Ok(t) => Ok(t),
-            Err(CancelableError::Error(e)) => Err(e),
-            Err(CancelableError::Cancel) => panic!("The closure supplied to with_entity_conn must not return Err(Canceled) unless the supplied token was canceled."),
-        }
-    }
-
-    /// An async version of `with_conn`. The supplied closure is async and
-    /// is run as a blocking task. The same caveats as for `with_conn`
-    /// apply.
     pub(crate) async fn with_conn_async<T: Send + 'static>(
         &self,
         f: impl 'static
