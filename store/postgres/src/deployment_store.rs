@@ -536,7 +536,7 @@ impl DeploymentStore {
         ids: Vec<String>,
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
         let conn = &mut *self.get_conn()?;
-        conn.transaction(|conn| -> Result<_, StoreError> { detail::deployment_details(conn, ids) })
+        detail::deployment_details(conn, ids)
     }
 
     pub async fn deployment_details_for_id(
@@ -545,9 +545,7 @@ impl DeploymentStore {
     ) -> Result<DeploymentDetail, StoreError> {
         let id = DeploymentId::from(locator.clone());
         let conn = &mut *self.get_conn()?;
-        conn.transaction(|conn| -> Result<_, StoreError> {
-            detail::deployment_details_for_id(conn, &id)
-        })
+        detail::deployment_details_for_id(conn, &id)
     }
 
     pub(crate) async fn deployment_statuses(
@@ -555,9 +553,7 @@ impl DeploymentStore {
         sites: &[Arc<Site>],
     ) -> Result<Vec<status::Info>, StoreError> {
         let conn = &mut *self.get_conn()?;
-        conn.transaction(|conn| -> Result<Vec<status::Info>, StoreError> {
-            detail::deployment_statuses(conn, sites)
-        })
+        detail::deployment_statuses(conn, sites)
     }
 
     pub(crate) fn deployment_exists_and_synced(
@@ -948,51 +944,48 @@ impl DeploymentStore {
 
                 let layout = store.layout(conn, site.cheap_clone())?;
 
-                conn.transaction::<_, CancelableError<anyhow::Error>, _>(move |conn| {
-                    let mut block_ptr = block.cheap_clone();
-                    let latest_block_ptr =
-                        match Self::block_ptr_with_conn(conn, site.cheap_clone())? {
-                            Some(inner) => inner,
-                            None => return Ok(None),
-                        };
+                let mut block_ptr = block.cheap_clone();
+                let latest_block_ptr = match Self::block_ptr_with_conn(conn, site.cheap_clone())? {
+                    Some(inner) => inner,
+                    None => return Ok(None),
+                };
 
-                    cancel.check_cancel()?;
+                cancel.check_cancel()?;
 
-                    // FIXME: (Determinism)
-                    //
-                    // It is vital to ensure that the block hash given in the query
-                    // is a parent of the latest block indexed for the subgraph.
-                    // Unfortunately the machinery needed to do this is not yet in place.
-                    // The best we can do right now is just to make sure that the block number
-                    // is high enough.
-                    if latest_block_ptr.number < block.number {
-                        // If a subgraph has failed deterministically then any blocks past head
-                        // should return the same POI
-                        let fatal_error = ErrorDetail::fatal(conn, &site.deployment)?;
-                        block_ptr = match fatal_error {
-                            Some(se) => TryInto::<SubgraphError>::try_into(se)?
-                                .block_ptr
-                                .unwrap_or(block_ptr),
-                            None => return Ok(None),
-                        };
+                // FIXME: (Determinism)
+                //
+                // It is vital to ensure that the block hash given in the query
+                // is a parent of the latest block indexed for the subgraph.
+                // Unfortunately the machinery needed to do this is not yet in place.
+                // The best we can do right now is just to make sure that the block number
+                // is high enough.
+                if latest_block_ptr.number < block.number {
+                    // If a subgraph has failed deterministically then any blocks past head
+                    // should return the same POI
+                    let fatal_error = ErrorDetail::fatal(conn, &site.deployment)?;
+                    block_ptr = match fatal_error {
+                        Some(se) => TryInto::<SubgraphError>::try_into(se)?
+                            .block_ptr
+                            .unwrap_or(block_ptr),
+                        None => return Ok(None),
                     };
+                };
 
-                    let query = EntityQuery::new(
-                        site.deployment.cheap_clone(),
-                        block_ptr.number,
-                        EntityCollection::All(vec![(
-                            layout.input_schema.poi_type().clone(),
-                            AttributeNames::All,
-                        )]),
-                    );
-                    let entities =
-                        graph::block_on(store.execute_query::<Entity>(conn, site, query))
-                            .map(|(entities, _)| entities)
-                            .map_err(anyhow::Error::from)?;
+                let query = EntityQuery::new(
+                    site.deployment.cheap_clone(),
+                    block_ptr.number,
+                    EntityCollection::All(vec![(
+                        layout.input_schema.poi_type().clone(),
+                        AttributeNames::All,
+                    )]),
+                );
+                let entities = store
+                    .execute_query::<Entity>(conn, site, query)
+                    .await
+                    .map(|(entities, _)| entities)
+                    .map_err(StoreError::from)?;
 
-                    Ok(Some((entities, block_ptr)))
-                })
-                .map_err(Into::into)
+                Ok(Some((entities, block_ptr)))
             })
             .await?;
 
@@ -1471,8 +1464,7 @@ impl DeploymentStore {
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(async move |conn, _| {
-            conn.transaction(|conn| crate::dynds::load(conn, &site, block, manifest_idx_and_name))
-                .map_err(Into::into)
+            crate::dynds::load(conn, &site, block, manifest_idx_and_name).map_err(Into::into)
         })
         .await
     }
@@ -1482,15 +1474,14 @@ impl DeploymentStore {
         site: Arc<Site>,
     ) -> Result<Option<CausalityRegion>, StoreError> {
         self.with_conn(async move |conn, _| {
-            Ok(conn.transaction(|conn| crate::dynds::causality_region_curr_val(conn, &site))?)
+            Ok(crate::dynds::causality_region_curr_val(conn, &site)?)
         })
         .await
     }
 
     pub(crate) async fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
         self.with_conn(async move |conn, _| {
-            conn.transaction(|conn| deployment::exists_and_synced(conn, &id))
-                .map_err(Into::into)
+            deployment::exists_and_synced(conn, &id).map_err(Into::into)
         })
         .await
     }
