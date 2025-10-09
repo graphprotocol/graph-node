@@ -1,9 +1,6 @@
 use diesel::r2d2::Builder;
+use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::{connection::SimpleConnection, pg::PgConnection};
-use diesel::{
-    r2d2::{ConnectionManager, Pool, PooledConnection},
-    Connection,
-};
 use diesel::{sql_query, RunQueryDsl};
 
 use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
@@ -806,17 +803,21 @@ impl PoolInner {
         info!(&self.logger, "Setting up fdw");
         let mut conn = self.get_async().await?;
         conn.batch_execute("create extension if not exists postgres_fdw")?;
-        conn.transaction(|conn| {
-            let current_servers: Vec<String> = crate::catalog::current_servers(conn)?;
-            for server in servers.iter().filter(|server| server.shard != self.shard) {
-                if current_servers.contains(&server.name) {
-                    server.update(conn)?;
-                } else {
-                    server.create(conn)?;
+        conn.transaction_async(|conn| {
+            async {
+                let current_servers: Vec<String> = crate::catalog::current_servers(conn)?;
+                for server in servers.iter().filter(|server| server.shard != self.shard) {
+                    if current_servers.contains(&server.name) {
+                        server.update(conn)?;
+                    } else {
+                        server.create(conn)?;
+                    }
                 }
+                Ok(())
             }
-            Ok(())
+            .scope_boxed()
         })
+        .await
     }
 
     /// Do the part of database setup that only affects this pool. Those
@@ -831,10 +832,15 @@ impl PoolInner {
     ) -> Result<MigrationCount, StoreError> {
         self.configure_fdw(servers).await?;
         let mut conn = self.get_async().await?;
-        let (this, count) = conn.transaction(|conn| -> Result<_, StoreError> {
-            let count = migrate_schema(&self.logger, conn)?;
-            Ok((self, count))
-        })?;
+        let (this, count) = conn
+            .transaction_async::<_, StoreError, _>(|conn| {
+                async {
+                    let count = migrate_schema(&self.logger, conn)?;
+                    Ok((self, count))
+                }
+                .scope_boxed()
+            })
+            .await?;
 
         this.locale_check(&this.logger, conn)?;
 
@@ -849,11 +855,15 @@ impl PoolInner {
 
         info!(&self.logger, "Dropping cross-shard views");
         let mut conn = self.get_async().await?;
-        conn.transaction(|conn| {
-            let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
-            conn.batch_execute(&query)?;
-            Ok(())
+        conn.transaction_async(|conn| {
+            async {
+                let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
+                conn.batch_execute(&query)?;
+                Ok(())
+            }
+            .scope_boxed()
         })
+        .await
     }
 
     /// If this is the primary shard, create the namespace `CROSS_SHARD_NSP`
@@ -890,25 +900,29 @@ impl PoolInner {
         }
 
         info!(&self.logger, "Creating cross-shard views");
-        conn.transaction(|conn| {
-            let query = format!("create schema {}", CROSS_SHARD_NSP);
-            conn.batch_execute(&query)?;
-            for (src_nsp, src_tables) in SHARDED_TABLES {
-                // Pairs of (shard, nsp) for all servers
-                let nsps = shard_nsp_pairs(&self.shard, src_nsp, servers);
-                for src_table in src_tables {
-                    let create_view = catalog::create_cross_shard_view(
-                        conn,
-                        src_nsp,
-                        src_table,
-                        CROSS_SHARD_NSP,
-                        &nsps,
-                    )?;
-                    conn.batch_execute(&create_view)?;
+        conn.transaction_async(|conn| {
+            async {
+                let query = format!("create schema {}", CROSS_SHARD_NSP);
+                conn.batch_execute(&query)?;
+                for (src_nsp, src_tables) in SHARDED_TABLES {
+                    // Pairs of (shard, nsp) for all servers
+                    let nsps = shard_nsp_pairs(&self.shard, src_nsp, servers);
+                    for src_table in src_tables {
+                        let create_view = catalog::create_cross_shard_view(
+                            conn,
+                            src_nsp,
+                            src_table,
+                            CROSS_SHARD_NSP,
+                            &nsps,
+                        )?;
+                        conn.batch_execute(&create_view)?;
+                    }
                 }
+                Ok(())
             }
-            Ok(())
+            .scope_boxed()
         })
+        .await
     }
 
     /// Copy the data from key tables in the primary into our local schema
@@ -918,9 +932,13 @@ impl PoolInner {
             return Ok(());
         }
         self.with_conn(async |conn, handle| {
-            conn.transaction(|conn| {
-                primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
+            conn.transaction_async(|conn| {
+                async {
+                    primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
+                }
+                .scope_boxed()
             })
+            .await
         })
         .await
     }
@@ -932,7 +950,10 @@ impl PoolInner {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
             let mut conn = self.get_async().await?;
-            conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard))?;
+            conn.transaction_async(|conn| {
+                async { ForeignServer::map_primary(conn, &self.shard) }.scope_boxed()
+            })
+            .await?;
         }
         if &server.shard != &self.shard {
             info!(
@@ -941,7 +962,8 @@ impl PoolInner {
                 server.shard.as_str()
             );
             let mut conn = self.get_async().await?;
-            conn.transaction(|conn| server.map_metadata(conn))?;
+            conn.transaction_async(|conn| async { server.map_metadata(conn) }.scope_boxed())
+                .await?;
         }
         Ok(())
     }
