@@ -7,9 +7,8 @@ use std::{
 use anyhow::anyhow;
 use async_trait::async_trait;
 use diesel::{
-    query_dsl::methods::FilterDsl as _,
-    r2d2::{ConnectionManager, PooledConnection},
-    sql_query, ExpressionMethods as _, PgConnection, RunQueryDsl,
+    query_dsl::methods::FilterDsl as _, sql_query, ExpressionMethods as _, PgConnection,
+    RunQueryDsl,
 };
 use graph::{
     blockchain::ChainIdentifier,
@@ -121,7 +120,7 @@ pub mod primary {
     }
 
     pub fn add_chain(
-        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
+        conn: &mut PgConnection,
         name: &str,
         shard: &Shard,
         ident: ChainIdentifier,
@@ -166,7 +165,7 @@ pub mod primary {
 
     // update chain name where chain name is 'name'
     pub fn update_chain_name(
-        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
+        conn: &mut PgConnection,
         name: &str,
         new_name: &str,
     ) -> Result<(), StoreError> {
@@ -344,7 +343,7 @@ impl BlockStore {
     }
 
     pub fn allocate_chain(
-        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
+        conn: &mut PgConnection,
         name: &String,
         shard: &Shard,
         ident: &ChainIdentifier,
