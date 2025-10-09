@@ -5,7 +5,7 @@ use std::fmt::{Display, Write};
 use std::sync::Arc;
 
 use diesel::sql_types::{Bool, Text};
-use diesel::{sql_query, Connection, PgConnection, RunQueryDsl};
+use diesel::{sql_query, PgConnection, RunQueryDsl};
 use graph::components::store::StoreError;
 use graph::itertools::Itertools;
 use graph::prelude::{
@@ -864,7 +864,7 @@ impl IndexList {
                                 namespace.to_string(),
                                 index_name
                             ));
-                            conn.transaction(|conn| drop_query.execute(conn))?;
+                            drop_query.execute(conn)?;
                         }
                         sql_query(create_query).execute(conn)?;
                     }
