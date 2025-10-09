@@ -6,6 +6,7 @@ use diesel::{
     sql_types::{BigInt, Integer},
     Connection, PgConnection, RunQueryDsl,
 };
+use diesel_async::scoped_futures::ScopedFutureExt;
 use graph::{
     components::store::{PrunePhase, PruneReporter, PruneRequest, PruningStrategy, VersionStats},
     prelude::{
@@ -23,6 +24,7 @@ use crate::{
     deployment,
     relational::{Table, VID_COLUMN},
     vid_batcher::{VidBatcher, VidRange},
+    AsyncConnection,
 };
 
 use super::{
@@ -207,7 +209,7 @@ impl TablePair {
     }
 
     /// Replace the `src` table with the `dst` table
-    fn switch(self, logger: &Logger, conn: &mut PgConnection) -> Result<(), StoreError> {
+    async fn switch(self, logger: &Logger, conn: &mut PgConnection) -> Result<(), StoreError> {
         let src_qname = &self.src.qualified_name;
         let dst_qname = &self.dst.qualified_name;
         let src_nsp = &self.src_nsp;
@@ -236,7 +238,8 @@ impl TablePair {
 
         writeln!(query, "drop table {src_qname};")?;
         writeln!(query, "alter table {dst_qname} set schema {src_nsp}")?;
-        conn.transaction(|conn| conn.batch_execute(&query))?;
+        conn.transaction_async(|conn| async { conn.batch_execute(&query) }.scope_boxed())
+            .await?;
 
         Ok(())
     }
@@ -449,7 +452,7 @@ impl Layout {
                             pair.copy_nonfinal_entities(conn, reporter, tracker, req.final_block)?;
                             cancel.check_cancel().map_err(CancelableError::from)?;
 
-                            conn.transaction(|conn| pair.switch(logger, conn))?;
+                            pair.switch(logger, conn).await?;
                             cancel.check_cancel().map_err(CancelableError::from)?;
 
                             Ok(())
