@@ -8,7 +8,6 @@ use graph::futures03::{future::BoxFuture, FutureExt};
 /// with synchronous connections. This implementation is blocking even if
 /// `callback` is not  because starting, committing, and rolling back the
 /// transaction is done synchronously just like `Connection.transaction`
-#[allow(dead_code)]
 pub trait AsyncConnection: Connection {
     fn transaction_async<'a, 'conn, R, E, F>(
         &'conn mut self,
