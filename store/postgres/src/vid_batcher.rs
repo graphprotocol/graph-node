@@ -209,9 +209,9 @@ impl VidBatcher {
     /// The function returns the time it took to process the batch and the
     /// result of `f`. If the batcher is finished, `f` will not be called,
     /// and `None` will be returned as its result.
-    pub fn step<F, T>(&mut self, f: F) -> Result<(Duration, Option<T>), StoreError>
+    pub async fn step<F, T>(&mut self, f: F) -> Result<(Duration, Option<T>), StoreError>
     where
-        F: FnOnce(i64, i64) -> Result<T, StoreError>,
+        F: AsyncFnOnce(i64, i64) -> Result<T, StoreError>,
     {
         if self.finished() {
             return Ok((Duration::from_secs(0), None));
@@ -222,7 +222,7 @@ impl VidBatcher {
             Some(ogive) => {
                 self.step_timer.start();
 
-                let res = f(self.start, self.end)?;
+                let res = f(self.start, self.end).await?;
                 let duration = self.step_timer.elapsed();
 
                 let batch_size = self.batch_size.adapt(duration);
@@ -328,6 +328,8 @@ impl VidRange {
 
 #[cfg(test)]
 mod tests {
+    use graph::tokio;
+
     use super::*;
 
     const S001: Duration = Duration::from_secs(1);
@@ -356,11 +358,10 @@ mod tests {
             assert_eq!(self.vid.batch_size.size, size, "at size");
         }
 
-        #[track_caller]
-        fn step(&mut self, start: i64, end: i64, duration: Duration) {
+        async fn step(&mut self, start: i64, end: i64, duration: Duration) {
             self.vid.step_timer.set(duration);
 
-            match self.vid.step(|s, e| Ok((s, e))).unwrap() {
+            match self.vid.step(async |s, e| Ok((s, e))).await.unwrap() {
                 (d, Some((s, e))) => {
                     // Failing here indicates that our clever Timer is misbehaving
                     assert_eq!(d, duration, "step duration");
@@ -378,10 +379,9 @@ mod tests {
             }
         }
 
-        #[track_caller]
-        fn run(&mut self, start: i64, end: i64, size: i64, duration: Duration) {
+        async fn run(&mut self, start: i64, end: i64, size: i64, duration: Duration) {
             self.at(start, end, size);
-            self.step(start, end, duration);
+            self.step(start, end, duration).await;
         }
 
         fn finished(&self) -> bool {
@@ -400,31 +400,31 @@ mod tests {
         }
     }
 
-    #[test]
-    fn simple() {
+    #[tokio::test]
+    async fn simple() {
         let bounds = vec![10, 20, 30, 40, 49];
         let mut batcher = Batcher::new(bounds, 5);
 
         batcher.at(10, 15, 5);
 
-        batcher.step(10, 15, S001);
+        batcher.step(10, 15, S001).await;
         batcher.at(16, 26, 10);
 
-        batcher.step(16, 26, S001);
+        batcher.step(16, 26, S001).await;
         batcher.at(27, 46, 20);
         assert!(!batcher.finished());
 
-        batcher.step(27, 46, S001);
+        batcher.step(27, 46, S001).await;
         batcher.at(47, 49, 40);
         assert!(!batcher.finished());
 
-        batcher.step(47, 49, S001);
+        batcher.step(47, 49, S001).await;
         assert!(batcher.finished());
         batcher.at(50, 49, 80);
     }
 
-    #[test]
-    fn non_uniform() {
+    #[tokio::test]
+    async fn non_uniform() {
         // A distribution that is flat in the beginning and then steeper and
         // linear towards the end. The easiest way to see this is to graph
         // `(bounds[i], i*40)`
@@ -433,23 +433,23 @@ mod tests {
 
         // The schedule of how we move through the bounds above in batches,
         // with varying timings for each batch
-        batcher.run(040, 075, 10, S010);
-        batcher.run(076, 145, 20, S010);
-        batcher.run(146, 240, 40, S200);
-        batcher.run(241, 270, 20, S200);
-        batcher.run(271, 281, 10, S200);
-        batcher.run(282, 287, 05, S050);
-        batcher.run(288, 298, 10, S050);
-        batcher.run(299, 309, 20, S050);
-        batcher.run(310, 325, 40, S100);
-        batcher.run(326, 336, 40, S100);
-        batcher.run(337, 347, 40, S100);
-        batcher.run(348, 357, 40, S100);
-        batcher.run(358, 359, 40, S010);
+        batcher.run(040, 075, 10, S010).await;
+        batcher.run(076, 145, 20, S010).await;
+        batcher.run(146, 240, 40, S200).await;
+        batcher.run(241, 270, 20, S200).await;
+        batcher.run(271, 281, 10, S200).await;
+        batcher.run(282, 287, 05, S050).await;
+        batcher.run(288, 298, 10, S050).await;
+        batcher.run(299, 309, 20, S050).await;
+        batcher.run(310, 325, 40, S100).await;
+        batcher.run(326, 336, 40, S100).await;
+        batcher.run(337, 347, 40, S100).await;
+        batcher.run(348, 357, 40, S100).await;
+        batcher.run(358, 359, 40, S010).await;
         assert!(batcher.finished());
 
         batcher.at(360, 359, 80);
-        batcher.step(360, 359, S010);
+        batcher.step(360, 359, S010).await;
     }
 
     #[test]
@@ -471,8 +471,8 @@ mod tests {
         assert_eq!(100_000, ogive.end());
     }
 
-    #[test]
-    fn vid_batcher_handles_large_vid() {
+    #[tokio::test]
+    async fn vid_batcher_handles_large_vid() {
         // An example with very large `vid` values which come from the new
         // schema of setting the `vid` to `block_num << 32 + sequence_num`.
         // These values are taken from an actual example subgraph and cuased
@@ -556,16 +556,15 @@ mod tests {
 
         // Run through the entire `vid_batcher`, collecting start and end in
         // `steps`
-        let steps = std::iter::from_fn(|| {
-            vid_batcher
-                .step(|start, end| Ok((start, end, end - start)))
-                .unwrap()
-                .1
-        })
-        .fold(Vec::new(), |mut steps, (start, end, step)| {
+        let mut steps = Vec::new();
+        while let Some((start, end, step)) = vid_batcher
+            .step(async |start, end| Ok((start, end, end - start)))
+            .await
+            .unwrap()
+            .1
+        {
             steps.push((start, end, step));
-            steps
-        });
+        }
 
         assert_eq!(STEPS, &steps);
     }
