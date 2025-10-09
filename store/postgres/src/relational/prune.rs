@@ -580,9 +580,10 @@ mod status {
         query_builder::QueryFragment,
         serialize::{Output, ToSql},
         sql_types::Text,
-        table, update, AsChangeset, Connection, ExpressionMethods as _, OptionalExtension,
-        PgConnection, QueryDsl as _, RunQueryDsl as _,
+        table, update, AsChangeset, ExpressionMethods as _, OptionalExtension, PgConnection,
+        QueryDsl as _, RunQueryDsl as _,
     };
+    use diesel_async::scoped_futures::ScopedFutureExt;
     use graph::{
         components::store::{PruneRequest, PruningStrategy, StoreResult},
         env::ENV_VARS,
@@ -592,7 +593,7 @@ mod status {
     use crate::{
         relational::{Layout, Table},
         vid_batcher::{VidBatcher, VidRange},
-        ConnectionPool,
+        AsyncConnection, ConnectionPool,
     };
 
     table! {
@@ -780,36 +781,40 @@ mod status {
             use prune_state as ps;
             use prune_table_state as pts;
 
-            conn.transaction(|conn| {
-                insert_into(ps::table)
-                    .values((
-                        ps::id.eq(self.layout.site.id),
-                        ps::run.eq(self.run),
-                        ps::first_block.eq(req.first_block),
-                        ps::final_block.eq(req.final_block),
-                        ps::latest_block.eq(req.latest_block),
-                        ps::history_blocks.eq(req.history_blocks),
-                        ps::started_at.eq(diesel::dsl::now),
-                    ))
-                    .execute(conn)?;
-
-                for (table, strat) in prunable_tables {
-                    let strat = match strat {
-                        PruningStrategy::Rebuild => "r",
-                        PruningStrategy::Delete => "d",
-                    };
-                    insert_into(pts::table)
+            conn.transaction_async(|conn| {
+                async move {
+                    insert_into(ps::table)
                         .values((
-                            pts::id.eq(self.layout.site.id),
-                            pts::run.eq(self.run),
-                            pts::table_name.eq(table.name.as_str()),
-                            pts::strategy.eq(strat),
-                            pts::phase.eq(Phase::Queued),
+                            ps::id.eq(self.layout.site.id),
+                            ps::run.eq(self.run),
+                            ps::first_block.eq(req.first_block),
+                            ps::final_block.eq(req.final_block),
+                            ps::latest_block.eq(req.latest_block),
+                            ps::history_blocks.eq(req.history_blocks),
+                            ps::started_at.eq(diesel::dsl::now),
                         ))
                         .execute(conn)?;
+
+                    for (table, strat) in prunable_tables {
+                        let strat = match strat {
+                            PruningStrategy::Rebuild => "r",
+                            PruningStrategy::Delete => "d",
+                        };
+                        insert_into(pts::table)
+                            .values((
+                                pts::id.eq(self.layout.site.id),
+                                pts::run.eq(self.run),
+                                pts::table_name.eq(table.name.as_str()),
+                                pts::strategy.eq(strat),
+                                pts::phase.eq(Phase::Queued),
+                            ))
+                            .execute(conn)?;
+                    }
+                    Ok(())
                 }
-                Ok(())
+                .scope_boxed()
             })
+            .await
         }
 
         pub(crate) fn start_table(
