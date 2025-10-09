@@ -27,12 +27,15 @@ use diesel::{
     dsl::sql,
     insert_into,
     r2d2::{ConnectionManager, PooledConnection},
-    select, sql_query, update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection,
-    QueryDsl, RunQueryDsl,
+    select, sql_query, update, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
+    RunQueryDsl,
 };
-use diesel_async::scoped_futures::ScopedFutureExt;
+use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
 use graph::{
-    futures03::{future::select_all, FutureExt as _},
+    futures03::{
+        future::{select_all, BoxFuture},
+        FutureExt as _,
+    },
     internal_error,
     prelude::{
         info, lazy_static, o, warn, BlockNumber, BlockPtr, CheapClone, Logger, StoreError, ENV_VARS,
@@ -691,14 +694,6 @@ impl LockTrackingConnection {
         }
     }
 
-    fn transaction<T, F>(&mut self, f: F) -> Result<T, StoreError>
-    where
-        F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
-    {
-        let conn = &mut self.inner;
-        conn.transaction(|conn| f(conn))
-    }
-
     /// Put `self` into `other` if `self` has the lock.
     fn extract(self, other: &mut Option<Self>) {
         if self.has_lock {
@@ -847,7 +842,10 @@ impl CopyTableWorker {
                     // that is hard to predict. This mechanism ensures
                     // that if our estimation is wrong, the consequences
                     // aren't too severe.
-                    conn.transaction(|conn| self.table.set_batch_size(conn, 1))?;
+                    conn.transaction_async(|conn| {
+                        async { self.table.set_batch_size(conn, 1) }.scope_boxed()
+                    })
+                    .await?;
                 }
             };
 
@@ -993,34 +991,49 @@ impl Connection {
         })
     }
 
-    fn transaction<T, F>(&mut self, f: F) -> Result<T, StoreError>
+    /// Run `callback` in a transaction using the connection in `self.conn`.
+    /// This will return an error if `self.conn` is `None`, which happens
+    /// while a background task is copying a table.
+    fn transaction<'a, 'conn, R, F>(
+        &'conn mut self,
+        callback: F,
+    ) -> Result<BoxFuture<'conn, Result<R, StoreError>>, StoreError>
     where
-        F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
+        F: for<'r> FnOnce(&'r mut PgConnection) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
+            + Send
+            + 'a,
+        R: Send + 'a,
+        'a: 'conn,
     {
         let Some(conn) = self.conn.as_mut() else {
             return Err(internal_error!(
                 "copy connection has been handed to background task but not returned yet (transaction)"
             ));
         };
-        conn.transaction(|conn| f(conn))
+        let conn = &mut conn.inner;
+        Ok(conn.transaction_async(|conn| async { callback(conn).await }.scope_boxed()))
     }
 
     /// Copy private data sources if the source uses a schema version that
     /// has a private data sources table. The copying is done in its own
     /// transaction.
-    fn copy_private_data_sources(&mut self, state: &CopyState) -> Result<(), StoreError> {
+    async fn copy_private_data_sources(&mut self, state: &CopyState) -> Result<(), StoreError> {
         let src_manifest_idx_and_name = self.src_manifest_idx_and_name.cheap_clone();
         let dst_manifest_idx_and_name = self.dst_manifest_idx_and_name.cheap_clone();
         if state.src.site.schema_version.private_data_sources() {
             self.transaction(|conn| {
-                DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
-                    conn,
-                    &DataSourcesTable::new(state.dst.site.namespace.clone()),
-                    state.target_block.number,
-                    &src_manifest_idx_and_name,
-                    &dst_manifest_idx_and_name,
-                )
-            })?;
+                async {
+                    DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
+                        conn,
+                        &DataSourcesTable::new(state.dst.site.namespace.clone()),
+                        state.target_block.number,
+                        &src_manifest_idx_and_name,
+                        &dst_manifest_idx_and_name,
+                    )
+                }
+                .scope_boxed()
+            })?
+            .await?;
         }
         Ok(())
     }
@@ -1123,8 +1136,11 @@ impl Connection {
         let dst = self.dst.clone();
         let target_block = self.target_block.clone();
         let primary = self.primary.cheap_clone();
-        let mut state =
-            self.transaction(|conn| CopyState::new(conn, primary, src, dst, target_block))?;
+        let mut state = self
+            .transaction(|conn| {
+                async { CopyState::new(conn, primary, src, dst, target_block) }.scope_boxed()
+            })?
+            .await?;
 
         let progress = Arc::new(CopyProgress::new(self.logger.cheap_clone(), &state));
         progress.start();
@@ -1221,7 +1237,10 @@ impl Connection {
 
             for (_, sql) in arr {
                 let query = sql_query(format!("{};", sql));
-                self.transaction(|conn| query.execute(conn).map_err(StoreError::from))?;
+                self.transaction(|conn| {
+                    async { query.execute(conn).map_err(StoreError::from) }.scope_boxed()
+                })?
+                .await?;
             }
         }
 
@@ -1240,13 +1259,17 @@ impl Connection {
                 .into_iter()
             {
                 let query = sql_query(sql);
-                self.transaction(|conn| query.execute(conn).map_err(StoreError::from))?;
+                self.transaction(|conn| {
+                    async { query.execute(conn).map_err(StoreError::from) }.scope_boxed()
+                })?
+                .await?;
             }
         }
 
-        self.copy_private_data_sources(&state)?;
+        self.copy_private_data_sources(&state).await?;
 
-        self.transaction(|conn| state.finished(conn))?;
+        self.transaction(|conn| async { state.finished(conn) }.scope_boxed())?
+            .await?;
         progress.finished();
 
         Ok(Status::Finished)
