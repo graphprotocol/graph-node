@@ -1369,15 +1369,15 @@ pub fn set_on_sync(
 /// while other write activity for that deployment is locked out. Block the
 /// current thread until we can acquire the lock.
 //  see also: deployment-lock-for-update
-pub fn with_lock<F, R>(conn: &mut PgConnection, site: &Site, f: F) -> Result<R, StoreError>
+pub async fn with_lock<F, R>(conn: &mut PgConnection, site: &Site, f: F) -> Result<R, StoreError>
 where
-    F: FnOnce(&mut PgConnection) -> Result<R, StoreError>,
+    F: AsyncFnOnce(&mut PgConnection) -> Result<R, StoreError>,
 {
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(100), Duration::from_secs(15));
     while !advisory_lock::lock_deployment_session(conn, site)? {
         backoff.sleep();
     }
-    let res = f(conn);
+    let res = f(conn).await;
     advisory_lock::unlock_deployment_session(conn, site)?;
     res
 }

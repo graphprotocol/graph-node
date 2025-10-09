@@ -228,21 +228,20 @@ impl SyncStore {
         })
     }
 
-    fn revert_block_operations(
+    async fn revert_block_operations(
         &self,
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,
     ) -> Result<(), StoreError> {
-        retry::forever(&self.logger, "revert_block_operations", || {
-            self.writable.revert_block_operations(
-                self.site.clone(),
-                block_ptr_to.clone(),
-                firehose_cursor,
-            )?;
+        retry::forever_async(&self.logger, "revert_block_operations", || async {
+            self.writable
+                .revert_block_operations(self.site.clone(), block_ptr_to.clone(), firehose_cursor)
+                .await?;
 
             let block_time = self.writable.block_time(self.site.cheap_clone())?;
             self.last_rollup.set(block_time)
         })
+        .await
     }
 
     async fn unfail_deterministic_error(
@@ -729,6 +728,7 @@ impl Request {
                 processed: _,
             } => store
                 .revert_block_operations(block_ptr.clone(), firehose_cursor)
+                .await
                 .map(|()| ExecResult::Continue),
             Request::Stop => Ok(ExecResult::Stop),
         }
@@ -1392,7 +1392,11 @@ impl Writer {
         firehose_cursor: FirehoseCursor,
     ) -> Result<(), StoreError> {
         match self {
-            Writer::Sync(store) => store.revert_block_operations(block_ptr_to, &firehose_cursor),
+            Writer::Sync(store) => {
+                store
+                    .revert_block_operations(block_ptr_to, &firehose_cursor)
+                    .await
+            }
             Writer::Async { queue, .. } => {
                 self.check_queue_running()?;
                 let req = Request::revert(queue.store.cheap_clone(), block_ptr_to, firehose_cursor);
