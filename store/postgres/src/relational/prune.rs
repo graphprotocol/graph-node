@@ -442,15 +442,20 @@ impl Layout {
                     // the smaller `dst` table
                     // see also: deployment-lock-for-update
                     reporter.start_switch();
-                    deployment::with_lock(conn, &self.site, |conn| -> Result<_, StoreError> {
-                        pair.copy_nonfinal_entities(conn, reporter, tracker, req.final_block)?;
-                        cancel.check_cancel().map_err(CancelableError::from)?;
+                    deployment::with_lock(
+                        conn,
+                        &self.site,
+                        async |conn| -> Result<_, StoreError> {
+                            pair.copy_nonfinal_entities(conn, reporter, tracker, req.final_block)?;
+                            cancel.check_cancel().map_err(CancelableError::from)?;
 
-                        conn.transaction(|conn| pair.switch(logger, conn))?;
-                        cancel.check_cancel().map_err(CancelableError::from)?;
+                            conn.transaction(|conn| pair.switch(logger, conn))?;
+                            cancel.check_cancel().map_err(CancelableError::from)?;
 
-                        Ok(())
-                    })?;
+                            Ok(())
+                        },
+                    )
+                    .await?;
                     reporter.finish_switch();
                 }
                 PruningStrategy::Delete => {

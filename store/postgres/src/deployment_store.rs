@@ -3,6 +3,7 @@ use diesel::connection::SimpleConnection;
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, PooledConnection};
 use diesel::{prelude::*, sql_query};
+use diesel_async::scoped_futures::ScopedFutureExt;
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
@@ -55,7 +56,7 @@ use crate::primary::{DeploymentId, Primary};
 use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{self, Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
-use crate::{advisory_lock, catalog, retry};
+use crate::{advisory_lock, catalog, retry, AsyncConnection};
 use crate::{detail, ConnectionPool};
 use crate::{dynds, primary::Site};
 
@@ -1119,7 +1120,7 @@ impl DeploymentStore {
             self.get_conn()?
         };
 
-        let (layout, earliest_block) = deployment::with_lock(&mut conn, &site, |conn| {
+        let (layout, earliest_block) = deployment::with_lock(&mut conn, &site, async |conn| {
             conn.transaction(|conn| -> Result<_, StoreError> {
                 // Make the changes
                 let layout = self.layout(conn, site.clone())?;
@@ -1174,7 +1175,8 @@ impl DeploymentStore {
 
                 Ok((layout, earliest_block))
             })
-        })?;
+        })
+        .await?;
 
         if batch.block_ptr.number as f64
             > earliest_block as f64
@@ -1290,7 +1292,7 @@ impl DeploymentStore {
         Ok(())
     }
 
-    fn rewind_or_truncate_with_conn(
+    async fn rewind_or_truncate_with_conn(
         &self,
         conn: &mut PgConnection,
         site: Arc<Site>,
@@ -1299,7 +1301,7 @@ impl DeploymentStore {
         truncate: bool,
     ) -> Result<(), StoreError> {
         let logger = self.logger.cheap_clone();
-        deployment::with_lock(conn, &site, |conn| {
+        deployment::with_lock(conn, &site, async |conn| {
             conn.transaction(|conn| -> Result<_, StoreError> {
                 // The revert functions want the number of the first block that we need to get rid of
                 let block = block_ptr_to.number + 1;
@@ -1327,6 +1329,7 @@ impl DeploymentStore {
                 Ok(())
             })
         })
+        .await
     }
 
     pub(crate) async fn truncate(
@@ -1357,6 +1360,7 @@ impl DeploymentStore {
             &FirehoseCursor::None,
             true,
         )
+        .await
     }
 
     pub(crate) async fn rewind(
@@ -1387,9 +1391,10 @@ impl DeploymentStore {
             &FirehoseCursor::None,
             false,
         )
+        .await
     }
 
-    pub(crate) fn revert_block_operations(
+    pub(crate) async fn revert_block_operations(
         &self,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
@@ -1420,6 +1425,7 @@ impl DeploymentStore {
         }
 
         self.rewind_or_truncate_with_conn(&mut conn, site, block_ptr_to, firehose_cursor, false)
+            .await
     }
 
     pub(crate) async fn deployment_state(
@@ -1652,7 +1658,8 @@ impl DeploymentStore {
         let mut conn = self.get_conn()?;
         let deployment_id = &site.deployment;
 
-        conn.transaction(|conn| {
+        conn.transaction_async(|conn| {
+            async {
             // We'll only unfail subgraphs that had fatal errors
             let subgraph_error = match ErrorDetail::fatal(conn, deployment_id)? {
                 Some(fatal_error) => fatal_error,
@@ -1694,7 +1701,7 @@ impl DeploymentStore {
                     // We reset the firehose cursor. That way, on resume, Firehose will start from
                     // the block_ptr instead (with sanity checks to ensure it's resuming at the
                     // correct block).
-                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), &FirehoseCursor::None)?;
+                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), &FirehoseCursor::None).await?;
 
                     // Unfail the deployment.
                     deployment::update_deployment_status(conn, deployment_id, prev_health, None,None)?;
@@ -1726,8 +1733,8 @@ impl DeploymentStore {
 
                     Ok(UnfailOutcome::Noop)
                 }
-            }
-        })
+            } }.scope_boxed()
+        }).await
     }
 
     // If a non-deterministic error happens and the deployment head advances,
