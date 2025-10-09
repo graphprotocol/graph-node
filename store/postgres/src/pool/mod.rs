@@ -30,10 +30,13 @@ use crate::catalog;
 use crate::primary::{self, Mirror, Namespace};
 use crate::{Shard, PRIMARY_SHARD};
 
+mod async_txn;
 mod coordinator;
 mod foreign_server;
 mod state_tracker;
 
+#[allow(unused_imports)]
+pub use async_txn::AsyncConnection;
 pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
 use state_tracker::{ErrorHandler, EventHandler, StateTracker};
