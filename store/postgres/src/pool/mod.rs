@@ -35,7 +35,8 @@ mod coordinator;
 mod foreign_server;
 mod state_tracker;
 
-#[allow(unused_imports)]
+pub use diesel_async::scoped_futures::ScopedFutureExt;
+
 pub use async_txn::AsyncConnection;
 pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
