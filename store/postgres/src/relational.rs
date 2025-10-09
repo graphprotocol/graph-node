@@ -20,14 +20,15 @@ pub(crate) mod prune;
 mod rollup;
 pub(crate) mod value;
 
+use diesel::connection::SimpleConnection;
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
-use diesel::{connection::SimpleConnection, Connection};
 use diesel::{
     debug_query, sql_query, OptionalExtension, PgConnection, QueryDsl, QueryResult, RunQueryDsl,
 };
+use diesel_async::scoped_futures::ScopedFutureExt;
 use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
@@ -78,8 +79,8 @@ use graph::prelude::{
 
 use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
-use crate::ForeignServer;
 use crate::{catalog, deployment};
+use crate::{AsyncConnection, ForeignServer};
 
 use self::rollup::Rollup;
 
@@ -853,12 +854,16 @@ impl Layout {
 
         let start = Instant::now();
         let values = conn
-            .transaction(|conn| {
-                if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
-                    conn.batch_execute(timeout_sql)?;
+            .transaction_async(|conn| {
+                async {
+                    if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
+                        conn.batch_execute(timeout_sql)?;
+                    }
+                    query.load::<EntityData>(conn)
                 }
-                query.load::<EntityData>(conn)
+                .scope_boxed()
             })
+            .await
             .map_err(|e| {
                 use diesel::result::DatabaseErrorKind;
                 use diesel::result::Error::*;
