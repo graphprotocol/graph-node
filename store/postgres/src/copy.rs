@@ -30,6 +30,7 @@ use diesel::{
     select, sql_query, update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection,
     QueryDsl, RunQueryDsl,
 };
+use diesel_async::scoped_futures::ScopedFutureExt;
 use graph::{
     futures03::{future::select_all, FutureExt as _},
     internal_error,
@@ -49,7 +50,7 @@ use crate::{
     relational::{index::IndexList, Layout, Table},
     relational_queries as rq,
     vid_batcher::{VidBatcher, VidRange},
-    ConnectionPool,
+    AsyncConnection, ConnectionPool,
 };
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
@@ -495,14 +496,18 @@ impl TableState {
         Ok(canceled)
     }
 
-    fn copy_batch(&mut self, conn: &mut PgConnection) -> Result<Status, StoreError> {
-        let (duration, count) = self.batcher.step(|start, end| {
-            let count = rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
-                .count_current()
-                .get_result::<i64>(conn)
-                .optional()?;
-            Ok(count.unwrap_or(0) as i32)
-        })?;
+    async fn copy_batch(&mut self, conn: &mut PgConnection) -> Result<Status, StoreError> {
+        let (duration, count) = self
+            .batcher
+            .step(async |start, end| {
+                let count =
+                    rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
+                        .count_current()
+                        .get_result::<i64>(conn)
+                        .optional()?;
+                Ok(count.unwrap_or(0) as i32)
+            })
+            .await?;
 
         let count = count.unwrap_or(0);
 
@@ -746,7 +751,7 @@ impl CopyTableWorker {
     async fn run(mut self, logger: Logger, progress: Arc<CopyProgress>) -> WorkerResult {
         let object = self.table.dst.object.cheap_clone();
         graph::spawn_blocking_allow_panic(move || {
-            self.result = self.run_inner(logger, &progress);
+            self.result = graph::block_on(self.run_inner(logger, &progress));
             self
         })
         .await
@@ -754,7 +759,11 @@ impl CopyTableWorker {
         .into()
     }
 
-    fn run_inner(&mut self, logger: Logger, progress: &CopyProgress) -> Result<Status, StoreError> {
+    async fn run_inner(
+        &mut self,
+        logger: Logger,
+        progress: &CopyProgress,
+    ) -> Result<Status, StoreError> {
         use Status::*;
 
         let conn = &mut self.conn.inner;
@@ -791,12 +800,18 @@ impl CopyTableWorker {
                         break Cancelled;
                     }
 
-                    match conn.transaction(|conn| {
-                        if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
-                            conn.batch_execute(timeout)?;
-                        }
-                        self.table.copy_batch(conn)
-                    }) {
+                    match conn
+                        .transaction_async(|conn| {
+                            async {
+                                if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
+                                    conn.batch_execute(timeout)?;
+                                }
+                                self.table.copy_batch(conn).await
+                            }
+                            .scope_boxed()
+                        })
+                        .await
+                    {
                         Ok(status) => {
                             break status;
                         }

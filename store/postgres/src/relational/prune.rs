@@ -4,9 +4,9 @@ use diesel::{
     connection::SimpleConnection,
     sql_query,
     sql_types::{BigInt, Integer},
-    Connection, PgConnection, RunQueryDsl,
+    PgConnection, RunQueryDsl,
 };
-use diesel_async::scoped_futures::ScopedFutureExt;
+use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
 use graph::{
     components::store::{PrunePhase, PruneReporter, PruneRequest, PruningStrategy, VersionStats},
     prelude::{
@@ -101,7 +101,7 @@ impl TablePair {
         final_block: BlockNumber,
         cancel: &CancelHandle,
     ) -> Result<(), CancelableError<StoreError>> {
-        let column_list = self.column_list();
+        let column_list = Arc::new(self.column_list());
 
         // Determine the last vid that we need to copy
         let range = VidRange::for_prune(conn, &self.src, earliest_block, final_block)?;
@@ -110,14 +110,16 @@ impl TablePair {
 
         while !batcher.finished() {
             let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
-                // Page through all rows in `src` in batches of `batch_size`
-                // and copy the ones that are visible to queries at block
-                // heights between `earliest_block` and `final_block`, but
-                // whose block_range does not extend past `final_block`
-                // since they could still be reverted while we copy.
-                // The conditions on `block_range` are expressed redundantly
-                // to make more indexes useable
-                sql_query(format!(
+                let column_list = column_list.cheap_clone();
+                async move {
+                    // Page through all rows in `src` in batches of `batch_size`
+                    // and copy the ones that are visible to queries at block
+                    // heights between `earliest_block` and `final_block`, but
+                    // whose block_range does not extend past `final_block`
+                    // since they could still be reverted while we copy.
+                    // The conditions on `block_range` are expressed redundantly
+                    // to make more indexes useable
+                    sql_query(format!(
                     "/* controller=prune,phase=final,start_vid={start},batch_size={batch_size} */ \
                      insert into {dst}({column_list}) \
                      select {column_list} from {src} \
@@ -131,13 +133,16 @@ impl TablePair {
                     dst = self.dst.qualified_name,
                     batch_size = end - start + 1,
                 ))
-                .bind::<Integer, _>(earliest_block)
-                .bind::<Integer, _>(final_block)
-                .bind::<BigInt, _>(start)
-                .bind::<BigInt, _>(end)
-                .execute(conn)
-                .map_err(StoreError::from)
-            })?;
+                    .bind::<Integer, _>(earliest_block)
+                    .bind::<Integer, _>(final_block)
+                    .bind::<BigInt, _>(start)
+                    .bind::<BigInt, _>(end)
+                    .execute(conn)
+                    .map_err(StoreError::from)
+                }
+                .scope_boxed()
+            })
+            .await?;
             let rows = rows.unwrap_or(0);
             tracker.finish_batch(conn, &self.src, rows as i64, &batcher)?;
             cancel.check_cancel()?;
@@ -155,14 +160,14 @@ impl TablePair {
     /// Copy all entity versions visible after `final_block` in batches,
     /// where each batch is a separate transaction. This assumes that all
     /// other write activity to the source table is blocked while we copy
-    fn copy_nonfinal_entities(
+    async fn copy_nonfinal_entities(
         &self,
         conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         tracker: &status::Tracker,
         final_block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let column_list = self.column_list();
+        let column_list = Arc::new(self.column_list());
 
         // Determine the last vid that we need to copy
         let range = VidRange::for_prune(conn, &self.src, final_block + 1, BLOCK_NUMBER_MAX)?;
@@ -171,6 +176,8 @@ impl TablePair {
 
         while !batcher.finished() {
             let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
+                let column_list = column_list.cheap_clone();
+                async move {
                 // Page through all the rows in `src` in batches of
                 // `batch_size` that are visible to queries at block heights
                 // starting right after `final_block`. The conditions on
@@ -193,7 +200,7 @@ impl TablePair {
                     .bind::<BigInt, _>(end)
                     .execute(conn)
                     .map_err(StoreError::from)
-            })?;
+            }.scope_boxed()}).await?;
             let rows = rows.unwrap_or(0);
 
             tracker.finish_batch(conn, &self.src, rows as i64, &batcher)?;
@@ -449,7 +456,8 @@ impl Layout {
                         conn,
                         &self.site,
                         async |conn| -> Result<_, StoreError> {
-                            pair.copy_nonfinal_entities(conn, reporter, tracker, req.final_block)?;
+                            pair.copy_nonfinal_entities(conn, reporter, tracker, req.final_block)
+                                .await?;
                             cancel.check_cancel().map_err(CancelableError::from)?;
 
                             pair.switch(logger, conn).await?;
@@ -470,6 +478,7 @@ impl Layout {
                     tracker.start_delete(conn, table, range, &batcher)?;
                     while !batcher.finished() {
                         let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
+                            async move {
                             sql_query(format!(
                             "/* controller=prune,phase=delete,start_vid={start},batch_size={batch_size} */ \
                              delete from {qname} \
@@ -482,7 +491,7 @@ impl Layout {
                         .bind::<BigInt, _>(start)
                         .bind::<BigInt, _>(end)
                         .execute(conn).map_err(StoreError::from)
-                        })?;
+                        }.scope_boxed()}).await?;
                         let rows = rows.unwrap_or(0);
 
                         tracker.finish_batch(conn, table, -(rows as i64), &batcher)?;
@@ -519,23 +528,31 @@ impl Layout {
 ///
 /// Doing this serves as a safeguard against very bad batch size estimations
 /// so that batches never take longer than `BATCH_SIZE_TIMEOUT`
-fn batch_with_timeout<F, T>(
-    conn: &mut PgConnection,
+async fn batch_with_timeout<'a, 'conn, R, F>(
+    conn: &'conn mut PgConnection,
     batcher: &mut VidBatcher,
     query: F,
-) -> Result<Option<T>, StoreError>
+) -> Result<Option<R>, StoreError>
 where
-    F: Fn(&mut PgConnection, i64, i64) -> Result<T, StoreError>,
+    R: Send,
+    F: for<'r> Fn(&'r mut PgConnection, i64, i64) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
+        + Sync,
+    'a: 'conn,
 {
     let res = batcher
-        .step(|start, end| {
-            conn.transaction(|conn| {
-                if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
-                    conn.batch_execute(timeout)?;
+        .step(async |start, end| {
+            conn.transaction_async(|conn| {
+                async {
+                    if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
+                        conn.batch_execute(timeout)?;
+                    }
+                    query(conn, start, end).await
                 }
-                query(conn, start, end)
+                .scope_boxed()
             })
+            .await
         })
+        .await
         .map(|(_, res)| res);
 
     if !matches!(res, Err(StoreError::StatementTimeout)) {
@@ -544,7 +561,11 @@ where
 
     batcher.set_batch_size(1);
     batcher
-        .step(|start, end| conn.transaction(|conn| query(conn, start, end)))
+        .step(async |start, end| {
+            conn.transaction_async(|conn| async { query(conn, start, end).await }.scope_boxed())
+                .await
+        })
+        .await
         .map(|(_, res)| res)
 }
 
