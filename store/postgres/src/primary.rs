@@ -643,8 +643,8 @@ mod queries {
 
     pub(super) fn fill_assignments(
         conn: &mut PgConnection,
-        infos: &mut [status::Info],
-    ) -> Result<(), StoreError> {
+        infos: &[status::Info],
+    ) -> Result<HashMap<GraphDeploymentId, (String, bool)>, StoreError> {
         let ids: Vec<_> = infos.iter().map(|info| &info.id).collect();
         let nodes: HashMap<_, _> = a::table
             .inner_join(ds::table.on(ds::id.eq(a::id)))
@@ -654,11 +654,7 @@ mod queries {
             .into_iter()
             .map(|(id, node, paused)| (id, (node, paused)))
             .collect();
-        for info in infos {
-            info.node = nodes.get(&info.id).map(|(node, _)| node.clone());
-            info.paused = nodes.get(&info.id).map(|(_, paused)| *paused);
-        }
-        Ok(())
+        Ok(nodes)
     }
 
     pub(super) fn assigned_node(
@@ -1965,37 +1961,14 @@ impl Mirror {
         }
     }
 
-    /// Execute the function `f` with connections from each of our pools in
+    /// Execute the `callback` with connections from each of our pools in
     /// order until for one of them we get any result other than
     /// `Err(StoreError::DatabaseUnavailable)`. In other words, we try to
-    /// execute `f` against our pools in order until we can be sure that we
-    /// talked to a database that is up. The function `f` must only access
-    /// tables that are mirrored through `refresh_tables`
-    pub(crate) fn read<'a, T>(
-        &self,
-        mut f: impl 'a
-            + FnMut(&mut PooledConnection<ConnectionManager<PgConnection>>) -> Result<T, StoreError>,
-    ) -> Result<T, StoreError> {
-        for pool in self.pools.as_ref() {
-            let mut conn = match pool.get() {
-                Ok(conn) => conn,
-                Err(StoreError::DatabaseUnavailable) => continue,
-                Err(e) => return Err(e),
-            };
-            match f(&mut conn) {
-                Ok(v) => return Ok(v),
-                Err(StoreError::DatabaseUnavailable) => continue,
-                Err(e) => return Err(e),
-            }
-        }
-        Err(StoreError::DatabaseUnavailable)
-    }
-
-    /// An async version of `read` that spawns a blocking task to do the
-    /// actual work. This is useful when you want to call `read` from an
-    /// async context
+    /// execute `callback` against our pools in order until we can be sure
+    /// that we talked to a database that is up. The function `callback`
+    /// must only access tables that are mirrored through `refresh_tables`
     ///
-    /// The function `f` must not do any blocking work itself
+    /// The function `callback` must not do any blocking work itself
     pub(crate) fn read_async<'a, 's, R, F>(
         &'s self,
         callback: F,
@@ -2207,8 +2180,12 @@ impl Mirror {
             .await
     }
 
-    pub async fn fill_assignments(&self, infos: &mut [status::Info]) -> Result<(), StoreError> {
-        self.read(|conn| queries::fill_assignments(conn, infos))
+    pub async fn fill_assignments(
+        &self,
+        infos: &[status::Info],
+    ) -> Result<HashMap<GraphDeploymentId, (String, bool)>, StoreError> {
+        self.read_async(|conn| async { queries::fill_assignments(conn, infos) }.scope_boxed())
+            .await
     }
 
     pub async fn version_info(

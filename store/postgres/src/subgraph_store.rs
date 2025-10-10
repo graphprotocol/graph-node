@@ -993,7 +993,12 @@ impl Inner {
                 .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
             infos.extend(store.deployment_statuses(&sites).await?);
         }
-        self.mirror.fill_assignments(&mut infos).await?;
+        let nodes = self.mirror.fill_assignments(&mut infos).await?;
+        for info in infos.iter_mut() {
+            info.node = nodes.get(&info.id).map(|(node, _)| node.clone());
+            info.paused = nodes.get(&info.id).map(|(_, paused)| *paused);
+        }
+
         Ok(infos)
     }
 
