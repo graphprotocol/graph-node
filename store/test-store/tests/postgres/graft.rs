@@ -456,7 +456,7 @@ fn copy() {
                 .start_subgraph_deployment(&LOGGER)
                 .await?;
 
-            store.activate(&deployment)?;
+            store.activate(&deployment).await?;
 
             check_graft(store, deployment).await?;
         }
@@ -538,7 +538,7 @@ fn on_sync() {
             let mut primary = primary_connection().await;
             let src_site = primary.locate_site(src.clone())?.unwrap();
             primary.unassign_subgraph(&src_site)?;
-            store.activate(&dst)?;
+            store.activate(&dst).await?;
             store.remove_deployment(src.id.into()).await?;
 
             let res = writable.deployment_synced(BLOCKS[2].clone()).await;
@@ -588,10 +588,12 @@ fn prune() {
         run_test(move |store, src| async move {
             store
                 .set_history_blocks(&src, -3, 10)
+                .await
                 .expect_err("history_blocks can not be set to a negative number");
 
             store
                 .set_history_blocks(&src, 10, 10)
+                .await
                 .expect_err("history_blocks must be bigger than reorg_threshold");
 
             // Add another version for user 2 at block 4

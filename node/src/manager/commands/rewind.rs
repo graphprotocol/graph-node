@@ -160,7 +160,9 @@ pub async fn run(
     println!("\nRewinding deployments");
     for (chain, loc) in &locators {
         let block_store = store.block_store();
-        let deployment_details = subgraph_store.load_deployment_by_id(loc.clone().into())?;
+        let deployment_details = subgraph_store
+            .load_deployment_by_id(loc.clone().into())
+            .await?;
         let block_ptr_to = block_ptr_to.clone();
 
         let start_block = match deployment_details.start_block {

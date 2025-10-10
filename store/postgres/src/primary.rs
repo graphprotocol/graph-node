@@ -2140,7 +2140,7 @@ impl Mirror {
         self.read(|conn| queries::find_active_site(conn, subgraph))
     }
 
-    pub fn find_site_by_ref(&self, id: DeploymentId) -> Result<Option<Site>, StoreError> {
+    pub async fn find_site_by_ref(&self, id: DeploymentId) -> Result<Option<Site>, StoreError> {
         self.read(|conn| queries::find_site_by_ref(conn, id))
     }
 
