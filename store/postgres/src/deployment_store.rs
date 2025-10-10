@@ -1306,7 +1306,7 @@ impl DeploymentStore {
             req: PruneRequest,
         ) -> Result<(), StoreError> {
             {
-                if store.is_source(&site)? {
+                if store.is_source(&site).await? {
                     debug!(
                         logger,
                         "Skipping pruning since this deployment is being copied"
@@ -1940,8 +1940,8 @@ impl DeploymentStore {
         .await
     }
 
-    fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
-        self.primary.is_source(site)
+    async fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
+        self.primary.is_source(site).await
     }
 }
 

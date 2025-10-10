@@ -1880,7 +1880,7 @@ impl Primary {
     /// Return `true` if the site is the source of a copy operation. The copy
     /// operation might be just queued or in progress already. This method will
     /// block until a fdw connection becomes available.
-    pub fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
+    pub async fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
         use active_copies as ac;
 
         let mut conn = self.pool.get()?;
@@ -1894,7 +1894,7 @@ impl Primary {
         .map_err(StoreError::from)
     }
 
-    pub fn is_copy_cancelled(&self, dst: &Site) -> Result<bool, StoreError> {
+    pub async fn is_copy_cancelled(&self, dst: &Site) -> Result<bool, StoreError> {
         use active_copies as ac;
 
         let mut conn = self.pool.get()?;
@@ -1909,7 +1909,7 @@ impl Primary {
 
 /// Return `true` if we deem this installation to be empty, defined as
 /// having no deployments and no subgraph names in the database
-pub fn is_empty(conn: &mut PgConnection) -> Result<bool, StoreError> {
+pub async fn is_empty(conn: &mut PgConnection) -> Result<bool, StoreError> {
     use deployment_schemas as ds;
     use subgraph as s;
 
