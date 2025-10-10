@@ -352,8 +352,9 @@ impl SubgraphStore {
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id)?;
             let mut conn = self.primary_conn()?;
-            let (site, site_was_created) =
-                conn.allocate_site(shard, schema.id(), network_name, graft_base)?;
+            let (site, site_was_created) = conn
+                .allocate_site(shard, schema.id(), network_name, graft_base)
+                .await?;
             let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
             (site, !site_was_created, node_id)
         };
