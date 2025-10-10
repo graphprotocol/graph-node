@@ -336,16 +336,17 @@ impl SyncStore {
         .await
     }
 
-    fn get_derived(
+    async fn get_derived(
         &self,
         key: &DerivedEntityQuery,
         block: BlockNumber,
         excluded_keys: Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        retry::forever(&self.logger, "get_derived", || {
+        retry::forever_async(&self.logger, "get_derived", || async {
             self.writable
                 .get_derived(self.site.cheap_clone(), key, block, &excluded_keys)
         })
+        .await
     }
 
     async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
@@ -1219,7 +1220,7 @@ impl Queue {
         Ok(map)
     }
 
-    fn get_derived(
+    async fn get_derived(
         &self,
         derived_query: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
@@ -1266,9 +1267,10 @@ impl Queue {
         let excluded_keys: Vec<EntityKey> = entities_in_queue.keys().cloned().collect();
 
         // We filter to exclude the entities ids that we already have from the queue
-        let mut items_from_database =
-            self.store
-                .get_derived(derived_query, query_block, excluded_keys)?;
+        let mut items_from_database = self
+            .store
+            .get_derived(derived_query, query_block, excluded_keys)
+            .await?;
 
         // Extend the store results with the entities from the queue.
         // This overwrites any entitiy from the database with the same key from queue
@@ -1435,13 +1437,13 @@ impl Writer {
         }
     }
 
-    fn get_derived(
+    async fn get_derived(
         &self,
         key: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         match self {
-            Writer::Sync(store) => store.get_derived(key, BLOCK_NUMBER_MAX, vec![]),
-            Writer::Async { queue, .. } => queue.get_derived(key),
+            Writer::Sync(store) => store.get_derived(key, BLOCK_NUMBER_MAX, vec![]).await,
+            Writer::Async { queue, .. } => queue.get_derived(key).await,
         }
     }
 
@@ -1568,7 +1570,7 @@ impl ReadStore for WritableStore {
         &self,
         key: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        self.writer.get_derived(key)
+        self.writer.get_derived(key).await
     }
 
     fn input_schema(&self) -> InputSchema {
