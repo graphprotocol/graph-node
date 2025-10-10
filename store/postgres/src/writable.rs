@@ -315,7 +315,7 @@ impl SyncStore {
         .await
     }
 
-    fn get_many(
+    async fn get_many(
         &self,
         keys: BTreeSet<EntityKey>,
         block: BlockNumber,
@@ -329,10 +329,11 @@ impl SyncStore {
                 .push(key.entity_id)?;
         }
 
-        retry::forever(&self.logger, "get_many", || {
+        retry::forever_async(&self.logger, "get_many", || async {
             self.writable
                 .get_many(self.site.cheap_clone(), &by_type, block)
         })
+        .await
     }
 
     fn get_derived(
@@ -1173,7 +1174,7 @@ impl Queue {
     }
 
     /// Get many entities at once by looking at both the queue and the store
-    fn get_many(
+    async fn get_many(
         &self,
         mut keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
@@ -1205,7 +1206,7 @@ impl Queue {
 
         // Look entities for the remaining keys up in the store
         keys.retain(|key| !entities_in_queue.contains_key(key));
-        let mut map = self.store.get_many(keys, query_block)?;
+        let mut map = self.store.get_many(keys, query_block).await?;
 
         // Extend the store results with the entities from the queue.
         for (key, entity) in entities_in_queue {
@@ -1424,13 +1425,13 @@ impl Writer {
         }
     }
 
-    fn get_many(
+    async fn get_many(
         &self,
         keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         match self {
-            Writer::Sync(store) => store.get_many(keys, BLOCK_NUMBER_MAX),
-            Writer::Async { queue, .. } => queue.get_many(keys),
+            Writer::Sync(store) => store.get_many(keys, BLOCK_NUMBER_MAX).await,
+            Writer::Async { queue, .. } => queue.get_many(keys).await,
         }
     }
 
@@ -1560,7 +1561,7 @@ impl ReadStore for WritableStore {
         &self,
         keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        self.writer.get_many(keys)
+        self.writer.get_many(keys).await
     }
 
     async fn get_derived(
