@@ -779,7 +779,7 @@ impl Connection {
     /// returns `Err(E)`, the transaction is rolled back and `Err(E)` is
     /// returned. If committing or rolling back the transaction fails,
     /// return an error
-    pub(crate) fn transaction_async<'a, 'conn, R, F>(
+    pub(crate) fn transaction<'a, 'conn, R, F>(
         &'conn mut self,
         callback: F,
     ) -> BoxFuture<'conn, Result<R, StoreError>>
@@ -1447,7 +1447,7 @@ impl Connection {
         use subgraph_version as v;
         use unused_deployments as u;
 
-        self.transaction_async(|pconn| {
+        self.transaction(|pconn| {
             async {
                 let conn = &mut pconn.conn;
 
