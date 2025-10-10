@@ -1364,7 +1364,7 @@ impl Connection {
     /// If it already exists, return the existing site
     /// and a boolean indicating whether a new site was created.
     /// `false` means the site already existed.
-    pub fn allocate_site(
+    pub async fn allocate_site(
         &mut self,
         shard: Shard,
         subgraph: &DeploymentHash,
