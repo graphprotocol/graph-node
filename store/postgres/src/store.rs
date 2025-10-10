@@ -78,9 +78,7 @@ impl QueryStoreManager for Store {
         let api_version = target.get_version();
         let target = target.clone();
         let (store, site, replica) = graph::spawn_blocking_allow_panic(move || {
-            store
-                .replica_for_query(target.clone())
-                .map_err(|e| e.into())
+            graph::block_on(store.replica_for_query(target.clone())).map_err(|e| e.into())
         })
         .await
         .map_err(|e| QueryExecutionError::Panic(e.to_string()))
@@ -129,7 +127,9 @@ impl StatusStore for Store {
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
-        self.subgraph_store.versions_for_subgraph_id(subgraph_id)
+        self.subgraph_store
+            .versions_for_subgraph_id(subgraph_id)
+            .await
     }
 
     async fn subgraphs_for_deployment_hash(
@@ -138,6 +138,7 @@ impl StatusStore for Store {
     ) -> Result<Vec<(String, String)>, StoreError> {
         self.subgraph_store
             .subgraphs_for_deployment_hash(deployment_hash)
+            .await
     }
 
     async fn get_proof_of_indexing(

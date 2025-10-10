@@ -934,7 +934,9 @@ impl PoolInner {
         self.with_conn(async |conn, handle| {
             conn.transaction_async(|conn| {
                 async {
-                    primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
+                    primary::Mirror::refresh_tables(conn, handle)
+                        .await
+                        .map_err(CancelableError::from)
                 }
                 .scope_boxed()
             })
