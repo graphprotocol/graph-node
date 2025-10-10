@@ -38,8 +38,8 @@ use store::StoredDynamicDataSource;
 use crate::deployment_store::DeploymentStore;
 use crate::primary::DeploymentId;
 use crate::relational::index::IndexList;
-use crate::retry;
 use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
+use crate::{retry, NotificationSender};
 
 /// A wrapper around `SubgraphStore` that only exposes functions that are
 /// safe to call from `WritableStore`, i.e., functions that either do not
@@ -49,12 +49,12 @@ use crate::{primary, primary::Site, relational::Layout, SubgraphStore};
 struct WritableSubgraphStore(SubgraphStore);
 
 impl WritableSubgraphStore {
-    fn primary_conn(&self) -> Result<primary::Connection<'_>, StoreError> {
+    fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
         self.0.primary_conn()
     }
 
-    pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
-        self.0.send_store_event(event)
+    fn notification_sender(&self) -> Arc<NotificationSender> {
+        self.0.notification_sender()
     }
 
     fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
@@ -358,21 +358,21 @@ impl SyncStore {
     async fn unassign_subgraph(&self, site: &Site) -> Result<(), StoreError> {
         retry::forever(&self.logger, "unassign_subgraph", || {
             let mut pconn = self.store.primary_conn()?;
-            pconn.transaction(|conn| -> Result<_, StoreError> {
-                let mut pconn = primary::Connection::new(conn);
+            let sender = self.store.notification_sender();
+            pconn.transaction(|pconn| {
                 let changes = pconn.unassign_subgraph(site)?;
-                self.store.send_store_event(&StoreEvent::new(changes))
+                pconn.send_store_event(&sender, &StoreEvent::new(changes))
             })
         })
     }
 
     async fn pause_subgraph(&self, site: &Site) -> Result<(), StoreError> {
-        retry::forever(&self.logger, "unassign_subgraph", || {
+        retry::forever(&self.logger, "pause_subgraph", || {
             let mut pconn = self.store.primary_conn()?;
-            pconn.transaction(|conn| -> Result<_, StoreError> {
-                let mut pconn = primary::Connection::new(conn);
+            let sender = self.store.notification_sender();
+            pconn.transaction(|pconn| {
                 let changes = pconn.pause_subgraph(site)?;
-                self.store.send_store_event(&StoreEvent::new(changes))
+                pconn.send_store_event(&sender, &StoreEvent::new(changes))
             })
         })
     }
@@ -420,8 +420,7 @@ impl SyncStore {
                 // store so that we do not hold two database connections which
                 // might come from the same pool and could therefore deadlock
                 let mut pconn = self.store.primary_conn()?;
-                pconn.transaction(|conn| -> Result<_, Error> {
-                    let mut pconn = primary::Connection::new(conn);
+                pconn.transaction(|pconn| {
                     let changes = pconn.promote_deployment(&self.site.deployment)?;
                     Ok(StoreEvent::new(changes))
                 })?
@@ -449,7 +448,9 @@ impl SyncStore {
                 .deployment_synced(&self.site.deployment, block_ptr.clone())
                 .await?;
 
-            self.store.send_store_event(&event)
+            let mut pconn = self.store.primary_conn()?;
+            let sender = self.store.notification_sender();
+            pconn.transaction(|pconn| pconn.send_store_event(&sender, &event))
         })
         .await
     }

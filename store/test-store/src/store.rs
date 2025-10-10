@@ -669,7 +669,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
     .unwrap()
 }
 
-pub async fn primary_connection() -> graph_store_postgres::layout_for_tests::Connection<'static> {
+pub async fn primary_connection() -> graph_store_postgres::layout_for_tests::Connection {
     let conn = PRIMARY_POOL.get_async().await.unwrap();
     graph_store_postgres::layout_for_tests::Connection::new(conn)
 }
