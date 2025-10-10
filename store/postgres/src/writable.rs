@@ -282,10 +282,11 @@ impl SyncStore {
         .await
     }
 
-    fn get(&self, key: &EntityKey, block: BlockNumber) -> Result<Option<Entity>, StoreError> {
-        retry::forever(&self.logger, "get", || {
+    async fn get(&self, key: &EntityKey, block: BlockNumber) -> Result<Option<Entity>, StoreError> {
+        retry::forever_async(&self.logger, "get", || async {
             self.writable.get(self.site.cheap_clone(), key, block)
         })
+        .await
     }
 
     async fn transact_block_operations(
@@ -1145,7 +1146,7 @@ impl Queue {
 
     /// Get the entity for `key` if it exists by looking at both the queue
     /// and the store
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+    async fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         enum Op {
             Write(Entity),
             Remove,
@@ -1167,7 +1168,7 @@ impl Queue {
         match op {
             Some(Op::Write(entity)) => Ok(Some(entity)),
             Some(Op::Remove) => Ok(None),
-            None => self.store.get(key, query_block),
+            None => self.store.get(key, query_block).await,
         }
     }
 
@@ -1416,10 +1417,10 @@ impl Writer {
         }
     }
 
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+    async fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         match self {
-            Writer::Sync(store) => store.get(key, BLOCK_NUMBER_MAX),
-            Writer::Async { queue, .. } => queue.get(key),
+            Writer::Sync(store) => store.get(key, BLOCK_NUMBER_MAX).await,
+            Writer::Async { queue, .. } => queue.get(key).await,
         }
     }
 
@@ -1552,7 +1553,7 @@ impl WritableStore {
 #[async_trait]
 impl ReadStore for WritableStore {
     async fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
-        self.writer.get(key)
+        self.writer.get(key).await
     }
 
     async fn get_many(
