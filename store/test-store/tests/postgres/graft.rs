@@ -106,7 +106,7 @@ where
         let store = store.subgraph_store();
 
         // Reset state before starting
-        remove_test_data(store.clone());
+        remove_subgraphs().await;
 
         // Seed database with test data
         let deployment = insert_test_data(store.clone()).await;
@@ -269,13 +269,6 @@ fn create_test_entity(
     }
 }
 
-/// Removes test data from the database behind the store.
-fn remove_test_data(store: Arc<DieselSubgraphStore>) {
-    store
-        .delete_all_entities_for_test_use_only()
-        .expect("deleting test entities succeeds");
-}
-
 async fn create_grafted_subgraph(
     subgraph_id: &DeploymentHash,
     schema: &str,
@@ -421,11 +414,11 @@ fn graft() {
     })
 }
 
-fn other_shard(
+async fn other_shard(
     store: &DieselSubgraphStore,
     src: &DeploymentLocator,
 ) -> Result<Option<Shard>, StoreError> {
-    let src_shard = store.shard(src)?;
+    let src_shard = store.shard(src).await?;
 
     match all_shards()
         .into_iter()
@@ -445,7 +438,7 @@ fn other_shard(
 #[test]
 fn copy() {
     run_test(|store, src| async move {
-        if let Some(dst_shard) = other_shard(&store, &src)? {
+        if let Some(dst_shard) = other_shard(&store, &src).await? {
             let deployment = store
                 .copy_deployment(
                     &src,
@@ -478,7 +471,7 @@ fn copy() {
 fn on_sync() {
     for on_sync in [OnSync::None, OnSync::Activate, OnSync::Replace] {
         run_test(move |store, src| async move {
-            if let Some(dst_shard) = other_shard(&store, &src)? {
+            if let Some(dst_shard) = other_shard(&store, &src).await? {
                 let dst = store
                     .copy_deployment(&src, dst_shard, NODE_ID.clone(), BLOCKS[1].clone(), on_sync)
                     .await?;
@@ -523,7 +516,7 @@ fn on_sync() {
     // Check that on_sync does not cause an error when the source of the
     // copy has vanished
     run_test(move |store, src| async move {
-        if let Some(dst_shard) = other_shard(&store, &src)? {
+        if let Some(dst_shard) = other_shard(&store, &src).await? {
             let dst = store
                 .copy_deployment(
                     &src,

@@ -143,9 +143,11 @@ where
     test(&mut conn).await;
 }
 
-pub fn remove_subgraphs() {
+/// Removes test data from the database behind the store.
+pub async fn remove_subgraphs() {
     SUBGRAPH_STORE
-        .delete_all_entities_for_test_use_only()
+        .remove_all_subgraphs_for_test_use_only()
+        .await
         .expect("deleting test entities succeeds");
 }
 
@@ -286,7 +288,7 @@ pub async fn transact_errors(
         deployment.hash.clone(),
         "transact",
         metrics_registry.clone(),
-        store.subgraph_store().shard(deployment)?.to_string(),
+        store.subgraph_store().shard(deployment).await?.to_string(),
     );
     let block_time = BlockTime::for_test(&block_ptr_to);
     store

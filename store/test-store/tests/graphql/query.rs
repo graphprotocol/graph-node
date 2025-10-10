@@ -192,7 +192,7 @@ async fn setup(
         if !STORE_CLEAN.load(Ordering::SeqCst) {
             let chain = CHAIN.iter().collect();
             block_store::set_chain(chain, NETWORK_NAME).await;
-            test_store::remove_subgraphs();
+            test_store::remove_subgraphs().await;
             STORE_CLEAN.store(true, Ordering::SeqCst);
         }
     }
