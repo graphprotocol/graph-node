@@ -259,11 +259,10 @@ async fn run_inner(
 
     // Only after everything worked out, make the history setting permanent
     if !once {
-        store.subgraph_store().set_history_blocks(
-            &args.deployment,
-            args.history,
-            ENV_VARS.reorg_threshold(),
-        )?;
+        store
+            .subgraph_store()
+            .set_history_blocks(&args.deployment, args.history, ENV_VARS.reorg_threshold())
+            .await?;
     }
 
     Ok(())
