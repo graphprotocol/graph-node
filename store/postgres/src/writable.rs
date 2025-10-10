@@ -209,8 +209,8 @@ impl SyncStore {
             .map(FirehoseCursor::from)
     }
 
-    fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
-        retry::forever(&self.logger, "start_subgraph_deployment", || {
+    async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
+        retry::forever_async(&self.logger, "start_subgraph_deployment", || async {
             let graft_base = match self.writable.graft_pending(&self.site.deployment)? {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id)?;
@@ -220,12 +220,12 @@ impl SyncStore {
                 }
                 None => None,
             };
-            graph::block_on(
-                self.writable
-                    .start_subgraph(logger, self.site.clone(), graft_base),
-            )?;
+            self.writable
+                .start_subgraph(logger, self.site.clone(), graft_base)
+                .await?;
             self.store.primary_conn()?.copy_finished(self.site.as_ref())
         })
+        .await
     }
 
     async fn revert_block_operations(
@@ -1634,9 +1634,11 @@ impl WritableStoreTrait for WritableStore {
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         let store = self.store.cheap_clone();
         let logger = logger.cheap_clone();
-        graph::spawn_blocking_allow_panic(move || store.start_subgraph_deployment(&logger))
-            .await
-            .map_err(Error::from)??;
+        graph::spawn_blocking_allow_panic(move || {
+            graph::block_on(store.start_subgraph_deployment(&logger))
+        })
+        .await
+        .map_err(Error::from)??;
 
         // Refresh all in memory state in case this instance was used before
         *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
