@@ -486,9 +486,9 @@ impl TableState {
         Ok(())
     }
 
-    fn is_cancelled(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
+    async fn is_cancelled(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
         let dst = self.dst_site.as_ref();
-        let canceled = self.primary.is_copy_cancelled(dst)?;
+        let canceled = self.primary.is_copy_cancelled(dst).await?;
         if canceled {
             use copy_state as cs;
 
@@ -767,7 +767,7 @@ impl CopyTableWorker {
             // It is important that this check happens outside the write
             // transaction so that we do not hold on to locks acquired
             // by the check
-            if self.table.is_cancelled(conn)? || progress.is_cancelled() {
+            if self.table.is_cancelled(conn).await? || progress.is_cancelled() {
                 progress.cancel();
                 return Ok(Cancelled);
             }
