@@ -359,7 +359,7 @@ impl SyncStore {
     }
 
     async fn unassign_subgraph(&self, site: &Site) -> Result<(), StoreError> {
-        retry::forever(&self.logger, "unassign_subgraph", || {
+        retry::forever_async(&self.logger, "unassign_subgraph", || async {
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
             pconn.transaction(|pconn| {
@@ -367,10 +367,11 @@ impl SyncStore {
                 pconn.send_store_event(&sender, &StoreEvent::new(changes))
             })
         })
+        .await
     }
 
     async fn pause_subgraph(&self, site: &Site) -> Result<(), StoreError> {
-        retry::forever(&self.logger, "pause_subgraph", || {
+        retry::forever_async(&self.logger, "pause_subgraph", || async {
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
             pconn.transaction(|pconn| {
@@ -378,6 +379,7 @@ impl SyncStore {
                 pconn.send_store_event(&sender, &StoreEvent::new(changes))
             })
         })
+        .await
     }
 
     async fn load_dynamic_data_sources(
