@@ -430,7 +430,7 @@ impl SubgraphStore {
                         .await?;
 
                     let event = StoreEvent::new(changes);
-                    pconn.send_store_event(&self.sender, &event)?;
+                    pconn.send_store_event(&self.sender, &event).await?;
                     Ok(())
                 }
                 .scope_boxed()
@@ -783,7 +783,7 @@ impl Inner {
                     // the copy
                     let changes = pconn.assign_subgraph(dst.as_ref(), &node)?;
                     let event = StoreEvent::new(changes);
-                    pconn.send_store_event(&self.sender, &event)?;
+                    pconn.send_store_event(&self.sender, &event).await?;
                     Ok(())
                 }
                 .scope_boxed()
@@ -1436,7 +1436,9 @@ impl SubgraphStoreTrait for SubgraphStore {
             .transaction(|pconn| {
                 async {
                     let changes = pconn.remove_subgraph(name)?;
-                    pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+                    pconn
+                        .send_store_event(&self.sender, &StoreEvent::new(changes))
+                        .await
                 }
                 .scope_boxed()
             })
@@ -1454,7 +1456,9 @@ impl SubgraphStoreTrait for SubgraphStore {
             .transaction(|pconn| {
                 async {
                     let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
-                    pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+                    pconn
+                        .send_store_event(&self.sender, &StoreEvent::new(changes))
+                        .await
                 }
                 .scope_boxed()
             })
@@ -1468,7 +1472,9 @@ impl SubgraphStoreTrait for SubgraphStore {
             .transaction(|pconn| {
                 async {
                     let changes = pconn.unassign_subgraph(site.as_ref())?;
-                    pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+                    pconn
+                        .send_store_event(&self.sender, &StoreEvent::new(changes))
+                        .await
                 }
                 .scope_boxed()
             })
@@ -1482,7 +1488,9 @@ impl SubgraphStoreTrait for SubgraphStore {
             .transaction(|pconn| {
                 async {
                     let changes = pconn.pause_subgraph(site.as_ref())?;
-                    pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+                    pconn
+                        .send_store_event(&self.sender, &StoreEvent::new(changes))
+                        .await
                 }
                 .scope_boxed()
             })
@@ -1496,7 +1504,9 @@ impl SubgraphStoreTrait for SubgraphStore {
             .transaction(|pconn| {
                 async {
                     let changes = pconn.resume_subgraph(site.as_ref())?;
-                    pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
+                    pconn
+                        .send_store_event(&self.sender, &StoreEvent::new(changes))
+                        .await
                 }
                 .scope_boxed()
             })

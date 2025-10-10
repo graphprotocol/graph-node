@@ -22,7 +22,8 @@ pub async fn unassign(
 
     println!("unassigning {locator}");
     let changes = conn.unassign_subgraph(&site)?;
-    conn.send_store_event(sender, &StoreEvent::new(changes))?;
+    conn.send_store_event(sender, &StoreEvent::new(changes))
+        .await?;
 
     Ok(())
 }
@@ -57,7 +58,8 @@ pub async fn reassign(
             conn.assign_subgraph(&site, &node)?
         }
     };
-    conn.send_store_event(sender, &StoreEvent::new(changes))?;
+    conn.send_store_event(sender, &StoreEvent::new(changes))
+        .await?;
 
     // It's easy to make a typo in the name of the node; if this operation
     // assigns to a node that wasn't used before, warn the user that they
@@ -104,7 +106,8 @@ pub async fn pause_or_resume(
         }
     };
     println!("Operation completed");
-    conn.send_store_event(sender, &StoreEvent::new(change))?;
+    conn.send_store_event(sender, &StoreEvent::new(change))
+        .await?;
 
     Ok(())
 }
