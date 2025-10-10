@@ -25,13 +25,13 @@ use graph::{
     data::query::QueryTarget,
     data::subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
     internal_error,
+    prelude::StoreEvent,
     prelude::{
         anyhow, lazy_static, o, web3::types::Address, ApiVersion, BlockNumber, BlockPtr,
         ChainStore, DeploymentHash, EntityOperation, Logger, MetricsRegistry, NodeId,
         PartialBlockPtr, StoreError, SubgraphDeploymentEntity, SubgraphName,
         SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
     },
-    prelude::{CancelableError, StoreEvent},
     schema::{ApiSchema, InputSchema},
     url::Url,
     util::timed_cache::TimedCache,
@@ -663,8 +663,7 @@ impl SubgraphStoreInner {
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
         let mut pconn = self.primary_conn()?;
-        pconn.transaction(|conn| -> Result<_, StoreError> {
-            let mut pconn = primary::Connection::new(conn);
+        pconn.transaction(|pconn| {
             // Create subgraph, subgraph version, and assignment
             let changes =
                 pconn.create_subgraph_version(name, &site, node_id, mode, exists_and_synced)?;
@@ -744,8 +743,7 @@ impl SubgraphStoreInner {
             .await?;
 
         let mut pconn = self.primary_conn()?;
-        pconn.transaction(|conn| -> Result<_, StoreError> {
-            let mut pconn = primary::Connection::new(conn);
+        pconn.transaction(|pconn| {
             // Create subgraph, subgraph version, and assignment. We use the
             // existence of an assignment as a signal that we already set up
             // the copy
@@ -784,34 +782,15 @@ impl SubgraphStoreInner {
             .await
     }
 
-    pub(crate) fn send_store_event(&self, event: &StoreEvent) -> Result<(), StoreError> {
-        let mut conn = self.primary_conn()?;
-        conn.send_store_event(&self.sender, event)
-    }
-
     /// Get a connection to the primary shard. Code must never hold one of these
     /// connections while also accessing a `DeploymentStore`, since both
     /// might draw connections from the same pool, and trying to get two
     /// connections can deadlock the entire process if the pool runs out
     /// of connections in between getting the first one and trying to get the
     /// second one.
-    pub(crate) fn primary_conn(&self) -> Result<primary::Connection<'_>, StoreError> {
+    pub(crate) fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
         let conn = self.mirror.primary().get()?;
         Ok(primary::Connection::new(conn))
-    }
-
-    pub(crate) async fn with_primary_conn<T: Send + 'static>(
-        &self,
-        f: impl 'static
-            + Send
-            + FnOnce(&mut primary::Connection) -> Result<T, CancelableError<StoreError>>,
-    ) -> Result<T, StoreError> {
-        let pool = self.mirror.primary();
-        pool.with_conn(async move |pg_conn, _| {
-            let mut conn = primary::Connection::new(pg_conn);
-            f(&mut conn)
-        })
-        .await
     }
 
     pub(crate) fn replica_for_query(
@@ -1405,10 +1384,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         let mut pconn = self.primary_conn()?;
-        pconn.transaction(|conn| {
-            let mut pconn = primary::Connection::new(conn);
-            pconn.create_subgraph(&name)
-        })
+        pconn.transaction(|pconn| pconn.create_subgraph(&name))
     }
 
     async fn create_subgraph_features(
@@ -1416,16 +1392,12 @@ impl SubgraphStoreTrait for SubgraphStore {
         features: DeploymentFeatures,
     ) -> Result<(), StoreError> {
         let mut pconn = self.primary_conn()?;
-        pconn.transaction(|conn| {
-            let mut pconn = primary::Connection::new(conn);
-            pconn.create_subgraph_features(features)
-        })
+        pconn.transaction(|pconn| pconn.create_subgraph_features(features))
     }
 
     async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
         let mut pconn = self.primary_conn()?;
-        pconn.transaction(|conn| -> Result<_, StoreError> {
-            let mut pconn = primary::Connection::new(conn);
+        pconn.transaction(|pconn| -> Result<_, StoreError> {
             let changes = pconn.remove_subgraph(name)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1438,8 +1410,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
         let mut pconn = self.primary_conn()?;
-        pconn.transaction(|conn| -> Result<_, StoreError> {
-            let mut pconn = primary::Connection::new(conn);
+        pconn.transaction(|pconn| -> Result<_, StoreError> {
             let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1448,8 +1419,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     async fn unassign_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
         let mut pconn = self.primary_conn()?;
-        pconn.transaction(|conn| -> Result<_, StoreError> {
-            let mut pconn = primary::Connection::new(conn);
+        pconn.transaction(|pconn| -> Result<_, StoreError> {
             let changes = pconn.unassign_subgraph(site.as_ref())?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1458,8 +1428,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     async fn pause_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
         let mut pconn = self.primary_conn()?;
-        pconn.transaction(|conn| -> Result<_, StoreError> {
-            let mut pconn = primary::Connection::new(conn);
+        pconn.transaction(|pconn| -> Result<_, StoreError> {
             let changes = pconn.pause_subgraph(site.as_ref())?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1468,8 +1437,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     async fn resume_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into())?;
         let mut pconn = self.primary_conn()?;
-        pconn.transaction(|conn| -> Result<_, StoreError> {
-            let mut pconn = primary::Connection::new(conn);
+        pconn.transaction(|pconn| -> Result<_, StoreError> {
             let changes = pconn.resume_subgraph(site.as_ref())?;
             pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
         })
@@ -1514,15 +1482,10 @@ impl SubgraphStoreTrait for SubgraphStore {
         deployment: &DeploymentHash,
     ) -> Result<Option<DeploymentFeatures>, StoreError> {
         let deployment = deployment.to_string();
-        self.with_primary_conn(|conn| {
-            conn.transaction(|conn| {
-                let mut pconn = primary::Connection::new(conn);
-                pconn
-                    .get_subgraph_features(deployment)
-                    .map_err(|e| e.into())
-            })
-        })
-        .await
+        let mut pconn = self.primary_conn()?;
+        pconn
+            .get_subgraph_features(deployment)
+            .map_err(|e| e.into())
     }
 
     async fn entity_changes_in_block(
