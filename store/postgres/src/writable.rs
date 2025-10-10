@@ -58,8 +58,8 @@ impl WritableSubgraphStore {
         self.0.notification_sender()
     }
 
-    fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
-        self.0.layout(id)
+    async fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
+        self.0.layout(id).await
     }
 
     fn load_deployment(&self, site: Arc<Site>) -> Result<SubgraphDeploymentEntity, StoreError> {
@@ -214,7 +214,7 @@ impl SyncStore {
         retry::forever_async(&self.logger, "start_subgraph_deployment", || async {
             let graft_base = match self.writable.graft_pending(&self.site.deployment)? {
                 Some((base_id, base_ptr)) => {
-                    let src = self.store.layout(&base_id)?;
+                    let src = self.store.layout(&base_id).await?;
                     let deployment_entity = self.store.load_deployment(src.site.clone())?;
                     let indexes = self.store.load_indexes(src.site.clone())?;
                     Some((src, base_ptr, deployment_entity, indexes))

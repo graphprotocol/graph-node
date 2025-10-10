@@ -363,11 +363,10 @@ impl SubgraphStore {
         // so we can set graft_base to None
         // if it doesn't exist, we need to copy the graft base to the new deployment
         let graft_base_layout = if !exists {
-            let graft_base = deployment
-                .graft_base
-                .as_ref()
-                .map(|base| self.layout(base))
-                .transpose()?;
+            let graft_base = match deployment.graft_base.as_ref() {
+                Some(base) => Some(self.layout(&base).await?),
+                None => None,
+            };
 
             if let Some(graft_base) = &graft_base {
                 self.primary_conn()?
@@ -420,7 +419,7 @@ impl SubgraphStore {
                 let site = site.cheap_clone();
                 async move {
                     let exists_and_synced = async move |id: &DeploymentHash| {
-                        let (store, _) = subgraph_store.store(id)?;
+                        let (store, _) = subgraph_store.store(id).await?;
                         store.deployment_exists_and_synced(id)
                     };
 
@@ -619,7 +618,10 @@ impl Inner {
 
     /// Return the store and site for the active deployment of this
     /// deployment hash
-    fn store(&self, id: &DeploymentHash) -> Result<(&Arc<DeploymentStore>, Arc<Site>), StoreError> {
+    async fn store(
+        &self,
+        id: &DeploymentHash,
+    ) -> Result<(&Arc<DeploymentStore>, Arc<Site>), StoreError> {
         let site = self.site(id)?;
         let store = self
             .stores
@@ -634,8 +636,8 @@ impl Inner {
             .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))
     }
 
-    pub(crate) fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
-        let (store, site) = self.store(id)?;
+    pub(crate) async fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
+        let (store, site) = self.store(id).await?;
         store.find_layout(site)
     }
 
@@ -745,7 +747,7 @@ impl Inner {
             history_blocks_override: None,
         };
 
-        let graft_base = self.layout(&src.deployment)?;
+        let graft_base = self.layout(&src.deployment).await?;
 
         self.primary_conn()?
             .record_active_copy(src.as_ref(), dst.as_ref())?;
@@ -819,7 +821,7 @@ impl Inner {
             QueryTarget::Deployment(id, _) => id,
         };
 
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(&id).await?;
         let replica = store.replica_for_query()?;
 
         Ok((store.clone(), site, replica))
@@ -835,7 +837,7 @@ impl Inner {
 
         // Delete all subgraph schemas
         for schema in schemas {
-            let (store, _) = self.store(&schema.deployment)?;
+            let (store, _) = self.store(&schema.deployment).await?;
             store.drop_deployment_schema(&schema.namespace)?;
         }
 
@@ -995,7 +997,7 @@ impl Inner {
         if let Some((deployment_id, created_at)) = self.mirror.version_info(version).await? {
             let id = DeploymentHash::new(deployment_id.clone())
                 .map_err(|id| internal_error!("illegal deployment id {}", id))?;
-            let (store, site) = self.store(&id)?;
+            let (store, site) = self.store(&id).await?;
             let statuses = store.deployment_statuses(&[site.clone()]).await?;
             let status = statuses
                 .first()
@@ -1046,7 +1048,7 @@ impl Inner {
 
     #[cfg(debug_assertions)]
     pub async fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
-        let (store, _) = self.store(id)?;
+        let (store, _) = self.store(id).await?;
         store.error_count(id)
     }
 
@@ -1060,7 +1062,7 @@ impl Inner {
         id: DeploymentHash,
         block_ptr_to: BlockPtr,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(&id).await?;
         store.rewind(site, block_ptr_to).await
     }
 
@@ -1069,7 +1071,7 @@ impl Inner {
         id: DeploymentHash,
         block_ptr_to: BlockPtr,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id)?;
+        let (store, site) = self.store(&id).await?;
         store.truncate(site, block_ptr_to).await
     }
 
@@ -1079,7 +1081,7 @@ impl Inner {
         indexer: &Option<Address>,
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError> {
-        let (store, site) = self.store(id)?;
+        let (store, site) = self.store(id).await?;
         store.get_proof_of_indexing(site, indexer, block).await
     }
 
@@ -1090,7 +1092,7 @@ impl Inner {
         block_store: impl BlockStore,
         fetch_block_ptr: &dyn BlockPtrForNumber,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
-        let (store, site) = self.store(id)?;
+        let (store, site) = self.store(id).await?;
 
         let block_hash = {
             let chain_store = match block_store.chain_store(&site.network).await {
@@ -1141,7 +1143,7 @@ impl Inner {
         &self,
         query: graph::prelude::EntityQuery,
     ) -> Result<Vec<graph::prelude::Entity>, graph::prelude::QueryExecutionError> {
-        let (store, site) = self.store(&query.subgraph_id)?;
+        let (store, site) = self.store(&query.subgraph_id).await?;
         store.find(site, query).await
     }
 
@@ -1176,12 +1178,12 @@ impl Inner {
         .await;
     }
 
-    pub fn analyze(
+    pub async fn analyze(
         &self,
         deployment: &DeploymentLocator,
         entity_name: Option<&str>,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&deployment.hash)?;
+        let (store, site) = self.store(&deployment.hash).await?;
         store.analyze(site, entity_name)
     }
 
@@ -1189,11 +1191,11 @@ impl Inner {
     /// first return value is the default target, and the second value maps
     /// the name of each table to a map of column name to its statistics
     /// target. A value of `-1` means that the global default will be used.
-    pub fn stats_targets(
+    pub async fn stats_targets(
         &self,
         deployment: &DeploymentLocator,
     ) -> Result<(i32, BTreeMap<SqlName, BTreeMap<SqlName, i32>>), StoreError> {
-        let (store, site) = self.store(&deployment.hash)?;
+        let (store, site) = self.store(&deployment.hash).await?;
         store.stats_targets(site)
     }
 
@@ -1207,7 +1209,7 @@ impl Inner {
         columns: Vec<String>,
         target: i32,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&deployment.hash)?;
+        let (store, site) = self.store(&deployment.hash).await?;
         store.set_stats_target(site, entity, columns, target).await
     }
 
@@ -1219,7 +1221,7 @@ impl Inner {
         index_method: Method,
         after: Option<BlockNumber>,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&deployment.hash)?;
+        let (store, site) = self.store(&deployment.hash).await?;
         store
             .create_manual_index(site, entity_name, field_names, index_method, after)
             .await
@@ -1230,7 +1232,7 @@ impl Inner {
         deployment: &DeploymentLocator,
         entity_name: &str,
     ) -> Result<Vec<CreateIndex>, StoreError> {
-        let (store, site) = self.store(&deployment.hash)?;
+        let (store, site) = self.store(&deployment.hash).await?;
         store.indexes_for_entity(site, entity_name).await
     }
 
@@ -1239,7 +1241,7 @@ impl Inner {
         deployment: &DeploymentLocator,
         index_name: &str,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&deployment.hash)?;
+        let (store, site) = self.store(&deployment.hash).await?;
         store.drop_index(site, index_name).await
     }
 
@@ -1249,7 +1251,7 @@ impl Inner {
         table: &str,
         is_account_like: bool,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&deployment.hash)?;
+        let (store, site) = self.store(&deployment.hash).await?;
         store.set_account_like(site, table, is_account_like).await
     }
 
@@ -1542,13 +1544,13 @@ impl SubgraphStoreTrait for SubgraphStore {
         subgraph_id: &DeploymentHash,
         block: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError> {
-        let (store, site) = self.store(subgraph_id)?;
+        let (store, site) = self.store(subgraph_id).await?;
         let changes = store.get_changes(site, block)?;
         Ok(changes)
     }
 
     async fn input_schema(&self, id: &DeploymentHash) -> Result<InputSchema, StoreError> {
-        let (store, site) = self.store(id)?;
+        let (store, site) = self.store(id).await?;
         let layout = store.find_layout(site)?;
         Ok(layout.input_schema.cheap_clone())
     }
@@ -1558,7 +1560,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         id: &DeploymentHash,
         version: &ApiVersion,
     ) -> Result<Arc<ApiSchema>, StoreError> {
-        let (store, site) = self.store(id)?;
+        let (store, site) = self.store(id).await?;
         let info = store.subgraph_info(site)?;
         Ok(info.api.get(version).unwrap().clone())
     }
@@ -1568,7 +1570,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         id: &DeploymentHash,
         logger: Logger,
     ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError> {
-        let (store, site) = self.store(id)?;
+        let (store, site) = self.store(id).await?;
         let info = store.subgraph_info(site.cheap_clone())?;
         let layout = store.find_layout(site)?;
         let fork_id = info.debug_fork;
@@ -1633,18 +1635,18 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     async fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
-        let (store, _) = self.store(id)?;
+        let (store, _) = self.store(id).await?;
         let graft_detail = store.graft_pending(id)?;
         Ok(graft_detail.is_some())
     }
 
     async fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError> {
-        let (store, site) = self.store(id)?;
+        let (store, site) = self.store(id).await?;
         store.block_ptr(site.cheap_clone()).await
     }
 
     async fn is_healthy(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
-        let (store, site) = self.store(id)?;
+        let (store, site) = self.store(id).await?;
         let health = store.health(&site).await?;
         Ok(matches!(health, SubgraphHealth::Healthy))
     }
@@ -1676,7 +1678,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         hash: &DeploymentHash,
         raw_yaml: String,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(hash)?;
+        let (store, site) = self.store(hash).await?;
         store.set_manifest_raw_yaml(site, raw_yaml).await
     }
 
