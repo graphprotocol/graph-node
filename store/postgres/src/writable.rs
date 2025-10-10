@@ -364,7 +364,7 @@ impl SyncStore {
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
             pconn
-                .transaction_async(|pconn| {
+                .transaction(|pconn| {
                     async {
                         let changes = pconn.unassign_subgraph(site)?;
                         pconn.send_store_event(&sender, &StoreEvent::new(changes))
@@ -381,7 +381,7 @@ impl SyncStore {
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
             pconn
-                .transaction_async(|pconn| {
+                .transaction(|pconn| {
                     async {
                         let changes = pconn.pause_subgraph(site)?;
                         pconn.send_store_event(&sender, &StoreEvent::new(changes))
@@ -437,7 +437,7 @@ impl SyncStore {
                 // might come from the same pool and could therefore deadlock
                 let mut pconn = self.store.primary_conn()?;
                 pconn
-                    .transaction_async(|pconn| {
+                    .transaction(|pconn| {
                         async {
                             let changes = pconn.promote_deployment(&self.site.deployment)?;
                             Ok(StoreEvent::new(changes))
@@ -472,7 +472,7 @@ impl SyncStore {
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
             pconn
-                .transaction_async(|pconn| {
+                .transaction(|pconn| {
                     async { pconn.send_store_event(&sender, &event) }.scope_boxed()
                 })
                 .await

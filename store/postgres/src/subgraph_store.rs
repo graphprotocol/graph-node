@@ -665,7 +665,7 @@ impl SubgraphStoreInner {
         // potentially deadlock.
         let mut pconn = self.primary_conn()?;
         pconn
-            .transaction_async(|pconn| {
+            .transaction(|pconn| {
                 async {
                     // Create subgraph, subgraph version, and assignment
                     let changes = pconn.create_subgraph_version(
@@ -755,7 +755,7 @@ impl SubgraphStoreInner {
 
         let mut pconn = self.primary_conn()?;
         pconn
-            .transaction_async(|pconn| {
+            .transaction(|pconn| {
                 async {
                     // Create subgraph, subgraph version, and assignment. We use the
                     // existence of an assignment as a signal that we already set up
@@ -1401,7 +1401,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         let mut pconn = self.primary_conn()?;
         pconn
-            .transaction_async(|pconn| async { pconn.create_subgraph(&name) }.scope_boxed())
+            .transaction(|pconn| async { pconn.create_subgraph(&name) }.scope_boxed())
             .await
     }
 
@@ -1411,16 +1411,14 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<(), StoreError> {
         let mut pconn = self.primary_conn()?;
         pconn
-            .transaction_async(|pconn| {
-                async { pconn.create_subgraph_features(features) }.scope_boxed()
-            })
+            .transaction(|pconn| async { pconn.create_subgraph_features(features) }.scope_boxed())
             .await
     }
 
     async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
         let mut pconn = self.primary_conn()?;
         pconn
-            .transaction_async(|pconn| {
+            .transaction(|pconn| {
                 async {
                     let changes = pconn.remove_subgraph(name)?;
                     pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
@@ -1438,7 +1436,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let site = self.find_site(deployment.id.into())?;
         let mut pconn = self.primary_conn()?;
         pconn
-            .transaction_async(|pconn| {
+            .transaction(|pconn| {
                 async {
                     let changes = pconn.reassign_subgraph(site.as_ref(), node_id)?;
                     pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
@@ -1452,7 +1450,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let site = self.find_site(deployment.id.into())?;
         let mut pconn = self.primary_conn()?;
         pconn
-            .transaction_async(|pconn| {
+            .transaction(|pconn| {
                 async {
                     let changes = pconn.unassign_subgraph(site.as_ref())?;
                     pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
@@ -1466,7 +1464,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let site = self.find_site(deployment.id.into())?;
         let mut pconn = self.primary_conn()?;
         pconn
-            .transaction_async(|pconn| {
+            .transaction(|pconn| {
                 async {
                     let changes = pconn.pause_subgraph(site.as_ref())?;
                     pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
@@ -1480,7 +1478,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let site = self.find_site(deployment.id.into())?;
         let mut pconn = self.primary_conn()?;
         pconn
-            .transaction_async(|pconn| {
+            .transaction(|pconn| {
                 async {
                     let changes = pconn.resume_subgraph(site.as_ref())?;
                     pconn.send_store_event(&self.sender, &StoreEvent::new(changes))
