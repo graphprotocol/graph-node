@@ -1996,24 +1996,33 @@ impl Mirror {
     /// async context
     ///
     /// The function `f` must not do any blocking work itself
-    pub(crate) async fn read_async<T, F>(&self, f: F) -> Result<T, StoreError>
+    pub(crate) fn read_async<'a, 's, R, F>(
+        &'s self,
+        callback: F,
+    ) -> BoxFuture<'s, Result<R, StoreError>>
     where
-        T: 'static + Send,
-        F: 'static + Send + AsyncFn(&mut PgConnection) -> Result<T, StoreError>,
+        F: for<'r> Fn(&'r mut PgConnection) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
+            + Send
+            + 'a,
+        R: Send + 'a,
+        'a: 's,
     {
-        for pool in self.pools.as_ref() {
-            let mut conn = match pool.get() {
-                Ok(conn) => conn,
-                Err(StoreError::DatabaseUnavailable) => continue,
-                Err(e) => return Err(e),
-            };
-            match f(&mut conn).await {
-                Ok(v) => return Ok(v),
-                Err(StoreError::DatabaseUnavailable) => continue,
-                Err(e) => return Err(e),
+        async move {
+            for pool in self.pools.as_ref() {
+                let mut conn = match pool.get() {
+                    Ok(conn) => conn,
+                    Err(StoreError::DatabaseUnavailable) => continue,
+                    Err(e) => return Err(e),
+                };
+                match callback(&mut conn).await {
+                    Ok(v) => return Ok(v),
+                    Err(StoreError::DatabaseUnavailable) => continue,
+                    Err(e) => return Err(e),
+                }
             }
+            Err(StoreError::DatabaseUnavailable)
         }
-        Err(StoreError::DatabaseUnavailable)
+        .boxed()
     }
 
     /// Refresh the contents of mirrored tables from the primary (through
@@ -2112,8 +2121,7 @@ impl Mirror {
     }
 
     pub async fn active_assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
-        let node = node.clone();
-        self.read_async(async move |conn| queries::active_assignments(conn, &node))
+        self.read_async(|conn| async { queries::active_assignments(conn, &node) }.scope_boxed())
             .await
     }
 
@@ -2129,7 +2137,7 @@ impl Mirror {
         &self,
         site: Arc<Site>,
     ) -> Result<Option<(NodeId, bool)>, StoreError> {
-        self.read_async(async move |conn| queries::assignment_status(conn, &site))
+        self.read_async(|conn| async { queries::assignment_status(conn, &site) }.scope_boxed())
             .await
     }
 
@@ -2137,7 +2145,8 @@ impl Mirror {
         &self,
         subgraph: &DeploymentHash,
     ) -> Result<Option<Site>, StoreError> {
-        self.read(|conn| queries::find_active_site(conn, subgraph))
+        self.read_async(|conn| async { queries::find_active_site(conn, subgraph) }.scope_boxed())
+            .await
     }
 
     pub async fn find_site_by_ref(&self, id: DeploymentId) -> Result<Option<Site>, StoreError> {
