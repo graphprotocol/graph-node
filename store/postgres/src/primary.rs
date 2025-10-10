@@ -8,8 +8,12 @@ use crate::{
     subgraph_store::{unused, Shard, PRIMARY_SHARD},
     ConnectionPool, ForeignServer, NotificationSender,
 };
+use diesel::prelude::{
+    BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
+    OptionalExtension, QueryDsl, RunQueryDsl,
+};
 use diesel::{
-    connection::SimpleConnection,
+    connection::{SimpleConnection, TransactionManager},
     data_types::PgTimestamp,
     deserialize::FromSql,
     dsl::{exists, not, select},
@@ -22,13 +26,6 @@ use diesel::{
     r2d2::PooledConnection,
 };
 use diesel::{pg::PgConnection, r2d2::ConnectionManager};
-use diesel::{
-    prelude::{
-        BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
-        OptionalExtension, QueryDsl, RunQueryDsl,
-    },
-    Connection as _,
-};
 use graph::{
     components::store::DeploymentLocator,
     data::{
@@ -50,7 +47,6 @@ use graph::{
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
 use itertools::Itertools;
-use maybe_owned::MaybeOwnedMut;
 use std::{
     borrow::Borrow,
     collections::HashMap,
@@ -766,23 +762,42 @@ mod queries {
 
 /// A wrapper for a database connection that provides access to functionality
 /// that works only on the primary database
-pub struct Connection<'a> {
-    conn: MaybeOwnedMut<'a, PooledConnection<ConnectionManager<PgConnection>>>,
+pub struct Connection {
+    conn: PooledConnection<ConnectionManager<PgConnection>>,
 }
 
-impl<'a> Connection<'a> {
-    pub fn new(
-        conn: impl Into<MaybeOwnedMut<'a, PooledConnection<ConnectionManager<PgConnection>>>>,
-    ) -> Self {
-        Self { conn: conn.into() }
+impl Connection {
+    pub fn new(conn: PooledConnection<ConnectionManager<PgConnection>>) -> Self {
+        Self { conn }
     }
 
-    pub(crate) fn transaction<T, E, F>(&mut self, f: F) -> Result<T, E>
+    /// Run `callback` inside a database transaction on the connection that
+    /// `self` contains. If `callback` returns `Ok(T)`, the transaction is
+    /// committed and `Ok(T)` is returned. If `callback` returns `Err(E)`,
+    /// the transaction is rolled back and `Err(E)` is returned. If
+    /// committing or rolling back the transaction fails, return an error
+    pub(crate) fn transaction<T, F>(&mut self, callback: F) -> Result<T, StoreError>
     where
-        F: FnOnce(&mut PooledConnection<ConnectionManager<PgConnection>>) -> Result<T, E>,
-        E: From<diesel::result::Error>,
+        F: FnOnce(&mut Self) -> Result<T, StoreError>,
     {
-        self.conn.as_mut().transaction(f)
+        type TM = <PooledConnection<ConnectionManager<PgConnection>> as diesel::Connection>::TransactionManager;
+
+        TM::begin_transaction(&mut self.conn)?;
+        match callback(self) {
+            Ok(value) => {
+                TM::commit_transaction(&mut self.conn)?;
+                Ok(value)
+            }
+            Err(user_error) => match TM::rollback_transaction(&mut self.conn) {
+                Ok(()) => Err(user_error),
+                Err(diesel::result::Error::BrokenTransactionManager) => {
+                    // In this case we are probably more interested by the
+                    // original error, which likely caused this
+                    Err(user_error)
+                }
+                Err(rollback_error) => Err(rollback_error.into()),
+            },
+        }
     }
 
     /// Signal any copy process that might be copying into one of these
@@ -793,7 +808,7 @@ impl<'a> Connection<'a> {
 
         update(ac::table.filter(ac::dst.eq_any(ids)))
             .set(ac::cancelled_at.eq(sql("now()")))
-            .execute(self.conn.as_mut())?;
+            .execute(&mut self.conn)?;
         Ok(())
     }
 
@@ -805,7 +820,7 @@ impl<'a> Connection<'a> {
         use subgraph_deployment_assignment as a;
         use subgraph_version as v;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
         let named = v::table
             .inner_join(
                 s::table.on(v::id
@@ -859,7 +874,7 @@ impl<'a> Connection<'a> {
         use subgraph as s;
         use subgraph_version as v;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
 
         // Subgraphs where we need to promote the version
         let pending_subgraph_versions: Vec<(String, String)> = s::table
@@ -895,7 +910,7 @@ impl<'a> Connection<'a> {
     pub fn create_subgraph(&mut self, name: &SubgraphName) -> Result<String, StoreError> {
         use subgraph as s;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
         let id = generate_entity_id();
         let created_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -950,7 +965,7 @@ impl<'a> Connection<'a> {
             .left_outer_join(v::table.on(s::current_version.eq(v::id.nullable())))
             .filter(s::name.eq(name.as_str()))
             .select((s::id, v::deployment.nullable()))
-            .first::<(String, Option<String>)>(self.conn.as_mut())
+            .first::<(String, Option<String>)>(&mut self.conn)
             .optional()?;
         let (subgraph_id, current_deployment) = match info {
             Some((subgraph_id, current_deployment)) => (subgraph_id, current_deployment),
@@ -960,7 +975,7 @@ impl<'a> Connection<'a> {
             .left_outer_join(v::table.on(s::pending_version.eq(v::id.nullable())))
             .filter(s::id.eq(&subgraph_id))
             .select(v::deployment.nullable())
-            .first::<Option<String>>(self.conn.as_mut())?;
+            .first::<Option<String>>(&mut self.conn)?;
 
         // See if the current version of that subgraph is synced. If the subgraph
         // has no current version, we treat it the same as if it were not synced
@@ -999,19 +1014,19 @@ impl<'a> Connection<'a> {
                 v::created_at.eq(sql(&format!("{}", created_at))),
                 v::block_range.eq(UNVERSIONED_RANGE),
             ))
-            .execute(self.conn.as_mut())?;
+            .execute(&mut self.conn)?;
 
         // Create a subgraph assignment if there isn't one already
         let new_assignment = a::table
             .filter(a::id.eq(site.id))
             .select(a::id)
-            .first::<i32>(self.conn.as_mut())
+            .first::<i32>(&mut self.conn)
             .optional()?
             .is_none();
         if new_assignment {
             insert_into(a::table)
                 .values((a::id.eq(site.id), a::node_id.eq(node_id.as_str())))
-                .execute(self.conn.as_mut())?;
+                .execute(&mut self.conn)?;
         }
 
         // See if we should make this the current or pending version
@@ -1026,12 +1041,12 @@ impl<'a> Connection<'a> {
                         s::current_version.eq(&version_id),
                         s::pending_version.eq::<Option<&str>>(None),
                     ))
-                    .execute(self.conn.as_mut())?;
+                    .execute(&mut self.conn)?;
             }
             (Synced, true, false) => {
                 subgraph_row
                     .set(s::pending_version.eq(&version_id))
-                    .execute(self.conn.as_mut())?;
+                    .execute(&mut self.conn)?;
             }
         }
 
@@ -1051,7 +1066,7 @@ impl<'a> Connection<'a> {
         use subgraph as s;
         use subgraph_version as v;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
 
         // Get the id of the given subgraph. If no subgraph with the
         // name exists, there is nothing to do
@@ -1072,7 +1087,7 @@ impl<'a> Connection<'a> {
     pub fn pause_subgraph(&mut self, site: &Site) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
 
         let updates = update(a::table.filter(a::id.eq(site.id)))
             .set(a::paused_at.eq(sql("now()")))
@@ -1094,7 +1109,7 @@ impl<'a> Connection<'a> {
     pub fn resume_subgraph(&mut self, site: &Site) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
 
         let updates = update(a::table.filter(a::id.eq(site.id)))
             .set(a::paused_at.eq(sql("null")))
@@ -1120,7 +1135,7 @@ impl<'a> Connection<'a> {
     ) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
         let updates = update(a::table.filter(a::id.eq(site.id)))
             .set(a::node_id.eq(node.as_str()))
             .execute(conn)?;
@@ -1144,7 +1159,7 @@ impl<'a> Connection<'a> {
     ) -> Result<Option<DeploymentFeatures>, StoreError> {
         use subgraph_features as f;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
         let features = f::table
             .filter(f::id.eq(id))
             .select((
@@ -1228,7 +1243,7 @@ impl<'a> Connection<'a> {
             has_aggregations,
         } = features;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
         let changes = (
             f::id.eq(id),
             f::spec_version.eq(spec_version),
@@ -1257,7 +1272,7 @@ impl<'a> Connection<'a> {
     ) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
         insert_into(a::table)
             .values((a::id.eq(site.id), a::node_id.eq(node.as_str())))
             .execute(conn)?;
@@ -1269,7 +1284,7 @@ impl<'a> Connection<'a> {
     pub fn unassign_subgraph(&mut self, site: &Site) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
         let delete_count = delete(a::table.filter(a::id.eq(site.id))).execute(conn)?;
 
         self.cancel_copies(vec![site.id])?;
@@ -1302,7 +1317,7 @@ impl<'a> Connection<'a> {
     ) -> Result<Site, StoreError> {
         use deployment_schemas as ds;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
 
         let schemas: Vec<(DeploymentId, String)> = diesel::insert_into(ds::table)
             .values((
@@ -1345,7 +1360,7 @@ impl<'a> Connection<'a> {
         network: String,
         graft_base: Option<&DeploymentHash>,
     ) -> Result<(Site, bool), StoreError> {
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
         if let Some(site) = queries::find_active_site(conn, subgraph)? {
             return Ok((site, false));
         }
@@ -1366,7 +1381,7 @@ impl<'a> Connection<'a> {
     }
 
     pub fn assigned_node(&mut self, site: &Site) -> Result<Option<NodeId>, StoreError> {
-        queries::assigned_node(self.conn.as_mut(), site)
+        queries::assigned_node(&mut self.conn, site)
     }
 
     /// Returns Option<(node_id,is_paused)> where `node_id` is the node that
@@ -1374,16 +1389,14 @@ impl<'a> Connection<'a> {
     /// subgraph is paused.
     /// Returns None if the deployment does not exist.
     pub fn assignment_status(&mut self, site: &Site) -> Result<Option<(NodeId, bool)>, StoreError> {
-        queries::assignment_status(self.conn.as_mut(), site)
+        queries::assignment_status(&mut self.conn, site)
     }
 
     /// Create a copy of the site `src` in the shard `shard`, but mark it as
     /// not active. If there already is a site in `shard`, return that
     /// instead.
     pub fn copy_site(&mut self, src: &Site, shard: Shard) -> Result<Site, StoreError> {
-        if let Some(site) =
-            queries::find_site_in_shard(self.conn.as_mut(), &src.deployment, &shard)?
-        {
+        if let Some(site) = queries::find_site_in_shard(&mut self.conn, &src.deployment, &shard)? {
             return Ok(site);
         }
 
@@ -1398,7 +1411,7 @@ impl<'a> Connection<'a> {
 
     pub(crate) fn activate(&mut self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         use deployment_schemas as ds;
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
 
         // We need to tread lightly so we do not violate the unique constraint on
         // `subgraph where active`
@@ -1421,7 +1434,9 @@ impl<'a> Connection<'a> {
         use subgraph_version as v;
         use unused_deployments as u;
 
-        self.transaction(|conn| {
+        self.transaction(|pconn| {
+            let conn = &mut pconn.conn;
+
             delete(ds::table.filter(ds::id.eq(site.id))).execute(conn)?;
 
             // If there is no site for this deployment any more, we can get
@@ -1448,7 +1463,7 @@ impl<'a> Connection<'a> {
     pub fn locate_site(&mut self, locator: DeploymentLocator) -> Result<Option<Site>, StoreError> {
         let schema = deployment_schemas::table
             .filter(deployment_schemas::id.eq::<DeploymentId>(locator.into()))
-            .first::<Schema>(self.conn.as_mut())
+            .first::<Schema>(&mut self.conn)
             .optional()?;
         schema.map(|schema| schema.try_into()).transpose()
     }
@@ -1458,7 +1473,7 @@ impl<'a> Connection<'a> {
 
         ds::table
             .filter(ds::network.eq(network))
-            .load::<Schema>(self.conn.as_mut())?
+            .load::<Schema>(&mut self.conn)?
             .into_iter()
             .map(|schema| schema.try_into())
             .collect()
@@ -1469,7 +1484,7 @@ impl<'a> Connection<'a> {
 
         ds::table
             .filter(ds::name.ne("subgraphs"))
-            .load::<Schema>(self.conn.as_mut())?
+            .load::<Schema>(&mut self.conn)?
             .into_iter()
             .map(|schema| schema.try_into())
             .collect()
@@ -1501,12 +1516,14 @@ impl<'a> Connection<'a> {
 
         let nodes: Vec<_> = nodes.iter().map(|n| n.as_str()).collect();
 
+        let conn = &mut self.conn;
+
         let assigned = a::table
             .filter(a::node_id.eq_any(&nodes))
             .select((a::node_id, sql::<BigInt>("count(*)")))
             .group_by(a::node_id)
             .order_by(sql::<BigInt>("count(*)"))
-            .load::<(String, i64)>(self.conn.as_mut())?;
+            .load::<(String, i64)>(conn)?;
 
         // Any nodes without assignments will be missing from `assigned`
         let missing = nodes
@@ -1538,13 +1555,15 @@ impl<'a> Connection<'a> {
         use deployment_schemas as ds;
         use subgraph_deployment_assignment as a;
 
+        let conn = &mut self.conn;
+
         let used = ds::table
             .inner_join(a::table.on(a::id.eq(ds::id)))
             .filter(ds::shard.eq_any(shards))
             .select((ds::shard, sql::<BigInt>("count(*)")))
             .group_by(ds::shard)
             .order_by(sql::<BigInt>("count(*)"))
-            .load::<(String, i64)>(self.conn.as_mut())?;
+            .load::<(String, i64)>(conn)?;
 
         // Any shards that have no deployments in them will not be in
         // 'used'; add them in with a count of 0
@@ -1573,7 +1592,7 @@ impl<'a> Connection<'a> {
         Ok(s::table
             .select((s::current_version.nullable(), s::pending_version.nullable()))
             .filter(s::name.eq(&name))
-            .first::<(Option<String>, Option<String>)>(self.conn.as_mut())
+            .first::<(Option<String>, Option<String>)>(&mut self.conn)
             .optional()?
             .unwrap_or((None, None)))
     }
@@ -1585,7 +1604,7 @@ impl<'a> Connection<'a> {
         Ok(v::table
             .select(v::deployment)
             .filter(v::id.eq(name))
-            .first::<String>(self.conn.as_mut())
+            .first::<String>(&mut self.conn)
             .optional()?)
     }
 
@@ -1600,7 +1619,7 @@ impl<'a> Connection<'a> {
         use subgraph_version as v;
         use unused_deployments as u;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
         // Deployment is assigned
         let assigned = a::table.filter(a::id.eq(ds::id));
         // Deployment is current or pending version
@@ -1696,7 +1715,7 @@ impl<'a> Connection<'a> {
                     u::synced_at.eq(detail.synced_at),
                     u::synced_at_block_number.eq(detail.synced_at_block_number.clone()),
                 ))
-                .execute(self.conn.as_mut())?;
+                .execute(&mut self.conn)?;
         }
         Ok(())
     }
@@ -1707,7 +1726,7 @@ impl<'a> Connection<'a> {
     pub fn unused_deployment_is_used(&mut self, site: &Site) -> Result<(), StoreError> {
         use unused_deployments as u;
         delete(u::table.filter(u::id.eq(site.id)))
-            .execute(self.conn.as_mut())
+            .execute(&mut self.conn)
             .map(|_| ())
             .map_err(StoreError::from)
     }
@@ -1719,7 +1738,7 @@ impl<'a> Connection<'a> {
         use unused::Filter::*;
         use unused_deployments as u;
 
-        let conn = self.conn.as_mut();
+        let conn = &mut self.conn;
         match filter {
             All => Ok(u::table.order_by(u::unused_at.desc()).load(conn)?),
             New => Ok(u::table
@@ -1775,7 +1794,7 @@ impl<'a> Connection<'a> {
             .filter(v::deployment.eq(site.deployment.as_str()))
             .select(s::name)
             .distinct()
-            .load(self.conn.as_mut())?)
+            .load(&mut self.conn)?)
     }
 
     pub fn find_ens_name(&mut self, hash: &str) -> Result<Option<String>, StoreError> {
@@ -1784,7 +1803,7 @@ impl<'a> Connection<'a> {
         dsl::table
             .select(dsl::name)
             .find(hash)
-            .get_result::<String>(self.conn.as_mut())
+            .get_result::<String>(&mut self.conn)
             .optional()
             .map_err(|e| anyhow!("error looking up ens_name for hash {}: {}", hash, e).into())
     }
@@ -1795,7 +1814,7 @@ impl<'a> Connection<'a> {
         dsl::table
             .select(dsl::name)
             .limit(1)
-            .get_result::<String>(self.conn.as_mut())
+            .get_result::<String>(&mut self.conn)
             .optional()
             .map(|r| r.is_none())
             .map_err(|e| anyhow!("error if ens table is empty: {}", e).into())
@@ -1811,7 +1830,7 @@ impl<'a> Connection<'a> {
                 cp::queued_at.eq(sql("now()")),
             ))
             .on_conflict_do_nothing()
-            .execute(self.conn.as_mut())?;
+            .execute(&mut self.conn)?;
 
         Ok(())
     }
@@ -1819,7 +1838,7 @@ impl<'a> Connection<'a> {
     pub fn copy_finished(&mut self, dst: &Site) -> Result<(), StoreError> {
         use active_copies as cp;
 
-        delete(cp::table.filter(cp::dst.eq(dst.id))).execute(self.conn.as_mut())?;
+        delete(cp::table.filter(cp::dst.eq(dst.id))).execute(&mut self.conn)?;
 
         Ok(())
     }
