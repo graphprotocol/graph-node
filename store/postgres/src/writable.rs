@@ -6,6 +6,7 @@ use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
 
 use async_trait::async_trait;
+use diesel_async::scoped_futures::ScopedFutureExt;
 use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
 use graph::components::store::{Batch, DeploymentCursorTracker, DerivedEntityQuery, ReadStore};
@@ -362,10 +363,15 @@ impl SyncStore {
         retry::forever_async(&self.logger, "unassign_subgraph", || async {
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
-            pconn.transaction(|pconn| {
-                let changes = pconn.unassign_subgraph(site)?;
-                pconn.send_store_event(&sender, &StoreEvent::new(changes))
-            })
+            pconn
+                .transaction_async(|pconn| {
+                    async {
+                        let changes = pconn.unassign_subgraph(site)?;
+                        pconn.send_store_event(&sender, &StoreEvent::new(changes))
+                    }
+                    .scope_boxed()
+                })
+                .await
         })
         .await
     }
@@ -374,10 +380,15 @@ impl SyncStore {
         retry::forever_async(&self.logger, "pause_subgraph", || async {
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
-            pconn.transaction(|pconn| {
-                let changes = pconn.pause_subgraph(site)?;
-                pconn.send_store_event(&sender, &StoreEvent::new(changes))
-            })
+            pconn
+                .transaction_async(|pconn| {
+                    async {
+                        let changes = pconn.pause_subgraph(site)?;
+                        pconn.send_store_event(&sender, &StoreEvent::new(changes))
+                    }
+                    .scope_boxed()
+                })
+                .await
         })
         .await
     }
@@ -425,10 +436,15 @@ impl SyncStore {
                 // store so that we do not hold two database connections which
                 // might come from the same pool and could therefore deadlock
                 let mut pconn = self.store.primary_conn()?;
-                pconn.transaction(|pconn| {
-                    let changes = pconn.promote_deployment(&self.site.deployment)?;
-                    Ok(StoreEvent::new(changes))
-                })?
+                pconn
+                    .transaction_async(|pconn| {
+                        async {
+                            let changes = pconn.promote_deployment(&self.site.deployment)?;
+                            Ok(StoreEvent::new(changes))
+                        }
+                        .scope_boxed()
+                    })
+                    .await?
             };
 
             // Handle on_sync actions. They only apply to copies (not
@@ -455,7 +471,11 @@ impl SyncStore {
 
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
-            pconn.transaction(|pconn| pconn.send_store_event(&sender, &event))
+            pconn
+                .transaction_async(|pconn| {
+                    async { pconn.send_store_event(&sender, &event) }.scope_boxed()
+                })
+                .await
         })
         .await
     }
