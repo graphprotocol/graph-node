@@ -310,6 +310,152 @@ impl SubgraphStore {
             .insert(deployment, writable.cheap_clone());
         Ok(writable)
     }
+
+    /// Create a new deployment. This requires creating an entry in
+    /// `deployment_schemas` in the primary, the subgraph schema in another
+    /// shard, assigning the deployment to a node, and handling any changes
+    /// to current/pending versions of the subgraph `name`
+    ///
+    /// This process needs to modify two databases: the primary and the
+    /// shard for the subgraph and is therefore not transactional. The code
+    /// is careful to make sure this process is at least idempotent, so that
+    /// a failed deployment creation operation can be fixed by deploying
+    /// again.
+    async fn create_deployment_internal(
+        &self,
+        name: SubgraphName,
+        schema: &InputSchema,
+        deployment: DeploymentCreate,
+        node_id: NodeId,
+        network_name: String,
+        mode: SubgraphVersionSwitchingMode,
+        // replace == true is only used in tests; for non-test code, it must
+        // be 'false'
+        replace: bool,
+    ) -> Result<DeploymentLocator, StoreError> {
+        #[cfg(not(debug_assertions))]
+        assert!(!replace);
+
+        self.evict(schema.id())?;
+        let graft_base = deployment.graft_base.as_ref();
+
+        let (site, exists, node_id) = {
+            // We need to deal with two situations:
+            //   (1) We are really creating a new subgraph; it therefore needs
+            //       to go in the shard and onto the node that the placement
+            //       rules dictate
+            //   (2) The deployment has previously been created, and either
+            //       failed partway through, or the deployment rules have
+            //       changed since the last time we created the deployment.
+            //       In that case, we need to use the shard and node
+            //       assignment that we used last time to avoid creating
+            //       the same deployment in another shard
+            let (shard, node_id) = self.place(&name, &network_name, node_id)?;
+            let mut conn = self.primary_conn()?;
+            let (site, site_was_created) =
+                conn.allocate_site(shard, schema.id(), network_name, graft_base)?;
+            let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
+            (site, !site_was_created, node_id)
+        };
+        let site = Arc::new(site);
+
+        // if the deployment already exists, we don't need to perform any copying
+        // so we can set graft_base to None
+        // if it doesn't exist, we need to copy the graft base to the new deployment
+        let graft_base_layout = if !exists {
+            let graft_base = deployment
+                .graft_base
+                .as_ref()
+                .map(|base| self.layout(base))
+                .transpose()?;
+
+            if let Some(graft_base) = &graft_base {
+                self.primary_conn()?
+                    .record_active_copy(graft_base.site.as_ref(), site.as_ref())?;
+            }
+            graft_base
+        } else {
+            None
+        };
+
+        // Create the actual databases schema and metadata entries
+        let deployment_store = self
+            .stores
+            .get(&site.shard)
+            .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
+
+        let index_def = if let Some(graft) = &graft_base.clone() {
+            if let Some(site) = self.sites.get(graft) {
+                let store = self
+                    .stores
+                    .get(&site.shard)
+                    .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
+
+                Some(store.load_indexes(site)?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        deployment_store
+            .create_deployment(
+                schema,
+                deployment,
+                site.clone(),
+                graft_base_layout,
+                replace,
+                OnSync::None,
+                index_def,
+            )
+            .await?;
+
+        let exists_and_synced = |id: &DeploymentHash| {
+            let (store, _) = self.store(id)?;
+            store.deployment_exists_and_synced(id)
+        };
+
+        // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
+        // potentially deadlock.
+        let mut pconn = self.primary_conn()?;
+        pconn
+            .transaction(|pconn| {
+                async {
+                    // Create subgraph, subgraph version, and assignment
+                    let changes = pconn.create_subgraph_version(
+                        name,
+                        &site,
+                        node_id,
+                        mode,
+                        exists_and_synced,
+                    )?;
+
+                    let event = StoreEvent::new(changes);
+                    pconn.send_store_event(&self.sender, &event)?;
+                    Ok(())
+                }
+                .scope_boxed()
+            })
+            .await?;
+        Ok(site.as_ref().into())
+    }
+
+    // Only for tests to simplify their handling of test fixtures, so that
+    // tests can reset the block pointer of a subgraph by recreating it
+    #[cfg(debug_assertions)]
+    pub async fn create_deployment_replace(
+        &self,
+        name: SubgraphName,
+        schema: &InputSchema,
+        deployment: DeploymentCreate,
+        node_id: NodeId,
+        network_name: String,
+        mode: SubgraphVersionSwitchingMode,
+    ) -> Result<DeploymentLocator, StoreError> {
+        self.create_deployment_internal(name, schema, deployment, node_id, network_name, mode, true)
+            .await
+    }
 }
 
 impl std::ops::Deref for SubgraphStore {
@@ -557,136 +703,6 @@ impl Inner {
         }
     }
 
-    /// Create a new deployment. This requires creating an entry in
-    /// `deployment_schemas` in the primary, the subgraph schema in another
-    /// shard, assigning the deployment to a node, and handling any changes
-    /// to current/pending versions of the subgraph `name`
-    ///
-    /// This process needs to modify two databases: the primary and the
-    /// shard for the subgraph and is therefore not transactional. The code
-    /// is careful to make sure this process is at least idempotent, so that
-    /// a failed deployment creation operation can be fixed by deploying
-    /// again.
-    async fn create_deployment_internal(
-        &self,
-        name: SubgraphName,
-        schema: &InputSchema,
-        deployment: DeploymentCreate,
-        node_id: NodeId,
-        network_name: String,
-        mode: SubgraphVersionSwitchingMode,
-        // replace == true is only used in tests; for non-test code, it must
-        // be 'false'
-        replace: bool,
-    ) -> Result<DeploymentLocator, StoreError> {
-        #[cfg(not(debug_assertions))]
-        assert!(!replace);
-
-        self.evict(schema.id())?;
-        let graft_base = deployment.graft_base.as_ref();
-
-        let (site, exists, node_id) = {
-            // We need to deal with two situations:
-            //   (1) We are really creating a new subgraph; it therefore needs
-            //       to go in the shard and onto the node that the placement
-            //       rules dictate
-            //   (2) The deployment has previously been created, and either
-            //       failed partway through, or the deployment rules have
-            //       changed since the last time we created the deployment.
-            //       In that case, we need to use the shard and node
-            //       assignment that we used last time to avoid creating
-            //       the same deployment in another shard
-            let (shard, node_id) = self.place(&name, &network_name, node_id)?;
-            let mut conn = self.primary_conn()?;
-            let (site, site_was_created) =
-                conn.allocate_site(shard, schema.id(), network_name, graft_base)?;
-            let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
-            (site, !site_was_created, node_id)
-        };
-        let site = Arc::new(site);
-
-        // if the deployment already exists, we don't need to perform any copying
-        // so we can set graft_base to None
-        // if it doesn't exist, we need to copy the graft base to the new deployment
-        let graft_base_layout = if !exists {
-            let graft_base = deployment
-                .graft_base
-                .as_ref()
-                .map(|base| self.layout(base))
-                .transpose()?;
-
-            if let Some(graft_base) = &graft_base {
-                self.primary_conn()?
-                    .record_active_copy(graft_base.site.as_ref(), site.as_ref())?;
-            }
-            graft_base
-        } else {
-            None
-        };
-
-        // Create the actual databases schema and metadata entries
-        let deployment_store = self
-            .stores
-            .get(&site.shard)
-            .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
-
-        let index_def = if let Some(graft) = &graft_base.clone() {
-            if let Some(site) = self.sites.get(graft) {
-                let store = self
-                    .stores
-                    .get(&site.shard)
-                    .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
-
-                Some(store.load_indexes(site)?)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        deployment_store
-            .create_deployment(
-                schema,
-                deployment,
-                site.clone(),
-                graft_base_layout,
-                replace,
-                OnSync::None,
-                index_def,
-            )
-            .await?;
-
-        let exists_and_synced = |id: &DeploymentHash| {
-            let (store, _) = self.store(id)?;
-            store.deployment_exists_and_synced(id)
-        };
-
-        // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
-        // potentially deadlock.
-        let mut pconn = self.primary_conn()?;
-        pconn
-            .transaction(|pconn| {
-                async {
-                    // Create subgraph, subgraph version, and assignment
-                    let changes = pconn.create_subgraph_version(
-                        name,
-                        &site,
-                        node_id,
-                        mode,
-                        exists_and_synced,
-                    )?;
-
-                    let event = StoreEvent::new(changes);
-                    pconn.send_store_event(&self.sender, &event)?;
-                    Ok(())
-                }
-                .scope_boxed()
-            })
-            .await?;
-        Ok(site.as_ref().into())
-    }
-
     pub async fn copy_deployment(
         &self,
         src: &DeploymentLocator,
@@ -781,22 +797,6 @@ impl Inner {
         // the new active site
         self.find_site(deployment.id.into())?;
         Ok(())
-    }
-
-    // Only for tests to simplify their handling of test fixtures, so that
-    // tests can reset the block pointer of a subgraph by recreating it
-    #[cfg(debug_assertions)]
-    pub async fn create_deployment_replace(
-        &self,
-        name: SubgraphName,
-        schema: &InputSchema,
-        deployment: DeploymentCreate,
-        node_id: NodeId,
-        network_name: String,
-        mode: SubgraphVersionSwitchingMode,
-    ) -> Result<DeploymentLocator, StoreError> {
-        self.create_deployment_internal(name, schema, deployment, node_id, network_name, mode, true)
-            .await
     }
 
     /// Get a connection to the primary shard. Code must never hold one of these
