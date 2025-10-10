@@ -900,7 +900,13 @@ async fn layout_cache() {
     run_test_with_conn(async |conn| {
         let id = DeploymentHash::new("primaryLayoutCache").unwrap();
         let _loc = create_test_subgraph(&id, THINGS_GQL).await;
-        let site = Arc::new(primary_mirror().find_active_site(&id).unwrap().unwrap());
+        let site = Arc::new(
+            primary_mirror()
+                .find_active_site(&id)
+                .await
+                .unwrap()
+                .unwrap(),
+        );
         let table_name = SqlName::verbatim("scalar".to_string());
 
         let cache = LayoutCache::new(Duration::from_millis(10));
