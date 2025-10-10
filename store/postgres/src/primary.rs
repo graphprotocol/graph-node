@@ -951,7 +951,7 @@ impl Connection {
         }
     }
 
-    pub fn create_subgraph_version<F>(
+    pub async fn create_subgraph_version<F>(
         &mut self,
         name: SubgraphName,
         site: &Site,
@@ -960,7 +960,7 @@ impl Connection {
         exists_and_synced: F,
     ) -> Result<Vec<AssignmentChange>, StoreError>
     where
-        F: Fn(&DeploymentHash) -> Result<bool, StoreError>,
+        F: AsyncFn(&DeploymentHash) -> Result<bool, StoreError>,
     {
         use subgraph as s;
         use subgraph_deployment_assignment as a;
@@ -1002,7 +1002,7 @@ impl Connection {
         // or deployment by deploying over it.
         let current_exists_and_synced = match current_deployment {
             None => false,
-            Some(ref id) => exists_and_synced(id)?,
+            Some(ref id) => exists_and_synced(id).await?,
         };
 
         // Check if we even need to make any changes
@@ -1044,7 +1044,7 @@ impl Connection {
         let subgraph_row = update(s::table.filter(s::id.eq(&subgraph_id)));
         // When the new deployment is also synced already, we always want to
         // overwrite the current version
-        let new_exists_and_synced = exists_and_synced(&site.deployment)?;
+        let new_exists_and_synced = exists_and_synced(&site.deployment).await?;
         match (mode, current_exists_and_synced, new_exists_and_synced) {
             (Instant, _, _) | (Synced, false, _) | (Synced, true, true) => {
                 subgraph_row
