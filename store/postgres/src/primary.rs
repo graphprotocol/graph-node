@@ -26,7 +26,7 @@ use diesel::{
     r2d2::PooledConnection,
 };
 use diesel::{pg::PgConnection, r2d2::ConnectionManager};
-use diesel_async::scoped_futures::ScopedBoxFuture;
+use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
 use graph::{
     components::store::DeploymentLocator,
     data::{
@@ -773,35 +773,6 @@ impl Connection {
         Self { conn }
     }
 
-    /// Run `callback` inside a database transaction on the connection that
-    /// `self` contains. If `callback` returns `Ok(T)`, the transaction is
-    /// committed and `Ok(T)` is returned. If `callback` returns `Err(E)`,
-    /// the transaction is rolled back and `Err(E)` is returned. If
-    /// committing or rolling back the transaction fails, return an error
-    pub(crate) fn transaction<T, F>(&mut self, callback: F) -> Result<T, StoreError>
-    where
-        F: FnOnce(&mut Self) -> Result<T, StoreError>,
-    {
-        type TM = <PooledConnection<ConnectionManager<PgConnection>> as diesel::Connection>::TransactionManager;
-
-        TM::begin_transaction(&mut self.conn)?;
-        match callback(self) {
-            Ok(value) => {
-                TM::commit_transaction(&mut self.conn)?;
-                Ok(value)
-            }
-            Err(user_error) => match TM::rollback_transaction(&mut self.conn) {
-                Ok(()) => Err(user_error),
-                Err(diesel::result::Error::BrokenTransactionManager) => {
-                    // In this case we are probably more interested by the
-                    // original error, which likely caused this
-                    Err(user_error)
-                }
-                Err(rollback_error) => Err(rollback_error.into()),
-            },
-        }
-    }
-
     /// Run an async `callback` inside a database transaction on the
     /// connection that `self` contains. If `callback` returns `Ok(T)`, the
     /// transaction is committed and `Ok(T)` is returned. If `callback`
@@ -1470,36 +1441,40 @@ impl Connection {
 
     /// Remove all subgraph versions, the entry in `deployment_schemas` and the entry in
     /// `subgraph_features` for subgraph `id` in a transaction
-    pub fn drop_site(&mut self, site: &Site) -> Result<(), StoreError> {
+    pub async fn drop_site(&mut self, site: &Site) -> Result<(), StoreError> {
         use deployment_schemas as ds;
         use subgraph_features as f;
         use subgraph_version as v;
         use unused_deployments as u;
 
-        self.transaction(|pconn| {
-            let conn = &mut pconn.conn;
+        self.transaction_async(|pconn| {
+            async {
+                let conn = &mut pconn.conn;
 
-            delete(ds::table.filter(ds::id.eq(site.id))).execute(conn)?;
+                delete(ds::table.filter(ds::id.eq(site.id))).execute(conn)?;
 
-            // If there is no site for this deployment any more, we can get
-            // rid of versions pointing to it
-            let exists = select(exists(
-                ds::table.filter(ds::subgraph.eq(site.deployment.as_str())),
-            ))
-            .get_result::<bool>(conn)?;
-            if !exists {
-                delete(v::table.filter(v::deployment.eq(site.deployment.as_str())))
+                // If there is no site for this deployment any more, we can get
+                // rid of versions pointing to it
+                let exists = select(exists(
+                    ds::table.filter(ds::subgraph.eq(site.deployment.as_str())),
+                ))
+                .get_result::<bool>(conn)?;
+                if !exists {
+                    delete(v::table.filter(v::deployment.eq(site.deployment.as_str())))
+                        .execute(conn)?;
+
+                    // Remove the entry in `subgraph_features`
+                    delete(f::table.filter(f::id.eq(site.deployment.as_str()))).execute(conn)?;
+                }
+
+                update(u::table.filter(u::id.eq(site.id)))
+                    .set(u::removed_at.eq(sql("now()")))
                     .execute(conn)?;
-
-                // Remove the entry in `subgraph_features`
-                delete(f::table.filter(f::id.eq(site.deployment.as_str()))).execute(conn)?;
+                Ok(())
             }
-
-            update(u::table.filter(u::id.eq(site.id)))
-                .set(u::removed_at.eq(sql("now()")))
-                .execute(conn)?;
-            Ok(())
+            .scope_boxed()
         })
+        .await
     }
 
     pub fn locate_site(&mut self, locator: DeploymentLocator) -> Result<Option<Site>, StoreError> {

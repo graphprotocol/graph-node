@@ -926,7 +926,7 @@ impl SubgraphStoreInner {
         if removable {
             store.drop_deployment(&site).await?;
 
-            self.primary_conn()?.drop_site(site.as_ref())?;
+            self.primary_conn()?.drop_site(site.as_ref()).await?;
         } else {
             self.primary_conn()?
                 .unused_deployment_is_used(site.as_ref())?;
