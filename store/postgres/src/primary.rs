@@ -2133,7 +2133,10 @@ impl Mirror {
             .await
     }
 
-    pub fn find_active_site(&self, subgraph: &DeploymentHash) -> Result<Option<Site>, StoreError> {
+    pub async fn find_active_site(
+        &self,
+        subgraph: &DeploymentHash,
+    ) -> Result<Option<Site>, StoreError> {
         self.read(|conn| queries::find_active_site(conn, subgraph))
     }
 

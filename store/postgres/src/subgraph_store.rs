@@ -572,14 +572,15 @@ impl Inner {
     }
 
     /// Return the active `Site` for this deployment hash
-    fn site(&self, id: &DeploymentHash) -> Result<Arc<Site>, StoreError> {
+    async fn site(&self, id: &DeploymentHash) -> Result<Arc<Site>, StoreError> {
         if let Some(site) = self.sites.get(id) {
             return Ok(site);
         }
 
         let site = self
             .mirror
-            .find_active_site(id)?
+            .find_active_site(id)
+            .await?
             .ok_or_else(|| StoreError::DeploymentNotFound(id.to_string()))?;
         let site = Arc::new(site);
 
@@ -622,7 +623,7 @@ impl Inner {
         &self,
         id: &DeploymentHash,
     ) -> Result<(&Arc<DeploymentStore>, Arc<Site>), StoreError> {
-        let site = self.site(id)?;
+        let site = self.site(id).await?;
         let store = self
             .stores
             .get(&site.shard)
@@ -1627,7 +1628,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     async fn is_deployed(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
-        match self.site(id) {
+        match self.site(id).await {
             Ok(_) => Ok(true),
             Err(StoreError::DeploymentNotFound(_)) => Ok(false),
             Err(e) => Err(e),
