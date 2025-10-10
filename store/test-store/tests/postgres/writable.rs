@@ -107,13 +107,6 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
         .unwrap()
 }
 
-/// Removes test data from the database behind the store.
-fn remove_test_data(store: Arc<DieselSubgraphStore>) {
-    store
-        .delete_all_entities_for_test_use_only()
-        .expect("deleting test entities succeeds");
-}
-
 /// Test harness for running database integration tests.
 fn run_test<R, F>(test: F)
 where
@@ -130,7 +123,7 @@ where
     run_test_sequentially(|store| async move {
         let subgraph_store = store.subgraph_store();
         // Reset state before starting
-        remove_test_data(subgraph_store.clone());
+        remove_subgraphs().await;
 
         // Seed database with test data
         let deployment = insert_test_data(subgraph_store.clone()).await;

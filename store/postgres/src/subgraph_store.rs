@@ -552,7 +552,7 @@ impl Inner {
 
     // Only needed for tests
     #[cfg(debug_assertions)]
-    pub(crate) fn clear_caches(&self) {
+    pub(crate) async fn clear_caches(&self) {
         for store in self.stores.values() {
             store.layout_cache.clear();
         }
@@ -561,7 +561,7 @@ impl Inner {
 
     // Only needed for tests
     #[cfg(debug_assertions)]
-    pub fn shard(&self, deployment: &DeploymentLocator) -> Result<Shard, StoreError> {
+    pub async fn shard(&self, deployment: &DeploymentLocator) -> Result<Shard, StoreError> {
         self.find_site(deployment.id.into())
             .map(|site| site.shard.clone())
     }
@@ -829,7 +829,7 @@ impl Inner {
     /// and should never be called from any other code. Unfortunately, Rust makes
     /// it very hard to export items just for testing
     #[cfg(debug_assertions)]
-    pub fn delete_all_entities_for_test_use_only(&self) -> Result<(), StoreError> {
+    pub async fn remove_all_subgraphs_for_test_use_only(&self) -> Result<(), StoreError> {
         let mut pconn = self.primary_conn()?;
         let schemas = pconn.sites()?;
 
@@ -842,7 +842,7 @@ impl Inner {
         for store in self.stores.values() {
             store.drop_all_metadata()?;
         }
-        self.clear_caches();
+        self.clear_caches().await;
         Ok(())
     }
 
@@ -1045,7 +1045,7 @@ impl Inner {
     }
 
     #[cfg(debug_assertions)]
-    pub fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
+    pub async fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
         let (store, _) = self.store(id)?;
         store.error_count(id)
     }
