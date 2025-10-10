@@ -1501,7 +1501,7 @@ impl Connection {
             .collect()
     }
 
-    pub fn send_store_event(
+    pub async fn send_store_event(
         &mut self,
         sender: &NotificationSender,
         event: &StoreEvent,

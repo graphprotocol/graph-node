@@ -367,7 +367,9 @@ impl SyncStore {
                 .transaction(|pconn| {
                     async {
                         let changes = pconn.unassign_subgraph(site)?;
-                        pconn.send_store_event(&sender, &StoreEvent::new(changes))
+                        pconn
+                            .send_store_event(&sender, &StoreEvent::new(changes))
+                            .await
                     }
                     .scope_boxed()
                 })
@@ -384,7 +386,9 @@ impl SyncStore {
                 .transaction(|pconn| {
                     async {
                         let changes = pconn.pause_subgraph(site)?;
-                        pconn.send_store_event(&sender, &StoreEvent::new(changes))
+                        pconn
+                            .send_store_event(&sender, &StoreEvent::new(changes))
+                            .await
                     }
                     .scope_boxed()
                 })
@@ -472,9 +476,7 @@ impl SyncStore {
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
             pconn
-                .transaction(|pconn| {
-                    async { pconn.send_store_event(&sender, &event) }.scope_boxed()
-                })
+                .transaction(|pconn| pconn.send_store_event(&sender, &event).scope_boxed())
                 .await
         })
         .await

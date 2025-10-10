@@ -119,6 +119,7 @@ pub async fn reassign_deployment(
 
     catalog_conn
         .send_store_event(&notification_sender, &StoreEvent::new(changes))
+        .await
         .map_err(GraphmanError::from)?;
 
     let mirror = catalog::Mirror::primary_only(primary_pool);
