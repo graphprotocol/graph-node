@@ -13,7 +13,6 @@ use std::{
 };
 use std::{iter::FromIterator, time::Duration};
 
-use graph::futures03::future::join_all;
 use graph::{
     cheap_clone::CheapClone,
     components::{
@@ -37,6 +36,7 @@ use graph::{
     url::Url,
     util::timed_cache::TimedCache,
 };
+use graph::{derive::CheapClone, futures03::future::join_all};
 
 use crate::{
     deployment::{OnSync, SubgraphHealth},
@@ -203,13 +203,9 @@ pub mod unused {
 /// shards.  The actual work is done by code in the `primary` module for
 /// queries against the primary store, and by the `DeploymentStore` for
 /// access to deployment data and metadata.
-#[derive(Clone)]
+#[derive(Clone, CheapClone)]
 pub struct SubgraphStore {
-    inner: Arc<SubgraphStoreInner>,
-    /// Base URL for the GraphQL endpoint from which
-    /// subgraph forks will fetch entities.
-    /// Example: https://api.thegraph.com/subgraphs/
-    fork_base: Option<Url>,
+    inner: Arc<Inner>,
 }
 
 impl SubgraphStore {
@@ -236,10 +232,9 @@ impl SubgraphStore {
         registry: Arc<MetricsRegistry>,
     ) -> Self {
         Self {
-            inner: Arc::new(SubgraphStoreInner::new(
-                logger, stores, placer, sender, registry,
+            inner: Arc::new(Inner::new(
+                logger, stores, placer, sender, registry, fork_base,
             )),
-            fork_base,
         }
     }
 
@@ -318,14 +313,14 @@ impl SubgraphStore {
 }
 
 impl std::ops::Deref for SubgraphStore {
-    type Target = SubgraphStoreInner;
+    type Target = Inner;
 
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-pub struct SubgraphStoreInner {
+pub struct Inner {
     mirror: PrimaryMirror,
     stores: HashMap<Shard, Arc<DeploymentStore>>,
     /// Cache for the mapping from deployment id to shard/namespace/id. Only
@@ -339,9 +334,13 @@ pub struct SubgraphStoreInner {
     sender: Arc<NotificationSender>,
     writables: Mutex<HashMap<DeploymentId, Arc<WritableStore>>>,
     registry: Arc<MetricsRegistry>,
+    /// Base URL for the GraphQL endpoint from which
+    /// subgraph forks will fetch entities.
+    /// Example: https://api.thegraph.com/subgraphs/
+    fork_base: Option<Url>,
 }
 
-impl SubgraphStoreInner {
+impl Inner {
     /// Create a new store for subgraphs that distributes deployments across
     /// multiple databases
     ///
@@ -362,6 +361,7 @@ impl SubgraphStoreInner {
         placer: Arc<dyn DeploymentPlacer + Send + Sync + 'static>,
         sender: Arc<NotificationSender>,
         registry: Arc<MetricsRegistry>,
+        fork_base: Option<Url>,
     ) -> Self {
         let primary = stores
             .iter()
@@ -394,7 +394,7 @@ impl SubgraphStoreInner {
             },
         ));
         let sites = TimedCache::new(SITES_CACHE_TTL);
-        SubgraphStoreInner {
+        Inner {
             mirror,
             stores,
             sites,
@@ -402,6 +402,7 @@ impl SubgraphStoreInner {
             sender,
             writables: Mutex::new(HashMap::new()),
             registry,
+            fork_base,
         }
     }
 
