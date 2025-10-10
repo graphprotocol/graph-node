@@ -113,10 +113,10 @@ pub async fn analyze(
     entity_name: Option<&str>,
 ) -> Result<(), anyhow::Error> {
     let locator = search.locate_unique(&pool).await?;
-    analyze_loc(store, &locator, entity_name)
+    analyze_loc(store, &locator, entity_name).await
 }
 
-fn analyze_loc(
+async fn analyze_loc(
     store: Arc<SubgraphStore>,
     locator: &DeploymentLocator,
     entity_name: Option<&str>,
@@ -125,7 +125,10 @@ fn analyze_loc(
         Some(entity_name) => println!("Analyzing table sgd{}.{entity_name}", locator.id),
         None => println!("Analyzing all tables for sgd{}", locator.id),
     }
-    store.analyze(locator, entity_name).map_err(|e| anyhow!(e))
+    store
+        .analyze(locator, entity_name)
+        .await
+        .map_err(|e| anyhow!(e))
 }
 
 pub async fn target(
@@ -134,7 +137,7 @@ pub async fn target(
     search: &DeploymentSearch,
 ) -> Result<(), anyhow::Error> {
     let locator = search.locate_unique(&primary).await?;
-    let (default, targets) = store.stats_targets(&locator)?;
+    let (default, targets) = store.stats_targets(&locator).await?;
 
     let has_targets = targets
         .values()
@@ -188,7 +191,7 @@ pub async fn set_target(
         .await?;
 
     if !no_analyze {
-        analyze_loc(store, &locator, entity)?;
+        analyze_loc(store, &locator, entity).await?;
     }
     Ok(())
 }
