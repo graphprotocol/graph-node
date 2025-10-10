@@ -66,8 +66,8 @@ impl WritableSubgraphStore {
         self.0.load_deployment(site)
     }
 
-    fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
-        self.0.find_site(id)
+    async fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
+        self.0.find_site(id).await
     }
 
     fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
@@ -421,8 +421,8 @@ impl SyncStore {
         .await
     }
 
-    fn maybe_find_site(&self, src: DeploymentId) -> Result<Option<Arc<Site>>, StoreError> {
-        match self.store.find_site(src) {
+    async fn maybe_find_site(&self, src: DeploymentId) -> Result<Option<Arc<Site>>, StoreError> {
+        match self.store.find_site(src).await {
             Ok(site) => Ok(Some(site)),
             Err(StoreError::DeploymentNotFound(_)) => Ok(None),
             Err(e) => Err(e),
@@ -451,7 +451,7 @@ impl SyncStore {
             // grafts) so we make sure that the source, if it exists, has
             // the same hash as `self.site`
             if let Some(src) = self.writable.source_of_copy(&self.site)? {
-                if let Some(src) = self.maybe_find_site(src)? {
+                if let Some(src) = self.maybe_find_site(src).await? {
                     if src.deployment == self.site.deployment {
                         let on_sync = self.writable.on_sync(&self.site)?;
                         if on_sync.activate() {

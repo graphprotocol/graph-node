@@ -199,7 +199,7 @@ pub async fn activate(
                 shard
             )
         })?;
-    store.activate(&deployment)?;
+    store.activate(&deployment).await?;
     println!("activated copy {}", deployment);
     Ok(())
 }
