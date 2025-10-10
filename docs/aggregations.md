@@ -201,3 +201,24 @@ token_stats(interval: "hour",
   avgVolume
 }
 ```
+## Query Block Cache
+
+The **query block cache** improves performance for timeseries and aggregation queries
+by storing recently processed blocks in memory. Instead of recomputing results
+or fetching blocks from storage repeatedly, `graph-node` reads from this cache.
+
+### Modules Reading from the Cache
+- `GraphQLExecutor`: Reads blocks before executing queries.
+- `Store`: Retrieves cached blocks when processing timeseries and aggregation queries.
+
+### Modules Writing to the Cache
+- `BlockStreamProcessor`: Writes newly processed blocks to the cache.
+- `Indexer`: Updates the cache after syncing new events.
+
+### Configuration
+- `CACHE_SIZE`: Maximum number of blocks stored in memory (default 1000).
+- `CACHE_EXPIRY`: Time (in seconds) before cached blocks expire (default 300s).
+
+### Debugging Tips
+- To monitor cache hits/misses, enable debug logs in `graph-node`.
+- If queries are slow, check that `CACHE_SIZE` is sufficient and `CACHE_EXPIRY` is reasonable.
