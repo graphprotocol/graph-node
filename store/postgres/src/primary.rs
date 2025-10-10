@@ -26,6 +26,7 @@ use diesel::{
     r2d2::PooledConnection,
 };
 use diesel::{pg::PgConnection, r2d2::ConnectionManager};
+use diesel_async::scoped_futures::ScopedBoxFuture;
 use graph::{
     components::store::DeploymentLocator,
     data::{
@@ -33,6 +34,7 @@ use graph::{
         subgraph::{status, DeploymentFeatures},
     },
     derive::CheapClone,
+    futures03::{future::BoxFuture, FutureExt},
     internal_error,
     prelude::{
         anyhow,
@@ -798,6 +800,46 @@ impl Connection {
                 Err(rollback_error) => Err(rollback_error.into()),
             },
         }
+    }
+
+    /// Run an async `callback` inside a database transaction on the
+    /// connection that `self` contains. If `callback` returns `Ok(T)`, the
+    /// transaction is committed and `Ok(T)` is returned. If `callback`
+    /// returns `Err(E)`, the transaction is rolled back and `Err(E)` is
+    /// returned. If committing or rolling back the transaction fails,
+    /// return an error
+    pub(crate) fn transaction_async<'a, 'conn, R, F>(
+        &'conn mut self,
+        callback: F,
+    ) -> BoxFuture<'conn, Result<R, StoreError>>
+    where
+        F: for<'r> FnOnce(&'r mut Self) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
+            + Send
+            + 'a,
+        R: Send + 'a,
+        'a: 'conn,
+    {
+        type TM = <PooledConnection<ConnectionManager<PgConnection>> as diesel::Connection>::TransactionManager;
+
+        async move {
+            TM::begin_transaction(&mut self.conn)?;
+            match callback(self).await {
+                Ok(value) => {
+                    TM::commit_transaction(&mut self.conn)?;
+                    Ok(value)
+                }
+                Err(user_error) => match TM::rollback_transaction(&mut self.conn) {
+                    Ok(()) => Err(user_error),
+                    Err(diesel::result::Error::BrokenTransactionManager) => {
+                        // In this case we are probably more interested by the
+                        // original error, which likely caused this
+                        Err(user_error)
+                    }
+                    Err(rollback_error) => Err(rollback_error.into()),
+                },
+            }
+        }
+        .boxed()
     }
 
     /// Signal any copy process that might be copying into one of these
