@@ -809,12 +809,14 @@ impl SubgraphStoreInner {
         Ok(primary::Connection::new(conn))
     }
 
-    pub(crate) fn replica_for_query(
+    pub(crate) async fn replica_for_query(
         &self,
         target: QueryTarget,
     ) -> Result<(Arc<DeploymentStore>, Arc<Site>, ReplicaId), StoreError> {
         let id = match target {
-            QueryTarget::Name(name, _) => self.mirror.current_deployment_for_subgraph(&name)?,
+            QueryTarget::Name(name, _) => {
+                self.mirror.current_deployment_for_subgraph(&name).await?
+            }
             QueryTarget::Deployment(id, _) => id,
         };
 
@@ -951,14 +953,14 @@ impl SubgraphStoreInner {
     ) -> Result<Vec<status::Info>, StoreError> {
         let sites = match filter {
             status::Filter::SubgraphName(name) => {
-                let deployments = self.mirror.deployments_for_subgraph(&name)?;
+                let deployments = self.mirror.deployments_for_subgraph(&name).await?;
                 if deployments.is_empty() {
                     return Ok(Vec::new());
                 }
                 deployments
             }
             status::Filter::SubgraphVersion(name, use_current) => {
-                let deployment = self.mirror.subgraph_version(&name, use_current)?;
+                let deployment = self.mirror.subgraph_version(&name, use_current).await?;
                 match deployment {
                     Some(deployment) => vec![deployment],
                     None => {
@@ -967,11 +969,11 @@ impl SubgraphStoreInner {
                 }
             }
             status::Filter::Deployments(deployments) => {
-                self.mirror.find_sites(&deployments, true)?
+                self.mirror.find_sites(&deployments, true).await?
             }
             status::Filter::DeploymentIds(ids) => {
                 let ids: Vec<_> = ids.into_iter().map(|id| id.into()).collect();
-                self.mirror.find_sites_by_id(&ids)?
+                self.mirror.find_sites_by_id(&ids).await?
             }
         };
 
@@ -986,12 +988,12 @@ impl SubgraphStoreInner {
                 .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
             infos.extend(store.deployment_statuses(&sites).await?);
         }
-        self.mirror.fill_assignments(&mut infos)?;
+        self.mirror.fill_assignments(&mut infos).await?;
         Ok(infos)
     }
 
     pub(crate) async fn version_info(&self, version: &str) -> Result<VersionInfo, StoreError> {
-        if let Some((deployment_id, created_at)) = self.mirror.version_info(version)? {
+        if let Some((deployment_id, created_at)) = self.mirror.version_info(version).await? {
             let id = DeploymentHash::new(deployment_id.clone())
                 .map_err(|id| internal_error!("illegal deployment id {}", id))?;
             let (store, site) = self.store(&id)?;
@@ -1027,18 +1029,20 @@ impl SubgraphStoreInner {
         }
     }
 
-    pub(crate) fn versions_for_subgraph_id(
+    pub(crate) async fn versions_for_subgraph_id(
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
-        self.mirror.versions_for_subgraph_id(subgraph_id)
+        self.mirror.versions_for_subgraph_id(subgraph_id).await
     }
 
-    pub(crate) fn subgraphs_for_deployment_hash(
+    pub(crate) async fn subgraphs_for_deployment_hash(
         &self,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
-        self.mirror.subgraphs_by_deployment_hash(deployment_hash)
+        self.mirror
+            .subgraphs_by_deployment_hash(deployment_hash)
+            .await
     }
 
     #[cfg(debug_assertions)]
@@ -1142,14 +1146,15 @@ impl SubgraphStoreInner {
         store.find(site, query).await
     }
 
-    pub fn locate_in_shard(
+    pub async fn locate_in_shard(
         &self,
         hash: &DeploymentHash,
         shard: Shard,
     ) -> Result<Option<DeploymentLocator>, StoreError> {
         Ok(self
             .mirror
-            .find_site_in_shard(hash, &shard)?
+            .find_site_in_shard(hash, &shard)
+            .await?
             .as_ref()
             .map(|site| site.into()))
     }
@@ -1519,7 +1524,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     async fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
-        self.mirror.subgraph_exists(name)
+        self.mirror.subgraph_exists(name).await
     }
 
     async fn subgraph_features(
@@ -1649,14 +1654,15 @@ impl SubgraphStoreTrait for SubgraphStore {
     async fn locators(&self, hash: &str) -> Result<Vec<DeploymentLocator>, StoreError> {
         Ok(self
             .mirror
-            .find_sites(&[hash.to_string()], false)?
+            .find_sites(&[hash.to_string()], false)
+            .await?
             .iter()
             .map(|site| site.into())
             .collect())
     }
 
     async fn active_locator(&self, hash: &str) -> Result<Option<DeploymentLocator>, StoreError> {
-        let sites = self.mirror.find_sites(&[hash.to_string()], true)?;
+        let sites = self.mirror.find_sites(&[hash.to_string()], true).await?;
         if sites.len() > 1 {
             return Err(internal_error!(
                 "There are {} active deployments for {hash}, there should only be one",

@@ -2020,7 +2020,7 @@ impl Mirror {
 
     /// Refresh the contents of mirrored tables from the primary (through
     /// the fdw mapping that `ForeignServer` establishes)
-    pub(crate) fn refresh_tables(
+    pub(crate) async fn refresh_tables(
         conn: &mut PgConnection,
         handle: &CancelHandle,
     ) -> Result<(), StoreError> {
@@ -2143,22 +2143,22 @@ impl Mirror {
         self.read(|conn| queries::find_site_by_ref(conn, id))
     }
 
-    pub fn current_deployment_for_subgraph(
+    pub async fn current_deployment_for_subgraph(
         &self,
         name: &SubgraphName,
     ) -> Result<DeploymentHash, StoreError> {
         self.read(|conn| queries::current_deployment_for_subgraph(conn, name))
     }
 
-    pub fn deployments_for_subgraph(&self, name: &str) -> Result<Vec<Site>, StoreError> {
+    pub async fn deployments_for_subgraph(&self, name: &str) -> Result<Vec<Site>, StoreError> {
         self.read(|conn| queries::deployments_for_subgraph(conn, name))
     }
 
-    pub fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
+    pub async fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
         self.read(|conn| queries::subgraph_exists(conn, name))
     }
 
-    pub fn subgraph_version(
+    pub async fn subgraph_version(
         &self,
         name: &str,
         use_current: bool,
@@ -2168,25 +2168,32 @@ impl Mirror {
 
     /// Find sites by their subgraph deployment hashes. If `ids` is empty,
     /// return all sites
-    pub fn find_sites(&self, ids: &[String], only_active: bool) -> Result<Vec<Site>, StoreError> {
+    pub async fn find_sites(
+        &self,
+        ids: &[String],
+        only_active: bool,
+    ) -> Result<Vec<Site>, StoreError> {
         self.read(|conn| queries::find_sites(conn, ids, only_active))
     }
 
     /// Find sites by their subgraph deployment ids. If `ids` is empty,
     /// return no sites
-    pub fn find_sites_by_id(&self, ids: &[DeploymentId]) -> Result<Vec<Site>, StoreError> {
+    pub async fn find_sites_by_id(&self, ids: &[DeploymentId]) -> Result<Vec<Site>, StoreError> {
         self.read(|conn| queries::find_sites_by_id(conn, ids))
     }
 
-    pub fn fill_assignments(&self, infos: &mut [status::Info]) -> Result<(), StoreError> {
+    pub async fn fill_assignments(&self, infos: &mut [status::Info]) -> Result<(), StoreError> {
         self.read(|conn| queries::fill_assignments(conn, infos))
     }
 
-    pub fn version_info(&self, version: &str) -> Result<Option<(String, String)>, StoreError> {
+    pub async fn version_info(
+        &self,
+        version: &str,
+    ) -> Result<Option<(String, String)>, StoreError> {
         self.read(|conn| queries::version_info(conn, version))
     }
 
-    pub fn versions_for_subgraph_id(
+    pub async fn versions_for_subgraph_id(
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
@@ -2194,14 +2201,14 @@ impl Mirror {
     }
 
     /// Returns all (subgraph_name, version) pairs for a given deployment hash.
-    pub fn subgraphs_by_deployment_hash(
+    pub async fn subgraphs_by_deployment_hash(
         &self,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
         self.read(|conn| queries::subgraphs_by_deployment_hash(conn, deployment_hash))
     }
 
-    pub fn find_site_in_shard(
+    pub async fn find_site_in_shard(
         &self,
         subgraph: &DeploymentHash,
         shard: &Shard,

@@ -1371,7 +1371,7 @@ async fn main() -> anyhow::Result<()> {
                     .await
                 }
                 Activate { deployment, shard } => {
-                    commands::copy::activate(ctx.subgraph_store().await, deployment, shard)
+                    commands::copy::activate(ctx.subgraph_store().await, deployment, shard).await
                 }
                 List => commands::copy::list(ctx.pools().await).await,
                 Status { dst } => commands::copy::status(ctx.pools().await, &dst).await,
