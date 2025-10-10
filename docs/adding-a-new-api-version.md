@@ -35,3 +35,26 @@ have been rolled out to production (hosted-service):
     7.  Release in NPM
 
 5.  Update `graph-docs` with the new `apiVersion` content.
+
+## Query Block Cache
+
+The query block cache is used to speed up subgraph queries by storing recently
+processed blocks in memory. This helps avoid re-fetching and recomputing
+block data repeatedly.
+
+### Modules Reading from the Cache
+- `GraphQLExecutor`: Reads blocks before executing queries.
+- `Store`: Retrieves cached blocks when processing subgraph queries.
+
+### Modules Writing to the Cache
+- `BlockStreamProcessor`: Writes newly processed blocks to the cache.
+- `Indexer`: Updates the cache after syncing new events.
+
+### Configuration
+- `CACHE_SIZE`: Maximum number of blocks stored in memory.
+- `CACHE_EXPIRY`: Time (in seconds) before cached blocks are considered stale.
+
+### Debugging Tips
+- To check cache hits/misses, enable debug logging in the `graph-node` service.
+- If queries are slow, verify that `CACHE_SIZE` is sufficient and `CACHE_EXPIRY` is reasonable.
+
