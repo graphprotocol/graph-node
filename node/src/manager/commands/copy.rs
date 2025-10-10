@@ -181,12 +181,17 @@ pub async fn create(
     .map_err(|e| anyhow!("cannot copy {src}: {e}"))
 }
 
-pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) -> Result<(), Error> {
+pub async fn activate(
+    store: Arc<SubgraphStore>,
+    deployment: String,
+    shard: String,
+) -> Result<(), Error> {
     let shard = Shard::new(shard)?;
     let deployment =
         DeploymentHash::new(deployment).map_err(|s| anyhow!("illegal deployment hash `{}`", s))?;
     let deployment = store
-        .locate_in_shard(&deployment, shard.clone())?
+        .locate_in_shard(&deployment, shard.clone())
+        .await?
         .ok_or_else(|| {
             anyhow!(
                 "could not find a copy for {} in shard {}",
