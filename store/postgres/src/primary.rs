@@ -981,7 +981,12 @@ impl Connection {
             .first::<(String, Option<String>)>(&mut self.conn)
             .optional()?;
         let (subgraph_id, current_deployment) = match info {
-            Some((subgraph_id, current_deployment)) => (subgraph_id, current_deployment),
+            Some((subgraph_id, current_deployment)) => {
+                let current_deployment = current_deployment
+                    .map(|d| DeploymentHash::new(d).map_err(StoreError::DeploymentNotFound))
+                    .transpose()?;
+                (subgraph_id, current_deployment)
+            }
             None => (self.create_subgraph(&name)?, None),
         };
         let pending_deployment = s::table
@@ -995,21 +1000,14 @@ impl Connection {
         // The `optional` below only comes into play if data is corrupted/missing;
         // ignoring that via `optional` makes it possible to fix a missing version
         // or deployment by deploying over it.
-        let current_exists_and_synced = current_deployment
-            .as_deref()
-            .map(|id| {
-                DeploymentHash::new(id)
-                    .map_err(StoreError::DeploymentNotFound)
-                    .and_then(|id| exists_and_synced(&id))
-            })
-            .transpose()?
-            .unwrap_or(false);
+        let current_exists_and_synced = match current_deployment {
+            None => false,
+            Some(ref id) => exists_and_synced(id)?,
+        };
 
         // Check if we even need to make any changes
         let change_needed = match (mode, current_exists_and_synced) {
-            (Instant, _) | (Synced, false) => {
-                current_deployment.as_deref() != Some(site.deployment.as_str())
-            }
+            (Instant, _) | (Synced, false) => current_deployment.as_ref() != Some(&site.deployment),
             (Synced, true) => pending_deployment.as_deref() != Some(site.deployment.as_str()),
         };
         if !change_needed {
