@@ -27,7 +27,7 @@ where
 
     RUNTIME.block_on(async {
         cleanup_graphman_command_executions_table().await;
-        remove_subgraphs();
+        remove_subgraphs().await;
 
         server::start().await;
 

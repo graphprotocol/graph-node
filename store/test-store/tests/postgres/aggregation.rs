@@ -21,8 +21,10 @@ use graph::{
     prelude::lazy_static,
     schema::InputSchema,
 };
-use graph_store_postgres::{Store as DieselStore, SubgraphStore};
-use test_store::{create_test_subgraph, run_test_sequentially, BLOCKS, LOGGER, METRICS_REGISTRY};
+use graph_store_postgres::Store as DieselStore;
+use test_store::{
+    create_test_subgraph, remove_subgraphs, run_test_sequentially, BLOCKS, LOGGER, METRICS_REGISTRY,
+};
 
 const SCHEMA: &str = r#"
 type Data @entity(timeseries: true) {
@@ -61,12 +63,6 @@ lazy_static! {
     static ref TOKEN1: Bytes = "0xdeadbeef01".parse().unwrap();
     static ref TOKEN2: Bytes = "0xdeadbeef02".parse().unwrap();
     static ref TIMES: Vec<BlockTime> = vec![minutes(30), minutes(40), minutes(65), minutes(120)];
-}
-
-fn remove_test_data(store: Arc<SubgraphStore>) {
-    store
-        .delete_all_entities_for_test_use_only()
-        .expect("deleting test entities succeeds");
 }
 
 pub async fn insert(
@@ -232,9 +228,8 @@ where
     R: Future<Output = ()> + Send + 'static,
 {
     run_test_sequentially(|store| async move {
-        let subgraph_store = store.subgraph_store();
         // Reset state before starting
-        remove_test_data(subgraph_store.clone());
+        remove_subgraphs().await;
 
         // Seed database with test data
         let hash = DeploymentHash::new("rollupSubgraph").unwrap();
