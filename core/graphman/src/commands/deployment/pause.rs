@@ -80,7 +80,9 @@ pub async fn pause_active_deployment(
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
     let changes = catalog_conn.pause_subgraph(&active_deployment.site)?;
-    catalog_conn.send_store_event(&notification_sender, &StoreEvent::new(changes))?;
+    catalog_conn
+        .send_store_event(&notification_sender, &StoreEvent::new(changes))
+        .await?;
 
     Ok(())
 }
