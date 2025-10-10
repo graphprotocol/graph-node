@@ -411,25 +411,23 @@ impl SubgraphStore {
             )
             .await?;
 
-        let exists_and_synced = |id: &DeploymentHash| {
-            let (store, _) = self.store(id)?;
-            store.deployment_exists_and_synced(id)
-        };
-
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
         let mut pconn = self.primary_conn()?;
         pconn
             .transaction(|pconn| {
-                async {
+                let subgraph_store = self.cheap_clone();
+                let site = site.cheap_clone();
+                async move {
+                    let exists_and_synced = async move |id: &DeploymentHash| {
+                        let (store, _) = subgraph_store.store(id)?;
+                        store.deployment_exists_and_synced(id)
+                    };
+
                     // Create subgraph, subgraph version, and assignment
-                    let changes = pconn.create_subgraph_version(
-                        name,
-                        &site,
-                        node_id,
-                        mode,
-                        exists_and_synced,
-                    )?;
+                    let changes = pconn
+                        .create_subgraph_version(name, &site, node_id, mode, exists_and_synced)
+                        .await?;
 
                     let event = StoreEvent::new(changes);
                     pconn.send_store_event(&self.sender, &event)?;
