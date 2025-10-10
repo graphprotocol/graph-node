@@ -10,6 +10,7 @@ use diesel::{
     query_dsl::methods::FilterDsl as _, sql_query, ExpressionMethods as _, PgConnection,
     RunQueryDsl,
 };
+use diesel_async::scoped_futures::ScopedFutureExt;
 use graph::{
     blockchain::ChainIdentifier,
     components::store::{BlockStore as BlockStoreTrait, QueryPermit},
@@ -458,14 +459,19 @@ impl BlockStore {
         let chain = chain.to_string();
         let this = self.cheap_clone();
         self.mirror
-            .read_async(async move |conn| match primary::find_chain(conn, &chain)? {
-                Some(chain) => {
-                    let chain_store = this
-                        .add_chain_store(&chain, ChainStatus::ReadOnly, false)
-                        .await?;
-                    Ok(Some(chain_store))
+            .read_async(|conn| {
+                async {
+                    match primary::find_chain(conn, &chain)? {
+                        Some(chain) => {
+                            let chain_store = this
+                                .add_chain_store(&chain, ChainStatus::ReadOnly, false)
+                                .await?;
+                            Ok(Some(chain_store))
+                        }
+                        None => Ok(None),
+                    }
                 }
-                None => Ok(None),
+                .scope_boxed()
             })
             .await
     }
