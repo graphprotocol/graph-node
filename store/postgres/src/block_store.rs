@@ -264,7 +264,9 @@ impl BlockStore {
         const CHAIN_HEAD_CACHE_TTL: Duration = Duration::from_secs(2);
 
         let mirror = PrimaryMirror::new(&pools);
-        let existing_chains = mirror.read(|conn| primary::load_chains(conn))?;
+        let existing_chains = mirror
+            .read_async(|conn| async { primary::load_chains(conn) }.scope_boxed())
+            .await?;
         let chain_head_cache = TimedCache::new(CHAIN_HEAD_CACHE_TTL);
         let chains = shards.clone();
 
