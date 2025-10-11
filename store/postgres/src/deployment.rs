@@ -633,7 +633,7 @@ pub async fn block_ptr(
 /// Initialize the subgraph's block pointer. If the block pointer in
 /// `latest_ethereum_block` is set already, do nothing. If it is still
 /// `null`, set it to `start_ethereum_block` from `subgraph_manifest`
-pub fn initialize_block_ptr(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
+pub async fn initialize_block_ptr(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
     use head as h;
     use subgraph_manifest as m;
 
