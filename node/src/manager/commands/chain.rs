@@ -144,7 +144,7 @@ pub async fn remove(primary: ConnectionPool, store: BlockStore, name: String) ->
         let mut conn = graph_store_postgres::command_support::catalog::Connection::new(
             primary.get_async().await?,
         );
-        conn.find_sites_for_network(&name)?
+        conn.find_sites_for_network(&name).await?
     };
 
     if !sites.is_empty() {
