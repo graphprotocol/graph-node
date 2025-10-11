@@ -947,7 +947,7 @@ pub(crate) async fn insert_subgraph_errors(
         insert_subgraph_error(conn, error).await?;
     }
 
-    check_health(logger, conn, id, latest_block)
+    check_health(logger, conn, id, latest_block).await
 }
 
 #[cfg(debug_assertions)]
@@ -965,7 +965,7 @@ pub(crate) async fn error_count(
 
 /// Checks if the subgraph is healthy or unhealthy as of the given block, or the subgraph latest
 /// block if `None`, based on the presence of deterministic errors. Has no effect on failed subgraphs.
-fn check_health(
+async fn check_health(
     logger: &Logger,
     conn: &mut PgConnection,
     id: &DeploymentHash,
@@ -1035,7 +1035,7 @@ pub(crate) fn entities_with_causality_region(
 }
 
 /// Reverts the errors and updates the subgraph health if necessary.
-pub(crate) fn revert_subgraph_errors(
+pub(crate) async fn revert_subgraph_errors(
     logger: &Logger,
     conn: &mut PgConnection,
     id: &DeploymentHash,
@@ -1055,7 +1055,7 @@ pub(crate) fn revert_subgraph_errors(
     // The result will be the same at `reverted_block` or `reverted_block - 1` since the errors at
     // `reverted_block` were just deleted, but semantically we care about `reverted_block - 1` which
     // is the block being reverted to.
-    check_health(&logger, conn, id, reverted_block - 1)?;
+    check_health(&logger, conn, id, reverted_block - 1).await?;
 
     // If the deployment is failed in both `failed` and `status` columns,
     // update both values respectively to `false` and `healthy`. Basically
