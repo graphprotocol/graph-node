@@ -916,7 +916,7 @@ impl Connection {
     /// Create a new subgraph with the given name. If one already exists, use
     /// the existing one. Return the `id` of the newly created or existing
     /// subgraph
-    pub fn create_subgraph(&mut self, name: &SubgraphName) -> Result<String, StoreError> {
+    pub async fn create_subgraph(&mut self, name: &SubgraphName) -> Result<String, StoreError> {
         use subgraph as s;
 
         let conn = &mut self.conn;
@@ -983,7 +983,7 @@ impl Connection {
                     .transpose()?;
                 (subgraph_id, current_deployment)
             }
-            None => (self.create_subgraph(&name)?, None),
+            None => (self.create_subgraph(&name).await?, None),
         };
         let pending_deployment = s::table
             .left_outer_join(v::table.on(s::pending_version.eq(v::id.nullable())))

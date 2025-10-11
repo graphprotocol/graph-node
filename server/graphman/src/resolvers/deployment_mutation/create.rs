@@ -24,7 +24,7 @@ pub async fn run(ctx: &GraphmanContext, name: &String) -> Result<()> {
         }
     };
 
-    catalog_conn.create_subgraph(&name)?;
+    catalog_conn.create_subgraph(&name).await?;
 
     Ok(())
 }
