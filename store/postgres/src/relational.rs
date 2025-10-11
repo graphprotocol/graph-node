@@ -1068,7 +1068,7 @@ impl Layout {
         site: &Site,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        crate::dynds::revert(conn, site, block)?;
+        crate::dynds::revert(conn, site, block).await?;
         crate::deployment::revert_subgraph_errors(logger, conn, &site.deployment, block).await?;
 
         Ok(())
