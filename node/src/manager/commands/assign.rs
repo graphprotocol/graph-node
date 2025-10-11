@@ -21,7 +21,7 @@ pub async fn unassign(
         .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
 
     println!("unassigning {locator}");
-    let changes = conn.unassign_subgraph(&site)?;
+    let changes = conn.unassign_subgraph(&site).await?;
     conn.send_store_event(sender, &StoreEvent::new(changes))
         .await?;
 

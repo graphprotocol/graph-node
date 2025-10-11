@@ -537,7 +537,7 @@ fn on_sync() {
 
             let mut primary = primary_connection().await;
             let src_site = primary.locate_site(src.clone())?.unwrap();
-            primary.unassign_subgraph(&src_site)?;
+            primary.unassign_subgraph(&src_site).await?;
             store.activate(&dst).await?;
             store.remove_deployment(src.id.into()).await?;
 

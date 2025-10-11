@@ -24,7 +24,7 @@ pub async fn run(ctx: &GraphmanContext, name: &String) -> Result<()> {
         }
     };
 
-    let changes = catalog_conn.remove_subgraph(name)?;
+    let changes = catalog_conn.remove_subgraph(name).await?;
     catalog_conn
         .send_store_event(&ctx.notification_sender, &StoreEvent::new(changes))
         .await?;

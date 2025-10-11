@@ -366,7 +366,7 @@ impl SyncStore {
             pconn
                 .transaction(|pconn| {
                     async {
-                        let changes = pconn.unassign_subgraph(site)?;
+                        let changes = pconn.unassign_subgraph(site).await?;
                         pconn
                             .send_store_event(&sender, &StoreEvent::new(changes))
                             .await
@@ -443,7 +443,7 @@ impl SyncStore {
                 pconn
                     .transaction(|pconn| {
                         async {
-                            let changes = pconn.promote_deployment(&self.site.deployment)?;
+                            let changes = pconn.promote_deployment(&self.site.deployment).await?;
                             Ok(StoreEvent::new(changes))
                         }
                         .scope_boxed()
