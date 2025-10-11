@@ -781,7 +781,7 @@ impl Inner {
                     // Create subgraph, subgraph version, and assignment. We use the
                     // existence of an assignment as a signal that we already set up
                     // the copy
-                    let changes = pconn.assign_subgraph(dst.as_ref(), &node)?;
+                    let changes = pconn.assign_subgraph(dst.as_ref(), &node).await?;
                     let event = StoreEvent::new(changes);
                     pconn.send_store_event(&self.sender, &event).await?;
                     Ok(())
