@@ -1692,7 +1692,7 @@ impl DeploymentStore {
         // deployed subgraphs so that we respect the 'startBlock' setting
         // the first time the subgraph is started
         conn.transaction_async(|conn| {
-            async { crate::deployment::initialize_block_ptr(conn, &dst.site) }.scope_boxed()
+            crate::deployment::initialize_block_ptr(conn, &dst.site).scope_boxed()
         })
         .await?;
         Ok(())
