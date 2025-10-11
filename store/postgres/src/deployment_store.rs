@@ -1342,7 +1342,8 @@ impl DeploymentStore {
                     // The revert functions want the number of the first block that we need to get rid of
                     let block = block_ptr_to.number + 1;
 
-                    deployment::revert_block_ptr(conn, &site, block_ptr_to, firehose_cursor)?;
+                    deployment::revert_block_ptr(conn, &site, block_ptr_to, firehose_cursor)
+                        .await?;
 
                     // Revert the data
                     let layout = self.layout(conn, site.clone()).await?;
