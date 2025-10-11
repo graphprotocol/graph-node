@@ -1392,7 +1392,7 @@ where
     F: AsyncFnOnce(&mut PgConnection) -> Result<R, StoreError>,
 {
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(100), Duration::from_secs(15));
-    while !advisory_lock::lock_deployment_session(conn, site)? {
+    while !advisory_lock::lock_deployment_session(conn, site).await? {
         backoff.sleep();
     }
     let res = f(conn).await;

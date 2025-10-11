@@ -31,7 +31,11 @@ struct Scope {
 impl Scope {
     /// Try to lock the deployment in this scope with the given id. Return
     /// `true` if we got the lock, and `false` if it is already locked.
-    fn try_lock(&self, conn: &mut PgConnection, id: DeploymentId) -> Result<bool, StoreError> {
+    async fn try_lock(
+        &self,
+        conn: &mut PgConnection,
+        id: DeploymentId,
+    ) -> Result<bool, StoreError> {
         #[derive(QueryableByName)]
         struct Locked {
             #[diesel(sql_type = Bool)]
@@ -111,11 +115,11 @@ pub(crate) fn unlock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), 
 /// simultaneously. Return `true` if we got the lock, and `false` if we did
 /// not. You don't want to use this directly. Instead, use
 /// `deployment::with_lock`
-pub(crate) fn lock_deployment_session(
+pub(crate) async fn lock_deployment_session(
     conn: &mut PgConnection,
     site: &Site,
 ) -> Result<bool, StoreError> {
-    WRITE.try_lock(conn, site.id)
+    WRITE.try_lock(conn, site.id).await
 }
 
 /// Release the lock acquired with `lock_deployment_session`.
@@ -128,8 +132,11 @@ pub(crate) fn unlock_deployment_session(
 
 /// Try to take the lock used to prevent two prune operations from running at the
 /// same time. Return `true` if we got the lock, and `false` otherwise.
-pub(crate) fn try_lock_pruning(conn: &mut PgConnection, site: &Site) -> Result<bool, StoreError> {
-    PRUNE.try_lock(conn, site.id)
+pub(crate) async fn try_lock_pruning(
+    conn: &mut PgConnection,
+    site: &Site,
+) -> Result<bool, StoreError> {
+    PRUNE.try_lock(conn, site.id).await
 }
 
 pub(crate) fn unlock_pruning(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {

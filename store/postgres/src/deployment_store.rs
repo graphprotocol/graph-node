@@ -923,7 +923,7 @@ impl DeploymentStore {
             // We lock pruning for this deployment to make sure that if the
             // deployment is reassigned to another node, that node won't
             // kick off a pruning run while this node might still be pruning
-            if advisory_lock::try_lock_pruning(conn, &site)? {
+            if advisory_lock::try_lock_pruning(conn, &site).await? {
                 let res = do_prune(store, conn, site.cheap_clone(), cancel, req, reporter).await;
                 advisory_lock::unlock_pruning(conn, &site)?;
                 res
