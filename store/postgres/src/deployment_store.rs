@@ -1208,7 +1208,8 @@ impl DeploymentStore {
                             &site.deployment,
                             &batch.deterministic_errors,
                             batch.block_ptr.number,
-                        )?;
+                        )
+                        .await?;
 
                         if batch.is_non_fatal_errors_active {
                             debug!(
@@ -1518,11 +1519,9 @@ impl DeploymentStore {
         error: SubgraphError,
     ) -> Result<(), StoreError> {
         self.with_conn(async move |conn, _| {
-            conn.transaction_async(|conn| {
-                async { deployment::fail(conn, &id, &error) }.scope_boxed()
-            })
-            .await
-            .map_err(Into::into)
+            conn.transaction_async(|conn| deployment::fail(conn, &id, &error).scope_boxed())
+                .await
+                .map_err(Into::into)
         })
         .await?;
         Ok(())

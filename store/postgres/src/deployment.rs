@@ -815,7 +815,10 @@ pub async fn exists_and_synced(conn: &mut PgConnection, id: &str) -> Result<bool
 }
 
 // Does nothing if the error already exists. Returns the error id.
-fn insert_subgraph_error(conn: &mut PgConnection, error: &SubgraphError) -> anyhow::Result<String> {
+async fn insert_subgraph_error(
+    conn: &mut PgConnection,
+    error: &SubgraphError,
+) -> anyhow::Result<String> {
     use subgraph_error as e;
 
     let error_id = hex::encode(stable_hash_legacy::utils::stable_hash::<SetHasher, _>(
@@ -850,12 +853,12 @@ fn insert_subgraph_error(conn: &mut PgConnection, error: &SubgraphError) -> anyh
     Ok(error_id)
 }
 
-pub fn fail(
+pub async fn fail(
     conn: &mut PgConnection,
     id: &DeploymentHash,
     error: &SubgraphError,
 ) -> Result<(), StoreError> {
-    let error_id = insert_subgraph_error(conn, error)?;
+    let error_id = insert_subgraph_error(conn, error).await?;
 
     update_deployment_status(conn, id, SubgraphHealth::Failed, Some(error_id), None)?;
 
@@ -926,7 +929,7 @@ pub fn update_deployment_status(
 /// unhealthy. The `latest_block` is only used to check whether the subgraph
 /// is healthy as of that block; errors are inserted according to the
 /// `block_ptr` they contain
-pub(crate) fn insert_subgraph_errors(
+pub(crate) async fn insert_subgraph_errors(
     logger: &Logger,
     conn: &mut PgConnection,
     id: &DeploymentHash,
@@ -941,7 +944,7 @@ pub(crate) fn insert_subgraph_errors(
     );
 
     for error in deterministic_errors {
-        insert_subgraph_error(conn, error)?;
+        insert_subgraph_error(conn, error).await?;
     }
 
     check_health(logger, conn, id, latest_block)
