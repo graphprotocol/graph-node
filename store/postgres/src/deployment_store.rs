@@ -511,7 +511,7 @@ impl DeploymentStore {
         }
 
         let layout = self.layout(conn, site.cheap_clone()).await?;
-        let manifest_info = deployment::ManifestInfo::load(conn, &site)?;
+        let manifest_info = deployment::ManifestInfo::load(conn, &site).await?;
 
         let graft_block = deployment::graft_point(conn, &site.deployment)
             .await?
