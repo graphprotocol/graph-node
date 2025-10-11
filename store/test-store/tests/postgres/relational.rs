@@ -914,6 +914,7 @@ async fn layout_cache() {
         // Without an entry, account_like is false
         let layout = cache
             .get(&LOGGER, conn, site.clone())
+            .await
             .expect("we can get the layout");
         let table = layout.table(&table_name).unwrap();
         assert_eq!(false, table.is_account_like);
@@ -925,6 +926,7 @@ async fn layout_cache() {
         // Flip account_like to true
         let layout = cache
             .get(&LOGGER, conn, site.clone())
+            .await
             .expect("we can get the layout");
         let table = layout.table(&table_name).unwrap();
         assert_eq!(true, table.is_account_like);
@@ -936,6 +938,7 @@ async fn layout_cache() {
 
         let layout = cache
             .get(&LOGGER, conn, site)
+            .await
             .expect("we can get the layout");
         let table = layout.table(&table_name).unwrap();
         assert_eq!(false, table.is_account_like);

@@ -1764,8 +1764,8 @@ impl LayoutCache {
         }
     }
 
-    fn load(conn: &mut PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
-        let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref())?;
+    async fn load(conn: &mut PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
+        let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref()).await?;
         let has_causality_region =
             deployment::entities_with_causality_region(conn, site.id, &subgraph_schema)?;
         let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix, has_causality_region)?;
@@ -1797,7 +1797,7 @@ impl LayoutCache {
     /// Get the layout for `site`. If it's not in cache, load it. If it is
     /// expired, try to refresh it if there isn't another refresh happening
     /// already
-    pub fn get(
+    pub async fn get(
         &self,
         logger: &Logger,
         conn: &mut PgConnection,
@@ -1827,7 +1827,7 @@ impl LayoutCache {
                 }
             }
             None => {
-                let layout = Self::load(conn, site)?;
+                let layout = Self::load(conn, site).await?;
                 self.cache(layout.cheap_clone());
                 layout
             }

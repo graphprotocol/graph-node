@@ -128,7 +128,7 @@ impl QueryStoreTrait for QueryStore {
     }
 
     async fn input_schema(&self) -> Result<InputSchema, QueryExecutionError> {
-        let layout = self.store.find_layout(self.site.cheap_clone())?;
+        let layout = self.store.find_layout(self.site.cheap_clone()).await?;
         Ok(layout.input_schema.cheap_clone())
     }
 

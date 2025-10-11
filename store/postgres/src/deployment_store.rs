@@ -258,12 +258,12 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) fn load_deployment(
+    pub(crate) async fn load_deployment(
         &self,
         site: Arc<Site>,
     ) -> Result<SubgraphDeploymentEntity, StoreError> {
         let mut conn = self.get_conn()?;
-        let layout = self.layout(&mut conn, site.clone())?;
+        let layout = self.layout(&mut conn, site.clone()).await?;
         Ok(
             detail::deployment_entity(&mut conn, &site, &layout.input_schema)
                 .with_context(|| format!("Deployment details not found for {}", site.deployment))?,
@@ -293,7 +293,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         query: EntityQuery,
     ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
-        let layout = self.layout(conn, site)?;
+        let layout = self.layout(conn, site).await?;
 
         let logger = query
             .logger
@@ -452,24 +452,24 @@ impl DeploymentStore {
     /// the Store. Layout objects with a pending migration can not be
     /// cached for longer than a transaction since they might change
     /// without us knowing
-    pub(crate) fn layout(
+    pub(crate) async fn layout(
         &self,
         conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Layout>, StoreError> {
-        self.layout_cache.get(&self.logger, conn, site)
+        self.layout_cache.get(&self.logger, conn, site).await
     }
 
     /// Return the layout for a deployment. This might use a database
     /// connection for the lookup and should only be called if the caller
     /// does not have a connection currently. If it does, use `layout`
-    pub(crate) fn find_layout(&self, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
+    pub(crate) async fn find_layout(&self, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
         if let Some(layout) = self.layout_cache.find(site.as_ref()) {
             return Ok(layout);
         }
 
         let mut conn = self.get_conn()?;
-        self.layout(&mut conn, site)
+        self.layout(&mut conn, site).await
     }
 
     async fn subgraph_info_with_conn(
@@ -481,7 +481,7 @@ impl DeploymentStore {
             return Ok(info.clone());
         }
 
-        let layout = self.layout(conn, site.cheap_clone())?;
+        let layout = self.layout(conn, site.cheap_clone()).await?;
         let manifest_info = deployment::ManifestInfo::load(conn, &site)?;
 
         let graft_block = deployment::graft_point(conn, &site.deployment)
@@ -644,9 +644,13 @@ impl DeploymentStore {
     }
 
     /// Runs the SQL `ANALYZE` command in a table.
-    pub(crate) fn analyze(&self, site: Arc<Site>, entity: Option<&str>) -> Result<(), StoreError> {
+    pub(crate) async fn analyze(
+        &self,
+        site: Arc<Site>,
+        entity: Option<&str>,
+    ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        let layout = self.layout(&mut conn, site)?;
+        let layout = self.layout(&mut conn, site).await?;
         let tables = entity
             .map(|entity| resolve_table_name(&layout, entity))
             .transpose()?
@@ -677,7 +681,7 @@ impl DeploymentStore {
         target: i32,
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        let layout = self.layout(&mut conn, site.clone())?;
+        let layout = self.layout(&mut conn, site.clone()).await?;
 
         let tables = entity
             .map(|entity| resolve_table_name(&layout, entity))
@@ -706,7 +710,7 @@ impl DeploymentStore {
     }
 
     /// Runs the SQL `ANALYZE` command in a table, with a shared connection.
-    pub(crate) fn analyze_with_conn(
+    pub(crate) async fn analyze_with_conn(
         &self,
         site: Arc<Site>,
         entity_name: &str,
@@ -714,7 +718,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        let layout = store.layout(conn, site)?;
+        let layout = store.layout(conn, site).await?;
         let table = resolve_table_name(&layout, &entity_name)?;
         table.analyze(conn)
     }
@@ -734,7 +738,7 @@ impl DeploymentStore {
         let entity_name = entity_name.to_owned();
         self.with_conn(async move |conn, _| {
             let schema_name = site.namespace.clone();
-            let layout = store.layout(conn, site)?;
+            let layout = store.layout(conn, site).await?;
             let (index_name, sql) = generate_index_creation_sql(
                 layout,
                 &entity_name,
@@ -772,7 +776,7 @@ impl DeploymentStore {
         let entity_name = entity_name.to_owned();
         self.with_conn(async move |conn, _| {
             let schema_name = site.namespace.clone();
-            let layout = store.layout(conn, site)?;
+            let layout = store.layout(conn, site).await?;
             let table = resolve_table_name(&layout, &entity_name)?;
             let table_name = &table.name;
             let indexes =
@@ -783,11 +787,11 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
+    pub(crate) async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
         let store = self.clone();
         let mut binding = self.get_conn()?;
         let conn = binding.deref_mut();
-        IndexList::load(conn, site, store)
+        IndexList::load(conn, site, store).await
     }
 
     /// Drops an index for a given deployment, concurrently.
@@ -813,7 +817,7 @@ impl DeploymentStore {
         let store = self.clone();
         let table = table.to_string();
         self.with_conn(async move |mut conn, _| {
-            let layout = store.layout(&mut conn, site.clone())?;
+            let layout = store.layout(&mut conn, site.clone()).await?;
             let table = resolve_table_name(&layout, &table)?;
             catalog::set_account_like(&mut conn, &site, &table.name, is_account_like)
                 .map_err(Into::into)
@@ -858,7 +862,7 @@ impl DeploymentStore {
             req: PruneRequest,
             mut reporter: Box<dyn PruneReporter>,
         ) -> Result<Box<dyn PruneReporter>, CancelableError<StoreError>> {
-            let layout = store.layout(&mut conn, site.clone())?;
+            let layout = store.layout(&mut conn, site.clone()).await?;
             cancel.check_cancel()?;
             let state = deployment::state(&mut conn, &site)?;
 
@@ -910,7 +914,9 @@ impl DeploymentStore {
         let store = self.cheap_clone();
         let layout = self
             .pool
-            .with_conn(async move |conn, _| store.layout(conn, site.clone()).map_err(|e| e.into()))
+            .with_conn(async move |conn, _| {
+                store.layout(conn, site.clone()).await.map_err(|e| e.into())
+            })
             .await?;
 
         Ok(relational::prune::Viewer::new(self.pool.clone(), layout))
@@ -943,11 +949,14 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) fn block_time(&self, site: Arc<Site>) -> Result<Option<BlockTime>, StoreError> {
+    pub(crate) async fn block_time(
+        &self,
+        site: Arc<Site>,
+    ) -> Result<Option<BlockTime>, StoreError> {
         let store = self.cheap_clone();
 
         let mut conn = self.get_conn()?;
-        let layout = store.layout(&mut conn, site.cheap_clone())?;
+        let layout = store.layout(&mut conn, site.cheap_clone()).await?;
         layout.last_rollup(&mut conn)
     }
 
@@ -960,7 +969,7 @@ impl DeploymentStore {
         let indexer = *indexer;
         let site2 = site.cheap_clone();
         let store = self.cheap_clone();
-        let layout = self.find_layout(site.cheap_clone())?;
+        let layout = self.find_layout(site.cheap_clone()).await?;
         let info = self.subgraph_info(site.cheap_clone()).await?;
         let poi_digest = layout.input_schema.poi_digest();
 
@@ -969,7 +978,7 @@ impl DeploymentStore {
                 let site = site.clone();
                 cancel.check_cancel()?;
 
-                let layout = store.layout(conn, site.cheap_clone())?;
+                let layout = store.layout(conn, site.cheap_clone()).await?;
 
                 let mut block_ptr = block.cheap_clone();
                 let latest_block_ptr = match Self::block_ptr_with_conn(conn, site.cheap_clone())? {
@@ -1049,20 +1058,20 @@ impl DeploymentStore {
 
     /// Get the entity matching `key` from the deployment `site`. Only
     /// consider entities as of the given `block`
-    pub(crate) fn get(
+    pub(crate) async fn get(
         &self,
         site: Arc<Site>,
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
         let mut conn = self.get_conn()?;
-        let layout = self.layout(&mut conn, site)?;
+        let layout = self.layout(&mut conn, site).await?;
         layout.find(&mut conn, key, block)
     }
 
     /// Retrieve all the entities matching `ids_for_type`, both the type and causality region, from
     /// the deployment `site`. Only consider entities as of the given `block`
-    pub(crate) fn get_many(
+    pub(crate) async fn get_many(
         &self,
         site: Arc<Site>,
         ids_for_type: &BTreeMap<(EntityType, CausalityRegion), IdList>,
@@ -1072,12 +1081,12 @@ impl DeploymentStore {
             return Ok(BTreeMap::new());
         }
         let mut conn = self.get_conn()?;
-        let layout = self.layout(&mut conn, site)?;
+        let layout = self.layout(&mut conn, site).await?;
 
         layout.find_many(&mut conn, ids_for_type, block)
     }
 
-    pub(crate) fn get_range(
+    pub(crate) async fn get_range(
         &self,
         site: Arc<Site>,
         entity_types: Vec<EntityType>,
@@ -1085,11 +1094,11 @@ impl DeploymentStore {
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError> {
         let mut conn = self.get_conn()?;
-        let layout = self.layout(&mut conn, site)?;
+        let layout = self.layout(&mut conn, site).await?;
         layout.find_range(&mut conn, entity_types, causality_region, block_range)
     }
 
-    pub(crate) fn get_derived(
+    pub(crate) async fn get_derived(
         &self,
         site: Arc<Site>,
         derived_query: &DerivedEntityQuery,
@@ -1097,17 +1106,17 @@ impl DeploymentStore {
         excluded_keys: &Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let mut conn = self.get_conn()?;
-        let layout = self.layout(&mut conn, site)?;
+        let layout = self.layout(&mut conn, site).await?;
         layout.find_derived(&mut conn, derived_query, block, excluded_keys)
     }
 
-    pub(crate) fn get_changes(
+    pub(crate) async fn get_changes(
         &self,
         site: Arc<Site>,
         block: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError> {
         let mut conn = self.get_conn()?;
-        let layout = self.layout(&mut conn, site)?;
+        let layout = self.layout(&mut conn, site).await?;
         let changes = layout.find_changes(&mut conn, block)?;
 
         Ok(changes)
@@ -1144,7 +1153,7 @@ impl DeploymentStore {
             conn.transaction_async(|conn| {
                 async {
                     // Make the changes
-                    let layout = self.layout(conn, site.clone())?;
+                    let layout = self.layout(conn, site.clone()).await?;
 
                     let section = stopwatch.start_section("apply_entity_modifications");
                     let count = self.apply_entity_modifications(
@@ -1334,7 +1343,7 @@ impl DeploymentStore {
                     deployment::revert_block_ptr(conn, &site, block_ptr_to, firehose_cursor)?;
 
                     // Revert the data
-                    let layout = self.layout(conn, site.clone())?;
+                    let layout = self.layout(conn, site.clone()).await?;
 
                     if truncate {
                         layout.truncate_tables(conn)?;
@@ -1550,7 +1559,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         graft_src: Option<(Arc<Layout>, BlockPtr, SubgraphDeploymentEntity, IndexList)>,
     ) -> Result<(), StoreError> {
-        let dst = self.find_layout(site.cheap_clone())?;
+        let dst = self.find_layout(site.cheap_clone()).await?;
 
         // If `graft_src` is `Some`, then there is a pending graft.
         if let Some((src, block, src_deployment, index_list)) = graft_src {
@@ -1563,7 +1572,8 @@ impl DeploymentStore {
 
             let src_manifest_idx_and_name = src_deployment.manifest.template_idx_and_name()?;
             let dst_manifest_idx_and_name = self
-                .load_deployment(dst.site.clone())?
+                .load_deployment(dst.site.clone())
+                .await?
                 .manifest
                 .template_idx_and_name()?;
 
@@ -1612,7 +1622,8 @@ impl DeploymentStore {
                     // Analyze all tables for this deployment
                     info!(logger, "Analyzing all {} tables", dst.tables.len());
                     for entity_name in dst.tables.keys() {
-                        self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), conn)?;
+                        self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), conn)
+                            .await?;
                     }
 
                     // Rewind the subgraph so that entity versions that are
@@ -1662,7 +1673,8 @@ impl DeploymentStore {
         let mut conn = self.get_conn()?;
         if ENV_VARS.postpone_attribute_index_creation {
             // check if all indexes are valid and recreate them if they aren't
-            self.load_indexes(site.clone())?
+            self.load_indexes(site.clone())
+                .await?
                 .recreate_invalid_indexes(&mut conn, &dst)
                 .await?;
         }

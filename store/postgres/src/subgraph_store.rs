@@ -392,7 +392,7 @@ impl SubgraphStore {
                     .get(&site.shard)
                     .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
 
-                Some(store.load_indexes(site)?)
+                Some(store.load_indexes(site).await?)
             } else {
                 None
             }
@@ -643,7 +643,7 @@ impl Inner {
 
     pub(crate) async fn layout(&self, id: &DeploymentHash) -> Result<Arc<Layout>, StoreError> {
         let (store, site) = self.store(id).await?;
-        store.find_layout(site)
+        store.find_layout(site).await
     }
 
     async fn place_on_node(
@@ -719,7 +719,7 @@ impl Inner {
         let src = self.find_site(src.id.into()).await?;
         let src_store = self.for_site(src.as_ref())?;
         let src_loc = DeploymentLocator::from(src.as_ref());
-        let src_layout = src_store.find_layout(src.cheap_clone())?;
+        let src_layout = src_store.find_layout(src.cheap_clone()).await?;
         let dst = Arc::new(self.primary_conn()?.copy_site(&src, shard.clone()).await?);
         let dst_loc = DeploymentLocator::from(dst.as_ref());
 
@@ -739,8 +739,8 @@ impl Inner {
                 node
             )));
         }
-        let deployment = src_store.load_deployment(src.clone())?;
-        let index_def = src_store.load_indexes(src.clone())?;
+        let deployment = src_store.load_deployment(src.clone()).await?;
+        let index_def = src_store.load_indexes(src.clone()).await?;
 
         // Transmogrify the deployment into a new one
         let deployment = DeploymentCreate {
@@ -1024,7 +1024,7 @@ impl Inner {
             let latest_ethereum_block_number =
                 chain.latest_block.as_ref().map(|block| block.number());
             let subgraph_info = store.subgraph_info(site.cheap_clone()).await?;
-            let layout = store.find_layout(site.cheap_clone())?;
+            let layout = store.find_layout(site.cheap_clone()).await?;
             let network = site.network.clone();
 
             let info = VersionInfo {
@@ -1199,7 +1199,7 @@ impl Inner {
         entity_name: Option<&str>,
     ) -> Result<(), StoreError> {
         let (store, site) = self.store(&deployment.hash).await?;
-        store.analyze(site, entity_name)
+        store.analyze(site, entity_name).await
     }
 
     /// Return the statistics targets for all tables of `deployment`. The
@@ -1313,9 +1313,12 @@ impl Inner {
         store.set_history_blocks(&site, history_blocks, reorg_threshold)
     }
 
-    pub fn load_deployment(&self, site: Arc<Site>) -> Result<SubgraphDeploymentEntity, StoreError> {
+    pub async fn load_deployment(
+        &self,
+        site: Arc<Site>,
+    ) -> Result<SubgraphDeploymentEntity, StoreError> {
         let src_store = self.for_site(&site)?;
-        src_store.load_deployment(site)
+        src_store.load_deployment(site).await
     }
 
     pub async fn load_deployment_by_id(
@@ -1324,12 +1327,12 @@ impl Inner {
     ) -> Result<SubgraphDeploymentEntity, StoreError> {
         let site = self.find_site(id).await?;
         let src_store = self.for_site(&site)?;
-        src_store.load_deployment(site)
+        src_store.load_deployment(site).await
     }
 
-    pub fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
+    pub async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
         let src_store = self.for_site(&site)?;
-        src_store.load_indexes(site)
+        src_store.load_indexes(site).await
     }
 }
 
@@ -1571,13 +1574,13 @@ impl SubgraphStoreTrait for SubgraphStore {
         block: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError> {
         let (store, site) = self.store(subgraph_id).await?;
-        let changes = store.get_changes(site, block)?;
+        let changes = store.get_changes(site, block).await?;
         Ok(changes)
     }
 
     async fn input_schema(&self, id: &DeploymentHash) -> Result<InputSchema, StoreError> {
         let (store, site) = self.store(id).await?;
-        let layout = store.find_layout(site)?;
+        let layout = store.find_layout(site).await?;
         Ok(layout.input_schema.cheap_clone())
     }
 
@@ -1598,7 +1601,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError> {
         let (store, site) = self.store(id).await?;
         let info = store.subgraph_info(site.cheap_clone()).await?;
-        let layout = store.find_layout(site)?;
+        let layout = store.find_layout(site).await?;
         let fork_id = info.debug_fork;
         let schema = layout.input_schema.cheap_clone();
 
