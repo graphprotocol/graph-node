@@ -392,7 +392,7 @@ pub async fn history_blocks(
         .map_err(StoreError::from)
 }
 
-pub fn set_history_blocks(
+pub async fn set_history_blocks(
     conn: &mut PgConnection,
     site: &Site,
     history_blocks: BlockNumber,
