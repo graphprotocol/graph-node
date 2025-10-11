@@ -24,7 +24,7 @@ pub async fn load(
                 .load(conn, block)
                 .await
         }
-        false => shared::load(conn, site.deployment.as_str(), block, manifest_idx_and_name),
+        false => shared::load(conn, site.deployment.as_str(), block, manifest_idx_and_name).await,
     }
 }
 
@@ -40,7 +40,7 @@ pub(crate) async fn insert(
                 .insert(conn, data_sources)
                 .await
         }
-        false => shared::insert(conn, &site.deployment, data_sources, manifest_idx_and_name),
+        false => shared::insert(conn, &site.deployment, data_sources, manifest_idx_and_name).await,
     }
 }
 
@@ -55,7 +55,7 @@ pub(crate) async fn revert(
                 .revert(conn, block)
                 .await
         }
-        false => shared::revert(conn, &site.deployment, block),
+        false => shared::revert(conn, &site.deployment, block).await,
     }
 }
 
