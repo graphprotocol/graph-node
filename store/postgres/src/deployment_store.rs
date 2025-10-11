@@ -987,7 +987,7 @@ impl DeploymentStore {
 
         let mut conn = self.get_conn()?;
         let layout = store.layout(&mut conn, site.cheap_clone()).await?;
-        layout.last_rollup(&mut conn)
+        layout.last_rollup(&mut conn).await
     }
 
     pub(crate) async fn get_proof_of_indexing(
