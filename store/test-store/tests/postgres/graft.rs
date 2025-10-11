@@ -485,9 +485,9 @@ fn on_sync() {
                 writable.deployment_synced(BLOCKS[0].clone()).await?;
 
                 let mut primary = primary_connection().await;
-                let src_site = primary.locate_site(src)?.unwrap();
+                let src_site = primary.locate_site(src).await?.unwrap();
                 let src_node = primary.assigned_node(&src_site).await?;
-                let dst_site = primary.locate_site(dst)?.unwrap();
+                let dst_site = primary.locate_site(dst).await?.unwrap();
                 let dst_node = primary.assigned_node(&dst_site).await?;
 
                 assert!(dst_node.is_some());
@@ -536,7 +536,7 @@ fn on_sync() {
             writable.start_subgraph_deployment(&LOGGER).await?;
 
             let mut primary = primary_connection().await;
-            let src_site = primary.locate_site(src.clone())?.unwrap();
+            let src_site = primary.locate_site(src.clone()).await?.unwrap();
             primary.unassign_subgraph(&src_site).await?;
             store.activate(&dst).await?;
             store.remove_deployment(src.id.into()).await?;

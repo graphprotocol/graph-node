@@ -1488,7 +1488,10 @@ impl Connection {
         .await
     }
 
-    pub fn locate_site(&mut self, locator: DeploymentLocator) -> Result<Option<Site>, StoreError> {
+    pub async fn locate_site(
+        &mut self,
+        locator: DeploymentLocator,
+    ) -> Result<Option<Site>, StoreError> {
         let schema = deployment_schemas::table
             .filter(deployment_schemas::id.eq::<DeploymentId>(locator.into()))
             .first::<Schema>(&mut self.conn)
