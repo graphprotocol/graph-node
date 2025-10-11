@@ -196,7 +196,7 @@ impl DeploymentStore {
         let mut conn = self.get_conn()?;
         conn.transaction_async::<_, StoreError, _>(|conn| {
             async {
-                let exists = deployment::exists(conn, &site)?;
+                let exists = deployment::exists(conn, &site).await?;
 
                 // Create (or update) the metadata. Update only happens in tests
                 let entities_with_causality_region =
