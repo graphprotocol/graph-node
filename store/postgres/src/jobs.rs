@@ -208,7 +208,9 @@ impl Job for UnusedJob {
             .store
             .list_unused_deployments(unused::Filter::UnusedLongerThan(
                 ENV_VARS.store.remove_unused_interval,
-            )) {
+            ))
+            .await
+        {
             Ok(remove) => remove,
             Err(e) => {
                 error!(logger, "failed to list removable deployments"; "error" => e.to_string());

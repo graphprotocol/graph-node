@@ -875,7 +875,7 @@ impl Inner {
     /// Look for new unused deployments and add them to the `unused_deployments`
     /// table
     pub async fn record_unused_deployments(&self) -> Result<Vec<DeploymentDetail>, StoreError> {
-        let deployments = self.primary_conn()?.detect_unused_deployments()?;
+        let deployments = self.primary_conn()?.detect_unused_deployments().await?;
 
         // deployments_by_shard takes an empty vec to mean 'give me everything',
         // so we short-circuit that here
@@ -898,15 +898,17 @@ impl Inner {
             details.extend(store.deployment_details(ids).await?);
         }
 
-        self.primary_conn()?.update_unused_deployments(&details)?;
+        self.primary_conn()?
+            .update_unused_deployments(&details)
+            .await?;
         Ok(details)
     }
 
-    pub fn list_unused_deployments(
+    pub async fn list_unused_deployments(
         &self,
         filter: unused::Filter,
     ) -> Result<Vec<UnusedDeployment>, StoreError> {
-        self.primary_conn()?.list_unused_deployments(filter)
+        self.primary_conn()?.list_unused_deployments(filter).await
     }
 
     /// Remove a deployment, i.e., all its data and metadata. This is only permissible
@@ -936,7 +938,8 @@ impl Inner {
             self.primary_conn()?.drop_site(site.as_ref()).await?;
         } else {
             self.primary_conn()?
-                .unused_deployment_is_used(site.as_ref())?;
+                .unused_deployment_is_used(site.as_ref())
+                .await?;
         }
 
         Ok(())
