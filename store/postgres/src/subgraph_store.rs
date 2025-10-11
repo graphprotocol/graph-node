@@ -1555,6 +1555,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let mut pconn = self.primary_conn()?;
         pconn
             .get_subgraph_features(deployment)
+            .await
             .map_err(|e| e.into())
     }
 
