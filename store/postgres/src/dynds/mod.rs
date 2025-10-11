@@ -28,14 +28,18 @@ pub async fn load(
     }
 }
 
-pub(crate) fn insert(
+pub(crate) async fn insert(
     conn: &mut PgConnection,
     site: &Site,
     data_sources: &write::DataSources,
     manifest_idx_and_name: &[(u32, String)],
 ) -> Result<usize, StoreError> {
     match site.schema_version.private_data_sources() {
-        true => DataSourcesTable::new(site.namespace.clone()).insert(conn, data_sources),
+        true => {
+            DataSourcesTable::new(site.namespace.clone())
+                .insert(conn, data_sources)
+                .await
+        }
         false => shared::insert(conn, &site.deployment, data_sources, manifest_idx_and_name),
     }
 }

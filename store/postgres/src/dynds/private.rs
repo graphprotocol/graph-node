@@ -142,7 +142,7 @@ impl DataSourcesTable {
         Ok(dses)
     }
 
-    pub(crate) fn insert(
+    pub(crate) async fn insert(
         &self,
         conn: &mut PgConnection,
         data_sources: &write::DataSources,
