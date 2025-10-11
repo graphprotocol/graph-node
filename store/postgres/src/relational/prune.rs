@@ -51,7 +51,7 @@ impl TablePair {
     /// Create a `TablePair` for `src`. This creates a new table `dst` with
     /// the same structure as the `src` table in the database, but in a
     /// different namespace so that the names of indexes etc. don't clash
-    fn create(
+    async fn create(
         conn: &mut PgConnection,
         src: Arc<Table>,
         src_nsp: Namespace,
@@ -68,7 +68,8 @@ impl TablePair {
             let mut list = IndexList {
                 indexes: HashMap::new(),
             };
-            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())?
+            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())
+                .await?
                 .into_iter()
                 .map(|index| index.with_nsp(dst_nsp.to_string()))
                 .collect::<Result<Vec<CreateIndex>, _>>()?;
@@ -436,7 +437,8 @@ impl Layout {
                         dst_nsp.clone(),
                         &self.input_schema,
                         &self.catalog,
-                    )?;
+                    )
+                    .await?;
                     // Copy final entities. This can happen in parallel to indexing as
                     // that part of the table will not change
                     pair.copy_final_entities(
