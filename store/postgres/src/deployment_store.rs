@@ -1384,7 +1384,7 @@ impl DeploymentStore {
                         deployment::clear_entity_count(conn, site.as_ref())?;
                     } else {
                         let count = layout.revert_block(conn, block)?;
-                        deployment::update_entity_count(conn, site.as_ref(), count)?;
+                        deployment::update_entity_count(conn, site.as_ref(), count).await?;
                     }
 
                     // Revert the meta data changes that correspond to this subgraph.
@@ -1676,7 +1676,7 @@ impl DeploymentStore {
                         .expect("block numbers fit into an i32");
                     info!(logger, "Rewinding to block {}", block.number);
                     let count = dst.revert_block(conn, block_to_revert)?;
-                    deployment::update_entity_count(conn, &dst.site, count)?;
+                    deployment::update_entity_count(conn, &dst.site, count).await?;
 
                     info!(logger, "Rewound subgraph to block {}", block.number;
                       "time_ms" => start.elapsed().as_millis());

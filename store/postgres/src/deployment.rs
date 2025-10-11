@@ -1277,7 +1277,7 @@ fn entity_count_sql(count: i32) -> String {
     format!("entity_count + ({count})")
 }
 
-pub fn update_entity_count(
+pub async fn update_entity_count(
     conn: &mut PgConnection,
     site: &Site,
     count: i32,
