@@ -544,7 +544,7 @@ pub async fn forward_block_ptr(
     }
 }
 
-pub fn get_subgraph_firehose_cursor(
+pub async fn get_subgraph_firehose_cursor(
     conn: &mut PgConnection,
     site: Arc<Site>,
 ) -> Result<Option<String>, StoreError> {
