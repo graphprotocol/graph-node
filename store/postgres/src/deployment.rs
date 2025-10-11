@@ -802,7 +802,7 @@ pub async fn exists(conn: &mut PgConnection, site: &Site) -> Result<bool, StoreE
 }
 
 /// Returns `true` if the deployment `id` exists and is synced
-pub fn exists_and_synced(conn: &mut PgConnection, id: &str) -> Result<bool, StoreError> {
+pub async fn exists_and_synced(conn: &mut PgConnection, id: &str) -> Result<bool, StoreError> {
     use deployment as d;
 
     let synced = d::table
