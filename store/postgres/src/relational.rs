@@ -1124,11 +1124,11 @@ impl Layout {
     /// for all aggregations, meaning that if some aggregations do not have
     /// an entry with the maximum timestamp that there was just no data for
     /// that interval, but we did try to aggregate at that time.
-    pub(crate) fn last_rollup(
+    pub(crate) async fn last_rollup(
         &self,
         conn: &mut PgConnection,
     ) -> Result<Option<BlockTime>, StoreError> {
-        Rollup::last_rollup(&self.rollups, conn)
+        Rollup::last_rollup(&self.rollups, conn).await
     }
 
     /// Construct `Rolllup` for each of the aggregation mappings
