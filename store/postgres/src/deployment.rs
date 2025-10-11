@@ -407,7 +407,7 @@ pub async fn set_history_blocks(
 }
 
 /// This migrates subgraphs that existed before the raw_yaml column was added.
-pub fn set_manifest_raw_yaml(
+pub async fn set_manifest_raw_yaml(
     conn: &mut PgConnection,
     site: &Site,
     raw_yaml: &str,
