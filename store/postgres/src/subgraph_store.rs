@@ -837,7 +837,7 @@ impl Inner {
     #[cfg(debug_assertions)]
     pub async fn remove_all_subgraphs_for_test_use_only(&self) -> Result<(), StoreError> {
         let mut pconn = self.primary_conn()?;
-        let schemas = pconn.sites()?;
+        let schemas = pconn.sites().await?;
 
         // Delete all subgraph schemas
         for schema in schemas {
