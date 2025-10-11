@@ -1435,7 +1435,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         pconn
             .transaction(|pconn| {
                 async {
-                    let changes = pconn.remove_subgraph(name)?;
+                    let changes = pconn.remove_subgraph(name).await?;
                     pconn
                         .send_store_event(&self.sender, &StoreEvent::new(changes))
                         .await
@@ -1471,7 +1471,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         pconn
             .transaction(|pconn| {
                 async {
-                    let changes = pconn.unassign_subgraph(site.as_ref())?;
+                    let changes = pconn.unassign_subgraph(site.as_ref()).await?;
                     pconn
                         .send_store_event(&self.sender, &StoreEvent::new(changes))
                         .await
