@@ -29,7 +29,7 @@ fn add_row(list: &mut List, deployment: UnusedDeployment) {
     ])
 }
 
-pub fn list(
+pub async fn list(
     store: Arc<SubgraphStore>,
     existing: bool,
     deployment: Option<DeploymentSearch>,
@@ -44,7 +44,7 @@ pub fn list(
         },
     };
 
-    for deployment in store.list_unused_deployments(filter)? {
+    for deployment in store.list_unused_deployments(filter).await? {
         add_row(&mut list, deployment);
     }
 
@@ -63,7 +63,7 @@ pub async fn record(store: Arc<SubgraphStore>) -> Result<(), Error> {
     println!("Recording unused deployments. This might take a while.");
     let recorded = store.record_unused_deployments().await?;
 
-    for unused in store.list_unused_deployments(unused::Filter::New)? {
+    for unused in store.list_unused_deployments(unused::Filter::New).await? {
         if recorded.iter().any(|r| r.subgraph == unused.deployment) {
             add_row(&mut list, unused);
         }
@@ -85,7 +85,7 @@ pub async fn remove(
         Some(duration) => unused::Filter::UnusedLongerThan(duration),
         None => unused::Filter::New,
     };
-    let unused = store.list_unused_deployments(filter)?;
+    let unused = store.list_unused_deployments(filter).await?;
     let unused = match &deployment {
         None => unused,
         Some(deployment) => unused

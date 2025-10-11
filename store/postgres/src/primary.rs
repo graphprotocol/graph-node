@@ -1651,7 +1651,7 @@ impl Connection {
     /// Find all deployments that are not in use and add them to the
     /// `unused_deployments` table. Only values that are available in the
     /// primary will be filled in `unused_deployments`
-    pub fn detect_unused_deployments(&mut self) -> Result<Vec<Site>, StoreError> {
+    pub async fn detect_unused_deployments(&mut self) -> Result<Vec<Site>, StoreError> {
         use active_copies as cp;
         use deployment_schemas as ds;
         use subgraph as s;
@@ -1727,7 +1727,7 @@ impl Connection {
     }
 
     /// Add details from the deployment shard to unused deployments
-    pub fn update_unused_deployments(
+    pub async fn update_unused_deployments(
         &mut self,
         details: &[DeploymentDetail],
     ) -> Result<(), StoreError> {
@@ -1763,7 +1763,7 @@ impl Connection {
     /// The deployment `site` that we marked as unused previously is in fact
     /// now used again, e.g., because it was redeployed in between recording
     /// it as unused and now. Remove it from the `unused_deployments` table
-    pub fn unused_deployment_is_used(&mut self, site: &Site) -> Result<(), StoreError> {
+    pub async fn unused_deployment_is_used(&mut self, site: &Site) -> Result<(), StoreError> {
         use unused_deployments as u;
         delete(u::table.filter(u::id.eq(site.id)))
             .execute(&mut self.conn)
@@ -1771,7 +1771,7 @@ impl Connection {
             .map_err(StoreError::from)
     }
 
-    pub fn list_unused_deployments(
+    pub async fn list_unused_deployments(
         &mut self,
         filter: unused::Filter,
     ) -> Result<Vec<UnusedDeployment>, StoreError> {
