@@ -1310,7 +1310,7 @@ pub async fn clear_entity_count(conn: &mut PgConnection, site: &Site) -> Result<
 /// go backwards, only forward. This is important so that copying into
 /// `site` can not move the earliest block backwards if `site` was also
 /// pruned while the copy was running.
-pub fn set_earliest_block(
+pub async fn set_earliest_block(
     conn: &mut PgConnection,
     site: &Site,
     earliest_block: BlockNumber,
