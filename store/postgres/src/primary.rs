@@ -1510,7 +1510,7 @@ impl Connection {
             .collect()
     }
 
-    pub fn sites(&mut self) -> Result<Vec<Site>, StoreError> {
+    pub async fn sites(&mut self) -> Result<Vec<Site>, StoreError> {
         use deployment_schemas as ds;
 
         ds::table
