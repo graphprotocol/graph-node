@@ -536,11 +536,11 @@ impl DeploymentStore {
         self.subgraph_info_with_conn(&mut conn, site).await
     }
 
-    fn block_ptr_with_conn(
+    async fn block_ptr_with_conn(
         conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Option<BlockPtr>, StoreError> {
-        deployment::block_ptr(conn, &site)
+        deployment::block_ptr(conn, &site).await
     }
 
     pub(crate) async fn deployment_details(
@@ -931,7 +931,9 @@ impl DeploymentStore {
         self.with_conn(async move |conn, cancel| {
             cancel.check_cancel()?;
 
-            Self::block_ptr_with_conn(conn, site).map_err(Into::into)
+            Self::block_ptr_with_conn(conn, site)
+                .await
+                .map_err(Into::into)
         })
         .await
     }
@@ -982,10 +984,11 @@ impl DeploymentStore {
                 let layout = store.layout(conn, site.cheap_clone()).await?;
 
                 let mut block_ptr = block.cheap_clone();
-                let latest_block_ptr = match Self::block_ptr_with_conn(conn, site.cheap_clone())? {
-                    Some(inner) => inner,
-                    None => return Ok(None),
-                };
+                let latest_block_ptr =
+                    match Self::block_ptr_with_conn(conn, site.cheap_clone()).await? {
+                        Some(inner) => inner,
+                        None => return Ok(None),
+                    };
 
                 cancel.check_cancel()?;
 
@@ -1379,7 +1382,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
 
-        let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())?;
+        let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone()).await?;
 
         // Sanity check on block numbers
         let from_number = block_ptr_from.map(|ptr| ptr.number);
@@ -1410,7 +1413,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
 
-        let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())?;
+        let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone()).await?;
 
         // Sanity check on block numbers
         let from_number = block_ptr_from.map(|ptr| ptr.number);
@@ -1442,7 +1445,9 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
-        let deployment_head = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())?.unwrap();
+        let deployment_head = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())
+            .await?
+            .unwrap();
 
         // Confidence check on revert to ensure we go backward only
         if block_ptr_to.number >= deployment_head.number {
