@@ -1396,6 +1396,6 @@ where
         backoff.sleep();
     }
     let res = f(conn).await;
-    advisory_lock::unlock_deployment_session(conn, site)?;
+    advisory_lock::unlock_deployment_session(conn, site).await?;
     res
 }

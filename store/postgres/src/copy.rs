@@ -711,7 +711,7 @@ impl LockTrackingConnection {
         Ok(())
     }
 
-    fn unlock(&mut self, logger: &Logger, dst: &Site) -> Result<(), StoreError> {
+    async fn unlock(&mut self, logger: &Logger, dst: &Site) -> Result<(), StoreError> {
         if !self.has_lock {
             error!(
                 logger,
@@ -719,7 +719,7 @@ impl LockTrackingConnection {
             );
             return Ok(());
         }
-        advisory_lock::unlock_copying(&mut self.inner, dst)?;
+        advisory_lock::unlock_copying(&mut self.inner, dst).await?;
         self.has_lock = false;
         Ok(())
     }
@@ -1327,7 +1327,7 @@ impl Connection {
                 );
             }
             Some(conn) => {
-                conn.unlock(&self.logger, &dst_site)?;
+                conn.unlock(&self.logger, &dst_site).await?;
             }
         }
 
