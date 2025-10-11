@@ -62,16 +62,19 @@ impl WritableSubgraphStore {
         self.0.layout(id).await
     }
 
-    fn load_deployment(&self, site: Arc<Site>) -> Result<SubgraphDeploymentEntity, StoreError> {
-        self.0.load_deployment(site)
+    async fn load_deployment(
+        &self,
+        site: Arc<Site>,
+    ) -> Result<SubgraphDeploymentEntity, StoreError> {
+        self.0.load_deployment(site).await
     }
 
     async fn find_site(&self, id: DeploymentId) -> Result<Arc<Site>, StoreError> {
         self.0.find_site(id).await
     }
 
-    fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
-        self.0.load_indexes(site)
+    async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
+        self.0.load_indexes(site).await
     }
 }
 
@@ -87,7 +90,7 @@ pub enum LastRollup {
 }
 
 impl LastRollup {
-    fn new(
+    async fn new(
         store: Arc<DeploymentStore>,
         site: Arc<Site>,
         has_aggregations: bool,
@@ -97,7 +100,7 @@ impl LastRollup {
             (false, _) => LastRollup::NotNeeded,
             (true, None) => LastRollup::Unknown,
             (true, Some(_)) => {
-                let block_time = store.block_time(site)?;
+                let block_time = store.block_time(site).await?;
                 block_time
                     .map(|b| LastRollup::Some(b))
                     .unwrap_or(LastRollup::Unknown)
@@ -110,7 +113,7 @@ impl LastRollup {
 pub struct LastRollupTracker(Mutex<LastRollup>);
 
 impl LastRollupTracker {
-    fn new(
+    async fn new(
         store: Arc<DeploymentStore>,
         site: Arc<Site>,
         has_aggregations: bool,
@@ -122,6 +125,7 @@ impl LastRollupTracker {
             has_aggregations,
             block,
         )
+        .await
         .map(|kind| Mutex::new(kind))?;
         Ok(Self(rollup))
     }
@@ -179,7 +183,8 @@ impl SyncStore {
             site.cheap_clone(),
             input_schema.has_aggregations(),
             block,
-        )?;
+        )
+        .await?;
 
         Ok(Self {
             logger,
@@ -215,8 +220,8 @@ impl SyncStore {
             let graft_base = match self.writable.graft_pending(&self.site.deployment).await? {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id).await?;
-                    let deployment_entity = self.store.load_deployment(src.site.clone())?;
-                    let indexes = self.store.load_indexes(src.site.clone())?;
+                    let deployment_entity = self.store.load_deployment(src.site.clone()).await?;
+                    let indexes = self.store.load_indexes(src.site.clone()).await?;
                     Some((src, base_ptr, deployment_entity, indexes))
                 }
                 None => None,
@@ -242,7 +247,7 @@ impl SyncStore {
                 .revert_block_operations(self.site.clone(), block_ptr_to.clone(), firehose_cursor)
                 .await?;
 
-            let block_time = self.writable.block_time(self.site.cheap_clone())?;
+            let block_time = self.writable.block_time(self.site.cheap_clone()).await?;
             self.last_rollup.set(block_time)
         })
         .await
@@ -288,7 +293,7 @@ impl SyncStore {
 
     async fn get(&self, key: &EntityKey, block: BlockNumber) -> Result<Option<Entity>, StoreError> {
         retry::forever_async(&self.logger, "get", || async {
-            self.writable.get(self.site.cheap_clone(), key, block)
+            self.writable.get(self.site.cheap_clone(), key, block).await
         })
         .await
     }
@@ -336,6 +341,7 @@ impl SyncStore {
         retry::forever_async(&self.logger, "get_many", || async {
             self.writable
                 .get_many(self.site.cheap_clone(), &by_type, block)
+                .await
         })
         .await
     }
@@ -349,6 +355,7 @@ impl SyncStore {
         retry::forever_async(&self.logger, "get_derived", || async {
             self.writable
                 .get_derived(self.site.cheap_clone(), key, block, &excluded_keys)
+                .await
         })
         .await
     }
@@ -1629,12 +1636,14 @@ impl store::SourceableStore for SourceableStore {
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError> {
-        self.store.get_range(
-            self.site.clone(),
-            entity_types,
-            causality_region,
-            block_range,
-        )
+        self.store
+            .get_range(
+                self.site.clone(),
+                entity_types,
+                causality_region,
+                block_range,
+            )
+            .await
     }
 
     fn input_schema(&self) -> InputSchema {
