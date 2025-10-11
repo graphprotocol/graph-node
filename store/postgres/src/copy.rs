@@ -257,7 +257,7 @@ impl CopyState {
         self.dst.site.shard != self.src.site.shard
     }
 
-    fn finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+    async fn finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         use copy_state as cs;
 
         update(cs::table.filter(cs::dst.eq(self.dst.site.id)))
@@ -278,7 +278,7 @@ impl CopyState {
                 // get rid of it. As a safety check (on top of the one that
                 // drop_foreign_schema does), see that we do not have
                 // metadata for `src`
-                if crate::deployment::exists(conn, &self.src.site)? {
+                if crate::deployment::exists(conn, &self.src.site).await? {
                     return Err(internal_error!(
                         "we think we are copying {}[{}] across shards from {} to {}, but the \
                         source subgraph is actually in this shard",
@@ -1268,7 +1268,7 @@ impl Connection {
 
         self.copy_private_data_sources(&state).await?;
 
-        self.transaction(|conn| async { state.finished(conn) }.scope_boxed())?
+        self.transaction(|conn| state.finished(conn).scope_boxed())?
             .await?;
         progress.finished();
 
