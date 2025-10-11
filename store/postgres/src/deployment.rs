@@ -424,7 +424,7 @@ pub async fn set_manifest_raw_yaml(
 
 /// Most of the time, this will be a noop; the only time we actually modify
 /// the deployment table is the first forward block after a reorg
-fn reset_reorg_count(conn: &mut PgConnection, site: &Site) -> StoreResult<()> {
+async fn reset_reorg_count(conn: &mut PgConnection, site: &Site) -> StoreResult<()> {
     use deployment as d;
 
     update(d::table.filter(d::id.eq(site.id)))
@@ -434,7 +434,7 @@ fn reset_reorg_count(conn: &mut PgConnection, site: &Site) -> StoreResult<()> {
     Ok(())
 }
 
-pub fn transact_block(
+pub async fn transact_block(
     conn: &mut PgConnection,
     site: &Site,
     ptr: &BlockPtr,
@@ -461,7 +461,7 @@ pub fn transact_block(
         }
     }
 
-    reset_reorg_count(conn, site)?;
+    reset_reorg_count(conn, site).await?;
 
     let rows = update(h::table.filter(h::id.eq(site.id)))
         .set((
@@ -501,7 +501,7 @@ pub fn transact_block(
     }
 }
 
-pub fn forward_block_ptr(
+pub async fn forward_block_ptr(
     conn: &mut PgConnection,
     site: &Site,
     ptr: &BlockPtr,
@@ -509,7 +509,7 @@ pub fn forward_block_ptr(
     use crate::diesel::BoolExpressionMethods;
     use head as h;
 
-    reset_reorg_count(conn, site)?;
+    reset_reorg_count(conn, site).await?;
 
     let row_count = update(h::table.filter(h::id.eq(site.id)).filter(
         // Asserts that the processing direction is forward.
