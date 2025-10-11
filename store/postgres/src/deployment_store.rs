@@ -943,6 +943,7 @@ impl DeploymentStore {
             cancel.check_cancel()?;
 
             deployment::get_subgraph_firehose_cursor(conn, site)
+                .await
                 .map(FirehoseCursor::from)
                 .map_err(Into::into)
         })
