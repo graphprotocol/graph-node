@@ -1236,7 +1236,7 @@ impl Connection {
         Ok(features)
     }
 
-    pub fn create_subgraph_features(
+    pub async fn create_subgraph_features(
         &mut self,
         features: DeploymentFeatures,
     ) -> Result<(), StoreError> {
