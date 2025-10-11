@@ -1392,7 +1392,7 @@ impl DeploymentStore {
                     // importantly creation of dynamic data sources. We ensure in the
                     // rest of the code that we only record history for those meta data
                     // changes that might need to be reverted
-                    Layout::revert_metadata(&logger, conn, &site, block)?;
+                    Layout::revert_metadata(&logger, conn, &site, block).await?;
 
                     Ok(())
                 }
