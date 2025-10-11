@@ -1487,7 +1487,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         pconn
             .transaction(|pconn| {
                 async {
-                    let changes = pconn.pause_subgraph(site.as_ref())?;
+                    let changes = pconn.pause_subgraph(site.as_ref()).await?;
                     pconn
                         .send_store_event(&self.sender, &StoreEvent::new(changes))
                         .await

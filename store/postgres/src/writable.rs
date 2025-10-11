@@ -385,7 +385,7 @@ impl SyncStore {
             pconn
                 .transaction(|pconn| {
                     async {
-                        let changes = pconn.pause_subgraph(site)?;
+                        let changes = pconn.pause_subgraph(site).await?;
                         pconn
                             .send_store_event(&sender, &StoreEvent::new(changes))
                             .await
