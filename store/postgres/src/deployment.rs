@@ -1361,7 +1361,7 @@ pub async fn on_sync(
     OnSync::try_from(s.as_deref())
 }
 
-pub fn set_on_sync(
+pub async fn set_on_sync(
     conn: &mut PgConnection,
     site: &Site,
     on_sync: OnSync,

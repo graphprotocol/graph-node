@@ -249,7 +249,7 @@ impl DeploymentStore {
                     }
                 }
 
-                deployment::set_on_sync(conn, &site, on_sync)?;
+                deployment::set_on_sync(conn, &site, on_sync).await?;
 
                 Ok(())
             }
