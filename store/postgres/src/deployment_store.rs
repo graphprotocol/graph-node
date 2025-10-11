@@ -611,10 +611,8 @@ impl DeploymentStore {
         block_ptr: BlockPtr,
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        conn.transaction_async(|conn| {
-            async { deployment::set_synced(conn, id, block_ptr) }.scope_boxed()
-        })
-        .await
+        conn.transaction_async(|conn| deployment::set_synced(conn, id, block_ptr).scope_boxed())
+            .await
     }
 
     /// Look up the on_sync action for this deployment
