@@ -467,7 +467,7 @@ impl SyncStore {
             if let Some(src) = self.writable.source_of_copy(&self.site)? {
                 if let Some(src) = self.maybe_find_site(src).await? {
                     if src.deployment == self.site.deployment {
-                        let on_sync = self.writable.on_sync(&self.site)?;
+                        let on_sync = self.writable.on_sync(&self.site).await?;
                         if on_sync.activate() {
                             let mut pconn = self.store.primary_conn()?;
                             pconn.activate(&self.site.as_ref().into()).await?;

@@ -616,9 +616,9 @@ impl DeploymentStore {
     }
 
     /// Look up the on_sync action for this deployment
-    pub(crate) fn on_sync(&self, site: &Site) -> Result<OnSync, StoreError> {
+    pub(crate) async fn on_sync(&self, site: &Site) -> Result<OnSync, StoreError> {
         let mut conn = self.get_conn()?;
-        deployment::on_sync(&mut conn, site.id)
+        deployment::on_sync(&mut conn, site.id).await
     }
 
     /// Return the source if `site` or `None` if `site` is neither a graft
