@@ -61,7 +61,7 @@ impl Scope {
     }
 
     /// Unlock the deployment in this scope with the given id.
-    fn unlock(&self, conn: &mut PgConnection, id: DeploymentId) -> Result<(), StoreError> {
+    async fn unlock(&self, conn: &mut PgConnection, id: DeploymentId) -> Result<(), StoreError> {
         sql_query(format!("select pg_advisory_unlock({}, {id})", self.id))
             .execute(conn)
             .map(|_| ())
@@ -107,8 +107,8 @@ pub(crate) async fn lock_copying(conn: &mut PgConnection, dst: &Site) -> Result<
 }
 
 /// Release the lock acquired with `lock_copying`.
-pub(crate) fn unlock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), StoreError> {
-    COPY.unlock(conn, dst.id)
+pub(crate) async fn unlock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), StoreError> {
+    COPY.unlock(conn, dst.id).await
 }
 
 /// Take the lock used to keep two operations from writing to the deployment
@@ -123,11 +123,11 @@ pub(crate) async fn lock_deployment_session(
 }
 
 /// Release the lock acquired with `lock_deployment_session`.
-pub(crate) fn unlock_deployment_session(
+pub(crate) async fn unlock_deployment_session(
     conn: &mut PgConnection,
     site: &Site,
 ) -> Result<(), StoreError> {
-    WRITE.unlock(conn, site.id)
+    WRITE.unlock(conn, site.id).await
 }
 
 /// Try to take the lock used to prevent two prune operations from running at the
@@ -139,6 +139,6 @@ pub(crate) async fn try_lock_pruning(
     PRUNE.try_lock(conn, site.id).await
 }
 
-pub(crate) fn unlock_pruning(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
-    PRUNE.unlock(conn, site.id)
+pub(crate) async fn unlock_pruning(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
+    PRUNE.unlock(conn, site.id).await
 }
