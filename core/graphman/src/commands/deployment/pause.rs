@@ -59,6 +59,7 @@ pub async fn load_active_deployment(
 
     let (_, is_paused) = catalog_conn
         .assignment_status(&site)
+        .await
         .map_err(GraphmanError::from)?
         .ok_or_else(|| {
             GraphmanError::Store(anyhow!("assignment status not found for '{locator}'"))

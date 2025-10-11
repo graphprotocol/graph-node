@@ -86,7 +86,7 @@ pub async fn pause_or_resume(
         .locate_site(locator.clone())?
         .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
 
-    let change = match conn.assignment_status(&site)? {
+    let change = match conn.assignment_status(&site).await? {
         Some((_, is_paused)) => {
             if should_pause {
                 if is_paused {
