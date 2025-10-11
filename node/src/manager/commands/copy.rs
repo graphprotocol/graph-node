@@ -74,7 +74,7 @@ impl CopyState {
             .order_by(cts::entity_type)
             .load::<CopyTableState>(&mut dconn)?;
 
-        let on_sync = on_sync(&mut dconn, DeploymentId(dst))?;
+        let on_sync = on_sync(&mut dconn, DeploymentId(dst)).await?;
 
         Ok(cs::table
             .filter(cs::dst.eq(dst))

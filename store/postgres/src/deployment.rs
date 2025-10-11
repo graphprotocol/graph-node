@@ -1348,7 +1348,10 @@ pub async fn copy_earliest_block(
     Ok(())
 }
 
-pub fn on_sync(conn: &mut PgConnection, id: impl Into<DeploymentId>) -> Result<OnSync, StoreError> {
+pub async fn on_sync(
+    conn: &mut PgConnection,
+    id: impl Into<DeploymentId>,
+) -> Result<OnSync, StoreError> {
     use subgraph_manifest as m;
 
     let s = m::table
