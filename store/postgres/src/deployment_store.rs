@@ -1168,7 +1168,7 @@ impl DeploymentStore {
 
                     layout.rollup(conn, last_rollup, &batch.block_times)?;
 
-                    dynds::insert(conn, &site, &batch.data_sources, manifest_idx_and_name)?;
+                    dynds::insert(conn, &site, &batch.data_sources, manifest_idx_and_name).await?;
 
                     dynds::update_offchain_status(conn, &site, &batch.offchain_to_remove)?;
 
@@ -1520,7 +1520,9 @@ impl DeploymentStore {
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(async move |conn, _| {
-            crate::dynds::load(conn, &site, block, manifest_idx_and_name).await.map_err(Into::into)
+            crate::dynds::load(conn, &site, block, manifest_idx_and_name)
+                .await
+                .map_err(Into::into)
         })
         .await
     }
