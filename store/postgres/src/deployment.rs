@@ -1072,7 +1072,10 @@ pub(crate) async fn revert_subgraph_errors(
     .map_err(StoreError::from)
 }
 
-pub(crate) fn delete_error(conn: &mut PgConnection, error_id: &str) -> Result<(), StoreError> {
+pub(crate) async fn delete_error(
+    conn: &mut PgConnection,
+    error_id: &str,
+) -> Result<(), StoreError> {
     use subgraph_error as e;
     delete(e::table.filter(e::id.eq(error_id)))
         .execute(conn)

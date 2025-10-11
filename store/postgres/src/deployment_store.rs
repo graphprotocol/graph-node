@@ -1880,7 +1880,7 @@ impl DeploymentStore {
                         )?;
 
                         // Delete the fatal error.
-                        deployment::delete_error(conn, &subgraph_error.id)?;
+                        deployment::delete_error(conn, &subgraph_error.id).await?;
 
                         Ok(UnfailOutcome::Unfailed)
                     }
