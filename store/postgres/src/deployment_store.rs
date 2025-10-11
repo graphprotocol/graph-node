@@ -1230,7 +1230,8 @@ impl DeploymentStore {
                         &batch.block_ptr,
                         &batch.firehose_cursor,
                         count,
-                    )?;
+                    )
+                    .await?;
 
                     Ok((layout, earliest_block))
                 }
@@ -1690,7 +1691,7 @@ impl DeploymentStore {
 
                     // Set the block ptr to the graft point to signal that we successfully
                     // performed the graft
-                    crate::deployment::forward_block_ptr(conn, &dst.site, &block)?;
+                    crate::deployment::forward_block_ptr(conn, &dst.site, &block).await?;
                     info!(logger, "Subgraph successfully initialized";
                     "time_ms" => start.elapsed().as_millis());
                     Ok(())
