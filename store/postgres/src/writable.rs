@@ -212,7 +212,7 @@ impl SyncStore {
 
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         retry::forever_async(&self.logger, "start_subgraph_deployment", || async {
-            let graft_base = match self.writable.graft_pending(&self.site.deployment)? {
+            let graft_base = match self.writable.graft_pending(&self.site.deployment).await? {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id).await?;
                     let deployment_entity = self.store.load_deployment(src.site.clone())?;

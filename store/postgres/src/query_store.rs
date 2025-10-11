@@ -123,7 +123,7 @@ impl QueryStoreTrait for QueryStore {
     }
 
     async fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError> {
-        let info = self.store.subgraph_info(self.site.cheap_clone())?;
+        let info = self.store.subgraph_info(self.site.cheap_clone()).await?;
         Ok(info.api.get(&self.api_version).unwrap().clone())
     }
 
