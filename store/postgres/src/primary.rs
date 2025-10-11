@@ -1141,7 +1141,7 @@ impl Connection {
         }
     }
 
-    pub fn reassign_subgraph(
+    pub async fn reassign_subgraph(
         &mut self,
         site: &Site,
         node: &NodeId,

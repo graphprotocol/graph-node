@@ -102,6 +102,7 @@ pub async fn reassign_deployment(
             } else {
                 catalog_conn
                     .reassign_subgraph(&deployment.site, &node)
+                    .await
                     .map_err(GraphmanError::from)?
             }
         }
