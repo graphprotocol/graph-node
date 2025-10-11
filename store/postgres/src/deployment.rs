@@ -683,7 +683,7 @@ fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u3
         })
 }
 
-pub fn state(conn: &mut PgConnection, site: &Site) -> Result<DeploymentState, StoreError> {
+pub async fn state(conn: &mut PgConnection, site: &Site) -> Result<DeploymentState, StoreError> {
     use deployment as d;
     use head as h;
     use subgraph_error as e;
