@@ -201,7 +201,7 @@ impl SyncStore {
 // Methods that mirror `WritableStoreTrait`
 impl SyncStore {
     async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError> {
-        retry::forever_async(&self.logger, "block_ptr", || {
+        retry::forever(&self.logger, "block_ptr", || {
             let site = self.site.clone();
             async move { self.writable.block_ptr(site).await }
         })
@@ -216,7 +216,7 @@ impl SyncStore {
     }
 
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
-        retry::forever_async(&self.logger, "start_subgraph_deployment", || async {
+        retry::forever(&self.logger, "start_subgraph_deployment", || async {
             let graft_base = match self.writable.graft_pending(&self.site.deployment).await? {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id).await?;
@@ -242,7 +242,7 @@ impl SyncStore {
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,
     ) -> Result<(), StoreError> {
-        retry::forever_async(&self.logger, "revert_block_operations", || async {
+        retry::forever(&self.logger, "revert_block_operations", || async {
             self.writable
                 .revert_block_operations(self.site.clone(), block_ptr_to.clone(), firehose_cursor)
                 .await?;
@@ -258,7 +258,7 @@ impl SyncStore {
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        retry::forever_async(&self.logger, "unfail_deterministic_error", || async {
+        retry::forever(&self.logger, "unfail_deterministic_error", || async {
             self.writable
                 .unfail_deterministic_error(self.site.clone(), current_ptr, parent_ptr)
                 .await
@@ -270,7 +270,7 @@ impl SyncStore {
         &self,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        retry::forever_async(&self.logger, "unfail_non_deterministic_error", || async {
+        retry::forever(&self.logger, "unfail_non_deterministic_error", || async {
             self.writable
                 .unfail_non_deterministic_error(self.site.clone(), current_ptr)
                 .await
@@ -279,7 +279,7 @@ impl SyncStore {
     }
 
     async fn fail_subgraph(&self, error: SubgraphError) -> Result<(), StoreError> {
-        retry::forever_async(&self.logger, "fail_subgraph", || {
+        retry::forever(&self.logger, "fail_subgraph", || {
             let error = error.clone();
             async {
                 self.writable
@@ -292,7 +292,7 @@ impl SyncStore {
     }
 
     async fn get(&self, key: &EntityKey, block: BlockNumber) -> Result<Option<Entity>, StoreError> {
-        retry::forever_async(&self.logger, "get", || async {
+        retry::forever(&self.logger, "get", || async {
             self.writable.get(self.site.cheap_clone(), key, block).await
         })
         .await
@@ -303,7 +303,7 @@ impl SyncStore {
         batch: &Batch,
         stopwatch: &StopwatchMetrics,
     ) -> Result<(), StoreError> {
-        retry::forever_async(&self.logger, "transact_block_operations", move || {
+        retry::forever(&self.logger, "transact_block_operations", move || {
             async move {
                 self.writable
                     .transact_block_operations(
@@ -338,7 +338,7 @@ impl SyncStore {
                 .push(key.entity_id)?;
         }
 
-        retry::forever_async(&self.logger, "get_many", || async {
+        retry::forever(&self.logger, "get_many", || async {
             self.writable
                 .get_many(self.site.cheap_clone(), &by_type, block)
                 .await
@@ -352,7 +352,7 @@ impl SyncStore {
         block: BlockNumber,
         excluded_keys: Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        retry::forever_async(&self.logger, "get_derived", || async {
+        retry::forever(&self.logger, "get_derived", || async {
             self.writable
                 .get_derived(self.site.cheap_clone(), key, block, &excluded_keys)
                 .await
@@ -361,7 +361,7 @@ impl SyncStore {
     }
 
     async fn is_deployment_synced(&self) -> Result<bool, StoreError> {
-        retry::forever_async(&self.logger, "is_deployment_synced", || async {
+        retry::forever(&self.logger, "is_deployment_synced", || async {
             self.writable
                 .exists_and_synced(self.site.deployment.cheap_clone())
                 .await
@@ -370,7 +370,7 @@ impl SyncStore {
     }
 
     async fn unassign_subgraph(&self, site: &Site) -> Result<(), StoreError> {
-        retry::forever_async(&self.logger, "unassign_subgraph", || async {
+        retry::forever(&self.logger, "unassign_subgraph", || async {
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
             pconn
@@ -389,7 +389,7 @@ impl SyncStore {
     }
 
     async fn pause_subgraph(&self, site: &Site) -> Result<(), StoreError> {
-        retry::forever_async(&self.logger, "pause_subgraph", || async {
+        retry::forever(&self.logger, "pause_subgraph", || async {
             let mut pconn = self.store.primary_conn()?;
             let sender = self.store.notification_sender();
             pconn
@@ -412,7 +412,7 @@ impl SyncStore {
         block: BlockNumber,
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        retry::forever_async(&self.logger, "load_dynamic_data_sources", || async {
+        retry::forever(&self.logger, "load_dynamic_data_sources", || async {
             self.writable
                 .load_dynamic_data_sources(
                     self.site.cheap_clone(),
@@ -427,7 +427,7 @@ impl SyncStore {
     pub(crate) async fn causality_region_curr_val(
         &self,
     ) -> Result<Option<CausalityRegion>, StoreError> {
-        retry::forever_async(&self.logger, "causality_region_curr_val", || async {
+        retry::forever(&self.logger, "causality_region_curr_val", || async {
             self.writable
                 .causality_region_curr_val(self.site.cheap_clone())
                 .await
@@ -444,7 +444,7 @@ impl SyncStore {
     }
 
     async fn deployment_synced(&self, block_ptr: BlockPtr) -> Result<(), StoreError> {
-        retry::forever_async(&self.logger, "deployment_synced", || async {
+        retry::forever(&self.logger, "deployment_synced", || async {
             let event = {
                 // Make sure we drop `pconn` before we call into the deployment
                 // store so that we do not hold two database connections which
@@ -497,7 +497,7 @@ impl SyncStore {
     }
 
     async fn health(&self) -> Result<schema::SubgraphHealth, StoreError> {
-        retry::forever_async(&self.logger, "health", || async {
+        retry::forever(&self.logger, "health", || async {
             self.writable.health(&self.site).await.map(Into::into)
         })
         .await

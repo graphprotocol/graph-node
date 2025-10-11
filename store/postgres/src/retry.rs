@@ -22,11 +22,7 @@ fn log_backoff_warning(logger: &Logger, op: &str, backoff: &ExponentialBackoff) 
 /// Run `f` with exponential backoff until it succeeds or it produces an
 /// error other than `DatabaseUnavailable`. In other words, keep retrying
 /// `f` until the database is available.
-pub(crate) async fn forever_async<T, F, Fut>(
-    logger: &Logger,
-    op: &str,
-    f: F,
-) -> Result<T, StoreError>
+pub(crate) async fn forever<T, F, Fut>(logger: &Logger, op: &str, f: F) -> Result<T, StoreError>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = Result<T, StoreError>>,
