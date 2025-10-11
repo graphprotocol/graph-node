@@ -701,12 +701,12 @@ impl LockTrackingConnection {
         }
     }
 
-    fn lock(&mut self, logger: &Logger, dst: &Site) -> Result<(), StoreError> {
+    async fn lock(&mut self, logger: &Logger, dst: &Site) -> Result<(), StoreError> {
         if self.has_lock {
             warn!(logger, "already acquired copy lock for {}", dst);
             return Ok(());
         }
-        advisory_lock::lock_copying(&mut self.inner, dst)?;
+        advisory_lock::lock_copying(&mut self.inner, dst).await?;
         self.has_lock = true;
         Ok(())
     }
@@ -1311,7 +1311,7 @@ impl Connection {
         let Some(conn) = self.conn.as_mut() else {
             return Err(internal_error!("copy connection went missing (copy_data)"));
         };
-        conn.lock(&self.logger, &dst_site)?;
+        conn.lock(&self.logger, &dst_site).await?;
 
         let res = self.copy_data_internal(index_list).await;
 
