@@ -224,7 +224,10 @@ impl SyncStore {
             self.writable
                 .start_subgraph(logger, self.site.clone(), graft_base)
                 .await?;
-            self.store.primary_conn()?.copy_finished(self.site.as_ref())
+            self.store
+                .primary_conn()?
+                .copy_finished(self.site.as_ref())
+                .await
         })
         .await
     }

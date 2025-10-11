@@ -1863,7 +1863,7 @@ impl Connection {
             .map_err(|e| anyhow!("error if ens table is empty: {}", e).into())
     }
 
-    pub fn record_active_copy(&mut self, src: &Site, dst: &Site) -> Result<(), StoreError> {
+    pub async fn record_active_copy(&mut self, src: &Site, dst: &Site) -> Result<(), StoreError> {
         use active_copies as cp;
 
         insert_into(cp::table)
@@ -1878,7 +1878,7 @@ impl Connection {
         Ok(())
     }
 
-    pub fn copy_finished(&mut self, dst: &Site) -> Result<(), StoreError> {
+    pub async fn copy_finished(&mut self, dst: &Site) -> Result<(), StoreError> {
         use active_copies as cp;
 
         delete(cp::table.filter(cp::dst.eq(dst.id))).execute(&mut self.conn)?;
