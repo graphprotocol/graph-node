@@ -514,7 +514,7 @@ impl TableState {
 
         let count = count.unwrap_or(0);
 
-        deployment::update_entity_count(conn, &self.dst_site, count)?;
+        deployment::update_entity_count(conn, &self.dst_site, count).await?;
 
         self.record_progress(conn, duration)?;
 
