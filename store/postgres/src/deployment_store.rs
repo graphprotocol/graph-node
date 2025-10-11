@@ -1549,7 +1549,7 @@ impl DeploymentStore {
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         self.with_conn(async move |conn, _| {
-            crate::dynds::load(conn, &site, block, manifest_idx_and_name).map_err(Into::into)
+            crate::dynds::load(conn, &site, block, manifest_idx_and_name).await.map_err(Into::into)
         })
         .await
     }
