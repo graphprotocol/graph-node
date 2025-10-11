@@ -1296,7 +1296,7 @@ pub async fn update_entity_count(
 }
 
 /// Set the deployment's entity count back to `0`
-pub fn clear_entity_count(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
+pub async fn clear_entity_count(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
     use head as h;
 
     update(h::table.filter(h::id.eq(site.id)))
