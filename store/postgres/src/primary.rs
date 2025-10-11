@@ -1405,7 +1405,10 @@ impl Connection {
     /// the subgraph is assigned to, and `is_paused` is true if the
     /// subgraph is paused.
     /// Returns None if the deployment does not exist.
-    pub fn assignment_status(&mut self, site: &Site) -> Result<Option<(NodeId, bool)>, StoreError> {
+    pub async fn assignment_status(
+        &mut self,
+        site: &Site,
+    ) -> Result<Option<(NodeId, bool)>, StoreError> {
         queries::assignment_status(&mut self.conn, site)
     }
 
