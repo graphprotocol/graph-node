@@ -263,7 +263,7 @@ impl TablePair {
 impl Layout {
     /// Analyze the `tables` and return `VersionStats` for all tables in
     /// this `Layout`
-    fn analyze_tables(
+    async fn analyze_tables(
         &self,
         conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
@@ -290,7 +290,7 @@ impl Layout {
     /// is `true`, analyze all tables before getting statistics. If it is
     /// `false`, only analyze tables that Postgres' autovacuum daemon would
     /// consider needing analysis.
-    fn version_stats(
+    async fn version_stats(
         &self,
         conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
@@ -308,7 +308,7 @@ impl Layout {
             .filter(|table| analyze_all || needs_analyze.contains(&table.name))
             .collect();
 
-        self.analyze_tables(conn, reporter, tables, cancel)
+        self.analyze_tables(conn, reporter, tables, cancel).await
     }
 
     /// Return all tables and the strategy to prune them withir stats whose ratio of distinct entities
@@ -416,7 +416,7 @@ impl Layout {
         tracker: &status::Tracker,
     ) -> Result<(), CancelableError<StoreError>> {
         reporter.start(req);
-        let stats = self.version_stats(conn, reporter, true, cancel)?;
+        let stats = self.version_stats(conn, reporter, true, cancel).await?;
         let prunable_tables: Vec<_> = self.prunable_tables(&stats, req).into_iter().collect();
         tracker.start(conn, req, &prunable_tables).await?;
         let dst_nsp = Namespace::prune(self.site.id);
@@ -517,7 +517,7 @@ impl Layout {
             catalog::set_last_pruned_block(conn, &self.site, &table.name, req.earliest_block)?;
         }
         let tables = prunable_tables.iter().map(|(table, _)| *table).collect();
-        self.analyze_tables(conn, reporter, tables, cancel)?;
+        self.analyze_tables(conn, reporter, tables, cancel).await?;
         reporter.finish();
         Ok(())
     }
