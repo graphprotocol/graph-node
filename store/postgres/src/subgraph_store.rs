@@ -1416,7 +1416,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         let mut pconn = self.primary_conn()?;
         pconn
-            .transaction(|pconn| async { pconn.create_subgraph(&name) }.scope_boxed())
+            .transaction(|pconn| pconn.create_subgraph(&name).scope_boxed())
             .await
     }
 
