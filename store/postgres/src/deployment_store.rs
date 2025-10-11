@@ -1381,7 +1381,7 @@ impl DeploymentStore {
 
                     if truncate {
                         layout.truncate_tables(conn)?;
-                        deployment::clear_entity_count(conn, site.as_ref())?;
+                        deployment::clear_entity_count(conn, site.as_ref()).await?;
                     } else {
                         let count = layout.revert_block(conn, block)?;
                         deployment::update_entity_count(conn, site.as_ref(), count).await?;
