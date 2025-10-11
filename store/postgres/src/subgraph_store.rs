@@ -926,7 +926,8 @@ impl Inner {
         if site.active
             && !self
                 .primary_conn()?
-                .subgraphs_using_deployment(site.as_ref())?
+                .subgraphs_using_deployment(site.as_ref())
+                .await?
                 .is_empty()
         {
             removable = false;

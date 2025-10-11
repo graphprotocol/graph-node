@@ -1820,7 +1820,10 @@ impl Connection {
         }
     }
 
-    pub fn subgraphs_using_deployment(&mut self, site: &Site) -> Result<Vec<String>, StoreError> {
+    pub async fn subgraphs_using_deployment(
+        &mut self,
+        site: &Site,
+    ) -> Result<Vec<String>, StoreError> {
         use subgraph as s;
         use subgraph_version as v;
 
