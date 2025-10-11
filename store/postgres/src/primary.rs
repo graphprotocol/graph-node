@@ -1430,7 +1430,10 @@ impl Connection {
         .await
     }
 
-    pub(crate) fn activate(&mut self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
+    pub(crate) async fn activate(
+        &mut self,
+        deployment: &DeploymentLocator,
+    ) -> Result<(), StoreError> {
         use deployment_schemas as ds;
         let conn = &mut self.conn;
 

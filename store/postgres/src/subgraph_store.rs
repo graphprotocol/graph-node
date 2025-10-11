@@ -796,7 +796,7 @@ impl Inner {
     /// with the same deployment hash. Activating this specific deployment
     /// will make queries use that instead of whatever was active before
     pub async fn activate(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
-        self.primary_conn()?.activate(deployment)?;
+        self.primary_conn()?.activate(deployment).await?;
         // As a side-effect, this will update the `self.sites` cache with
         // the new active site
         self.find_site(deployment.id.into()).await?;
