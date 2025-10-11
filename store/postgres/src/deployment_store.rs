@@ -597,12 +597,12 @@ impl DeploymentStore {
         detail::deployment_statuses(conn, sites)
     }
 
-    pub(crate) fn deployment_exists_and_synced(
+    pub(crate) async fn deployment_exists_and_synced(
         &self,
         id: &DeploymentHash,
     ) -> Result<bool, StoreError> {
         let mut conn = self.get_conn()?;
-        deployment::exists_and_synced(&mut conn, id.as_str())
+        deployment::exists_and_synced(&mut conn, id.as_str()).await
     }
 
     pub(crate) async fn deployment_synced(
@@ -1567,7 +1567,9 @@ impl DeploymentStore {
 
     pub(crate) async fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
         self.with_conn(async move |conn, _| {
-            deployment::exists_and_synced(conn, &id).map_err(Into::into)
+            deployment::exists_and_synced(conn, &id)
+                .await
+                .map_err(Into::into)
         })
         .await
     }

@@ -422,7 +422,7 @@ impl SubgraphStore {
                 async move {
                     let exists_and_synced = async move |id: &DeploymentHash| {
                         let (store, _) = subgraph_store.store(id).await?;
-                        store.deployment_exists_and_synced(id)
+                        store.deployment_exists_and_synced(id).await
                     };
 
                     // Create subgraph, subgraph version, and assignment
