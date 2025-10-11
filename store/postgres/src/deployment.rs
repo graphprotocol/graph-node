@@ -1085,7 +1085,7 @@ pub(crate) async fn delete_error(
 
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
 /// were created up to and including `target_block` will be copied.
-pub(crate) fn copy_errors(
+pub(crate) async fn copy_errors(
     conn: &mut PgConnection,
     src: &Site,
     dst: &Site,

@@ -1651,7 +1651,7 @@ impl DeploymentStore {
 
                     // Copy errors across
                     let start = Instant::now();
-                    let count = deployment::copy_errors(conn, &src.site, &dst.site, &block)?;
+                    let count = deployment::copy_errors(conn, &src.site, &dst.site, &block).await?;
                     info!(logger, "Copied {} existing errors", count;
                       "time_ms" => start.elapsed().as_millis());
 
