@@ -790,7 +790,7 @@ pub async fn set_synced(
 }
 
 /// Returns `true` if the deployment (as identified by `site.id`)
-pub fn exists(conn: &mut PgConnection, site: &Site) -> Result<bool, StoreError> {
+pub async fn exists(conn: &mut PgConnection, site: &Site) -> Result<bool, StoreError> {
     use deployment as d;
 
     let exists = d::table
