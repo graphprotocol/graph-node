@@ -12,14 +12,18 @@ use graph::{
     prelude::{BlockNumber, StoreError},
 };
 
-pub fn load(
+pub async fn load(
     conn: &mut PgConnection,
     site: &Site,
     block: BlockNumber,
     manifest_idx_and_name: Vec<(u32, String)>,
 ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
     match site.schema_version.private_data_sources() {
-        true => DataSourcesTable::new(site.namespace.clone()).load(conn, block),
+        true => {
+            DataSourcesTable::new(site.namespace.clone())
+                .load(conn, block)
+                .await
+        }
         false => shared::load(conn, site.deployment.as_str(), block, manifest_idx_and_name),
     }
 }

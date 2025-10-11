@@ -1023,13 +1023,15 @@ impl Connection {
         if state.src.site.schema_version.private_data_sources() {
             self.transaction(|conn| {
                 async {
-                    DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
-                        conn,
-                        &DataSourcesTable::new(state.dst.site.namespace.clone()),
-                        state.target_block.number,
-                        &src_manifest_idx_and_name,
-                        &dst_manifest_idx_and_name,
-                    )
+                    DataSourcesTable::new(state.src.site.namespace.clone())
+                        .copy_to(
+                            conn,
+                            &DataSourcesTable::new(state.dst.site.namespace.clone()),
+                            state.target_block.number,
+                            &src_manifest_idx_and_name,
+                            &dst_manifest_idx_and_name,
+                        )
+                        .await
                 }
                 .scope_boxed()
             })?
