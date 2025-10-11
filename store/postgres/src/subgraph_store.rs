@@ -1310,7 +1310,9 @@ impl Inner {
         let site = self.find_site(deployment.id.into()).await?;
         let store = self.for_site(&site)?;
 
-        store.set_history_blocks(&site, history_blocks, reorg_threshold)
+        store
+            .set_history_blocks(&site, history_blocks, reorg_threshold)
+            .await
     }
 
     pub async fn load_deployment(

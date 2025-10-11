@@ -854,7 +854,7 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) fn set_history_blocks(
+    pub(crate) async fn set_history_blocks(
         &self,
         site: &Site,
         history_blocks: BlockNumber,
@@ -874,7 +874,7 @@ impl DeploymentStore {
         self.layout_cache.remove(site);
 
         let mut conn = self.get_conn()?;
-        deployment::set_history_blocks(&mut conn, site, history_blocks)
+        deployment::set_history_blocks(&mut conn, site, history_blocks).await
     }
 
     pub(crate) async fn prune(
@@ -1676,7 +1676,8 @@ impl DeploymentStore {
                         conn,
                         &dst.site,
                         src_deployment.manifest.history_blocks,
-                    )?;
+                    )
+                    .await?;
 
                     // The `earliest_block` for `src` might have changed while
                     // we did the copy if `src` was pruned while we copied;
