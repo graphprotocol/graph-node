@@ -1620,7 +1620,7 @@ impl Connection {
     }
 
     #[cfg(debug_assertions)]
-    pub fn versions_for_subgraph(
+    pub async fn versions_for_subgraph(
         &mut self,
         name: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
