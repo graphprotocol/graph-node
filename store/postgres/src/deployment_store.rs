@@ -876,7 +876,7 @@ impl DeploymentStore {
             }
 
             conn.transaction_async(|conn| {
-                async { deployment::set_earliest_block(conn, site.as_ref(), req.earliest_block) }
+                deployment::set_earliest_block(conn, site.as_ref(), req.earliest_block)
                     .scope_boxed()
             })
             .await?;
