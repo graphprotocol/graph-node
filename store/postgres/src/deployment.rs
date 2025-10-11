@@ -769,7 +769,7 @@ pub async fn state(conn: &mut PgConnection, site: &Site) -> Result<DeploymentSta
 }
 
 /// Mark the deployment `id` as synced
-pub fn set_synced(
+pub async fn set_synced(
     conn: &mut PgConnection,
     id: &DeploymentHash,
     block_ptr: BlockPtr,
