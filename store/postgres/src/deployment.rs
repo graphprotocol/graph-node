@@ -348,7 +348,7 @@ pub struct ManifestInfo {
 }
 
 impl ManifestInfo {
-    pub fn load(conn: &mut PgConnection, site: &Site) -> Result<ManifestInfo, StoreError> {
+    pub async fn load(conn: &mut PgConnection, site: &Site) -> Result<ManifestInfo, StoreError> {
         use subgraph_manifest as sm;
         let (description, repository, spec_version, features): (
             Option<String>,
