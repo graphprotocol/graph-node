@@ -812,7 +812,7 @@ impl Connection {
     /// Signal any copy process that might be copying into one of these
     /// deployments that it should stop. Copying is cancelled whenever we
     /// remove the assignment for a deployment
-    fn cancel_copies(&mut self, ids: Vec<DeploymentId>) -> Result<(), StoreError> {
+    async fn cancel_copies(&mut self, ids: Vec<DeploymentId>) -> Result<(), StoreError> {
         use active_copies as ac;
 
         update(ac::table.filter(ac::dst.eq_any(ids)))
@@ -823,7 +823,7 @@ impl Connection {
 
     /// Delete all assignments for deployments that are neither the current nor the
     /// pending version of a subgraph and return the deployment id's
-    fn remove_unused_assignments(&mut self) -> Result<Vec<AssignmentChange>, StoreError> {
+    async fn remove_unused_assignments(&mut self) -> Result<Vec<AssignmentChange>, StoreError> {
         use deployment_schemas as ds;
         use subgraph as s;
         use subgraph_deployment_assignment as a;
@@ -854,7 +854,7 @@ impl Connection {
 
         // Stop ongoing copies
         let removed_ids: Vec<_> = removed.iter().map(|(id, _)| *id).collect();
-        self.cancel_copies(removed_ids)?;
+        self.cancel_copies(removed_ids).await?;
 
         let events = removed
             .into_iter()
@@ -876,7 +876,7 @@ impl Connection {
     /// the pending version so far, and remove any assignments that are not needed
     /// any longer as a result. Return the changes that were made to assignments
     /// in the process
-    pub fn promote_deployment(
+    pub async fn promote_deployment(
         &mut self,
         id: &DeploymentHash,
     ) -> Result<Vec<AssignmentChange>, StoreError> {
@@ -908,7 +908,7 @@ impl Connection {
         let changes = if pending_subgraph_versions.is_empty() {
             vec![]
         } else {
-            self.remove_unused_assignments()?
+            self.remove_unused_assignments().await?
         };
         Ok(changes)
     }
@@ -1058,7 +1058,7 @@ impl Connection {
         }
 
         // Clean up any assignments we might have displaced
-        let mut changes = self.remove_unused_assignments()?;
+        let mut changes = self.remove_unused_assignments().await?;
         if new_assignment {
             let change = AssignmentChange::set(site.into());
             changes.push(change);
@@ -1066,7 +1066,7 @@ impl Connection {
         Ok(changes)
     }
 
-    pub fn remove_subgraph(
+    pub async fn remove_subgraph(
         &mut self,
         name: SubgraphName,
     ) -> Result<Vec<AssignmentChange>, StoreError> {
@@ -1085,7 +1085,7 @@ impl Connection {
         if let Some(subgraph) = subgraph {
             delete(v::table.filter(v::subgraph.eq(&subgraph))).execute(conn)?;
             delete(s::table.filter(s::id.eq(subgraph))).execute(conn)?;
-            self.remove_unused_assignments()
+            self.remove_unused_assignments().await
         } else {
             Ok(vec![])
         }
@@ -1288,13 +1288,16 @@ impl Connection {
         Ok(vec![change])
     }
 
-    pub fn unassign_subgraph(&mut self, site: &Site) -> Result<Vec<AssignmentChange>, StoreError> {
+    pub async fn unassign_subgraph(
+        &mut self,
+        site: &Site,
+    ) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let conn = &mut self.conn;
         let delete_count = delete(a::table.filter(a::id.eq(site.id))).execute(conn)?;
 
-        self.cancel_copies(vec![site.id])?;
+        self.cancel_copies(vec![site.id]).await?;
 
         match delete_count {
             0 => Ok(vec![]),
