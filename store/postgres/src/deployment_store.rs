@@ -1695,7 +1695,7 @@ impl DeploymentStore {
                     // `earliest_block` and do not inadvertently expose data
                     // that might be incomplete because a prune on the source
                     // removed data just before we copied it
-                    deployment::copy_earliest_block(conn, &src.site, &dst.site)?;
+                    deployment::copy_earliest_block(conn, &src.site, &dst.site).await?;
 
                     // Set the block ptr to the graft point to signal that we successfully
                     // performed the graft

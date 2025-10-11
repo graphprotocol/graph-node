@@ -1327,7 +1327,7 @@ pub async fn set_earliest_block(
 /// Copy the `earliest_block` attribute from `src` to `dst`. The copy might
 /// go across shards and use the metadata tables mapped into the shard for
 /// `conn` which must be the shard for `dst`
-pub fn copy_earliest_block(
+pub async fn copy_earliest_block(
     conn: &mut PgConnection,
     src: &Site,
     dst: &Site,
