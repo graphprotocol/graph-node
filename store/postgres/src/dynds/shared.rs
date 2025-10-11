@@ -35,7 +35,7 @@ table! {
     }
 }
 
-pub(super) fn load(
+pub(super) async fn load(
     conn: &mut PgConnection,
     id: &str,
     block: BlockNumber,
@@ -98,7 +98,7 @@ pub(super) fn load(
     Ok(data_sources)
 }
 
-pub(super) fn insert(
+pub(super) async fn insert(
     conn: &mut PgConnection,
     deployment: &DeploymentHash,
     data_sources: &write::DataSources,
@@ -168,7 +168,7 @@ pub(super) fn insert(
 
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
 /// were created up to and including `target_block` will be copied.
-pub(crate) fn copy(
+pub(crate) async fn copy(
     conn: &mut PgConnection,
     src: &Site,
     dst: &Site,
@@ -215,7 +215,7 @@ pub(crate) fn copy(
         .execute(conn)?)
 }
 
-pub(super) fn revert(
+pub(super) async fn revert(
     conn: &mut PgConnection,
     id: &DeploymentHash,
     block: BlockNumber,
@@ -227,7 +227,10 @@ pub(super) fn revert(
     Ok(())
 }
 
-pub(crate) fn drop(conn: &mut PgConnection, id: &DeploymentHash) -> Result<usize, StoreError> {
+pub(crate) async fn drop(
+    conn: &mut PgConnection,
+    id: &DeploymentHash,
+) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;
 
     delete(decds::table.filter(decds::deployment.eq(id.as_str())))
