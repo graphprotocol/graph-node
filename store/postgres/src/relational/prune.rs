@@ -107,7 +107,7 @@ impl TablePair {
         // Determine the last vid that we need to copy
         let range = VidRange::for_prune(conn, &self.src, earliest_block, final_block)?;
         let mut batcher = VidBatcher::load(conn, &self.src_nsp, &self.src, range)?;
-        tracker.start_copy_final(conn, &self.src, range)?;
+        tracker.start_copy_final(conn, &self.src, range).await?;
 
         while !batcher.finished() {
             let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
@@ -145,7 +145,9 @@ impl TablePair {
             })
             .await?;
             let rows = rows.unwrap_or(0);
-            tracker.finish_batch(conn, &self.src, rows as i64, &batcher)?;
+            tracker
+                .finish_batch(conn, &self.src, rows as i64, &batcher)
+                .await?;
             cancel.check_cancel()?;
 
             reporter.prune_batch(
@@ -173,7 +175,7 @@ impl TablePair {
         // Determine the last vid that we need to copy
         let range = VidRange::for_prune(conn, &self.src, final_block + 1, BLOCK_NUMBER_MAX)?;
         let mut batcher = VidBatcher::load(conn, &self.src.nsp, &self.src, range)?;
-        tracker.start_copy_nonfinal(conn, &self.src, range)?;
+        tracker.start_copy_nonfinal(conn, &self.src, range).await?;
 
         while !batcher.finished() {
             let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
@@ -204,7 +206,9 @@ impl TablePair {
             }.scope_boxed()}).await?;
             let rows = rows.unwrap_or(0);
 
-            tracker.finish_batch(conn, &self.src, rows as i64, &batcher)?;
+            tracker
+                .finish_batch(conn, &self.src, rows as i64, &batcher)
+                .await?;
 
             reporter.prune_batch(
                 self.src.name.as_str(),
@@ -385,7 +389,7 @@ impl Layout {
         req: &PruneRequest,
         cancel: &CancelHandle,
     ) -> Result<(), CancelableError<StoreError>> {
-        let tracker = status::Tracker::new(conn, self.clone())?;
+        let tracker = status::Tracker::new(conn, self.clone()).await?;
 
         let res = self
             .prune_inner(logger, reporter, conn, req, cancel, &tracker)
@@ -423,7 +427,7 @@ impl Layout {
         let mut recreate_dst_nsp = true;
         for (table, strat) in &prunable_tables {
             reporter.start_table(table.name.as_str());
-            tracker.start_table(conn, table)?;
+            tracker.start_table(conn, table).await?;
             match strat {
                 PruningStrategy::Rebuild => {
                     if recreate_dst_nsp {
@@ -477,7 +481,7 @@ impl Layout {
                     let range = VidRange::for_prune(conn, &table, 0, req.earliest_block)?;
                     let mut batcher = VidBatcher::load(conn, &self.site.namespace, &table, range)?;
 
-                    tracker.start_delete(conn, table, range, &batcher)?;
+                    tracker.start_delete(conn, table, range, &batcher).await?;
                     while !batcher.finished() {
                         let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
                             async move {
@@ -496,7 +500,9 @@ impl Layout {
                         }.scope_boxed()}).await?;
                         let rows = rows.unwrap_or(0);
 
-                        tracker.finish_batch(conn, table, -(rows as i64), &batcher)?;
+                        tracker
+                            .finish_batch(conn, table, -(rows as i64), &batcher)
+                            .await?;
 
                         reporter.prune_batch(
                             table.name.as_str(),
@@ -508,7 +514,7 @@ impl Layout {
                 }
             }
             reporter.finish_table(table.name.as_str());
-            tracker.finish_table(conn, table)?;
+            tracker.finish_table(conn, table).await?;
         }
         if !recreate_dst_nsp {
             catalog::drop_schema(conn, dst_nsp.as_str())?;
@@ -750,7 +756,7 @@ mod status {
     }
 
     impl Tracker {
-        pub(super) fn new(conn: &mut PgConnection, layout: Arc<Layout>) -> StoreResult<Self> {
+        pub(super) async fn new(conn: &mut PgConnection, layout: Arc<Layout>) -> StoreResult<Self> {
             use prune_state as ps;
             let run = ps::table
                 .filter(ps::id.eq(layout.site.id))
@@ -819,7 +825,7 @@ mod status {
             .await
         }
 
-        pub(crate) fn start_table(
+        pub(crate) async fn start_table(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -833,12 +839,13 @@ mod status {
                     pts::started_at.eq(diesel::dsl::now),
                     pts::phase.eq(Phase::Started),
                 ),
-            )?;
+            )
+            .await?;
 
             Ok(())
         }
 
-        pub(crate) fn start_copy_final(
+        pub(crate) async fn start_copy_final(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -854,10 +861,10 @@ mod status {
                 pts::rows.eq(0),
             );
 
-            self.update_table_state(conn, table, values)
+            self.update_table_state(conn, table, values).await
         }
 
-        pub(crate) fn start_copy_nonfinal(
+        pub(crate) async fn start_copy_nonfinal(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -871,10 +878,10 @@ mod status {
                 pts::next_vid.eq(range.min),
                 pts::nonfinal_vid.eq(range.max),
             );
-            self.update_table_state(conn, table, values)
+            self.update_table_state(conn, table, values).await
         }
 
-        pub(crate) fn finish_batch(
+        pub(crate) async fn finish_batch(
             &self,
             conn: &mut PgConnection,
             src: &Table,
@@ -889,10 +896,10 @@ mod status {
                 pts::rows.eq(pts::rows + rows),
             );
 
-            self.update_table_state(conn, src, values)
+            self.update_table_state(conn, src, values).await
         }
 
-        pub(crate) fn finish_table(
+        pub(crate) async fn finish_table(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -904,10 +911,10 @@ mod status {
                 pts::phase.eq(Phase::Done),
             );
 
-            self.update_table_state(conn, table, values)
+            self.update_table_state(conn, table, values).await
         }
 
-        pub(crate) fn start_delete(
+        pub(crate) async fn start_delete(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -926,10 +933,10 @@ mod status {
                 pts::batch_size.eq(batcher.batch_size() as i64),
             );
 
-            self.update_table_state(conn, table, values)
+            self.update_table_state(conn, table, values).await
         }
 
-        fn update_table_state<V, C>(
+        async fn update_table_state<V, C>(
             &self,
             conn: &mut PgConnection,
             table: &Table,
