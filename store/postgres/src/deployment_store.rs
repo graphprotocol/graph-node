@@ -277,11 +277,11 @@ impl DeploymentStore {
         let mut conn = self.get_conn()?;
         conn.transaction_async(|conn| {
             async {
-                crate::deployment::drop_schema(conn, &site.namespace)?;
+                crate::deployment::drop_schema(conn, &site.namespace).await?;
                 if !site.schema_version.private_data_sources() {
                     crate::dynds::shared::drop(conn, &site.deployment)?;
                 }
-                crate::deployment::drop_metadata(conn, site)
+                crate::deployment::drop_metadata(conn, site).await
             }
             .scope_boxed()
         })
@@ -630,12 +630,12 @@ impl DeploymentStore {
 
     // Only used for tests
     #[cfg(debug_assertions)]
-    pub(crate) fn drop_deployment_schema(
+    pub(crate) async fn drop_deployment_schema(
         &self,
         namespace: &crate::primary::Namespace,
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn()?;
-        deployment::drop_schema(&mut conn, namespace)
+        deployment::drop_schema(&mut conn, namespace).await
     }
 
     // Only used for tests

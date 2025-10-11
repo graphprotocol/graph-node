@@ -1141,7 +1141,7 @@ pub(crate) async fn copy_errors(
 /// schema, could block dropping the schema indefinitely, this operation
 /// will wait at most 2s to acquire all necessary locks, and fail if that is
 /// not possible.
-pub fn drop_schema(
+pub async fn drop_schema(
     conn: &mut PgConnection,
     namespace: &crate::primary::Namespace,
 ) -> Result<(), StoreError> {
@@ -1152,7 +1152,7 @@ pub fn drop_schema(
     Ok(conn.batch_execute(&query)?)
 }
 
-pub fn drop_metadata(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
+pub async fn drop_metadata(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
     use head as h;
 
     // We don't need to delete from `deployment`, `subgraph_manifest`,  or
