@@ -844,7 +844,7 @@ impl Inner {
         // Delete all subgraph schemas
         for schema in schemas {
             let (store, _) = self.store(&schema.deployment).await?;
-            store.drop_deployment_schema(&schema.namespace)?;
+            store.drop_deployment_schema(&schema.namespace).await?;
         }
 
         for store in self.stores.values() {
