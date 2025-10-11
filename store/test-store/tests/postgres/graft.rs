@@ -486,9 +486,9 @@ fn on_sync() {
 
                 let mut primary = primary_connection().await;
                 let src_site = primary.locate_site(src)?.unwrap();
-                let src_node = primary.assigned_node(&src_site)?;
+                let src_node = primary.assigned_node(&src_site).await?;
                 let dst_site = primary.locate_site(dst)?.unwrap();
-                let dst_node = primary.assigned_node(&dst_site)?;
+                let dst_node = primary.assigned_node(&dst_site).await?;
 
                 assert!(dst_node.is_some());
                 match on_sync {

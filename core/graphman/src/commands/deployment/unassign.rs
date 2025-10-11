@@ -59,6 +59,7 @@ pub async fn load_assigned_deployment(
 
     match catalog_conn
         .assigned_node(&site)
+        .await
         .map_err(GraphmanError::from)?
     {
         Some(_) => Ok(AssignedDeployment { locator, site }),
