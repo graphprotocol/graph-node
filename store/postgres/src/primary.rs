@@ -1542,7 +1542,10 @@ impl Connection {
 
     /// Return the name of the node that has the fewest assignments out of the
     /// given `nodes`. If `nodes` is empty, return `None`
-    pub fn least_assigned_node(&mut self, nodes: &[NodeId]) -> Result<Option<NodeId>, StoreError> {
+    pub async fn least_assigned_node(
+        &mut self,
+        nodes: &[NodeId],
+    ) -> Result<Option<NodeId>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let nodes: Vec<_> = nodes.iter().map(|n| n.as_str()).collect();
