@@ -212,7 +212,7 @@ impl DeploymentStore {
                 };
 
                 if replace || !exists {
-                    deployment::create_deployment(conn, &site, deployment, exists, replace)?;
+                    deployment::create_deployment(conn, &site, deployment, exists, replace).await?;
                 };
 
                 // Create the schema for the subgraph data

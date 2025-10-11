@@ -1161,7 +1161,7 @@ pub async fn drop_metadata(conn: &mut PgConnection, site: &Site) -> Result<(), S
     Ok(())
 }
 
-pub fn create_deployment(
+pub async fn create_deployment(
     conn: &mut PgConnection,
     site: &Site,
     create: DeploymentCreate,
