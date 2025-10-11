@@ -1170,7 +1170,7 @@ impl DeploymentStore {
 
                     dynds::insert(conn, &site, &batch.data_sources, manifest_idx_and_name).await?;
 
-                    dynds::update_offchain_status(conn, &site, &batch.offchain_to_remove)?;
+                    dynds::update_offchain_status(conn, &site, &batch.offchain_to_remove).await?;
 
                     if !batch.deterministic_errors.is_empty() {
                         deployment::insert_subgraph_errors(
