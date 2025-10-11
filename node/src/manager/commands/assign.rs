@@ -50,7 +50,7 @@ pub async fn reassign(
                 vec![]
             } else {
                 println!("reassigning {locator} to {node} (was {cur})");
-                conn.reassign_subgraph(&site, &node)?
+                conn.reassign_subgraph(&site, &node).await?
             }
         }
         None => {
