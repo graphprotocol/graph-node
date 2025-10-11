@@ -1323,7 +1323,7 @@ impl Connection {
     /// function only performs the basic operations for creation, and the
     /// caller must check that other conditions (like whether there already
     /// is an active site for the deployment) are met
-    fn create_site(
+    async fn create_site(
         &mut self,
         shard: Shard,
         deployment: DeploymentHash,
@@ -1393,6 +1393,7 @@ impl Connection {
         }?;
 
         self.create_site(shard, subgraph.clone(), network, schema_version, true)
+            .await
             .map(|site| (site, site_was_created))
     }
 
@@ -1411,7 +1412,7 @@ impl Connection {
     /// Create a copy of the site `src` in the shard `shard`, but mark it as
     /// not active. If there already is a site in `shard`, return that
     /// instead.
-    pub fn copy_site(&mut self, src: &Site, shard: Shard) -> Result<Site, StoreError> {
+    pub async fn copy_site(&mut self, src: &Site, shard: Shard) -> Result<Site, StoreError> {
         if let Some(site) = queries::find_site_in_shard(&mut self.conn, &src.deployment, &shard)? {
             return Ok(site);
         }
@@ -1423,6 +1424,7 @@ impl Connection {
             src.schema_version,
             false,
         )
+        .await
     }
 
     pub(crate) fn activate(&mut self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
