@@ -1186,7 +1186,7 @@ impl Layout {
     ///
     /// Changing this would require that we have a complete list of block
     /// numbers and block times which we do not have anywhere in graph-node.
-    pub(crate) fn rollup(
+    pub(crate) async fn rollup(
         &self,
         conn: &mut PgConnection,
         last_rollup: Option<BlockTime>,
@@ -1238,7 +1238,7 @@ impl Layout {
                         break;
                     }
                     Some(bucket) => {
-                        rollup.insert(conn, &bucket, *block)?;
+                        rollup.insert(conn, &bucket, *block).await?;
                     }
                 }
             }
