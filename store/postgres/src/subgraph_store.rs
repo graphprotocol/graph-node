@@ -1064,7 +1064,7 @@ impl Inner {
     #[cfg(debug_assertions)]
     pub async fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
         let (store, _) = self.store(id).await?;
-        store.error_count(id)
+        store.error_count(id).await
     }
 
     /// Vacuum the `head` and `deployment` table in each shard

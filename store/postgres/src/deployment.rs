@@ -951,7 +951,7 @@ pub(crate) async fn insert_subgraph_errors(
 }
 
 #[cfg(debug_assertions)]
-pub(crate) fn error_count(
+pub(crate) async fn error_count(
     conn: &mut PgConnection,
     id: &DeploymentHash,
 ) -> Result<usize, StoreError> {

@@ -1903,9 +1903,9 @@ impl DeploymentStore {
     }
 
     #[cfg(debug_assertions)]
-    pub fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
+    pub async fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
         let mut conn = self.get_conn()?;
-        deployment::error_count(&mut conn, id)
+        deployment::error_count(&mut conn, id).await
     }
 
     pub(crate) async fn mirror_primary_tables(&self, logger: &Logger) {
