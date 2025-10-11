@@ -1499,7 +1499,7 @@ impl Connection {
         schema.map(|schema| schema.try_into()).transpose()
     }
 
-    pub fn find_sites_for_network(&mut self, network: &str) -> Result<Vec<Site>, StoreError> {
+    pub async fn find_sites_for_network(&mut self, network: &str) -> Result<Vec<Site>, StoreError> {
         use deployment_schemas as ds;
 
         ds::table
