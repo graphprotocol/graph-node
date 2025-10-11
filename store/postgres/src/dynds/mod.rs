@@ -81,7 +81,7 @@ pub(crate) async fn update_offchain_status(
 }
 
 /// The maximum assigned causality region. Any higher number is therefore free to be assigned.
-pub(crate) fn causality_region_curr_val(
+pub(crate) async fn causality_region_curr_val(
     conn: &mut PgConnection,
     site: &Site,
 ) -> Result<Option<CausalityRegion>, StoreError> {

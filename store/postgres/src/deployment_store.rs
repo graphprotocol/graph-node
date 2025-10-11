@@ -1561,7 +1561,7 @@ impl DeploymentStore {
         site: Arc<Site>,
     ) -> Result<Option<CausalityRegion>, StoreError> {
         self.with_conn(async move |conn, _| {
-            Ok(crate::dynds::causality_region_curr_val(conn, &site)?)
+            Ok(crate::dynds::causality_region_curr_val(conn, &site).await?)
         })
         .await
     }
