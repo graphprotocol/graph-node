@@ -540,11 +540,11 @@ macro_rules! assert_entity_eq {
 }
 
 /// Test harness for running database integration tests.
-fn run_test<F>(test: F)
+async fn run_test<F>(test: F)
 where
-    F: FnOnce(&mut PgConnection, &Layout),
+    F: AsyncFnOnce(&mut PgConnection, &Layout),
 {
-    run_test_with_conn(|conn| {
+    run_test_with_conn(async |conn| {
         // Reset state before starting
         remove_schema(conn);
 
@@ -552,13 +552,14 @@ where
         let layout = create_schema(conn);
 
         // Run test
-        test(conn, &layout);
-    });
+        test(conn, &layout).await;
+    })
+    .await;
 }
 
-#[test]
-fn find() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn find() {
+    run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
 
         // Happy path: find existing entity
@@ -581,12 +582,13 @@ fn find() {
             )
             .expect("Failed to read Scalar[noone]");
         assert!(entity.is_none());
-    });
+    })
+    .await;
 }
 
-#[test]
-fn insert_null_fulltext_fields() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn insert_null_fulltext_fields() {
+    run_test(async |conn, layout| {
         insert_entity(
             conn,
             layout,
@@ -604,12 +606,13 @@ fn insert_null_fulltext_fields() {
             .expect("Failed to read NullableStrings[one]")
             .unwrap();
         assert_entity_eq!(scrub(&EMPTY_NULLABLESTRINGS_ENTITY), entity);
-    });
+    })
+    .await;
 }
 
-#[test]
-fn update() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn update() {
+    run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
 
         // Update with overwrite
@@ -636,12 +639,13 @@ fn update() {
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
-    });
+    })
+    .await;
 }
 
-#[test]
-fn update_many() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn update_many() {
+    run_test(async |conn, layout| {
         let mut one = SCALAR_ENTITY.clone();
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
@@ -657,7 +661,7 @@ fn update_many() {
         );
 
         // confidence test: there should be 3 scalar entities in store right now
-        assert_eq!(3, count_scalar_entities(conn, layout));
+        assert_eq!(3, count_scalar_entities(conn, layout).await);
 
         // update with overwrite
         one.set("string", "updated").unwrap();
@@ -729,13 +733,14 @@ fn update_many() {
             new_three.get("color"),
             Some(&Value::String("red".to_string()))
         );
-    });
+    })
+    .await;
 }
 
 /// Test that we properly handle BigDecimal values with a negative scale.
-#[test]
-fn serialize_bigdecimal() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn serialize_bigdecimal() {
+    run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
 
         // Update with overwrite
@@ -766,15 +771,16 @@ fn serialize_bigdecimal() {
                 .unwrap();
             assert_entity_eq!(entity, actual);
         }
-    });
+    })
+    .await;
 }
 
-#[test]
-fn enum_arrays() {
+#[tokio::test]
+async fn enum_arrays() {
     // We had an issue where we would read an array of enums back as a
     // single string; for this test, we would get back the string
     // "{yellow,red,BLUE}" instead of the array ["yellow", "red", "BLUE"]
-    run_test(|conn, layout| {
+    run_test(async |conn, layout| {
         let spectrum = entity! { THINGS_SCHEMA =>
             id: "rainbow",
             main: "yellow",
@@ -802,10 +808,11 @@ fn enum_arrays() {
             .expect("Failed to read Spectrum[rainbow]")
             .unwrap();
         assert_entity_eq!(spectrum, actual);
-    });
+    })
+    .await
 }
 
-fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
+async fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
     let filter = EntityFilter::Or(vec![
         EntityFilter::Equal("bool".into(), true.into()),
         EntityFilter::Equal("bool".into(), false.into()),
@@ -816,14 +823,15 @@ fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
     query.range.first = None;
     layout
         .query::<Entity>(&LOGGER, conn, query)
+        .await
         .map(|(entities, _)| entities)
         .expect("Count query failed")
         .len()
 }
 
-#[test]
-fn delete() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn delete() {
+    run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
@@ -839,7 +847,7 @@ fn delete() {
             .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(0, count);
-        assert_eq!(2, count_scalar_entities(conn, layout));
+        assert_eq!(2, count_scalar_entities(conn, layout).await);
 
         // Delete entity two
         entity_keys
@@ -852,13 +860,14 @@ fn delete() {
             .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(1, count);
-        assert_eq!(1, count_scalar_entities(conn, layout));
-    });
+        assert_eq!(1, count_scalar_entities(conn, layout).await);
+    })
+    .await;
 }
 
-#[test]
-fn insert_many_and_delete_many() {
-    run_test(|conn, layout| {
+#[tokio::test]
+async fn insert_many_and_delete_many() {
+    run_test(async |conn, layout| {
         let one = SCALAR_ENTITY.clone();
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
@@ -869,7 +878,7 @@ fn insert_many_and_delete_many() {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![one, two, three]);
 
         // confidence test: there should be 3 scalar entities in store right now
-        assert_eq!(3, count_scalar_entities(conn, layout));
+        assert_eq!(3, count_scalar_entities(conn, layout).await);
 
         // Delete entities with ids equal to "two" and "three"
         let entity_keys: Vec<_> = vec!["two", "three"]
@@ -881,62 +890,64 @@ fn insert_many_and_delete_many() {
             .delete(conn, &group, &MOCK_STOPWATCH)
             .expect("Failed to delete");
         assert_eq!(2, num_removed);
-        assert_eq!(1, count_scalar_entities(conn, layout));
-    });
+        assert_eq!(1, count_scalar_entities(conn, layout).await);
+    })
+    .await;
 }
 
 #[tokio::test]
 async fn layout_cache() {
-    // We need to use `block_on` to call the `create_test_subgraph` function which must be called
-    // from a sync context, so we replicate what we do `spawn_module`.
-    let runtime = tokio::runtime::Handle::current();
-    std::thread::spawn(move || {
-        run_test_with_conn(|conn| {
-            let _runtime_guard = runtime.enter();
+    run_test_with_conn(async |conn| {
+        let id = DeploymentHash::new("primaryLayoutCache").unwrap();
+        let _loc = create_test_subgraph(&id, THINGS_GQL).await;
+        let site = Arc::new(
+            primary_mirror()
+                .find_active_site(&id)
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+        let table_name = SqlName::verbatim("scalar".to_string());
 
-            let id = DeploymentHash::new("primaryLayoutCache").unwrap();
-            let _loc = graph::block_on(create_test_subgraph(&id, THINGS_GQL));
-            let site = Arc::new(primary_mirror().find_active_site(&id).unwrap().unwrap());
-            let table_name = SqlName::verbatim("scalar".to_string());
+        let cache = LayoutCache::new(Duration::from_millis(10));
 
-            let cache = LayoutCache::new(Duration::from_millis(10));
+        // Without an entry, account_like is false
+        let layout = cache
+            .get(&LOGGER, conn, site.clone())
+            .await
+            .expect("we can get the layout");
+        let table = layout.table(&table_name).unwrap();
+        assert_eq!(false, table.is_account_like);
 
-            // Without an entry, account_like is false
-            let layout = cache
-                .get(&LOGGER, conn, site.clone())
-                .expect("we can get the layout");
-            let table = layout.table(&table_name).unwrap();
-            assert_eq!(false, table.is_account_like);
+        set_account_like(conn, site.as_ref(), &table_name, true)
+            .expect("we can set 'scalar' to account-like");
+        sleep(Duration::from_millis(50));
 
-            set_account_like(conn, site.as_ref(), &table_name, true)
-                .expect("we can set 'scalar' to account-like");
-            sleep(Duration::from_millis(50));
+        // Flip account_like to true
+        let layout = cache
+            .get(&LOGGER, conn, site.clone())
+            .await
+            .expect("we can get the layout");
+        let table = layout.table(&table_name).unwrap();
+        assert_eq!(true, table.is_account_like);
 
-            // Flip account_like to true
-            let layout = cache
-                .get(&LOGGER, conn, site.clone())
-                .expect("we can get the layout");
-            let table = layout.table(&table_name).unwrap();
-            assert_eq!(true, table.is_account_like);
+        // Set it back to false
+        set_account_like(conn, site.as_ref(), &table_name, false)
+            .expect("we can set 'scalar' to account-like");
+        sleep(Duration::from_millis(50));
 
-            // Set it back to false
-            set_account_like(conn, site.as_ref(), &table_name, false)
-                .expect("we can set 'scalar' to account-like");
-            sleep(Duration::from_millis(50));
-
-            let layout = cache
-                .get(&LOGGER, conn, site)
-                .expect("we can get the layout");
-            let table = layout.table(&table_name).unwrap();
-            assert_eq!(false, table.is_account_like);
-        })
+        let layout = cache
+            .get(&LOGGER, conn, site)
+            .await
+            .expect("we can get the layout");
+        let table = layout.table(&table_name).unwrap();
+        assert_eq!(false, table.is_account_like);
     })
-    .join()
-    .unwrap();
+    .await;
 }
 
-#[test]
-fn conflicting_entity() {
+#[tokio::test]
+async fn conflicting_entity() {
     // `id` is the id of an entity to create, `cat`, `dog`, and `ferret` are
     // the names of the types for which to check entity uniqueness
     fn check(
@@ -984,17 +995,18 @@ fn conflicting_entity() {
         assert_eq!(None, conflict);
     }
 
-    run_test(|mut conn, layout| {
+    run_test(async |mut conn, layout| {
         let id = Value::String("fred".to_string());
         check(&mut conn, layout, id, "Cat", "Dog", "Ferret", 0);
 
         let id = Value::Bytes(scalar::Bytes::from_str("0xf1ed").unwrap());
         check(&mut conn, layout, id, "ByteCat", "ByteDog", "ByteFerret", 1);
     })
+    .await
 }
 
-#[test]
-fn revert_block() {
+#[tokio::test]
+async fn revert_block() {
     fn check_fred(conn: &mut PgConnection, layout: &Layout) {
         let id = "fred";
 
@@ -1035,7 +1047,7 @@ fn revert_block() {
         assert_fred(conn, "one");
     }
 
-    fn check_marty(conn: &mut PgConnection, layout: &Layout) {
+    async fn check_marty(conn: &mut PgConnection, layout: &Layout) {
         let set_marties = |conn: &mut PgConnection, from, to| {
             for block in from..=to {
                 let id = format!("marty-{}", block);
@@ -1048,7 +1060,9 @@ fn revert_block() {
             }
         };
 
-        let assert_marties = |conn: &mut PgConnection, max_block, except: Vec<BlockNumber>| {
+        let assert_marties = async |conn: &mut PgConnection,
+                                    max_block,
+                                    except: Vec<BlockNumber>| {
             let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
             let collection = EntityCollection::All(vec![(MINK_TYPE.clone(), AttributeNames::All)]);
             let filter = EntityFilter::StartsWith("id".to_string(), Value::from("marty"));
@@ -1058,6 +1072,7 @@ fn revert_block() {
                 .order(EntityOrder::Ascending("order".to_string(), ValueType::Int));
             let marties: Vec<Entity> = layout
                 .query(&LOGGER, conn, query)
+                .await
                 .map(|(entities, _)| entities)
                 .expect("loading all marties works");
 
@@ -1074,29 +1089,31 @@ fn revert_block() {
             }
         };
 
-        let assert_all_marties =
-            |conn: &mut PgConnection, max_block| assert_marties(conn, max_block, vec![]);
+        let assert_all_marties = async |conn: &mut PgConnection, max_block| {
+            assert_marties(conn, max_block, vec![]).await
+        };
 
         set_marties(conn, 0, 4);
-        assert_all_marties(conn, 4);
+        assert_all_marties(conn, 4).await;
 
         layout.revert_block(conn, 3).unwrap();
-        assert_all_marties(conn, 2);
+        assert_all_marties(conn, 2).await;
         layout.revert_block(conn, 2).unwrap();
-        assert_all_marties(conn, 1);
+        assert_all_marties(conn, 1).await;
 
         set_marties(conn, 4, 4);
         // We don't have entries for 2 and 3 anymore
-        assert_marties(conn, 4, vec![2, 3]);
+        assert_marties(conn, 4, vec![2, 3]).await;
 
         layout.revert_block(conn, 2).unwrap();
-        assert_all_marties(conn, 1);
+        assert_all_marties(conn, 1).await;
     }
 
-    run_test(|conn, layout| {
+    run_test(async |conn, layout| {
         check_fred(conn, layout);
-        check_marty(conn, layout);
-    });
+        check_marty(conn, layout).await;
+    })
+    .await;
 }
 
 struct QueryChecker<'a> {
@@ -1128,13 +1145,14 @@ impl<'a> QueryChecker<'a> {
         Self { conn, layout }
     }
 
-    fn check(self, expected_entity_ids: Vec<&'static str>, mut query: EntityQuery) -> Self {
+    async fn check(self, expected_entity_ids: Vec<&'static str>, mut query: EntityQuery) -> Self {
         let q = query.clone();
         let unordered = matches!(query.order, EntityOrder::Unordered);
         query.block = BLOCK_NUMBER_MAX;
         let entities = self
             .layout
             .query::<Entity>(&LOGGER, self.conn, query)
+            .await
             .expect("layout.query failed to execute query")
             .0;
 
@@ -1199,25 +1217,28 @@ impl EasyOrder for EntityQuery {
     }
 }
 
-#[test]
+#[tokio::test]
 #[should_panic(
     expected = "layout.query failed to execute query: FulltextQueryInvalidSyntax(\"syntax error in tsquery: \\\"Jono 'a\\\"\")"
 )]
-fn check_fulltext_search_syntax_error() {
-    run_test(move |mut conn, layout| {
-        QueryChecker::new(&mut conn, layout).check(
-            vec!["1"],
-            user_query().filter(EntityFilter::Fulltext(
-                "userSearch".into(),
-                "Jono 'a".into(),
-            )),
-        );
-    });
+async fn check_fulltext_search_syntax_error() {
+    run_test(async |mut conn, layout| {
+        QueryChecker::new(&mut conn, layout)
+            .check(
+                vec!["1"],
+                user_query().filter(EntityFilter::Fulltext(
+                    "userSearch".into(),
+                    "Jono 'a".into(),
+                )),
+            )
+            .await;
+    })
+    .await;
 }
 
-#[test]
-fn check_block_finds() {
-    run_test(move |mut conn, layout| {
+#[tokio::test]
+async fn check_block_finds() {
+    run_test(async |mut conn, layout| {
         let checker = QueryChecker::new(&mut conn, layout);
 
         update_user_entity(
@@ -1243,36 +1264,46 @@ fn check_block_finds() {
                 vec![],
                 user_query().filter(EntityFilter::ChangeBlockGte(BLOCK_NUMBER_MAX)),
             )
+            .await
             // Initial block, we should get here all data
             .check(
                 vec!["1", "2", "3"],
                 user_query().filter(EntityFilter::ChangeBlockGte(0)),
             )
+            .await
             // Block with an update, we should have one only
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::ChangeBlockGte(1)),
-            );
-    });
+            )
+            .await;
+    })
+    .await;
 }
 
-#[test]
-fn check_find() {
-    run_test(move |mut conn, layout| {
+#[tokio::test]
+async fn check_find() {
+    run_test(async |mut conn, layout| {
         // find with interfaces
         let types = vec![&*CAT_TYPE, &*DOG_TYPE];
         let checker = QueryChecker::new(&mut conn, layout)
             .check(vec!["garfield", "pluto"], query(&types))
+            .await
             .check(vec!["pluto", "garfield"], query(&types).desc("name"))
+            .await
             .check(
                 vec!["garfield"],
                 query(&types)
                     .filter(EntityFilter::StartsWith("name".into(), Value::from("Gar")))
                     .desc("name"),
             )
+            .await
             .check(vec!["pluto", "garfield"], query(&types).desc("id"))
+            .await
             .check(vec!["garfield", "pluto"], query(&types).asc("id"))
-            .check(vec!["garfield", "pluto"], query(&types).unordered());
+            .await
+            .check(vec!["garfield", "pluto"], query(&types).unordered())
+            .await;
 
         // fulltext
         let checker = checker
@@ -1280,13 +1311,15 @@ fn check_find() {
                 vec!["3"],
                 user_query().filter(EntityFilter::Fulltext("userSearch".into(), "Shaq:*".into())),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::Fulltext(
                     "userSearch".into(),
                     "Jono & achangedemail@email.com".into(),
                 )),
-            );
+            )
+            .await;
         // Test with a second fulltext search; we had a bug that caused only
         // one search index to be populated (see issue #4794)
         let checker = checker
@@ -1297,13 +1330,15 @@ fn check_find() {
                     "Shaq:*".into(),
                 )),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::Fulltext(
                     "userSearch2".into(),
                     "Jono & achangedemail@email.com".into(),
                 )),
-            );
+            )
+            .await;
 
         // list contains
         fn drinks_query(v: Vec<&str>) -> EntityQuery {
@@ -1313,11 +1348,16 @@ fn check_find() {
 
         let checker = checker
             .check(vec!["2"], drinks_query(vec!["beer"]))
+            .await
             // Reverse of how we stored it
             .check(vec!["3"], drinks_query(vec!["tea", "coffee"]))
+            .await
             .check(vec![], drinks_query(vec!["beer", "tea"]))
+            .await
             .check(vec![], drinks_query(vec!["beer", "water"]))
-            .check(vec![], drinks_query(vec!["beer", "wine", "water"]));
+            .await
+            .check(vec![], drinks_query(vec!["beer", "wine", "water"]))
+            .await;
 
         // list not contains
         let checker = checker
@@ -1329,6 +1369,7 @@ fn check_find() {
                     vec!["beer"].into(),
                 )),
             )
+            .await
             // Users 2 do not have "tea" on its drinks list.
             .check(
                 vec!["2"],
@@ -1336,7 +1377,8 @@ fn check_find() {
                     "drinks".into(),
                     vec!["tea"].into(),
                 )),
-            );
+            )
+            .await;
 
         // string attributes
         let checker = checker
@@ -1344,10 +1386,12 @@ fn check_find() {
                 vec!["2"],
                 user_query().filter(EntityFilter::Contains("name".into(), "ind".into())),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query().filter(EntityFilter::Equal("name".to_owned(), "Cindini".into())),
             )
+            .await
             // Test that we can order by id
             .check(
                 vec!["2"],
@@ -1355,28 +1399,33 @@ fn check_find() {
                     .filter(EntityFilter::Equal("name".to_owned(), "Cindini".into()))
                     .desc("id"),
             )
+            .await
             .check(
                 vec!["1", "3"],
                 user_query()
                     .filter(EntityFilter::Not("name".to_owned(), "Cindini".into()))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["3"],
                 user_query().filter(EntityFilter::GreaterThan("name".to_owned(), "Kundi".into())),
             )
+            .await
             .check(
                 vec!["2", "1"],
                 user_query()
                     .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
                     .filter(EntityFilter::LessThan("name".to_owned(), "Kundi".into()))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query()
@@ -1385,6 +1434,7 @@ fn check_find() {
                     .first(1)
                     .skip(1),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1394,18 +1444,21 @@ fn check_find() {
                     ]))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
                     .filter(EntityFilter::EndsWith("name".to_owned(), "ini".into()))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
                     .filter(EntityFilter::NotEndsWith("name".to_owned(), "ini".into()))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query()
@@ -1415,10 +1468,12 @@ fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec![],
                 user_query().filter(EntityFilter::In("name".to_owned(), vec![])),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -1427,7 +1482,8 @@ fn check_find() {
                         vec!["Shaqueeena".into()],
                     ))
                     .desc("name"),
-            );
+            )
+            .await;
         // float attributes
         let checker = checker
             .check(
@@ -1437,6 +1493,7 @@ fn check_find() {
                     Value::BigDecimal(184.4.into()),
                 )),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
@@ -1446,6 +1503,7 @@ fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::GreaterThan(
@@ -1453,6 +1511,7 @@ fn check_find() {
                     Value::BigDecimal(160.0.into()),
                 )),
             )
+            .await
             .check(
                 vec!["2", "3"],
                 user_query()
@@ -1462,6 +1521,7 @@ fn check_find() {
                     ))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
@@ -1471,6 +1531,7 @@ fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1482,6 +1543,7 @@ fn check_find() {
                     .first(1)
                     .skip(1),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
@@ -1495,6 +1557,7 @@ fn check_find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1507,15 +1570,18 @@ fn check_find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
 
         // int 8 attributes
-        let checker = checker.check(
-            vec!["3"],
-            user_query()
-                .filter(EntityFilter::Equal("visits".to_owned(), Value::Int(22_i32)))
-                .desc("name"),
-        );
+        let checker = checker
+            .check(
+                vec!["3"],
+                user_query()
+                    .filter(EntityFilter::Equal("visits".to_owned(), Value::Int(22_i32)))
+                    .desc("name"),
+            )
+            .await;
 
         // int attributes
         let checker = checker
@@ -1525,12 +1591,14 @@ fn check_find() {
                     .filter(EntityFilter::Equal("age".to_owned(), Value::Int(67_i32)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
                     .filter(EntityFilter::Not("age".to_owned(), Value::Int(67_i32)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::GreaterThan(
@@ -1538,6 +1606,7 @@ fn check_find() {
                     Value::Int(43_i32),
                 )),
             )
+            .await
             .check(
                 vec!["2", "1"],
                 user_query()
@@ -1547,12 +1616,14 @@ fn check_find() {
                     ))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2", "3"],
                 user_query()
                     .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(50_i32)))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2", "3"],
                 user_query()
@@ -1562,12 +1633,14 @@ fn check_find() {
                     ))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["3", "2"],
                 user_query()
                     .filter(EntityFilter::LessThan("age".to_owned(), Value::Int(50_i32)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1576,6 +1649,7 @@ fn check_find() {
                     .first(1)
                     .skip(1),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -1586,6 +1660,7 @@ fn check_find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["3"],
                 user_query()
@@ -1595,7 +1670,8 @@ fn check_find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
 
         // bool attributes
         let checker = checker
@@ -1605,12 +1681,14 @@ fn check_find() {
                     .filter(EntityFilter::Equal("coffee".to_owned(), Value::Bool(true)))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1", "3"],
                 user_query()
                     .filter(EntityFilter::Not("coffee".to_owned(), Value::Bool(true)))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1621,6 +1699,7 @@ fn check_find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["3", "1"],
                 user_query()
@@ -1630,7 +1709,8 @@ fn check_find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
         // misc tests
         let checker = checker
             .check(
@@ -1642,6 +1722,7 @@ fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["3"],
                 user_query()
@@ -1651,12 +1732,14 @@ fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
                     .filter(EntityFilter::Not("favorite_color".to_owned(), Value::Null))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -1666,6 +1749,7 @@ fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -1675,16 +1759,27 @@ fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(vec!["3", "2", "1"], user_query().asc("weight"))
+            .await
             .check(vec!["1", "2", "3"], user_query().desc("weight"))
+            .await
             .check(vec!["1", "2", "3"], user_query().unordered())
+            .await
             .check(vec!["1", "2", "3"], user_query().asc("id"))
+            .await
             .check(vec!["3", "2", "1"], user_query().desc("id"))
+            .await
             .check(vec!["1", "2", "3"], user_query().unordered())
+            .await
             .check(vec!["3", "2", "1"], user_query().asc("age"))
+            .await
             .check(vec!["1", "2", "3"], user_query().desc("age"))
+            .await
             .check(vec!["2", "1", "3"], user_query().asc("name"))
+            .await
             .check(vec!["3", "1", "2"], user_query().desc("name"))
+            .await
             .check(
                 vec!["1", "2"],
                 user_query()
@@ -1693,7 +1788,8 @@ fn check_find() {
                         EntityFilter::Equal("id".to_owned(), Value::from("2")),
                     ])]))
                     .asc("id"),
-            );
+            )
+            .await;
 
         // enum attributes
         let checker = checker
@@ -1706,12 +1802,14 @@ fn check_find() {
                     ))
                     .desc("name"),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query()
                     .filter(EntityFilter::Not("favorite_color".to_owned(), "red".into()))
                     .asc("name"),
             )
+            .await
             .check(
                 vec!["2"],
                 user_query()
@@ -1722,6 +1820,7 @@ fn check_find() {
                     .desc("name")
                     .first(5),
             )
+            .await
             .check(
                 vec!["1"],
                 user_query()
@@ -1731,7 +1830,8 @@ fn check_find() {
                     ))
                     .desc("name")
                     .first(5),
-            );
+            )
+            .await;
 
         // empty and / or
 
@@ -1745,12 +1845,15 @@ fn check_find() {
                 vec![],
                 user_query().filter(EntityFilter::And(vec![EntityFilter::Or(vec![])])),
             )
+            .await
             // An empty 'and' is 'true'
             .check(
                 vec!["1", "2", "3"],
                 user_query().filter(EntityFilter::Or(vec![EntityFilter::And(vec![])])),
-            );
+            )
+            .await;
     })
+    .await
 }
 
 // We call our test strings aN so that
@@ -1785,7 +1888,11 @@ impl<'a> FilterChecker<'a> {
         Self { conn, layout }
     }
 
-    fn check(&mut self, expected_entity_ids: Vec<&'static str>, filter: EntityFilter) -> &mut Self {
+    async fn check(
+        &mut self,
+        expected_entity_ids: Vec<&'static str>,
+        filter: EntityFilter,
+    ) -> &mut Self {
         let expected_entity_ids: Vec<String> =
             expected_entity_ids.into_iter().map(str::to_owned).collect();
 
@@ -1794,6 +1901,7 @@ impl<'a> FilterChecker<'a> {
         let entities = self
             .layout
             .query::<Entity>(&LOGGER, self.conn, query)
+            .await
             .expect("layout.query failed to execute query")
             .0;
 
@@ -1811,8 +1919,8 @@ impl<'a> FilterChecker<'a> {
     }
 }
 
-#[test]
-fn check_filters() {
+#[tokio::test]
+async fn check_filters() {
     let (a1, a2, a2b, a3) = ferrets();
 
     fn filter_eq(name: &str) -> EntityFilter {
@@ -1863,60 +1971,96 @@ fn check_filters() {
         )
     }
 
-    run_test(move |conn, layout| {
+    run_test(async |conn, layout| {
         let mut checker = FilterChecker::new(conn, layout);
 
         checker
             .check(vec!["a1"], filter_eq(&a1))
+            .await
             .check(vec!["a2"], filter_eq(&a2))
+            .await
             .check(vec!["a2b"], filter_eq(&a2b))
-            .check(vec!["a3"], filter_eq(&a3));
+            .await
+            .check(vec!["a3"], filter_eq(&a3))
+            .await;
 
         checker
             .check(vec!["a2", "a2b", "a3"], filter_not(&a1))
+            .await
             .check(vec!["a1", "a2b", "a3"], filter_not(&a2))
+            .await
             .check(vec!["a1", "a2", "a3"], filter_not(&a2b))
-            .check(vec!["a1", "a2", "a2b"], filter_not(&a3));
+            .await
+            .check(vec!["a1", "a2", "a2b"], filter_not(&a3))
+            .await;
 
         checker
             .check(vec![], filter_lt(&a1))
+            .await
             .check(vec!["a1"], filter_lt(&a2))
+            .await
             .check(vec!["a1", "a2", "a3"], filter_lt(&a2b))
-            .check(vec!["a1", "a2"], filter_lt(&a3));
+            .await
+            .check(vec!["a1", "a2"], filter_lt(&a3))
+            .await;
 
         checker
             .check(vec!["a1"], filter_le(&a1))
+            .await
             .check(vec!["a1", "a2"], filter_le(&a2))
+            .await
             .check(vec!["a1", "a2", "a2b", "a3"], filter_le(&a2b))
-            .check(vec!["a1", "a2", "a3"], filter_le(&a3));
+            .await
+            .check(vec!["a1", "a2", "a3"], filter_le(&a3))
+            .await;
 
         checker
             .check(vec!["a2", "a2b", "a3"], filter_gt(&a1))
+            .await
             .check(vec!["a2b", "a3"], filter_gt(&a2))
+            .await
             .check(vec![], filter_gt(&a2b))
-            .check(vec!["a2b"], filter_gt(&a3));
+            .await
+            .check(vec!["a2b"], filter_gt(&a3))
+            .await;
 
         checker
             .check(vec!["a1", "a2", "a2b", "a3"], filter_ge(&a1))
+            .await
             .check(vec!["a2", "a2b", "a3"], filter_ge(&a2))
+            .await
             .check(vec!["a2b"], filter_ge(&a2b))
-            .check(vec!["a2b", "a3"], filter_ge(&a3));
+            .await
+            .check(vec!["a2b", "a3"], filter_ge(&a3))
+            .await;
 
         checker
             .check(vec!["a1"], filter_in(vec![&a1]))
+            .await
             .check(vec!["a2"], filter_in(vec![&a2]))
+            .await
             .check(vec!["a2b"], filter_in(vec![&a2b]))
+            .await
             .check(vec!["a3"], filter_in(vec![&a3]))
+            .await
             .check(vec!["a1", "a2"], filter_in(vec![&a1, &a2]))
-            .check(vec!["a1", "a3"], filter_in(vec![&a1, &a3]));
+            .await
+            .check(vec!["a1", "a3"], filter_in(vec![&a1, &a3]))
+            .await;
 
         checker
             .check(vec!["a2", "a2b", "a3"], filter_not_in(vec![&a1]))
+            .await
             .check(vec!["a1", "a2b", "a3"], filter_not_in(vec![&a2]))
+            .await
             .check(vec!["a1", "a2", "a3"], filter_not_in(vec![&a2b]))
+            .await
             .check(vec!["a1", "a2", "a2b"], filter_not_in(vec![&a3]))
+            .await
             .check(vec!["a2b", "a3"], filter_not_in(vec![&a1, &a2]))
-            .check(vec!["a2", "a2b"], filter_not_in(vec![&a1, &a3]));
+            .await
+            .check(vec!["a2", "a2b"], filter_not_in(vec![&a1, &a3]))
+            .await;
 
         update_entity_at(
             checker.conn,
@@ -1932,7 +2076,11 @@ fn check_filters() {
 
         checker
             .check(vec!["a1", "a2", "a2b", "a3"], filter_block_gte(0))
+            .await
             .check(vec!["a1"], filter_block_gte(1))
-            .check(vec![], filter_block_gte(BLOCK_NUMBER_MAX));
-    });
+            .await
+            .check(vec![], filter_block_gte(BLOCK_NUMBER_MAX))
+            .await;
+    })
+    .await;
 }

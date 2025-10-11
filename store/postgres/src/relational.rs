@@ -20,14 +20,15 @@ pub(crate) mod prune;
 mod rollup;
 pub(crate) mod value;
 
+use diesel::connection::SimpleConnection;
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
-use diesel::{connection::SimpleConnection, Connection};
 use diesel::{
     debug_query, sql_query, OptionalExtension, PgConnection, QueryDsl, QueryResult, RunQueryDsl,
 };
+use diesel_async::scoped_futures::ScopedFutureExt;
 use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::BlockTime;
 use graph::cheap_clone::CheapClone;
@@ -36,12 +37,12 @@ use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
-use graph::internal_error;
 use graph::prelude::{q, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{
     EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
 };
 use graph::slog::warn;
+use graph::{internal_error, tokio};
 use index::IndexList;
 use inflector::Inflector;
 use itertools::Itertools;
@@ -77,8 +78,8 @@ use graph::prelude::{
 
 use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
-use crate::ForeignServer;
 use crate::{catalog, deployment};
+use crate::{AsyncConnection, ForeignServer};
 
 use self::rollup::Rollup;
 
@@ -785,7 +786,7 @@ impl Layout {
     }
 
     /// order is a tuple (attribute, value_type, direction)
-    pub fn query<T: crate::relational_queries::FromEntityData>(
+    pub async fn query<T: crate::relational_queries::FromEntityData>(
         &self,
         logger: &Logger,
         conn: &mut PgConnection,
@@ -851,12 +852,16 @@ impl Layout {
 
         let start = Instant::now();
         let values = conn
-            .transaction(|conn| {
-                if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
-                    conn.batch_execute(timeout_sql)?;
+            .transaction_async(|conn| {
+                async {
+                    if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
+                        conn.batch_execute(timeout_sql)?;
+                    }
+                    query.load::<EntityData>(conn)
                 }
-                query.load::<EntityData>(conn)
+                .scope_boxed()
             })
+            .await
             .map_err(|e| {
                 use diesel::result::DatabaseErrorKind;
                 use diesel::result::Error::*;
@@ -1055,14 +1060,14 @@ impl Layout {
     ///
     /// For metadata, reversion always means deletion since the metadata that
     /// is subject to reversion is only ever created but never updated
-    pub fn revert_metadata(
+    pub async fn revert_metadata(
         logger: &Logger,
         conn: &mut PgConnection,
         site: &Site,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
-        crate::dynds::revert(conn, site, block)?;
-        crate::deployment::revert_subgraph_errors(logger, conn, &site.deployment, block)?;
+        crate::dynds::revert(conn, site, block).await?;
+        crate::deployment::revert_subgraph_errors(logger, conn, &site.deployment, block).await?;
 
         Ok(())
     }
@@ -1082,13 +1087,13 @@ impl Layout {
     /// This is tied closely to how the `LayoutCache` works and called from
     /// it right after creating a `Layout`, and periodically to update the
     /// `Layout` in case changes were made
-    fn refresh(
+    async fn refresh(
         self: Arc<Self>,
         conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Self>, StoreError> {
         let account_like = crate::catalog::account_like(conn, &self.site)?;
-        let history_blocks = deployment::history_blocks(conn, &self.site)?;
+        let history_blocks = deployment::history_blocks(conn, &self.site).await?;
 
         let is_account_like = { |table: &Table| account_like.contains(table.name.as_str()) };
 
@@ -1119,11 +1124,11 @@ impl Layout {
     /// for all aggregations, meaning that if some aggregations do not have
     /// an entry with the maximum timestamp that there was just no data for
     /// that interval, but we did try to aggregate at that time.
-    pub(crate) fn last_rollup(
+    pub(crate) async fn last_rollup(
         &self,
         conn: &mut PgConnection,
     ) -> Result<Option<BlockTime>, StoreError> {
-        Rollup::last_rollup(&self.rollups, conn)
+        Rollup::last_rollup(&self.rollups, conn).await
     }
 
     /// Construct `Rolllup` for each of the aggregation mappings
@@ -1181,7 +1186,7 @@ impl Layout {
     ///
     /// Changing this would require that we have a complete list of block
     /// numbers and block times which we do not have anywhere in graph-node.
-    pub(crate) fn rollup(
+    pub(crate) async fn rollup(
         &self,
         conn: &mut PgConnection,
         last_rollup: Option<BlockTime>,
@@ -1233,7 +1238,7 @@ impl Layout {
                         break;
                     }
                     Some(bucket) => {
-                        rollup.insert(conn, &bucket, *block)?;
+                        rollup.insert(conn, &bucket, *block).await?;
                     }
                 }
             }
@@ -1745,7 +1750,7 @@ pub struct LayoutCache {
     ttl: Duration,
     /// Use this so that we only refresh one layout at any given time to
     /// avoid refreshing the same layout multiple times
-    refresh: Mutex<()>,
+    refresh: tokio::sync::Mutex<()>,
     last_sweep: Mutex<Instant>,
 }
 
@@ -1754,18 +1759,18 @@ impl LayoutCache {
         Self {
             entries: Mutex::new(HashMap::new()),
             ttl,
-            refresh: Mutex::new(()),
+            refresh: tokio::sync::Mutex::new(()),
             last_sweep: Mutex::new(Instant::now()),
         }
     }
 
-    fn load(conn: &mut PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
-        let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref())?;
+    async fn load(conn: &mut PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
+        let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref()).await?;
         let has_causality_region =
             deployment::entities_with_causality_region(conn, site.id, &subgraph_schema)?;
         let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix, has_causality_region)?;
         let layout = Arc::new(Layout::new(site.clone(), &subgraph_schema, catalog)?);
-        layout.refresh(conn, site)
+        layout.refresh(conn, site).await
     }
 
     fn cache(&self, layout: Arc<Layout>) {
@@ -1792,7 +1797,7 @@ impl LayoutCache {
     /// Get the layout for `site`. If it's not in cache, load it. If it is
     /// expired, try to refresh it if there isn't another refresh happening
     /// already
-    pub fn get(
+    pub async fn get(
         &self,
         logger: &Logger,
         conn: &mut PgConnection,
@@ -1817,12 +1822,12 @@ impl LayoutCache {
                     if refresh.is_err() {
                         value
                     } else {
-                        self.refresh(logger, conn, site, value)
+                        self.refresh(logger, conn, site, value).await
                     }
                 }
             }
             None => {
-                let layout = Self::load(conn, site)?;
+                let layout = Self::load(conn, site).await?;
                 self.cache(layout.cheap_clone());
                 layout
             }
@@ -1831,14 +1836,14 @@ impl LayoutCache {
         Ok(layout)
     }
 
-    fn refresh(
+    async fn refresh(
         &self,
         logger: &Logger,
         conn: &mut PgConnection,
         site: Arc<Site>,
         value: Arc<Layout>,
     ) -> Arc<Layout> {
-        match value.cheap_clone().refresh(conn, site) {
+        match value.cheap_clone().refresh(conn, site).await {
             Err(e) => {
                 warn!(
                     logger,

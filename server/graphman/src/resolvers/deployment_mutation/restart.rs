@@ -17,7 +17,7 @@ pub async fn run_in_background(
     deployment: DeploymentSelector,
     delay_seconds: u64,
 ) -> Result<ExecutionId> {
-    let id = store.new_execution(CommandKind::RestartDeployment)?;
+    let id = store.new_execution(CommandKind::RestartDeployment).await?;
 
     graph::spawn(async move {
         let tracker = GraphmanExecutionTracker::new(store, id);
@@ -25,10 +25,10 @@ pub async fn run_in_background(
 
         match result {
             Ok(()) => {
-                tracker.track_success().unwrap();
+                tracker.track_success().await.unwrap();
             }
             Err(err) => {
-                tracker.track_failure(format!("{err:#?}")).unwrap();
+                tracker.track_failure(format!("{err:#?}")).await.unwrap();
             }
         };
     });
@@ -41,11 +41,11 @@ async fn run(
     deployment: &DeploymentSelector,
     delay_seconds: u64,
 ) -> Result<()> {
-    super::pause::run(ctx, deployment)?;
+    super::pause::run(ctx, deployment).await?;
 
     tokio::time::sleep(Duration::from_secs(delay_seconds)).await;
 
-    super::resume::run(ctx, deployment)?;
+    super::resume::run(ctx, deployment).await?;
 
     Ok(())
 }

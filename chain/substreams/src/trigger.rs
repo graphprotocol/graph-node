@@ -1,4 +1,5 @@
 use anyhow::Error;
+use async_trait::async_trait;
 use graph::{
     blockchain::{
         self, block_stream::BlockWithTriggers, BlockPtr, EmptyNodeCapabilities, MappingTriggerTrait,
@@ -8,9 +9,7 @@ use graph::{
         subgraph::{MappingError, ProofOfIndexingEvent, SharedProofOfIndexing},
         trigger_processor::HostedTrigger,
     },
-    prelude::{
-        anyhow, async_trait, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder,
-    },
+    prelude::{anyhow, BlockHash, BlockNumber, BlockState, CheapClone, RuntimeHostBuilder},
     slog::Logger,
     substreams::Modules,
 };
@@ -39,9 +38,10 @@ impl blockchain::TriggerData for TriggerData {
     }
 }
 
+#[async_trait]
 impl ToAscPtr for TriggerData {
     // substreams doesn't rely on wasm on the graph-node so this is not needed.
-    fn to_asc_ptr<H: graph::runtime::AscHeap>(
+    async fn to_asc_ptr<H: graph::runtime::AscHeap>(
         self,
         _heap: &mut H,
         _gas: &graph::runtime::gas::GasCounter,
@@ -223,12 +223,15 @@ where
                         logger,
                     );
 
-                    state.entity_cache.set(
-                        key,
-                        entity,
-                        block.number,
-                        Some(&mut state.write_capacity_remaining),
-                    )?;
+                    state
+                        .entity_cache
+                        .set(
+                            key,
+                            entity,
+                            block.number,
+                            Some(&mut state.write_capacity_remaining),
+                        )
+                        .await?;
                 }
                 ParsedChanges::Delete(entity_key) => {
                     let entity_type = entity_key.entity_type.cheap_clone();

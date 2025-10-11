@@ -18,6 +18,7 @@ use crate::{Shard, PRIMARY_SHARD};
 
 use super::{PRIMARY_PUBLIC, PRIMARY_TABLES, SHARDED_TABLES};
 
+#[derive(Clone)]
 pub struct ForeignServer {
     pub name: String,
     pub shard: Shard,

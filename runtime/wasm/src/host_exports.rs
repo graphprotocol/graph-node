@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use graph::data::subgraph::API_VERSION_0_0_8;
 use graph::data::value::Word;
 
-use graph::futures03::stream::StreamExt;
+use graph::futures03::StreamExt;
 use graph::schema::EntityType;
 use never::Never;
 use semver::Version;
@@ -222,7 +222,7 @@ impl HostExports {
         )))
     }
 
-    pub(crate) fn store_set(
+    pub(crate) async fn store_set(
         &self,
         logger: &Logger,
         block: BlockNumber,
@@ -337,12 +337,15 @@ impl HostExports {
 
         state.metrics.track_entity_write(&entity_type, &entity);
 
-        state.entity_cache.set(
-            key,
-            entity,
-            block,
-            Some(&mut state.write_capacity_remaining),
-        )?;
+        state
+            .entity_cache
+            .set(
+                key,
+                entity,
+                block,
+                Some(&mut state.write_capacity_remaining),
+            )
+            .await?;
 
         Ok(())
     }
@@ -382,7 +385,7 @@ impl HostExports {
         Ok(())
     }
 
-    pub(crate) fn store_get<'a>(
+    pub(crate) async fn store_get<'a>(
         &self,
         state: &'a mut BlockState,
         entity_type: String,
@@ -396,7 +399,7 @@ impl HostExports {
         let store_key = entity_type.parse_key_in(entity_id, self.data_source.causality_region)?;
         self.check_entity_type_access(&store_key.entity_type)?;
 
-        let result = state.entity_cache.get(&store_key, scope)?;
+        let result = state.entity_cache.get(&store_key, scope).await?;
 
         Self::track_gas_and_ops(
             gas,
@@ -415,7 +418,7 @@ impl HostExports {
         Ok(result)
     }
 
-    pub(crate) fn store_load_related(
+    pub(crate) async fn store_load_related(
         &self,
         state: &mut BlockState,
         entity_type: String,
@@ -433,7 +436,7 @@ impl HostExports {
         };
         self.check_entity_type_access(&store_key.entity_type)?;
 
-        let result = state.entity_cache.load_related(&store_key)?;
+        let result = state.entity_cache.load_related(&store_key).await?;
 
         Self::track_gas_and_ops(
             gas,
@@ -476,17 +479,7 @@ impl HostExports {
         ))
     }
 
-    pub(crate) fn ipfs_cat(&self, logger: &Logger, link: String) -> Result<Vec<u8>, anyhow::Error> {
-        // Does not consume gas because this is not a part of the deterministic feature set.
-        // Ideally this would first consume gas for fetching the file stats, and then again
-        // for the bytes of the file.
-        graph::block_on(self.link_resolver.cat(
-            &LinkResolverContext::new(&self.subgraph_id, logger),
-            &Link { link },
-        ))
-    }
-
-    pub(crate) fn ipfs_get_block(
+    pub(crate) async fn ipfs_cat(
         &self,
         logger: &Logger,
         link: String,
@@ -494,10 +487,28 @@ impl HostExports {
         // Does not consume gas because this is not a part of the deterministic feature set.
         // Ideally this would first consume gas for fetching the file stats, and then again
         // for the bytes of the file.
-        graph::block_on(self.link_resolver.get_block(
-            &LinkResolverContext::new(&self.subgraph_id, logger),
-            &Link { link },
-        ))
+        self.link_resolver
+            .cat(
+                &LinkResolverContext::new(&self.subgraph_id, logger),
+                &Link { link },
+            )
+            .await
+    }
+
+    pub(crate) async fn ipfs_get_block(
+        &self,
+        logger: &Logger,
+        link: String,
+    ) -> Result<Vec<u8>, anyhow::Error> {
+        // Does not consume gas because this is not a part of the deterministic feature set.
+        // Ideally this would first consume gas for fetching the file stats, and then again
+        // for the bytes of the file.
+        self.link_resolver
+            .get_block(
+                &LinkResolverContext::new(&self.subgraph_id, logger),
+                &Link { link },
+            )
+            .await
     }
 
     // Read the IPFS file `link`, split it into JSON objects, and invoke the
@@ -507,7 +518,7 @@ impl HostExports {
     // which is identical to `module` when it was first started. The signature
     // of the callback must be `callback(JSONValue, Value)`, and the `userData`
     // parameter is passed to the callback without any changes
-    pub(crate) fn ipfs_map(
+    pub(crate) async fn ipfs_map(
         &self,
         wasm_ctx: &WasmInstanceData,
         link: String,
@@ -540,20 +551,26 @@ impl HostExports {
         let logger = ctx.logger.new(o!("ipfs_map" => link.clone()));
 
         let result = {
-            let mut stream: JsonValueStream = graph::block_on(self.link_resolver.json_stream(
-                &LinkResolverContext::new(&self.subgraph_id, &logger),
-                &Link { link },
-            ))?;
+            let mut stream: JsonValueStream = self
+                .link_resolver
+                .json_stream(
+                    &LinkResolverContext::new(&self.subgraph_id, &logger),
+                    &Link { link },
+                )
+                .await?;
             let mut v = Vec::new();
-            while let Some(sv) = graph::block_on(stream.next()) {
+            while let Some(sv) = stream.next().await {
                 let sv = sv?;
-                let module = WasmInstance::from_valid_module_with_ctx(
+                let module = WasmInstance::from_valid_module_with_ctx_boxed(
                     valid_module.clone(),
                     ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
                     wasm_ctx.experimental_features,
-                )?;
-                let result = module.handle_json_callback(&callback, &sv.value, &user_data)?;
+                )
+                .await?;
+                let result = module
+                    .handle_json_callback(&callback, &sv.value, &user_data)
+                    .await?;
                 // Log progress every 15s
                 if last_log.elapsed() > Duration::from_secs(15) {
                     debug!(
@@ -1042,18 +1059,18 @@ impl HostExports {
         Ok(())
     }
 
-    pub(crate) fn ens_name_by_hash(
+    pub(crate) async fn ens_name_by_hash(
         &self,
         hash: &str,
         gas: &GasCounter,
         state: &mut BlockState,
     ) -> Result<Option<String>, anyhow::Error> {
         Self::track_gas_and_ops(gas, state, gas::ENS_NAME_BY_HASH, "ens_name_by_hash")?;
-        Ok(self.ens_lookup.find_name(hash)?)
+        Ok(self.ens_lookup.find_name(hash).await?)
     }
 
-    pub(crate) fn is_ens_data_empty(&self) -> Result<bool, anyhow::Error> {
-        Ok(self.ens_lookup.is_table_empty()?)
+    pub(crate) async fn is_ens_data_empty(&self) -> Result<bool, anyhow::Error> {
+        Ok(self.ens_lookup.is_table_empty().await?)
     }
 
     pub(crate) fn log_log(
@@ -1321,7 +1338,7 @@ pub mod test_support {
             }
         }
 
-        pub fn store_set(
+        pub async fn store_set(
             &self,
             logger: &Logger,
             block: BlockNumber,
@@ -1333,21 +1350,23 @@ pub mod test_support {
             stopwatch: &StopwatchMetrics,
             gas: &GasCounter,
         ) -> Result<(), HostExportError> {
-            self.host_exports.store_set(
-                logger,
-                block,
-                state,
-                proof_of_indexing,
-                self.block_time,
-                entity_type,
-                entity_id,
-                data,
-                stopwatch,
-                gas,
-            )
+            self.host_exports
+                .store_set(
+                    logger,
+                    block,
+                    state,
+                    proof_of_indexing,
+                    self.block_time,
+                    entity_type,
+                    entity_id,
+                    data,
+                    stopwatch,
+                    gas,
+                )
+                .await
         }
 
-        pub fn store_get(
+        pub async fn store_get(
             &self,
             state: &mut BlockState,
             entity_type: String,
@@ -1356,6 +1375,7 @@ pub mod test_support {
         ) -> Result<Option<Arc<Entity>>, anyhow::Error> {
             self.host_exports
                 .store_get(state, entity_type, entity_id, gas, GetScope::Store)
+                .await
         }
     }
 }

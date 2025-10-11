@@ -3,12 +3,13 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use graph::components::store::QueryPermit;
 use graph::data::graphql::{object_value, ObjectOrInterface};
 use graph::data::query::Trace;
 use graph::prelude::{
-    async_trait, o, q, r, s, serde_json, slog, tokio, DeploymentHash, Logger, Query,
-    QueryExecutionError, QueryResult,
+    o, q, r, s, serde_json, slog, tokio, DeploymentHash, Logger, Query, QueryExecutionError,
+    QueryResult,
 };
 use graph::schema::{ApiSchema, InputSchema};
 
@@ -25,7 +26,7 @@ pub struct MockResolver;
 impl Resolver for MockResolver {
     const CACHEABLE: bool = false;
 
-    fn prefetch(
+    async fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
         _: &a::SelectionSet,

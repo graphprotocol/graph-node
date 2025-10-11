@@ -1,4 +1,5 @@
 use anyhow::Error;
+use async_trait::async_trait;
 use ethabi::{Error as ABIError, ParamType, Token};
 use graph::blockchain::ChainIdentifier;
 use graph::components::subgraph::MappingError;

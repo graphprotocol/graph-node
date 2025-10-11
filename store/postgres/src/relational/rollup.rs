@@ -270,7 +270,7 @@ impl Rollup {
         })
     }
 
-    pub(crate) fn insert(
+    pub(crate) async fn insert(
         &self,
         conn: &mut PgConnection,
         bucket: &Range<BlockTime>,
@@ -283,7 +283,7 @@ impl Rollup {
         query.execute(conn)
     }
 
-    pub(crate) fn last_rollup(
+    pub(crate) async fn last_rollup(
         rollups: &[Rollup],
         conn: &mut PgConnection,
     ) -> Result<Option<BlockTime>, StoreError> {

@@ -4,8 +4,9 @@ use diesel::{
     connection::SimpleConnection,
     sql_query,
     sql_types::{BigInt, Integer},
-    Connection, PgConnection, RunQueryDsl,
+    PgConnection, RunQueryDsl,
 };
+use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
 use graph::{
     components::store::{PrunePhase, PruneReporter, PruneRequest, PruningStrategy, VersionStats},
     prelude::{
@@ -23,6 +24,7 @@ use crate::{
     deployment,
     relational::{Table, VID_COLUMN},
     vid_batcher::{VidBatcher, VidRange},
+    AsyncConnection,
 };
 
 use super::{
@@ -49,7 +51,7 @@ impl TablePair {
     /// Create a `TablePair` for `src`. This creates a new table `dst` with
     /// the same structure as the `src` table in the database, but in a
     /// different namespace so that the names of indexes etc. don't clash
-    fn create(
+    async fn create(
         conn: &mut PgConnection,
         src: Arc<Table>,
         src_nsp: Namespace,
@@ -66,7 +68,8 @@ impl TablePair {
             let mut list = IndexList {
                 indexes: HashMap::new(),
             };
-            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())?
+            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())
+                .await?
                 .into_iter()
                 .map(|index| index.with_nsp(dst_nsp.to_string()))
                 .collect::<Result<Vec<CreateIndex>, _>>()?;
@@ -90,7 +93,7 @@ impl TablePair {
     /// `final_block` in batches, where each batch is a separate
     /// transaction. Write activity for nonfinal blocks can happen
     /// concurrently to this copy
-    fn copy_final_entities(
+    async fn copy_final_entities(
         &self,
         conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
@@ -99,23 +102,25 @@ impl TablePair {
         final_block: BlockNumber,
         cancel: &CancelHandle,
     ) -> Result<(), CancelableError<StoreError>> {
-        let column_list = self.column_list();
+        let column_list = Arc::new(self.column_list());
 
         // Determine the last vid that we need to copy
         let range = VidRange::for_prune(conn, &self.src, earliest_block, final_block)?;
         let mut batcher = VidBatcher::load(conn, &self.src_nsp, &self.src, range)?;
-        tracker.start_copy_final(conn, &self.src, range)?;
+        tracker.start_copy_final(conn, &self.src, range).await?;
 
         while !batcher.finished() {
             let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
-                // Page through all rows in `src` in batches of `batch_size`
-                // and copy the ones that are visible to queries at block
-                // heights between `earliest_block` and `final_block`, but
-                // whose block_range does not extend past `final_block`
-                // since they could still be reverted while we copy.
-                // The conditions on `block_range` are expressed redundantly
-                // to make more indexes useable
-                sql_query(format!(
+                let column_list = column_list.cheap_clone();
+                async move {
+                    // Page through all rows in `src` in batches of `batch_size`
+                    // and copy the ones that are visible to queries at block
+                    // heights between `earliest_block` and `final_block`, but
+                    // whose block_range does not extend past `final_block`
+                    // since they could still be reverted while we copy.
+                    // The conditions on `block_range` are expressed redundantly
+                    // to make more indexes useable
+                    sql_query(format!(
                     "/* controller=prune,phase=final,start_vid={start},batch_size={batch_size} */ \
                      insert into {dst}({column_list}) \
                      select {column_list} from {src} \
@@ -129,15 +134,20 @@ impl TablePair {
                     dst = self.dst.qualified_name,
                     batch_size = end - start + 1,
                 ))
-                .bind::<Integer, _>(earliest_block)
-                .bind::<Integer, _>(final_block)
-                .bind::<BigInt, _>(start)
-                .bind::<BigInt, _>(end)
-                .execute(conn)
-                .map_err(StoreError::from)
-            })?;
+                    .bind::<Integer, _>(earliest_block)
+                    .bind::<Integer, _>(final_block)
+                    .bind::<BigInt, _>(start)
+                    .bind::<BigInt, _>(end)
+                    .execute(conn)
+                    .map_err(StoreError::from)
+                }
+                .scope_boxed()
+            })
+            .await?;
             let rows = rows.unwrap_or(0);
-            tracker.finish_batch(conn, &self.src, rows as i64, &batcher)?;
+            tracker
+                .finish_batch(conn, &self.src, rows as i64, &batcher)
+                .await?;
             cancel.check_cancel()?;
 
             reporter.prune_batch(
@@ -153,22 +163,24 @@ impl TablePair {
     /// Copy all entity versions visible after `final_block` in batches,
     /// where each batch is a separate transaction. This assumes that all
     /// other write activity to the source table is blocked while we copy
-    fn copy_nonfinal_entities(
+    async fn copy_nonfinal_entities(
         &self,
         conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
         tracker: &status::Tracker,
         final_block: BlockNumber,
     ) -> Result<(), StoreError> {
-        let column_list = self.column_list();
+        let column_list = Arc::new(self.column_list());
 
         // Determine the last vid that we need to copy
         let range = VidRange::for_prune(conn, &self.src, final_block + 1, BLOCK_NUMBER_MAX)?;
         let mut batcher = VidBatcher::load(conn, &self.src.nsp, &self.src, range)?;
-        tracker.start_copy_nonfinal(conn, &self.src, range)?;
+        tracker.start_copy_nonfinal(conn, &self.src, range).await?;
 
         while !batcher.finished() {
             let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
+                let column_list = column_list.cheap_clone();
+                async move {
                 // Page through all the rows in `src` in batches of
                 // `batch_size` that are visible to queries at block heights
                 // starting right after `final_block`. The conditions on
@@ -191,10 +203,12 @@ impl TablePair {
                     .bind::<BigInt, _>(end)
                     .execute(conn)
                     .map_err(StoreError::from)
-            })?;
+            }.scope_boxed()}).await?;
             let rows = rows.unwrap_or(0);
 
-            tracker.finish_batch(conn, &self.src, rows as i64, &batcher)?;
+            tracker
+                .finish_batch(conn, &self.src, rows as i64, &batcher)
+                .await?;
 
             reporter.prune_batch(
                 self.src.name.as_str(),
@@ -207,7 +221,7 @@ impl TablePair {
     }
 
     /// Replace the `src` table with the `dst` table
-    fn switch(self, logger: &Logger, conn: &mut PgConnection) -> Result<(), StoreError> {
+    async fn switch(self, logger: &Logger, conn: &mut PgConnection) -> Result<(), StoreError> {
         let src_qname = &self.src.qualified_name;
         let dst_qname = &self.dst.qualified_name;
         let src_nsp = &self.src_nsp;
@@ -236,7 +250,8 @@ impl TablePair {
 
         writeln!(query, "drop table {src_qname};")?;
         writeln!(query, "alter table {dst_qname} set schema {src_nsp}")?;
-        conn.transaction(|conn| conn.batch_execute(&query))?;
+        conn.transaction_async(|conn| async { conn.batch_execute(&query) }.scope_boxed())
+            .await?;
 
         Ok(())
     }
@@ -252,7 +267,7 @@ impl TablePair {
 impl Layout {
     /// Analyze the `tables` and return `VersionStats` for all tables in
     /// this `Layout`
-    fn analyze_tables(
+    async fn analyze_tables(
         &self,
         conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
@@ -279,7 +294,7 @@ impl Layout {
     /// is `true`, analyze all tables before getting statistics. If it is
     /// `false`, only analyze tables that Postgres' autovacuum daemon would
     /// consider needing analysis.
-    fn version_stats(
+    async fn version_stats(
         &self,
         conn: &mut PgConnection,
         reporter: &mut dyn PruneReporter,
@@ -297,7 +312,7 @@ impl Layout {
             .filter(|table| analyze_all || needs_analyze.contains(&table.name))
             .collect();
 
-        self.analyze_tables(conn, reporter, tables, cancel)
+        self.analyze_tables(conn, reporter, tables, cancel).await
     }
 
     /// Return all tables and the strategy to prune them withir stats whose ratio of distinct entities
@@ -366,7 +381,7 @@ impl Layout {
     /// fails, e.g. because the database is not available. All errors that
     /// happen during pruning itself will be stored in the `prune_state`
     /// table and this method will return `Ok`
-    pub fn prune(
+    pub async fn prune(
         self: Arc<Self>,
         logger: &Logger,
         reporter: &mut dyn PruneReporter,
@@ -374,9 +389,11 @@ impl Layout {
         req: &PruneRequest,
         cancel: &CancelHandle,
     ) -> Result<(), CancelableError<StoreError>> {
-        let tracker = status::Tracker::new(conn, self.clone())?;
+        let tracker = status::Tracker::new(conn, self.clone()).await?;
 
-        let res = self.prune_inner(logger, reporter, conn, req, cancel, &tracker);
+        let res = self
+            .prune_inner(logger, reporter, conn, req, cancel, &tracker)
+            .await;
 
         match res {
             Ok(_) => {
@@ -393,7 +410,7 @@ impl Layout {
         Ok(())
     }
 
-    fn prune_inner(
+    async fn prune_inner(
         self: Arc<Self>,
         logger: &Logger,
         reporter: &mut dyn PruneReporter,
@@ -403,14 +420,14 @@ impl Layout {
         tracker: &status::Tracker,
     ) -> Result<(), CancelableError<StoreError>> {
         reporter.start(req);
-        let stats = self.version_stats(conn, reporter, true, cancel)?;
+        let stats = self.version_stats(conn, reporter, true, cancel).await?;
         let prunable_tables: Vec<_> = self.prunable_tables(&stats, req).into_iter().collect();
-        tracker.start(conn, req, &prunable_tables)?;
+        tracker.start(conn, req, &prunable_tables).await?;
         let dst_nsp = Namespace::prune(self.site.id);
         let mut recreate_dst_nsp = true;
         for (table, strat) in &prunable_tables {
             reporter.start_table(table.name.as_str());
-            tracker.start_table(conn, table)?;
+            tracker.start_table(conn, table).await?;
             match strat {
                 PruningStrategy::Rebuild => {
                     if recreate_dst_nsp {
@@ -424,7 +441,8 @@ impl Layout {
                         dst_nsp.clone(),
                         &self.input_schema,
                         &self.catalog,
-                    )?;
+                    )
+                    .await?;
                     // Copy final entities. This can happen in parallel to indexing as
                     // that part of the table will not change
                     pair.copy_final_entities(
@@ -434,20 +452,27 @@ impl Layout {
                         req.earliest_block,
                         req.final_block,
                         cancel,
-                    )?;
+                    )
+                    .await?;
                     // Copy nonfinal entities, and replace the original `src` table with
                     // the smaller `dst` table
                     // see also: deployment-lock-for-update
                     reporter.start_switch();
-                    deployment::with_lock(conn, &self.site, |conn| -> Result<_, StoreError> {
-                        pair.copy_nonfinal_entities(conn, reporter, tracker, req.final_block)?;
-                        cancel.check_cancel().map_err(CancelableError::from)?;
+                    deployment::with_lock(
+                        conn,
+                        &self.site,
+                        async |conn| -> Result<_, StoreError> {
+                            pair.copy_nonfinal_entities(conn, reporter, tracker, req.final_block)
+                                .await?;
+                            cancel.check_cancel().map_err(CancelableError::from)?;
 
-                        conn.transaction(|conn| pair.switch(logger, conn))?;
-                        cancel.check_cancel().map_err(CancelableError::from)?;
+                            pair.switch(logger, conn).await?;
+                            cancel.check_cancel().map_err(CancelableError::from)?;
 
-                        Ok(())
-                    })?;
+                            Ok(())
+                        },
+                    )
+                    .await?;
                     reporter.finish_switch();
                 }
                 PruningStrategy::Delete => {
@@ -456,9 +481,10 @@ impl Layout {
                     let range = VidRange::for_prune(conn, &table, 0, req.earliest_block)?;
                     let mut batcher = VidBatcher::load(conn, &self.site.namespace, &table, range)?;
 
-                    tracker.start_delete(conn, table, range, &batcher)?;
+                    tracker.start_delete(conn, table, range, &batcher).await?;
                     while !batcher.finished() {
                         let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
+                            async move {
                             sql_query(format!(
                             "/* controller=prune,phase=delete,start_vid={start},batch_size={batch_size} */ \
                              delete from {qname} \
@@ -471,10 +497,12 @@ impl Layout {
                         .bind::<BigInt, _>(start)
                         .bind::<BigInt, _>(end)
                         .execute(conn).map_err(StoreError::from)
-                        })?;
+                        }.scope_boxed()}).await?;
                         let rows = rows.unwrap_or(0);
 
-                        tracker.finish_batch(conn, table, -(rows as i64), &batcher)?;
+                        tracker
+                            .finish_batch(conn, table, -(rows as i64), &batcher)
+                            .await?;
 
                         reporter.prune_batch(
                             table.name.as_str(),
@@ -486,7 +514,7 @@ impl Layout {
                 }
             }
             reporter.finish_table(table.name.as_str());
-            tracker.finish_table(conn, table)?;
+            tracker.finish_table(conn, table).await?;
         }
         if !recreate_dst_nsp {
             catalog::drop_schema(conn, dst_nsp.as_str())?;
@@ -495,7 +523,7 @@ impl Layout {
             catalog::set_last_pruned_block(conn, &self.site, &table.name, req.earliest_block)?;
         }
         let tables = prunable_tables.iter().map(|(table, _)| *table).collect();
-        self.analyze_tables(conn, reporter, tables, cancel)?;
+        self.analyze_tables(conn, reporter, tables, cancel).await?;
         reporter.finish();
         Ok(())
     }
@@ -508,23 +536,31 @@ impl Layout {
 ///
 /// Doing this serves as a safeguard against very bad batch size estimations
 /// so that batches never take longer than `BATCH_SIZE_TIMEOUT`
-fn batch_with_timeout<F, T>(
-    conn: &mut PgConnection,
+async fn batch_with_timeout<'a, 'conn, R, F>(
+    conn: &'conn mut PgConnection,
     batcher: &mut VidBatcher,
     query: F,
-) -> Result<Option<T>, StoreError>
+) -> Result<Option<R>, StoreError>
 where
-    F: Fn(&mut PgConnection, i64, i64) -> Result<T, StoreError>,
+    R: Send,
+    F: for<'r> Fn(&'r mut PgConnection, i64, i64) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
+        + Sync,
+    'a: 'conn,
 {
     let res = batcher
-        .step(|start, end| {
-            conn.transaction(|conn| {
-                if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
-                    conn.batch_execute(timeout)?;
+        .step(async |start, end| {
+            conn.transaction_async(|conn| {
+                async {
+                    if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
+                        conn.batch_execute(timeout)?;
+                    }
+                    query(conn, start, end).await
                 }
-                query(conn, start, end)
+                .scope_boxed()
             })
+            .await
         })
+        .await
         .map(|(_, res)| res);
 
     if !matches!(res, Err(StoreError::StatementTimeout)) {
@@ -533,7 +569,11 @@ where
 
     batcher.set_batch_size(1);
     batcher
-        .step(|start, end| conn.transaction(|conn| query(conn, start, end)))
+        .step(async |start, end| {
+            conn.transaction_async(|conn| async { query(conn, start, end).await }.scope_boxed())
+                .await
+        })
+        .await
         .map(|(_, res)| res)
 }
 
@@ -548,9 +588,10 @@ mod status {
         query_builder::QueryFragment,
         serialize::{Output, ToSql},
         sql_types::Text,
-        table, update, AsChangeset, Connection, ExpressionMethods as _, OptionalExtension,
-        PgConnection, QueryDsl as _, RunQueryDsl as _,
+        table, update, AsChangeset, ExpressionMethods as _, OptionalExtension, PgConnection,
+        QueryDsl as _, RunQueryDsl as _,
     };
+    use diesel_async::scoped_futures::ScopedFutureExt;
     use graph::{
         components::store::{PruneRequest, PruningStrategy, StoreResult},
         env::ENV_VARS,
@@ -560,7 +601,7 @@ mod status {
     use crate::{
         relational::{Layout, Table},
         vid_batcher::{VidBatcher, VidRange},
-        ConnectionPool,
+        AsyncConnection, ConnectionPool,
     };
 
     table! {
@@ -715,7 +756,7 @@ mod status {
     }
 
     impl Tracker {
-        pub(super) fn new(conn: &mut PgConnection, layout: Arc<Layout>) -> StoreResult<Self> {
+        pub(super) async fn new(conn: &mut PgConnection, layout: Arc<Layout>) -> StoreResult<Self> {
             use prune_state as ps;
             let run = ps::table
                 .filter(ps::id.eq(layout.site.id))
@@ -739,7 +780,7 @@ mod status {
             Ok(Tracker { layout, run })
         }
 
-        pub(super) fn start(
+        pub(super) async fn start(
             &self,
             conn: &mut PgConnection,
             req: &PruneRequest,
@@ -748,39 +789,43 @@ mod status {
             use prune_state as ps;
             use prune_table_state as pts;
 
-            conn.transaction(|conn| {
-                insert_into(ps::table)
-                    .values((
-                        ps::id.eq(self.layout.site.id),
-                        ps::run.eq(self.run),
-                        ps::first_block.eq(req.first_block),
-                        ps::final_block.eq(req.final_block),
-                        ps::latest_block.eq(req.latest_block),
-                        ps::history_blocks.eq(req.history_blocks),
-                        ps::started_at.eq(diesel::dsl::now),
-                    ))
-                    .execute(conn)?;
-
-                for (table, strat) in prunable_tables {
-                    let strat = match strat {
-                        PruningStrategy::Rebuild => "r",
-                        PruningStrategy::Delete => "d",
-                    };
-                    insert_into(pts::table)
+            conn.transaction_async(|conn| {
+                async move {
+                    insert_into(ps::table)
                         .values((
-                            pts::id.eq(self.layout.site.id),
-                            pts::run.eq(self.run),
-                            pts::table_name.eq(table.name.as_str()),
-                            pts::strategy.eq(strat),
-                            pts::phase.eq(Phase::Queued),
+                            ps::id.eq(self.layout.site.id),
+                            ps::run.eq(self.run),
+                            ps::first_block.eq(req.first_block),
+                            ps::final_block.eq(req.final_block),
+                            ps::latest_block.eq(req.latest_block),
+                            ps::history_blocks.eq(req.history_blocks),
+                            ps::started_at.eq(diesel::dsl::now),
                         ))
                         .execute(conn)?;
+
+                    for (table, strat) in prunable_tables {
+                        let strat = match strat {
+                            PruningStrategy::Rebuild => "r",
+                            PruningStrategy::Delete => "d",
+                        };
+                        insert_into(pts::table)
+                            .values((
+                                pts::id.eq(self.layout.site.id),
+                                pts::run.eq(self.run),
+                                pts::table_name.eq(table.name.as_str()),
+                                pts::strategy.eq(strat),
+                                pts::phase.eq(Phase::Queued),
+                            ))
+                            .execute(conn)?;
+                    }
+                    Ok(())
                 }
-                Ok(())
+                .scope_boxed()
             })
+            .await
         }
 
-        pub(crate) fn start_table(
+        pub(crate) async fn start_table(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -794,12 +839,13 @@ mod status {
                     pts::started_at.eq(diesel::dsl::now),
                     pts::phase.eq(Phase::Started),
                 ),
-            )?;
+            )
+            .await?;
 
             Ok(())
         }
 
-        pub(crate) fn start_copy_final(
+        pub(crate) async fn start_copy_final(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -815,10 +861,10 @@ mod status {
                 pts::rows.eq(0),
             );
 
-            self.update_table_state(conn, table, values)
+            self.update_table_state(conn, table, values).await
         }
 
-        pub(crate) fn start_copy_nonfinal(
+        pub(crate) async fn start_copy_nonfinal(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -832,10 +878,10 @@ mod status {
                 pts::next_vid.eq(range.min),
                 pts::nonfinal_vid.eq(range.max),
             );
-            self.update_table_state(conn, table, values)
+            self.update_table_state(conn, table, values).await
         }
 
-        pub(crate) fn finish_batch(
+        pub(crate) async fn finish_batch(
             &self,
             conn: &mut PgConnection,
             src: &Table,
@@ -850,10 +896,10 @@ mod status {
                 pts::rows.eq(pts::rows + rows),
             );
 
-            self.update_table_state(conn, src, values)
+            self.update_table_state(conn, src, values).await
         }
 
-        pub(crate) fn finish_table(
+        pub(crate) async fn finish_table(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -865,10 +911,10 @@ mod status {
                 pts::phase.eq(Phase::Done),
             );
 
-            self.update_table_state(conn, table, values)
+            self.update_table_state(conn, table, values).await
         }
 
-        pub(crate) fn start_delete(
+        pub(crate) async fn start_delete(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -887,10 +933,10 @@ mod status {
                 pts::batch_size.eq(batcher.batch_size() as i64),
             );
 
-            self.update_table_state(conn, table, values)
+            self.update_table_state(conn, table, values).await
         }
 
-        fn update_table_state<V, C>(
+        async fn update_table_state<V, C>(
             &self,
             conn: &mut PgConnection,
             table: &Table,
@@ -949,10 +995,10 @@ mod status {
             Self { pool, layout }
         }
 
-        pub fn runs(&self) -> StoreResult<Vec<usize>> {
+        pub async fn runs(&self) -> StoreResult<Vec<usize>> {
             use prune_state as ps;
 
-            let mut conn = self.pool.get()?;
+            let mut conn = self.pool.get_async().await?;
             let runs = ps::table
                 .filter(ps::id.eq(self.layout.site.id))
                 .select(ps::run)
@@ -963,11 +1009,14 @@ mod status {
             Ok(runs)
         }
 
-        pub fn state(&self, run: usize) -> StoreResult<Option<(PruneState, Vec<PruneTableState>)>> {
+        pub async fn state(
+            &self,
+            run: usize,
+        ) -> StoreResult<Option<(PruneState, Vec<PruneTableState>)>> {
             use prune_state as ps;
             use prune_table_state as pts;
 
-            let mut conn = self.pool.get()?;
+            let mut conn = self.pool.get_async().await?;
 
             let ptss = pts::table
                 .filter(pts::id.eq(self.layout.site.id))

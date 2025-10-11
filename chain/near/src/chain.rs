@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use async_trait::async_trait;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
@@ -29,7 +30,7 @@ use graph::{
     },
     components::store::DeploymentLocator,
     firehose::{self as firehose, ForkStep},
-    prelude::{async_trait, o, BlockNumber, Error, Logger, LoggerFactory},
+    prelude::{o, BlockNumber, Error, Logger, LoggerFactory},
 };
 use prost::Message;
 use std::collections::BTreeSet;
@@ -292,7 +293,9 @@ impl Blockchain for Chain {
             .await
     }
 
-    fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
+    async fn runtime(
+        &self,
+    ) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
         Ok((Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook))
     }
 

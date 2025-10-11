@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use graph::blockchain::DataSource;
 use graph::components::store::BLOCK_NUMBER_MAX;
 use graph::data::store::scalar::Bytes;
@@ -19,8 +20,8 @@ use graph::entity;
 use graph::env::ENV_VARS;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{
-    anyhow, async_trait, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link,
-    SubgraphManifest, SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphStore,
+    anyhow, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link, SubgraphManifest,
+    SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphStore,
     UnvalidatedSubgraphManifest,
 };
 use graph::{
@@ -467,6 +468,7 @@ specVersion: 0.0.2
         let schema = store
             .subgraph_store()
             .input_schema(&deployment.hash)
+            .await
             .unwrap();
 
         // Adds an example entity.
@@ -551,6 +553,7 @@ specVersion: 0.0.2
         let schema = store
             .subgraph_store()
             .input_schema(&deployment.hash)
+            .await
             .unwrap();
         // This check is awkward since the test manifest has other problems
         // that the validation complains about as setting up a valid manifest

@@ -1,11 +1,12 @@
-use std::cell::RefCell;
 use std::convert::TryFrom;
 use std::mem::MaybeUninit;
 
 use anyhow::anyhow;
 use anyhow::Error;
+use async_trait::async_trait;
 use graph::blockchain::Blockchain;
 use graph::data_source::subgraph;
+use graph::parking_lot::RwLock;
 use graph::util::mem::init_slice;
 use semver::Version;
 use wasmtime::AsContext;
@@ -53,58 +54,67 @@ pub trait IntoTrap {
 
 /// A flexible interface for writing a type to AS memory, any pointer can be returned.
 /// Use `AscPtr::erased` to convert `AscPtr<T>` into `AscPtr<()>`.
+#[async_trait]
 pub trait ToAscPtr {
-    fn to_asc_ptr<H: AscHeap>(
+    async fn to_asc_ptr<H: AscHeap + Send>(
         self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError>;
 }
 
+#[async_trait]
 impl ToAscPtr for offchain::TriggerData {
-    fn to_asc_ptr<H: AscHeap>(
+    async fn to_asc_ptr<H: AscHeap + Send>(
         self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
-        asc_new(heap, self.data.as_ref() as &[u8], gas).map(|ptr| ptr.erase())
+        asc_new(heap, self.data.as_ref() as &[u8], gas)
+            .await
+            .map(|ptr| ptr.erase())
     }
 }
 
+#[async_trait]
 impl ToAscPtr for subgraph::MappingEntityTrigger {
-    fn to_asc_ptr<H: AscHeap>(
+    async fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
-        asc_new(heap, &self.data.entity.entity.sorted_ref(), gas).map(|ptr| ptr.erase())
+        asc_new(heap, &self.data.entity.entity.sorted_ref(), gas)
+            .await
+            .map(|ptr| ptr.erase())
     }
 }
 
+#[async_trait]
 impl<C: Blockchain> ToAscPtr for MappingTrigger<C>
 where
     C::MappingTrigger: ToAscPtr,
 {
-    fn to_asc_ptr<H: AscHeap>(
+    async fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
         match self {
-            MappingTrigger::Onchain(trigger) => trigger.to_asc_ptr(heap, gas),
-            MappingTrigger::Offchain(trigger) => trigger.to_asc_ptr(heap, gas),
-            MappingTrigger::Subgraph(trigger) => trigger.to_asc_ptr(heap, gas),
+            MappingTrigger::Onchain(trigger) => trigger.to_asc_ptr(heap, gas).await,
+            MappingTrigger::Offchain(trigger) => trigger.to_asc_ptr(heap, gas).await,
+            MappingTrigger::Subgraph(trigger) => trigger.to_asc_ptr(heap, gas).await,
         }
     }
 }
 
-impl<T: ToAscPtr> ToAscPtr for TriggerWithHandler<T> {
-    fn to_asc_ptr<H: AscHeap>(
+#[async_trait]
+impl<T: ToAscPtr + Send> ToAscPtr for TriggerWithHandler<T> {
+    async fn to_asc_ptr<H: AscHeap>(
         self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscPtr<()>, HostExportError> {
-        self.trigger.to_asc_ptr(heap, gas)
+        self.trigger.to_asc_ptr(heap, gas).await
     }
 }
 
@@ -168,7 +178,7 @@ pub struct AscHeapCtx {
     // is zeroed when initialized or grown.
     memory: Memory,
 
-    arena: RefCell<Arena>,
+    arena: RwLock<Arena>,
 }
 
 impl AscHeapCtx {
@@ -207,28 +217,28 @@ impl AscHeapCtx {
         Ok(Arc::new(AscHeapCtx {
             memory_allocate,
             memory,
-            arena: RefCell::new(Arena::new()),
+            arena: RwLock::new(Arena::new()),
             api_version,
             id_of_type,
         }))
     }
 
     fn arena_start_ptr(&self) -> i32 {
-        self.arena.borrow().start
+        self.arena.read().start
     }
 
     fn arena_free_size(&self) -> i32 {
-        self.arena.borrow().size
+        self.arena.read().size
     }
 
     fn set_arena(&self, start_ptr: i32, size: i32) {
-        let mut arena = self.arena.borrow_mut();
+        let mut arena = self.arena.write();
         arena.start = start_ptr;
         arena.size = size;
     }
 
     fn allocated(&self, size: i32) {
-        let mut arena = self.arena.borrow_mut();
+        let mut arena = self.arena.write();
         arena.start += size;
         arena.size -= size;
     }
@@ -243,8 +253,13 @@ fn host_export_error_from_trap(trap: Error, context: String) -> HostExportError 
     }
 }
 
+#[async_trait]
 impl AscHeap for WasmInstanceContext<'_> {
-    fn raw_new(&mut self, bytes: &[u8], gas: &GasCounter) -> Result<u32, DeterministicHostError> {
+    async fn raw_new(
+        &mut self,
+        bytes: &[u8],
+        gas: &GasCounter,
+    ) -> Result<u32, DeterministicHostError> {
         // The cost of writing to wasm memory from the host is the same as of writing from wasm
         // using load instructions.
         gas.consume_host_fn_with_metrics(
@@ -268,7 +283,8 @@ impl AscHeap for WasmInstanceContext<'_> {
             // of the node.
             let memory_allocate = &self.asc_heap().cheap_clone().memory_allocate;
             let mut start_ptr = memory_allocate
-                .call(self.as_context_mut(), arena_size)
+                .call_async(self.as_context_mut(), arena_size)
+                .await
                 .unwrap();
 
             match &self.asc_heap().api_version {
@@ -348,12 +364,16 @@ impl AscHeap for WasmInstanceContext<'_> {
         &self.asc_heap().api_version
     }
 
-    fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> Result<u32, HostExportError> {
+    async fn asc_type_id(
+        &mut self,
+        type_id_index: IndexForAscTypeId,
+    ) -> Result<u32, HostExportError> {
         let asc_heap = self.asc_heap().cheap_clone();
         let func = asc_heap.id_of_type.as_ref().unwrap();
 
         // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
-        func.call(self.as_context_mut(), type_id_index as u32)
+        func.call_async(self.as_context_mut(), type_id_index as u32)
+            .await
             .map_err(|trap| {
                 host_export_error_from_trap(
                     trap,

@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use anyhow::{anyhow, Context, Error};
+use async_trait::async_trait;
 use graph::{
     blockchain,
     cheap_clone::CheapClone,
@@ -9,7 +10,7 @@ use graph::{
         subgraph::InstanceDSTemplateInfo,
     },
     data::subgraph::DeploymentHash,
-    prelude::{async_trait, BlockNumber, Link},
+    prelude::{BlockNumber, Link},
     slog::Logger,
 };
 
@@ -340,11 +341,12 @@ mod test {
     use std::{str::FromStr, sync::Arc};
 
     use anyhow::Error;
+    use async_trait::async_trait;
     use graph::{
         blockchain::{DataSource as _, UnresolvedDataSource as _},
         components::link_resolver::{LinkResolver, LinkResolverContext},
         data::subgraph::{DeploymentHash, LATEST_VERSION, SPEC_VERSION_1_2_0},
-        prelude::{async_trait, serde_yaml, JsonValueStream, Link},
+        prelude::{serde_yaml, JsonValueStream, Link},
         slog::{o, Discard, Logger},
         substreams::{
             module::{

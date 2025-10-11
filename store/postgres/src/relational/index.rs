@@ -5,7 +5,7 @@ use std::fmt::{Display, Write};
 use std::sync::Arc;
 
 use diesel::sql_types::{Bool, Text};
-use diesel::{sql_query, Connection, PgConnection, RunQueryDsl};
+use diesel::{sql_query, PgConnection, RunQueryDsl};
 use graph::components::store::StoreError;
 use graph::itertools::Itertools;
 use graph::prelude::{
@@ -752,7 +752,7 @@ pub struct IndexList {
     pub(crate) indexes: HashMap<String, Vec<CreateIndex>>,
 }
 
-pub fn load_indexes_from_table(
+pub async fn load_indexes_from_table(
     conn: &mut PgConnection,
     table: &Arc<Table>,
     schema_name: &str,
@@ -763,7 +763,7 @@ pub fn load_indexes_from_table(
 }
 
 impl IndexList {
-    pub fn load(
+    pub async fn load(
         conn: &mut PgConnection,
         site: Arc<Site>,
         store: DeploymentStore,
@@ -772,9 +772,9 @@ impl IndexList {
             indexes: HashMap::new(),
         };
         let schema_name = site.namespace.clone();
-        let layout = store.layout(conn, site)?;
+        let layout = store.layout(conn, site).await?;
         for (_, table) in &layout.tables {
-            let indexes = load_indexes_from_table(conn, table, schema_name.as_str())?;
+            let indexes = load_indexes_from_table(conn, table, schema_name.as_str()).await?;
             list.indexes.insert(table.name.to_string(), indexes);
         }
         Ok(list)
@@ -818,7 +818,7 @@ impl IndexList {
         Ok(arr)
     }
 
-    pub fn recreate_invalid_indexes(
+    pub async fn recreate_invalid_indexes(
         &self,
         conn: &mut PgConnection,
         layout: &Layout,
@@ -864,7 +864,7 @@ impl IndexList {
                                 namespace.to_string(),
                                 index_name
                             ));
-                            conn.transaction(|conn| drop_query.execute(conn))?;
+                            drop_query.execute(conn)?;
                         }
                         sql_query(create_query).execute(conn)?;
                     }

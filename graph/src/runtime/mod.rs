@@ -14,7 +14,9 @@ pub use asc_heap::{
 pub use asc_ptr::AscPtr;
 
 use anyhow::Error;
+use async_trait::async_trait;
 use semver::Version;
+
 use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
@@ -337,8 +339,9 @@ pub enum IndexForAscTypeId {
     UnitTestNetworkUnitTestTypeBoolArray = u32::MAX,
 }
 
+#[async_trait]
 impl ToAscObj<u32> for IndexForAscTypeId {
-    fn to_asc_obj<H: AscHeap + ?Sized>(
+    async fn to_asc_obj<H: AscHeap + Send + ?Sized>(
         &self,
         _heap: &mut H,
         _gas: &GasCounter,

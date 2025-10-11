@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
@@ -28,8 +29,7 @@ use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
-        async_trait, debug, error, ethabi, hex, info, retry, serde_json as json, tiny_keccak,
-        trace, warn,
+        debug, error, ethabi, hex, info, retry, serde_json as json, tiny_keccak, trace, warn,
         web3::{
             self,
             types::{
@@ -1653,6 +1653,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         let (mut resps, missing) = cache
             .get_calls(&reqs, block_ptr)
+            .await
             .map_err(|e| error!(logger, "call cache get error"; "error" => e.to_string()))
             .unwrap_or_else(|_| (Vec::new(), reqs));
 
@@ -1729,7 +1730,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .iter()
             .map(|block| block as &dyn graph::blockchain::Block)
             .collect();
-        if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()) {
+        if let Err(e) = chain_store.upsert_light_blocks(block_refs.as_slice()).await {
             error!(logger, "Error writing to block cache {}", e);
         }
         blocks.extend(new_blocks);

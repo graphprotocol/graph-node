@@ -83,7 +83,7 @@ impl DataSourcesTable {
     // Query to load the data sources which are live at `block`. Ordering by the creation block and
     // `vid` makes sure they are in insertion order which is important for the correctness of
     // reverts and the execution order of triggers. See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
-    pub(super) fn load(
+    pub(super) async fn load(
         &self,
         conn: &mut PgConnection,
         block: BlockNumber,
@@ -142,7 +142,7 @@ impl DataSourcesTable {
         Ok(dses)
     }
 
-    pub(crate) fn insert(
+    pub(crate) async fn insert(
         &self,
         conn: &mut PgConnection,
         data_sources: &write::DataSources,
@@ -193,7 +193,7 @@ impl DataSourcesTable {
         Ok(inserted_total)
     }
 
-    pub(crate) fn revert(
+    pub(crate) async fn revert(
         &self,
         conn: &mut PgConnection,
         block: BlockNumber,
@@ -213,7 +213,7 @@ impl DataSourcesTable {
 
     /// Copy the dynamic data sources from `self` to `dst`. All data sources that
     /// were created up to and including `target_block` will be copied.
-    pub(crate) fn copy_to(
+    pub(crate) async fn copy_to(
         &self,
         conn: &mut PgConnection,
         dst: &DataSourcesTable,
@@ -265,8 +265,13 @@ impl DataSourcesTable {
         // contents.
         if src_manifest_idx_and_name == dst_manifest_idx_and_name {
             debug_assert!(
-                self.load(conn, target_block).map_err(|e| e.to_string())
-                    == dst.load(conn, target_block).map_err(|e| e.to_string())
+                self.load(conn, target_block)
+                    .await
+                    .map_err(|e| e.to_string())
+                    == dst
+                        .load(conn, target_block)
+                        .await
+                        .map_err(|e| e.to_string())
             );
         }
 
@@ -275,7 +280,7 @@ impl DataSourcesTable {
 
     // Remove offchain data sources by checking the causality region, which currently uniquely
     // identifies an offchain data source.
-    pub(super) fn update_offchain_status(
+    pub(super) async fn update_offchain_status(
         &self,
         conn: &mut PgConnection,
         data_sources: &write::DataSources,

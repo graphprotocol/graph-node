@@ -1,9 +1,6 @@
 use diesel::r2d2::Builder;
+use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::{connection::SimpleConnection, pg::PgConnection};
-use diesel::{
-    r2d2::{ConnectionManager, Pool, PooledConnection},
-    Connection,
-};
 use diesel::{sql_query, RunQueryDsl};
 
 use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
@@ -30,10 +27,14 @@ use crate::catalog;
 use crate::primary::{self, Mirror, Namespace};
 use crate::{Shard, PRIMARY_SHARD};
 
+mod async_txn;
 mod coordinator;
 mod foreign_server;
 mod state_tracker;
 
+pub use diesel_async::scoped_futures::ScopedFutureExt;
+
+pub use async_txn::AsyncConnection;
 pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
 use state_tracker::{ErrorHandler, EventHandler, StateTracker};
@@ -310,7 +311,7 @@ impl ConnectionPool {
         }
     }
 
-    /// Execute a closure with a connection to the database.
+    /// Execute an async closure with a connection to the database.
     ///
     /// # API
     ///   The API of using a closure to bound the usage of the connection serves several
@@ -354,7 +355,7 @@ impl ConnectionPool {
         &self,
         f: impl 'static
             + Send
-            + FnOnce(
+            + AsyncFnOnce(
                 &mut PooledConnection<ConnectionManager<PgConnection>>,
                 &CancelHandle,
             ) -> Result<T, CancelableError<StoreError>>,
@@ -365,6 +366,14 @@ impl ConnectionPool {
 
     pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         self.get_ready()?.get()
+    }
+
+    /// An async version of `get`. For now, this calls `get` synchronously.
+    /// Once `get` is not used anymore, we can make it truly async.
+    pub async fn get_async(
+        &self,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+        self.get()
     }
 
     /// Get a connection from the pool for foreign data wrapper access;
@@ -385,9 +394,23 @@ impl ConnectionPool {
         self.get_ready()?.get_fdw(logger, timeout)
     }
 
+    /// An async version of `get_fdw`. For now, this calls `get_fdw`
+    /// synchronously. Once `get_fdw` is not used anymore, we can make it
+    /// truly async.
+    pub async fn get_fdw_async<F>(
+        &self,
+        logger: &Logger,
+        timeout: F,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError>
+    where
+        F: FnMut() -> bool,
+    {
+        self.get_fdw(logger, timeout)
+    }
+
     /// Get a connection from the pool for foreign data wrapper access if
     /// one is available
-    pub fn try_get_fdw(
+    fn try_get_fdw(
         &self,
         logger: &Logger,
         timeout: Duration,
@@ -397,6 +420,17 @@ impl ConnectionPool {
         };
         self.state_tracker
             .ignore_timeout(|| inner.try_get_fdw(logger, timeout))
+    }
+
+    /// An async version of `try_get_fdw`. For now, this calls `try_get_fdw`
+    /// synchronously. Once `try_get_fdw` is not used anymore, we can make it
+    /// truly async.
+    pub async fn try_get_fdw_async(
+        &self,
+        logger: &Logger,
+        timeout: Duration,
+    ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
+        self.try_get_fdw(logger, timeout)
     }
 
     pub(crate) async fn query_permit(&self) -> QueryPermit {
@@ -556,7 +590,7 @@ impl PoolInner {
         }
     }
 
-    /// Execute a closure with a connection to the database.
+    /// Execute an async closure with a connection to the database.
     ///
     /// # API
     ///   The API of using a closure to bound the usage of the connection serves several
@@ -600,7 +634,7 @@ impl PoolInner {
         &self,
         f: impl 'static
             + Send
-            + FnOnce(
+            + AsyncFnOnce(
                 &mut PooledConnection<ConnectionManager<PgConnection>>,
                 &CancelHandle,
             ) -> Result<T, CancelableError<StoreError>>,
@@ -618,15 +652,14 @@ impl PoolInner {
 
             // A failure to establish a connection is propagated as though the
             // closure failed.
-            let mut conn = pool
-                .get()
+            let mut conn = graph::block_on(pool.get_async())
                 .map_err(|_| CancelableError::Error(StoreError::DatabaseUnavailable))?;
 
             // It is possible time has passed while establishing a connection.
             // Time to check for cancel.
             cancel_handle.check_cancel()?;
 
-            f(&mut conn, &cancel_handle)
+            graph::block_on(f(&mut conn, &cancel_handle))
         })
         .await
         .unwrap(); // Propagate panics, though there shouldn't be any.
@@ -644,8 +677,16 @@ impl PoolInner {
         }
     }
 
-    pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+    fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
         self.pool.get().map_err(|_| StoreError::DatabaseUnavailable)
+    }
+
+    /// An async version of `get`. For now, this calls `get` synchronously.
+    /// Once `get` is not used anymore, we can make it truly async.
+    pub async fn get_async(
+        &self,
+    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
+        self.get()
     }
 
     /// Get the pool for fdw connections. It is an error if none is configured
@@ -672,7 +713,7 @@ impl PoolInner {
     /// The `timeout` is called every time we time out waiting for a
     /// connection. If `timeout` returns `true`, `get_fdw` returns with that
     /// error, otherwise we try again to get a connection.
-    pub fn get_fdw<F>(
+    fn get_fdw<F>(
         &self,
         logger: &Logger,
         mut timeout: F,
@@ -696,7 +737,7 @@ impl PoolInner {
     /// Get a connection from the fdw pool if one is available. We wait for
     /// `timeout` for a connection which should be set just big enough to
     /// allow establishing a connection
-    pub fn try_get_fdw(
+    fn try_get_fdw(
         &self,
         logger: &Logger,
         timeout: Duration,
@@ -727,14 +768,14 @@ impl PoolInner {
             .unwrap_or(false)
     }
 
-    fn locale_check(
+    async fn locale_check(
         &self,
         logger: &Logger,
         mut conn: PooledConnection<ConnectionManager<PgConnection>>,
     ) -> Result<(), StoreError> {
         Ok(
             if let Err(msg) = catalog::Locale::load(&mut conn)?.suitable() {
-                if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn)? {
+                if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn).await? {
                     const MSG: &str =
                     "Database does not use C locale. \
                     Please check the graph-node documentation for how to set up the database locale";
@@ -758,21 +799,25 @@ impl PoolInner {
         permit.unwrap()
     }
 
-    fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
+    async fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
-        let mut conn = self.get()?;
+        let mut conn = self.get_async().await?;
         conn.batch_execute("create extension if not exists postgres_fdw")?;
-        conn.transaction(|conn| {
-            let current_servers: Vec<String> = crate::catalog::current_servers(conn)?;
-            for server in servers.iter().filter(|server| server.shard != self.shard) {
-                if current_servers.contains(&server.name) {
-                    server.update(conn)?;
-                } else {
-                    server.create(conn)?;
+        conn.transaction_async(|conn| {
+            async {
+                let current_servers: Vec<String> = crate::catalog::current_servers(conn)?;
+                for server in servers.iter().filter(|server| server.shard != self.shard) {
+                    if current_servers.contains(&server.name) {
+                        server.update(conn)?;
+                    } else {
+                        server.create(conn)?;
+                    }
                 }
+                Ok(())
             }
-            Ok(())
+            .scope_boxed()
         })
+        .await
     }
 
     /// Do the part of database setup that only affects this pool. Those
@@ -785,36 +830,45 @@ impl PoolInner {
         self: Arc<Self>,
         servers: &[ForeignServer],
     ) -> Result<MigrationCount, StoreError> {
-        self.configure_fdw(servers)?;
-        let mut conn = self.get()?;
-        let (this, count) = conn.transaction(|conn| -> Result<_, StoreError> {
-            let count = migrate_schema(&self.logger, conn)?;
-            Ok((self, count))
-        })?;
+        self.configure_fdw(servers).await?;
+        let mut conn = self.get_async().await?;
+        let (this, count) = conn
+            .transaction_async::<_, StoreError, _>(|conn| {
+                async {
+                    let count = migrate_schema(&self.logger, conn)?;
+                    Ok((self, count))
+                }
+                .scope_boxed()
+            })
+            .await?;
 
-        this.locale_check(&this.logger, conn)?;
+        this.locale_check(&this.logger, conn).await?;
 
         Ok(count)
     }
 
     /// If this is the primary shard, drop the namespace `CROSS_SHARD_NSP`
-    fn drop_cross_shard_views(&self) -> Result<(), StoreError> {
+    async fn drop_cross_shard_views(&self) -> Result<(), StoreError> {
         if self.shard != *PRIMARY_SHARD {
             return Ok(());
         }
 
         info!(&self.logger, "Dropping cross-shard views");
-        let mut conn = self.get()?;
-        conn.transaction(|conn| {
-            let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
-            conn.batch_execute(&query)?;
-            Ok(())
+        let mut conn = self.get_async().await?;
+        conn.transaction_async(|conn| {
+            async {
+                let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
+                conn.batch_execute(&query)?;
+                Ok(())
+            }
+            .scope_boxed()
         })
+        .await
     }
 
     /// If this is the primary shard, create the namespace `CROSS_SHARD_NSP`
     /// and populate it with tables that union various imported tables
-    fn create_cross_shard_views(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
+    async fn create_cross_shard_views(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         fn shard_nsp_pairs<'a>(
             current: &Shard,
             local_nsp: &str,
@@ -837,7 +891,7 @@ impl PoolInner {
             return Ok(());
         }
 
-        let mut conn = self.get()?;
+        let mut conn = self.get_async().await?;
         let sharded = Namespace::special(CROSS_SHARD_NSP);
         if catalog::has_namespace(&mut conn, &sharded)? {
             // We dropped the namespace before, but another node must have
@@ -846,25 +900,29 @@ impl PoolInner {
         }
 
         info!(&self.logger, "Creating cross-shard views");
-        conn.transaction(|conn| {
-            let query = format!("create schema {}", CROSS_SHARD_NSP);
-            conn.batch_execute(&query)?;
-            for (src_nsp, src_tables) in SHARDED_TABLES {
-                // Pairs of (shard, nsp) for all servers
-                let nsps = shard_nsp_pairs(&self.shard, src_nsp, servers);
-                for src_table in src_tables {
-                    let create_view = catalog::create_cross_shard_view(
-                        conn,
-                        src_nsp,
-                        src_table,
-                        CROSS_SHARD_NSP,
-                        &nsps,
-                    )?;
-                    conn.batch_execute(&create_view)?;
+        conn.transaction_async(|conn| {
+            async {
+                let query = format!("create schema {}", CROSS_SHARD_NSP);
+                conn.batch_execute(&query)?;
+                for (src_nsp, src_tables) in SHARDED_TABLES {
+                    // Pairs of (shard, nsp) for all servers
+                    let nsps = shard_nsp_pairs(&self.shard, src_nsp, servers);
+                    for src_table in src_tables {
+                        let create_view = catalog::create_cross_shard_view(
+                            conn,
+                            src_nsp,
+                            src_table,
+                            CROSS_SHARD_NSP,
+                            &nsps,
+                        )?;
+                        conn.batch_execute(&create_view)?;
+                    }
                 }
+                Ok(())
             }
-            Ok(())
+            .scope_boxed()
         })
+        .await
     }
 
     /// Copy the data from key tables in the primary into our local schema
@@ -873,10 +931,16 @@ impl PoolInner {
         if self.shard == *PRIMARY_SHARD {
             return Ok(());
         }
-        self.with_conn(|conn, handle| {
-            conn.transaction(|conn| {
-                primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
+        self.with_conn(async |conn, handle| {
+            conn.transaction_async(|conn| {
+                async {
+                    primary::Mirror::refresh_tables(conn, handle)
+                        .await
+                        .map_err(CancelableError::from)
+                }
+                .scope_boxed()
             })
+            .await
         })
         .await
     }
@@ -884,11 +948,14 @@ impl PoolInner {
     /// The foreign server `server` had schema changes, and we therefore
     /// need to remap anything that we are importing via fdw to make sure we
     /// are using this updated schema
-    pub fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
+    pub async fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
-            let mut conn = self.get()?;
-            conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard))?;
+            let mut conn = self.get_async().await?;
+            conn.transaction_async(|conn| {
+                async { ForeignServer::map_primary(conn, &self.shard) }.scope_boxed()
+            })
+            .await?;
         }
         if &server.shard != &self.shard {
             info!(
@@ -896,18 +963,19 @@ impl PoolInner {
                 "Mapping metadata from {}",
                 server.shard.as_str()
             );
-            let mut conn = self.get()?;
-            conn.transaction(|conn| server.map_metadata(conn))?;
+            let mut conn = self.get_async().await?;
+            conn.transaction_async(|conn| async { server.map_metadata(conn) }.scope_boxed())
+                .await?;
         }
         Ok(())
     }
 
-    pub fn needs_remap(&self, server: &ForeignServer) -> Result<bool, StoreError> {
+    pub async fn needs_remap(&self, server: &ForeignServer) -> Result<bool, StoreError> {
         if &server.shard == &self.shard {
             return Ok(false);
         }
 
-        let mut conn = self.get()?;
+        let mut conn = self.get_async().await?;
         server.needs_remap(&mut conn)
     }
 }

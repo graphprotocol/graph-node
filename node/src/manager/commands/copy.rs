@@ -55,7 +55,7 @@ struct CopyTableState {
 }
 
 impl CopyState {
-    fn find(
+    async fn find(
         pools: &HashMap<Shard, ConnectionPool>,
         shard: &Shard,
         dst: i32,
@@ -67,14 +67,14 @@ impl CopyState {
             .get(shard)
             .ok_or_else(|| anyhow!("can not find pool for shard {}", shard))?;
 
-        let mut dconn = dpool.get()?;
+        let mut dconn = dpool.get_async().await?;
 
         let tables = cts::table
             .filter(cts::dst.eq(dst))
             .order_by(cts::entity_type)
             .load::<CopyTableState>(&mut dconn)?;
 
-        let on_sync = on_sync(&mut dconn, DeploymentId(dst))?;
+        let on_sync = on_sync(&mut dconn, DeploymentId(dst)).await?;
 
         Ok(cs::table
             .filter(cs::dst.eq(dst))
@@ -121,8 +121,9 @@ async fn create_inner(
     let chain_store = store
         .block_store()
         .chain_store(network)
+        .await
         .ok_or_else(|| anyhow!("could not find chain store for network {}", network))?;
-    let mut hashes = chain_store.block_hashes_by_block_number(src_number)?;
+    let mut hashes = chain_store.block_hashes_by_block_number(src_number).await?;
     let hash = match hashes.len() {
         0 => bail!(
             "could not find a block with number {} in our cache",
@@ -146,7 +147,9 @@ async fn create_inner(
     let shard = Shard::new(shard)?;
     let node = NodeId::new(node.clone()).map_err(|()| anyhow!("invalid node id `{}`", node))?;
 
-    let dst = subgraph_store.copy_deployment(&src, shard, node, base_ptr, on_sync)?;
+    let dst = subgraph_store
+        .copy_deployment(&src, shard, node, base_ptr, on_sync)
+        .await?;
 
     println!("created deployment {} as copy of {}", dst, src);
     Ok(())
@@ -163,7 +166,7 @@ pub async fn create(
     activate: bool,
     replace: bool,
 ) -> Result<(), Error> {
-    let src = src.locate_unique(&primary)?;
+    let src = src.locate_unique(&primary).await?;
     create_inner(
         store,
         &src,
@@ -178,12 +181,17 @@ pub async fn create(
     .map_err(|e| anyhow!("cannot copy {src}: {e}"))
 }
 
-pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) -> Result<(), Error> {
+pub async fn activate(
+    store: Arc<SubgraphStore>,
+    deployment: String,
+    shard: String,
+) -> Result<(), Error> {
     let shard = Shard::new(shard)?;
     let deployment =
         DeploymentHash::new(deployment).map_err(|s| anyhow!("illegal deployment hash `{}`", s))?;
     let deployment = store
-        .locate_in_shard(&deployment, shard.clone())?
+        .locate_in_shard(&deployment, shard.clone())
+        .await?
         .ok_or_else(|| {
             anyhow!(
                 "could not find a copy for {} in shard {}",
@@ -191,17 +199,17 @@ pub fn activate(store: Arc<SubgraphStore>, deployment: String, shard: String) ->
                 shard
             )
         })?;
-    store.activate(&deployment)?;
+    store.activate(&deployment).await?;
     println!("activated copy {}", deployment);
     Ok(())
 }
 
-pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
+pub async fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
     use catalog::active_copies as ac;
     use catalog::deployment_schemas as ds;
 
     let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
-    let mut conn = primary.get()?;
+    let mut conn = primary.get_async().await?;
 
     let copies = ac::table
         .inner_join(ds::table.on(ds::id.eq(ac::dst)))
@@ -230,7 +238,7 @@ pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
 
             println!("{:20} | {}", "deployment", deployment_hash);
             println!("{:20} | sgd{} -> sgd{} ({})", "action", src, dst, shard);
-            match CopyState::find(&pools, &shard, dst)? {
+            match CopyState::find(&pools, &shard, dst).await? {
                 Some((state, tables, _)) => match cancelled_at {
                     Some(cancel_requested) => match state.cancelled_at {
                         Some(cancelled_at) => status("cancelled", cancelled_at),
@@ -254,7 +262,10 @@ pub fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> Result<(), Error> {
+pub async fn status(
+    pools: HashMap<Shard, ConnectionPool>,
+    dst: &DeploymentSearch,
+) -> Result<(), Error> {
     const CHECK: &str = "✓";
 
     use catalog::active_copies as ac;
@@ -263,8 +274,8 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
     let primary = pools
         .get(&*PRIMARY_SHARD)
         .ok_or_else(|| anyhow!("can not find deployment with id {}", dst))?;
-    let mut pconn = primary.get()?;
-    let dst = dst.locate_unique(primary)?.id.0;
+    let mut pconn = primary.get_async().await?;
+    let dst = dst.locate_unique(primary).await?.id.0;
 
     let (shard, deployment) = ds::table
         .filter(ds::id.eq(dst))
@@ -279,7 +290,7 @@ pub fn status(pools: HashMap<Shard, ConnectionPool>, dst: &DeploymentSearch) -> 
         .map(|(_, cancelled_at)| (true, cancelled_at))
         .unwrap_or((false, None));
 
-    let (state, tables, on_sync) = match CopyState::find(&pools, &shard, dst)? {
+    let (state, tables, on_sync) = match CopyState::find(&pools, &shard, dst).await? {
         Some((state, tables, on_sync)) => (state, tables, on_sync),
         None => {
             if active {

@@ -29,7 +29,7 @@ impl GenesisHashCheck {
         }
     }
 
-    pub fn from_id_store(id_store: Arc<dyn ChainIdStore>) -> Self {
+    pub fn from_id_store(id_store: Box<dyn ChainIdStore>) -> Self {
         Self {
             chain_identifier_store: chain_id_validator(id_store),
         }
@@ -68,7 +68,8 @@ impl ProviderCheck for GenesisHashCheck {
 
         let check_result = self
             .chain_identifier_store
-            .validate_identifier(chain_name, &chain_identifier);
+            .validate_identifier(chain_name, &chain_identifier)
+            .await;
 
         use ChainIdentifierValidationError::*;
 
@@ -77,7 +78,8 @@ impl ProviderCheck for GenesisHashCheck {
             Err(IdentifierNotSet(_)) => {
                 let update_result = self
                     .chain_identifier_store
-                    .update_identifier(chain_name, &chain_identifier);
+                    .update_identifier(chain_name, &chain_identifier)
+                    .await;
 
                 if let Err(err) = update_result {
                     let message = format!(
@@ -190,7 +192,7 @@ mod tests {
 
     #[async_trait]
     impl ChainIdentifierValidator for TestChainIdentifierStore {
-        fn validate_identifier(
+        async fn validate_identifier(
             &self,
             _chain_name: &ChainName,
             _chain_identifier: &ChainIdentifier,
@@ -198,7 +200,7 @@ mod tests {
             self.validate_identifier_calls.lock().unwrap().remove(0)
         }
 
-        fn update_identifier(
+        async fn update_identifier(
             &self,
             _chain_name: &ChainName,
             _chain_identifier: &ChainIdentifier,

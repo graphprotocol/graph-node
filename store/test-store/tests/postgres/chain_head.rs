@@ -42,7 +42,11 @@ where
         for name in &[NETWORK_NAME, FAKE_NETWORK_SHARED] {
             block_store::set_chain(chain.clone(), name).await;
 
-            let chain_store = store.block_store().chain_store(name).expect("chain store");
+            let chain_store = store
+                .block_store()
+                .chain_store(name)
+                .await
+                .expect("chain store");
 
             // Run test
             test(chain_store.cheap_clone(), store.cheap_clone()).unwrap_or_else(|err| {
@@ -67,7 +71,11 @@ where
         for name in &[NETWORK_NAME, FAKE_NETWORK_SHARED] {
             let cached = block_store::set_chain(chain.clone(), name).await;
 
-            let chain_store = store.block_store().chain_store(name).expect("chain store");
+            let chain_store = store
+                .block_store()
+                .chain_store(name)
+                .await
+                .expect("chain store");
 
             // Run test
             test(chain_store.cheap_clone(), store.clone(), cached).await;
@@ -258,40 +266,42 @@ fn block_hashes_by_number() {
         &*BLOCK_TWO,
         &*BLOCK_TWO_NO_PARENT,
     ];
-    run_test(chain, move |store, _| {
-        let hashes = store.block_hashes_by_block_number(1).unwrap();
+    run_test_async(chain, move |store, _, _| async move {
+        let hashes = store.block_hashes_by_block_number(1).await.unwrap();
         assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
 
-        let hashes = store.block_hashes_by_block_number(2).unwrap();
+        let hashes = store.block_hashes_by_block_number(2).await.unwrap();
         assert_eq!(2, hashes.len());
         assert!(hashes.contains(&BLOCK_TWO.block_hash()));
         assert!(hashes.contains(&BLOCK_TWO_NO_PARENT.block_hash()));
 
-        let hashes = store.block_hashes_by_block_number(127).unwrap();
+        let hashes = store.block_hashes_by_block_number(127).await.unwrap();
         assert_eq!(0, hashes.len());
 
         let deleted = store
             .confirm_block_hash(1, &BLOCK_ONE.block_hash())
+            .await
             .unwrap();
         assert_eq!(0, deleted);
 
         let deleted = store
             .confirm_block_hash(2, &BLOCK_TWO.block_hash())
+            .await
             .unwrap();
         assert_eq!(1, deleted);
 
         // Make sure that we do not delete anything for a nonexistent block
         let deleted = store
             .confirm_block_hash(127, &GENESIS_BLOCK.block_hash())
+            .await
             .unwrap();
         assert_eq!(0, deleted);
 
-        let hashes = store.block_hashes_by_block_number(1).unwrap();
+        let hashes = store.block_hashes_by_block_number(1).await.unwrap();
         assert_eq!(vec![BLOCK_ONE.block_hash()], hashes);
 
-        let hashes = store.block_hashes_by_block_number(2).unwrap();
+        let hashes = store.block_hashes_by_block_number(2).await.unwrap();
         assert_eq!(vec![BLOCK_TWO.block_hash()], hashes);
-        Ok(())
     })
 }
 
@@ -424,7 +434,7 @@ fn ancestor_block_skipped() {
 fn eth_call_cache() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
 
-    run_test(chain, |store, _| {
+    run_test_async(chain, |store, _, _| async move {
         let logger = LOGGER.cheap_clone();
         fn ccr(value: &[u8]) -> call::Retval {
             call::Retval::Value(Bytes::from(value))
@@ -436,39 +446,48 @@ fn eth_call_cache() {
 
         let call = call::Request::new(address, call.to_vec(), 0);
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_ONE.block_ptr(),
                 ccr(&return_value),
             )
+            .await
             .unwrap();
 
-        let ret = store.get_call(&call, GENESIS_BLOCK.block_ptr()).unwrap();
+        let ret = store
+            .get_call(&call, GENESIS_BLOCK.block_ptr())
+            .await
+            .unwrap();
         assert!(ret.is_none());
 
         let ret = store
             .get_call(&call, BLOCK_ONE.block_ptr())
+            .await
             .unwrap()
             .unwrap()
             .retval
             .unwrap();
         assert_eq!(&return_value, ret.as_slice());
 
-        let ret = store.get_call(&call, BLOCK_TWO.block_ptr()).unwrap();
+        let ret = store.get_call(&call, BLOCK_TWO.block_ptr()).await.unwrap();
         assert!(ret.is_none());
 
         let new_return_value: [u8; 3] = [10, 11, 12];
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_TWO.block_ptr(),
                 ccr(&new_return_value),
             )
+            .await
             .unwrap();
         let ret = store
             .get_call(&call, BLOCK_TWO.block_ptr())
+            .await
             .unwrap()
             .unwrap()
             .retval
@@ -476,17 +495,20 @@ fn eth_call_cache() {
         assert_eq!(&new_return_value, ret.as_slice());
 
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_THREE.block_ptr(),
                 call::Retval::Null,
             )
+            .await
             .unwrap();
-        let ret = store.get_call(&call, BLOCK_THREE.block_ptr()).unwrap();
+        let ret = store
+            .get_call(&call, BLOCK_THREE.block_ptr())
+            .await
+            .unwrap();
         assert_eq!(None, ret);
-
-        Ok(())
     })
 }
 

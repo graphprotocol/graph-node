@@ -9,6 +9,7 @@ use crate::subgraph::Decoder;
 use std::collections::BTreeSet;
 
 use crate::subgraph::runner::SubgraphRunner;
+use async_trait::async_trait;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
 use graph::components::link_resolver::LinkResolverContext;
@@ -229,7 +230,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
 
         for hash in hashes {
             let loc = subgraph_store
-                .active_locator(&hash)?
+                .active_locator(&hash)
+                .await?
                 .ok_or_else(|| anyhow!("no active deployment for hash {}", hash))?;
 
             let sourceable_store = subgraph_store.clone().sourceable(loc.id.clone()).await?;
@@ -300,7 +302,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .set_manifest_raw_yaml(&deployment.hash, raw_yaml)
             .await?;
         if let Some(graft) = &manifest.graft {
-            if self.subgraph_store.is_deployed(&graft.base)? {
+            if self.subgraph_store.is_deployed(&graft.base).await? {
                 let file_bytes = self
                     .link_resolver
                     .cat(
@@ -362,7 +364,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // Write it to the database
         let deployment_features = manifest.deployment_features();
         self.subgraph_store
-            .create_subgraph_features(deployment_features)?;
+            .create_subgraph_features(deployment_features)
+            .await?;
 
         // Start the subgraph deployment before reading dynamic data
         // sources; if the subgraph is a graft or a copy, starting it will
@@ -437,7 +440,8 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         // Obtain the debug fork from the subgraph store
         let debug_fork = self
             .subgraph_store
-            .debug_fork(&deployment.hash, logger.clone())?;
+            .debug_fork(&deployment.hash, logger.clone())
+            .await?;
 
         // Create a subgraph instance from the manifest; this moves
         // ownership of the manifest and host builder into the new instance
@@ -493,7 +497,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let deployment_head = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0) as f64;
         block_stream_metrics.deployment_head.set(deployment_head);
 
-        let (runtime_adapter, decoder_hook) = chain.runtime()?;
+        let (runtime_adapter, decoder_hook) = chain.runtime().await?;
         let host_builder = graph_runtime_wasm::RuntimeHostBuilder::new(
             runtime_adapter,
             self.link_resolver.cheap_clone(),
@@ -511,7 +515,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         let causality_region_seq =
             CausalityRegionSeq::from_current(store.causality_region_curr_val().await?);
 
-        let instrument = self.subgraph_store.instrument(&deployment)?;
+        let instrument = self.subgraph_store.instrument(&deployment).await?;
 
         let decoder = Box::new(Decoder::new(decoder_hook));
 

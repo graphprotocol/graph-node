@@ -60,6 +60,7 @@ pub mod data {
             IndexForAscTypeId::UnitTestNetworkUnitTestTypeBool;
     }
 
+    use async_trait::async_trait;
     use graph::runtime::HostExportError;
     pub use graph::runtime::{
         asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
@@ -67,15 +68,16 @@ pub mod data {
     };
     use graph_runtime_wasm::asc_abi::class::AscString;
 
+    #[async_trait]
     impl ToAscObj<AscBad> for Bad {
-        fn to_asc_obj<H: AscHeap + ?Sized>(
+        async fn to_asc_obj<H: AscHeap + ?Sized>(
             &self,
             heap: &mut H,
             gas: &GasCounter,
         ) -> Result<AscBad, HostExportError> {
             Ok(AscBad {
                 nonce: self.nonce,
-                str_suff: asc_new(heap, &self.str_suff, gas)?,
+                str_suff: asc_new(heap, &self.str_suff, gas).await?,
                 tail: self.tail,
             })
         }
@@ -126,15 +128,16 @@ pub mod data {
             IndexForAscTypeId::UnitTestNetworkUnitTestTypeBool;
     }
 
+    #[async_trait]
     impl ToAscObj<AscBadFixed> for BadFixed {
-        fn to_asc_obj<H: AscHeap + ?Sized>(
+        async fn to_asc_obj<H: AscHeap + ?Sized>(
             &self,
             heap: &mut H,
             gas: &GasCounter,
         ) -> Result<AscBadFixed, HostExportError> {
             Ok(AscBadFixed {
                 nonce: self.nonce,
-                str_suff: asc_new(heap, &self.str_suff, gas)?,
+                str_suff: asc_new(heap, &self.str_suff, gas).await?,
                 _padding: 0,
                 tail: self.tail,
             })
@@ -179,7 +182,7 @@ async fn manual_padding_should_fail(api_version: semver::Version) {
         tail: i64::MAX as u64,
     };
 
-    let new_obj = instance.asc_new(&parm).unwrap();
+    let new_obj = instance.asc_new(&parm).await.unwrap();
 
     let func = instance
         .get_func("test_padding_manual")
@@ -187,7 +190,9 @@ async fn manual_padding_should_fail(api_version: semver::Version) {
         .unwrap()
         .clone();
 
-    let res: Result<(), _> = func.call(&mut instance.store.as_context_mut(), new_obj.wasm_ptr());
+    let res: Result<(), _> = func
+        .call_async(&mut instance.store.as_context_mut(), new_obj.wasm_ptr())
+        .await;
 
     assert!(
         res.is_err(),
@@ -212,7 +217,7 @@ async fn manual_padding_manualy_fixed_ok(api_version: semver::Version) {
     )
     .await;
 
-    let new_obj = instance.asc_new(&parm).unwrap();
+    let new_obj = instance.asc_new(&parm).await.unwrap();
 
     let func = instance
         .get_func("test_padding_manual")
@@ -220,7 +225,9 @@ async fn manual_padding_manualy_fixed_ok(api_version: semver::Version) {
         .unwrap()
         .clone();
 
-    let res: Result<(), _> = func.call(&mut instance.store.as_context_mut(), new_obj.wasm_ptr());
+    let res: Result<(), _> = func
+        .call_async(&mut instance.store.as_context_mut(), new_obj.wasm_ptr())
+        .await;
 
     assert!(res.is_ok(), "{:?}", res.err());
 }

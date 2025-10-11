@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 
+use async_trait::async_trait;
 use graph::data::query::Trace;
 use graph::data::store::Id;
 use graph::schema::EntityType;
@@ -122,7 +123,10 @@ impl<S: Store> IndexNodeResolver<S> {
         }
     }
 
-    fn resolve_indexing_statuses(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+    async fn resolve_indexing_statuses(
+        &self,
+        field: &a::Field,
+    ) -> Result<r::Value, QueryExecutionError> {
         let deployments = field
             .argument_value("subgraphs")
             .map(|value| match value {
@@ -143,11 +147,12 @@ impl<S: Store> IndexNodeResolver<S> {
 
         let infos = self
             .store
-            .status(status::Filter::Deployments(deployments))?;
+            .status(status::Filter::Deployments(deployments))
+            .await?;
         Ok(infos.into_value())
     }
 
-    fn resolve_indexing_statuses_for_subgraph_name(
+    async fn resolve_indexing_statuses_for_subgraph_name(
         &self,
         field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
@@ -166,12 +171,13 @@ impl<S: Store> IndexNodeResolver<S> {
 
         let infos = self
             .store
-            .status(status::Filter::SubgraphName(subgraph_name))?;
+            .status(status::Filter::SubgraphName(subgraph_name))
+            .await?;
 
         Ok(infos.into_value())
     }
 
-    fn resolve_entity_changes_in_block(
+    async fn resolve_entity_changes_in_block(
         &self,
         field: &a::Field,
     ) -> Result<r::Value, QueryExecutionError> {
@@ -186,7 +192,8 @@ impl<S: Store> IndexNodeResolver<S> {
         let entity_changes = self
             .store
             .subgraph_store()
-            .entity_changes_in_block(&subgraph_id, block_number)?;
+            .entity_changes_in_block(&subgraph_id, block_number)
+            .await?;
 
         Ok(entity_changes_to_graphql(entity_changes))
     }
@@ -200,7 +207,7 @@ impl<S: Store> IndexNodeResolver<S> {
             .get_required::<BlockHash>("blockHash")
             .expect("Valid blockHash required");
 
-        let chain_store = if let Some(cs) = self.store.block_store().chain_store(&network) {
+        let chain_store = if let Some(cs) = self.store.block_store().chain_store(&network).await {
             cs
         } else {
             error!(
@@ -309,7 +316,7 @@ impl<S: Store> IndexNodeResolver<S> {
         };
         let block_ptr = BlockPtr::new(block_hash.cheap_clone(), block_number);
 
-        let calls = match call_cache.get_calls_in_block(block_ptr) {
+        let calls = match call_cache.get_calls_in_block(block_ptr).await {
             Ok(c) => c,
             Err(e) => {
                 error!(
@@ -443,7 +450,7 @@ impl<S: Store> IndexNodeResolver<S> {
         Ok(r::Value::List(public_poi_results))
     }
 
-    fn resolve_indexing_status_for_version(
+    async fn resolve_indexing_status_for_version(
         &self,
         field: &a::Field,
 
@@ -460,10 +467,13 @@ impl<S: Store> IndexNodeResolver<S> {
             "current_version" => current_version,
         );
 
-        let infos = self.store.status(status::Filter::SubgraphVersion(
-            subgraph_name,
-            current_version,
-        ))?;
+        let infos = self
+            .store
+            .status(status::Filter::SubgraphVersion(
+                subgraph_name,
+                current_version,
+            ))
+            .await?;
 
         Ok(infos
             .into_iter()
@@ -766,7 +776,7 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         self.store.query_permit().await
     }
 
-    fn prefetch(
+    async fn prefetch(
         &self,
         _: &ExecutionContext<Self>,
         _: &a::SelectionSet,
@@ -811,10 +821,11 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         // Resolves the `field.name` top-level field.
         match (prefetched_objects, object_type.name(), field.name.as_str()) {
             (None, "SubgraphIndexingStatus", "indexingStatuses") => {
-                self.resolve_indexing_statuses(field)
+                self.resolve_indexing_statuses(field).await
             }
             (None, "SubgraphIndexingStatus", "indexingStatusesForSubgraphName") => {
                 self.resolve_indexing_statuses_for_subgraph_name(field)
+                    .await
             }
             (None, "CachedEthereumCall", "cachedEthereumCalls") => {
                 self.resolve_cached_ethereum_calls(field).await
@@ -840,13 +851,13 @@ impl<S: Store> Resolver for IndexNodeResolver<S> {
         // Resolves the `field.name` top-level field.
         match (prefetched_object, field.name.as_str()) {
             (None, "indexingStatusForCurrentVersion") => {
-                self.resolve_indexing_status_for_version(field, true)
+                self.resolve_indexing_status_for_version(field, true).await
             }
             (None, "indexingStatusForPendingVersion") => {
-                self.resolve_indexing_status_for_version(field, false)
+                self.resolve_indexing_status_for_version(field, false).await
             }
             (None, "subgraphFeatures") => self.resolve_subgraph_features(field).await,
-            (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field),
+            (None, "entityChangesInBlock") => self.resolve_entity_changes_in_block(field).await,
             // The top-level `subgraphVersions` field
             (None, "apiVersions") => self.resolve_api_versions(field),
             (None, "version") => self.version(),

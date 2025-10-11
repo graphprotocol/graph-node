@@ -107,7 +107,7 @@ impl NotificationQueueUsage {
         }
         let usage_gauge = self.usage_gauge.clone();
         self.primary
-            .with_conn(move |conn, _| {
+            .with_conn(async move |conn, _| {
                 let res = sql_query("select pg_notification_queue_usage() as usage")
                     .get_result::<Usage>(conn)?;
                 usage_gauge.set(res.usage);
@@ -199,7 +199,7 @@ impl Job for UnusedJob {
 
         let start = Instant::now();
 
-        if let Err(e) = self.store.record_unused_deployments() {
+        if let Err(e) = self.store.record_unused_deployments().await {
             error!(logger, "failed to record unused deployments"; "error" => e.to_string());
             return;
         }
@@ -208,7 +208,9 @@ impl Job for UnusedJob {
             .store
             .list_unused_deployments(unused::Filter::UnusedLongerThan(
                 ENV_VARS.store.remove_unused_interval,
-            )) {
+            ))
+            .await
+        {
             Ok(remove) => remove,
             Err(e) => {
                 error!(logger, "failed to list removable deployments"; "error" => e.to_string());
@@ -217,7 +219,7 @@ impl Job for UnusedJob {
         };
 
         for deployment in remove {
-            match self.store.remove_deployment(deployment.id) {
+            match self.store.remove_deployment(deployment.id).await {
                 Ok(()) => { /* ignore */ }
                 Err(e) => {
                     error!(logger, "failed to remove unused deployment";

@@ -28,6 +28,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+use async_trait::async_trait;
+
 use crate::blockchain::{Block, BlockHash, BlockPtr};
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
@@ -867,16 +869,20 @@ impl EmptyStore {
     }
 }
 
+#[async_trait]
 impl ReadStore for EmptyStore {
-    fn get(&self, _key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+    async fn get(&self, _key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         Ok(None)
     }
 
-    fn get_many(&self, _: BTreeSet<EntityKey>) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
+    async fn get_many(
+        &self,
+        _: BTreeSet<EntityKey>,
+    ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         Ok(BTreeMap::new())
     }
 
-    fn get_derived(
+    async fn get_derived(
         &self,
         _query: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
