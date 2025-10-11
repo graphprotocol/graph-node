@@ -467,7 +467,7 @@ mod queries {
     use super::subgraph_deployment_assignment as a;
     use super::subgraph_version as v;
 
-    pub(super) fn find_active_site(
+    pub(super) async fn find_active_site(
         conn: &mut PgConnection,
         subgraph: &DeploymentHash,
     ) -> Result<Option<Site>, StoreError> {
@@ -479,7 +479,7 @@ mod queries {
         schema.map(|schema| schema.try_into()).transpose()
     }
 
-    pub(super) fn find_site_by_ref(
+    pub(super) async fn find_site_by_ref(
         conn: &mut PgConnection,
         id: DeploymentId,
     ) -> Result<Option<Site>, StoreError> {
@@ -487,7 +487,7 @@ mod queries {
         schema.map(|schema| schema.try_into()).transpose()
     }
 
-    pub(super) fn subgraph_exists(
+    pub(super) async fn subgraph_exists(
         conn: &mut PgConnection,
         name: &SubgraphName,
     ) -> Result<bool, StoreError> {
@@ -497,7 +497,7 @@ mod queries {
         )
     }
 
-    pub(super) fn current_deployment_for_subgraph(
+    pub(super) async fn current_deployment_for_subgraph(
         conn: &mut PgConnection,
         name: &SubgraphName,
     ) -> Result<DeploymentHash, StoreError> {
@@ -514,7 +514,7 @@ mod queries {
         }
     }
 
-    pub(super) fn deployments_for_subgraph(
+    pub(super) async fn deployments_for_subgraph(
         conn: &mut PgConnection,
         name: &str,
     ) -> Result<Vec<Site>, StoreError> {
@@ -531,7 +531,7 @@ mod queries {
             .collect::<Result<Vec<Site>, _>>()
     }
 
-    pub(super) fn subgraph_version(
+    pub(super) async fn subgraph_version(
         conn: &mut PgConnection,
         name: &str,
         use_current: bool,
@@ -558,7 +558,7 @@ mod queries {
 
     /// Find sites by their subgraph deployment hashes. If `ids` is empty,
     /// return all sites
-    pub(super) fn find_sites(
+    pub(super) async fn find_sites(
         conn: &mut PgConnection,
         ids: &[String],
         only_active: bool,
@@ -587,7 +587,7 @@ mod queries {
 
     /// Find sites by their subgraph deployment ids. If `ids` is empty,
     /// return no sites
-    pub(super) fn find_sites_by_id(
+    pub(super) async fn find_sites_by_id(
         conn: &mut PgConnection,
         ids: &[DeploymentId],
     ) -> Result<Vec<Site>, StoreError> {
@@ -598,7 +598,7 @@ mod queries {
             .collect()
     }
 
-    pub(super) fn find_site_in_shard(
+    pub(super) async fn find_site_in_shard(
         conn: &mut PgConnection,
         subgraph: &DeploymentHash,
         shard: &Shard,
@@ -611,7 +611,7 @@ mod queries {
         schema.map(|schema| schema.try_into()).transpose()
     }
 
-    pub(super) fn assignments(
+    pub(super) async fn assignments(
         conn: &mut PgConnection,
         node: &NodeId,
     ) -> Result<Vec<Site>, StoreError> {
@@ -626,7 +626,7 @@ mod queries {
     }
 
     // All assignments for a node that are currently not paused
-    pub(super) fn active_assignments(
+    pub(super) async fn active_assignments(
         conn: &mut PgConnection,
         node: &NodeId,
     ) -> Result<Vec<Site>, StoreError> {
@@ -641,7 +641,7 @@ mod queries {
             .collect::<Result<Vec<Site>, _>>()
     }
 
-    pub(super) fn fill_assignments(
+    pub(super) async fn fill_assignments(
         conn: &mut PgConnection,
         infos: &[status::Info],
     ) -> Result<HashMap<GraphDeploymentId, (String, bool)>, StoreError> {
@@ -657,7 +657,7 @@ mod queries {
         Ok(nodes)
     }
 
-    pub(super) fn assigned_node(
+    pub(super) async fn assigned_node(
         conn: &mut PgConnection,
         site: &Site,
     ) -> Result<Option<NodeId>, StoreError> {
@@ -682,7 +682,7 @@ mod queries {
     /// the subgraph is assigned to, and `is_paused` is true if the
     /// subgraph is paused.
     /// Returns None if the deployment does not exist.
-    pub(super) fn assignment_status(
+    pub(super) async fn assignment_status(
         conn: &mut PgConnection,
         site: &Site,
     ) -> Result<Option<(NodeId, bool)>, StoreError> {
@@ -708,7 +708,7 @@ mod queries {
             .transpose()
     }
 
-    pub(super) fn version_info(
+    pub(super) async fn version_info(
         conn: &mut PgConnection,
         version: &str,
     ) -> Result<Option<(String, String)>, StoreError> {
@@ -719,7 +719,7 @@ mod queries {
             .optional()?)
     }
 
-    pub(super) fn versions_for_subgraph_id(
+    pub(super) async fn versions_for_subgraph_id(
         conn: &mut PgConnection,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
@@ -732,7 +732,7 @@ mod queries {
     }
 
     /// Returns all (subgraph_name, version) pairs for a given deployment hash.
-    pub fn subgraphs_by_deployment_hash(
+    pub async fn subgraphs_by_deployment_hash(
         conn: &mut PgConnection,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
@@ -1377,14 +1377,14 @@ impl Connection {
         graft_base: Option<&DeploymentHash>,
     ) -> Result<(Site, bool), StoreError> {
         let conn = &mut self.conn;
-        if let Some(site) = queries::find_active_site(conn, subgraph)? {
+        if let Some(site) = queries::find_active_site(conn, subgraph).await? {
             return Ok((site, false));
         }
 
         let site_was_created = true;
         let schema_version = match graft_base {
             Some(graft_base) => {
-                let site = queries::find_active_site(conn, graft_base)?;
+                let site = queries::find_active_site(conn, graft_base).await?;
                 site.map(|site| site.schema_version).ok_or_else(|| {
                     StoreError::DeploymentNotFound("graft_base not found".to_string())
                 })
@@ -1398,7 +1398,7 @@ impl Connection {
     }
 
     pub async fn assigned_node(&mut self, site: &Site) -> Result<Option<NodeId>, StoreError> {
-        queries::assigned_node(&mut self.conn, site)
+        queries::assigned_node(&mut self.conn, site).await
     }
 
     /// Returns Option<(node_id,is_paused)> where `node_id` is the node that
@@ -1409,14 +1409,16 @@ impl Connection {
         &mut self,
         site: &Site,
     ) -> Result<Option<(NodeId, bool)>, StoreError> {
-        queries::assignment_status(&mut self.conn, site)
+        queries::assignment_status(&mut self.conn, site).await
     }
 
     /// Create a copy of the site `src` in the shard `shard`, but mark it as
     /// not active. If there already is a site in `shard`, return that
     /// instead.
     pub async fn copy_site(&mut self, src: &Site, shard: Shard) -> Result<Site, StoreError> {
-        if let Some(site) = queries::find_site_in_shard(&mut self.conn, &src.deployment, &shard)? {
+        if let Some(site) =
+            queries::find_site_in_shard(&mut self.conn, &src.deployment, &shard).await?
+        {
             return Ok(site);
         }
 
@@ -2122,17 +2124,17 @@ impl Mirror {
     }
 
     pub async fn assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| async { queries::assignments(conn, node) }.scope_boxed())
+        self.read_async(|conn| queries::assignments(conn, node).scope_boxed())
             .await
     }
 
     pub async fn active_assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| async { queries::active_assignments(conn, &node) }.scope_boxed())
+        self.read_async(|conn| queries::active_assignments(conn, &node).scope_boxed())
             .await
     }
 
     pub async fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {
-        self.read_async(|conn| async { queries::assigned_node(conn, site) }.scope_boxed())
+        self.read_async(|conn| queries::assigned_node(conn, site).scope_boxed())
             .await
     }
 
@@ -2144,7 +2146,7 @@ impl Mirror {
         &self,
         site: Arc<Site>,
     ) -> Result<Option<(NodeId, bool)>, StoreError> {
-        self.read_async(|conn| async { queries::assignment_status(conn, &site) }.scope_boxed())
+        self.read_async(|conn| queries::assignment_status(conn, &site).scope_boxed())
             .await
     }
 
@@ -2152,12 +2154,12 @@ impl Mirror {
         &self,
         subgraph: &DeploymentHash,
     ) -> Result<Option<Site>, StoreError> {
-        self.read_async(|conn| async { queries::find_active_site(conn, subgraph) }.scope_boxed())
+        self.read_async(|conn| queries::find_active_site(conn, subgraph).scope_boxed())
             .await
     }
 
     pub async fn find_site_by_ref(&self, id: DeploymentId) -> Result<Option<Site>, StoreError> {
-        self.read_async(|conn| async { queries::find_site_by_ref(conn, id) }.scope_boxed())
+        self.read_async(|conn| queries::find_site_by_ref(conn, id).scope_boxed())
             .await
     }
 
@@ -2165,21 +2167,17 @@ impl Mirror {
         &self,
         name: &SubgraphName,
     ) -> Result<DeploymentHash, StoreError> {
-        self.read_async(|conn| {
-            async { queries::current_deployment_for_subgraph(conn, name) }.scope_boxed()
-        })
-        .await
+        self.read_async(|conn| queries::current_deployment_for_subgraph(conn, name).scope_boxed())
+            .await
     }
 
     pub async fn deployments_for_subgraph(&self, name: &str) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| {
-            async { queries::deployments_for_subgraph(conn, name) }.scope_boxed()
-        })
-        .await
+        self.read_async(|conn| queries::deployments_for_subgraph(conn, name).scope_boxed())
+            .await
     }
 
     pub async fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
-        self.read_async(|conn| async { queries::subgraph_exists(conn, name) }.scope_boxed())
+        self.read_async(|conn| queries::subgraph_exists(conn, name).scope_boxed())
             .await
     }
 
@@ -2188,10 +2186,8 @@ impl Mirror {
         name: &str,
         use_current: bool,
     ) -> Result<Option<Site>, StoreError> {
-        self.read_async(|conn| {
-            async { queries::subgraph_version(conn, name, use_current) }.scope_boxed()
-        })
-        .await
+        self.read_async(|conn| queries::subgraph_version(conn, name, use_current).scope_boxed())
+            .await
     }
 
     /// Find sites by their subgraph deployment hashes. If `ids` is empty,
@@ -2201,14 +2197,14 @@ impl Mirror {
         ids: &[String],
         only_active: bool,
     ) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| async { queries::find_sites(conn, ids, only_active) }.scope_boxed())
+        self.read_async(|conn| queries::find_sites(conn, ids, only_active).scope_boxed())
             .await
     }
 
     /// Find sites by their subgraph deployment ids. If `ids` is empty,
     /// return no sites
     pub async fn find_sites_by_id(&self, ids: &[DeploymentId]) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| async { queries::find_sites_by_id(conn, ids) }.scope_boxed())
+        self.read_async(|conn| queries::find_sites_by_id(conn, ids).scope_boxed())
             .await
     }
 
@@ -2216,7 +2212,7 @@ impl Mirror {
         &self,
         infos: &[status::Info],
     ) -> Result<HashMap<GraphDeploymentId, (String, bool)>, StoreError> {
-        self.read_async(|conn| async { queries::fill_assignments(conn, infos) }.scope_boxed())
+        self.read_async(|conn| queries::fill_assignments(conn, infos).scope_boxed())
             .await
     }
 
@@ -2224,7 +2220,7 @@ impl Mirror {
         &self,
         version: &str,
     ) -> Result<Option<(String, String)>, StoreError> {
-        self.read_async(|conn| async { queries::version_info(conn, version) }.scope_boxed())
+        self.read_async(|conn| queries::version_info(conn, version).scope_boxed())
             .await
     }
 
@@ -2232,10 +2228,8 @@ impl Mirror {
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
-        self.read_async(|conn| {
-            async { queries::versions_for_subgraph_id(conn, subgraph_id) }.scope_boxed()
-        })
-        .await
+        self.read_async(|conn| queries::versions_for_subgraph_id(conn, subgraph_id).scope_boxed())
+            .await
     }
 
     /// Returns all (subgraph_name, version) pairs for a given deployment hash.
@@ -2244,7 +2238,7 @@ impl Mirror {
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
         self.read_async(|conn| {
-            async { queries::subgraphs_by_deployment_hash(conn, deployment_hash) }.scope_boxed()
+            queries::subgraphs_by_deployment_hash(conn, deployment_hash).scope_boxed()
         })
         .await
     }
@@ -2254,9 +2248,7 @@ impl Mirror {
         subgraph: &DeploymentHash,
         shard: &Shard,
     ) -> Result<Option<Site>, StoreError> {
-        self.read_async(|conn| {
-            async { queries::find_site_in_shard(conn, subgraph, shard) }.scope_boxed()
-        })
-        .await
+        self.read_async(|conn| queries::find_site_in_shard(conn, subgraph, shard).scope_boxed())
+            .await
     }
 }
