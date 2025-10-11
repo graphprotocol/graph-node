@@ -231,7 +231,7 @@ joinable!(head -> deployment(id));
 /// return it. If `pending_only` is `true`, only return `Some(_)` if the
 /// deployment has not progressed past the graft point, i.e., data has not
 /// been copied for the graft
-fn graft(
+async fn graft(
     conn: &mut PgConnection,
     id: &DeploymentHash,
     pending_only: bool,
@@ -282,21 +282,21 @@ fn graft(
 /// return it. Returns `None` if the deployment does not have
 /// a graft or if the subgraph has already progress past the graft point,
 /// indicating that the data copying for grafting has been performed
-pub fn graft_pending(
+pub async fn graft_pending(
     conn: &mut PgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
-    graft(conn, id, true)
+    graft(conn, id, true).await
 }
 
 /// Look up the graft point for the given subgraph in the database and
 /// return it. Returns `None` if the deployment does not have
 /// a graft.
-pub fn graft_point(
+pub async fn graft_point(
     conn: &mut PgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
-    graft(conn, id, false)
+    graft(conn, id, false).await
 }
 
 /// Look up the debug fork for the given subgraph in the database and
