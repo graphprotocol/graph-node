@@ -1635,7 +1635,10 @@ impl Connection {
     }
 
     #[cfg(debug_assertions)]
-    pub fn deployment_for_version(&mut self, name: &str) -> Result<Option<String>, StoreError> {
+    pub async fn deployment_for_version(
+        &mut self,
+        name: &str,
+    ) -> Result<Option<String>, StoreError> {
         use subgraph_version as v;
 
         Ok(v::table
