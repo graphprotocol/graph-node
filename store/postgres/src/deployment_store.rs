@@ -1951,7 +1951,9 @@ impl DeploymentStore {
         raw_yaml: String,
     ) -> Result<(), StoreError> {
         self.with_conn(async move |conn, _| {
-            deployment::set_manifest_raw_yaml(conn, &site, &raw_yaml).map_err(Into::into)
+            deployment::set_manifest_raw_yaml(conn, &site, &raw_yaml)
+                .await
+                .map_err(Into::into)
         })
         .await
     }
