@@ -893,7 +893,7 @@ impl DeploymentStore {
         ) -> Result<Box<dyn PruneReporter>, CancelableError<StoreError>> {
             let layout = store.layout(&mut conn, site.clone()).await?;
             cancel.check_cancel()?;
-            let state = deployment::state(&mut conn, &site)?;
+            let state = deployment::state(&mut conn, &site).await?;
 
             if state.latest_block.number <= req.history_blocks {
                 // We haven't accumulated enough history yet, nothing to prune
@@ -1508,8 +1508,10 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<DeploymentState, StoreError> {
-        self.with_conn(async move |conn, _| deployment::state(conn, &site).map_err(|e| e.into()))
-            .await
+        self.with_conn(async move |conn, _| {
+            deployment::state(conn, &site).await.map_err(|e| e.into())
+        })
+        .await
     }
 
     pub(crate) async fn fail_subgraph(
