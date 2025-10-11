@@ -666,7 +666,7 @@ impl Inner {
         }
     }
 
-    fn place_in_shard(&self, mut shards: Vec<Shard>) -> Result<Shard, StoreError> {
+    async fn place_in_shard(&self, mut shards: Vec<Shard>) -> Result<Shard, StoreError> {
         match shards.len() {
             0 => Ok(PRIMARY_SHARD.clone()),
             1 => Ok(shards.pop().unwrap()),
@@ -674,7 +674,7 @@ impl Inner {
                 let mut conn = self.primary_conn()?;
 
                 // unwrap is fine since shards is not empty
-                let shard = conn.least_used_shard(&shards)?.unwrap();
+                let shard = conn.least_used_shard(&shards).await?.unwrap();
                 Ok(shard)
             }
         }
@@ -700,7 +700,7 @@ impl Inner {
             None => Ok((PRIMARY_SHARD.clone(), default_node)),
             Some((shards, nodes)) => {
                 let node = self.place_on_node(nodes, default_node).await?;
-                let shard = self.place_in_shard(shards)?;
+                let shard = self.place_in_shard(shards).await?;
 
                 Ok((shard, node))
             }
