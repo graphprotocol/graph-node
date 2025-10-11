@@ -55,7 +55,7 @@ pub async fn reassign(
         }
         None => {
             println!("assigning {locator} to {node}");
-            conn.assign_subgraph(&site, &node)?
+            conn.assign_subgraph(&site, &node).await?
         }
     };
     conn.send_store_event(sender, &StoreEvent::new(changes))

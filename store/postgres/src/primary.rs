@@ -1278,7 +1278,7 @@ impl Connection {
         Ok(())
     }
 
-    pub fn assign_subgraph(
+    pub async fn assign_subgraph(
         &mut self,
         site: &Site,
         node: &NodeId,
