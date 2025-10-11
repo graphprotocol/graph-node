@@ -1166,7 +1166,7 @@ impl Connection {
         }
     }
 
-    pub fn get_subgraph_features(
+    pub async fn get_subgraph_features(
         &mut self,
         id: String,
     ) -> Result<Option<DeploymentFeatures>, StoreError> {
