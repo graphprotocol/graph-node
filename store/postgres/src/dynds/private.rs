@@ -280,7 +280,7 @@ impl DataSourcesTable {
 
     // Remove offchain data sources by checking the causality region, which currently uniquely
     // identifies an offchain data source.
-    pub(super) fn update_offchain_status(
+    pub(super) async fn update_offchain_status(
         &self,
         conn: &mut PgConnection,
         data_sources: &write::DataSources,

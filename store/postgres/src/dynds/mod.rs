@@ -59,7 +59,7 @@ pub(crate) async fn revert(
     }
 }
 
-pub(crate) fn update_offchain_status(
+pub(crate) async fn update_offchain_status(
     conn: &mut PgConnection,
     site: &Site,
     data_sources: &write::DataSources,
@@ -70,7 +70,9 @@ pub(crate) fn update_offchain_status(
 
     match site.schema_version.private_data_sources() {
         true => {
-            DataSourcesTable::new(site.namespace.clone()).update_offchain_status(conn, data_sources)
+            DataSourcesTable::new(site.namespace.clone())
+                .update_offchain_status(conn, data_sources)
+                .await
         }
         false => Err(internal_error!(
             "shared schema does not support data source offchain_found",
