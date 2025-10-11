@@ -1358,7 +1358,7 @@ impl EnsLookup {
 
     async fn is_table_empty(pool: &ConnectionPool) -> Result<bool, StoreError> {
         let conn = pool.get_async().await?;
-        primary::Connection::new(conn).is_ens_table_empty()
+        primary::Connection::new(conn).is_ens_table_empty().await
     }
 }
 
@@ -1366,7 +1366,7 @@ impl EnsLookup {
 impl EnsLookupTrait for EnsLookup {
     async fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
         let conn = self.primary.get_async().await?;
-        primary::Connection::new(conn).find_ens_name(hash)
+        primary::Connection::new(conn).find_ens_name(hash).await
     }
 
     async fn is_table_empty(&self) -> Result<bool, StoreError> {
