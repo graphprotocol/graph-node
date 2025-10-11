@@ -371,7 +371,8 @@ impl SubgraphStore {
 
             if let Some(graft_base) = &graft_base {
                 self.primary_conn()?
-                    .record_active_copy(graft_base.site.as_ref(), site.as_ref())?;
+                    .record_active_copy(graft_base.site.as_ref(), site.as_ref())
+                    .await?;
             }
             graft_base
         } else {
@@ -754,7 +755,8 @@ impl Inner {
         let graft_base = self.layout(&src.deployment).await?;
 
         self.primary_conn()?
-            .record_active_copy(src.as_ref(), dst.as_ref())?;
+            .record_active_copy(src.as_ref(), dst.as_ref())
+            .await?;
 
         // Create the actual databases schema and metadata entries
         let deployment_store = self
