@@ -193,7 +193,7 @@ impl DataSourcesTable {
         Ok(inserted_total)
     }
 
-    pub(crate) fn revert(
+    pub(crate) async fn revert(
         &self,
         conn: &mut PgConnection,
         block: BlockNumber,
