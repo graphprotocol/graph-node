@@ -719,7 +719,7 @@ impl Inner {
         let src_store = self.for_site(src.as_ref())?;
         let src_loc = DeploymentLocator::from(src.as_ref());
         let src_layout = src_store.find_layout(src.cheap_clone())?;
-        let dst = Arc::new(self.primary_conn()?.copy_site(&src, shard.clone())?);
+        let dst = Arc::new(self.primary_conn()?.copy_site(&src, shard.clone()).await?);
         let dst_loc = DeploymentLocator::from(dst.as_ref());
 
         if src.id == dst.id {
