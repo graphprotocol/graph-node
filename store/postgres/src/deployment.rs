@@ -380,7 +380,10 @@ impl ManifestInfo {
 }
 
 // Return how many blocks of history this subgraph should keep
-pub fn history_blocks(conn: &mut PgConnection, site: &Site) -> Result<BlockNumber, StoreError> {
+pub async fn history_blocks(
+    conn: &mut PgConnection,
+    site: &Site,
+) -> Result<BlockNumber, StoreError> {
     use subgraph_manifest as sm;
     sm::table
         .select(sm::history_blocks)
