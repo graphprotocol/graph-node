@@ -36,6 +36,7 @@ impl Deployment {
         let mut catalog_conn = catalog::Connection::new(primary_conn);
         let node = catalog_conn
             .assigned_node(&self.site)
+            .await
             .map_err(GraphmanError::from)?;
         Ok(node)
     }

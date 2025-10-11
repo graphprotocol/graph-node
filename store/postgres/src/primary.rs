@@ -1397,7 +1397,7 @@ impl Connection {
             .map(|site| (site, site_was_created))
     }
 
-    pub fn assigned_node(&mut self, site: &Site) -> Result<Option<NodeId>, StoreError> {
+    pub async fn assigned_node(&mut self, site: &Site) -> Result<Option<NodeId>, StoreError> {
         queries::assigned_node(&mut self.conn, site)
     }
 
