@@ -1840,7 +1840,7 @@ impl Connection {
             .load(&mut self.conn)?)
     }
 
-    pub fn find_ens_name(&mut self, hash: &str) -> Result<Option<String>, StoreError> {
+    pub async fn find_ens_name(&mut self, hash: &str) -> Result<Option<String>, StoreError> {
         use ens_names as dsl;
 
         dsl::table
@@ -1851,7 +1851,7 @@ impl Connection {
             .map_err(|e| anyhow!("error looking up ens_name for hash {}: {}", hash, e).into())
     }
 
-    pub fn is_ens_table_empty(&mut self) -> Result<bool, StoreError> {
+    pub async fn is_ens_table_empty(&mut self) -> Result<bool, StoreError> {
         use ens_names as dsl;
 
         dsl::table
