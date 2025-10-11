@@ -17,7 +17,8 @@ pub async fn unassign(
     let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
-        .locate_site(locator.clone())?
+        .locate_site(locator.clone())
+        .await?
         .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
 
     println!("unassigning {locator}");
@@ -41,7 +42,8 @@ pub async fn reassign(
     let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
-        .locate_site(locator.clone())?
+        .locate_site(locator.clone())
+        .await?
         .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
     let changes = match conn.assigned_node(&site).await? {
         Some(cur) => {
@@ -83,7 +85,8 @@ pub async fn pause_or_resume(
     let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
-        .locate_site(locator.clone())?
+        .locate_site(locator.clone())
+        .await?
         .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
 
     let change = match conn.assignment_status(&site).await? {

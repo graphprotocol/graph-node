@@ -127,7 +127,8 @@ pub async fn run(
     println!("Checking if its safe to rewind deployments");
     for (_, locator) in &locators {
         let site = conn
-            .locate_site(locator.clone())?
+            .locate_site(locator.clone())
+            .await?
             .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
         let deployment_store = subgraph_store.for_site(&site)?;
         let deployment_details = deployment_store.deployment_details_for_id(locator).await?;
