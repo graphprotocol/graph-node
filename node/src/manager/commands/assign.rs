@@ -94,7 +94,7 @@ pub async fn pause_or_resume(
                     return Ok(());
                 }
                 println!("pausing {locator}");
-                conn.pause_subgraph(&site)?
+                conn.pause_subgraph(&site).await?
             } else {
                 println!("resuming {locator}");
                 conn.resume_subgraph(&site)?
