@@ -763,7 +763,7 @@ pub fn load_indexes_from_table(
 }
 
 impl IndexList {
-    pub fn load(
+    pub async fn load(
         conn: &mut PgConnection,
         site: Arc<Site>,
         store: DeploymentStore,
@@ -772,7 +772,7 @@ impl IndexList {
             indexes: HashMap::new(),
         };
         let schema_name = site.namespace.clone();
-        let layout = store.layout(conn, site)?;
+        let layout = store.layout(conn, site).await?;
         for (_, table) in &layout.tables {
             let indexes = load_indexes_from_table(conn, table, schema_name.as_str())?;
             list.indexes.insert(table.name.to_string(), indexes);

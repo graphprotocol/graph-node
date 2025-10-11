@@ -324,7 +324,10 @@ pub async fn debug_fork(
     }
 }
 
-pub fn schema(conn: &mut PgConnection, site: &Site) -> Result<(InputSchema, bool), StoreError> {
+pub async fn schema(
+    conn: &mut PgConnection,
+    site: &Site,
+) -> Result<(InputSchema, bool), StoreError> {
     use subgraph_manifest as sm;
     let (s, spec_ver, use_bytea_prefix) = sm::table
         .select((sm::schema, sm::spec_version, sm::use_bytea_prefix))
