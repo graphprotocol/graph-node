@@ -355,7 +355,7 @@ impl SubgraphStore {
             let (site, site_was_created) = conn
                 .allocate_site(shard, schema.id(), network_name, graft_base)
                 .await?;
-            let node_id = conn.assigned_node(&site)?.unwrap_or(node_id);
+            let node_id = conn.assigned_node(&site).await?.unwrap_or(node_id);
             (site, !site_was_created, node_id)
         };
         let site = Arc::new(site);

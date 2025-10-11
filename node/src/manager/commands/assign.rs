@@ -43,7 +43,7 @@ pub async fn reassign(
     let site = conn
         .locate_site(locator.clone())?
         .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
-    let changes = match conn.assigned_node(&site)? {
+    let changes = match conn.assigned_node(&site).await? {
         Some(cur) => {
             if cur == node {
                 println!("deployment {locator} is already assigned to {cur}");
