@@ -350,7 +350,7 @@ impl SubgraphStore {
             //       In that case, we need to use the shard and node
             //       assignment that we used last time to avoid creating
             //       the same deployment in another shard
-            let (shard, node_id) = self.place(&name, &network_name, node_id)?;
+            let (shard, node_id) = self.place(&name, &network_name, node_id).await?;
             let mut conn = self.primary_conn()?;
             let (site, site_was_created) = conn
                 .allocate_site(shard, schema.id(), network_name, graft_base)
@@ -645,7 +645,7 @@ impl Inner {
         store.find_layout(site)
     }
 
-    fn place_on_node(
+    async fn place_on_node(
         &self,
         mut nodes: Vec<NodeId>,
         default_node: NodeId,
@@ -660,7 +660,7 @@ impl Inner {
                 let mut conn = self.primary_conn()?;
 
                 // unwrap is fine since nodes is not empty
-                let node = conn.least_assigned_node(&nodes)?.unwrap();
+                let node = conn.least_assigned_node(&nodes).await?.unwrap();
                 Ok(node)
             }
         }
@@ -680,7 +680,7 @@ impl Inner {
         }
     }
 
-    fn place(
+    async fn place(
         &self,
         name: &SubgraphName,
         network_name: &str,
@@ -699,7 +699,7 @@ impl Inner {
         match placement {
             None => Ok((PRIMARY_SHARD.clone(), default_node)),
             Some((shards, nodes)) => {
-                let node = self.place_on_node(nodes, default_node)?;
+                let node = self.place_on_node(nodes, default_node).await?;
                 let shard = self.place_in_shard(shards)?;
 
                 Ok((shard, node))
