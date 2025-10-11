@@ -558,7 +558,7 @@ pub async fn get_subgraph_firehose_cursor(
     res
 }
 
-pub fn revert_block_ptr(
+pub async fn revert_block_ptr(
     conn: &mut PgConnection,
     site: &Site,
     ptr: BlockPtr,
