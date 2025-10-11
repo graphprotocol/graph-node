@@ -1296,7 +1296,7 @@ impl DeploymentStore {
                 }
             }
             let logger2 = logger.cheap_clone();
-            retry::forever_async(&logger2, "prune", move || {
+            retry::forever(&logger2, "prune", move || {
                 let store = store.cheap_clone();
                 let reporter = OngoingPruneReporter::new(logger.cheap_clone());
                 let site = site.cheap_clone();
