@@ -752,7 +752,7 @@ pub struct IndexList {
     pub(crate) indexes: HashMap<String, Vec<CreateIndex>>,
 }
 
-pub fn load_indexes_from_table(
+pub async fn load_indexes_from_table(
     conn: &mut PgConnection,
     table: &Arc<Table>,
     schema_name: &str,
@@ -774,7 +774,7 @@ impl IndexList {
         let schema_name = site.namespace.clone();
         let layout = store.layout(conn, site).await?;
         for (_, table) in &layout.tables {
-            let indexes = load_indexes_from_table(conn, table, schema_name.as_str())?;
+            let indexes = load_indexes_from_table(conn, table, schema_name.as_str()).await?;
             list.indexes.insert(table.name.to_string(), indexes);
         }
         Ok(list)
