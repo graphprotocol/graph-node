@@ -3,21 +3,18 @@ use graph::{
         server::index_node::VersionInfo,
         store::{DeploymentId, DeploymentLocator, StatusStore},
     },
-    data::query::QueryTarget,
-    data::subgraph::{schema::SubgraphHealth, SubgraphFeature},
-    data::subgraph::{
-        schema::{DeploymentCreate, SubgraphError},
-        DeploymentFeatures,
+    data::{
+        query::QueryTarget,
+        subgraph::{
+            schema::{DeploymentCreate, SubgraphError, SubgraphHealth},
+            DeploymentFeatures, SubgraphFeature,
+        },
     },
-    prelude::AssignmentChange,
-    prelude::BlockPtr,
-    prelude::QueryStoreManager,
-    prelude::StoreEvent,
-    prelude::SubgraphManifest,
-    prelude::SubgraphName,
-    prelude::SubgraphVersionSwitchingMode,
-    prelude::UnfailOutcome,
-    prelude::{CheapClone, DeploymentHash, NodeId, SubgraphStore as _},
+    prelude::{
+        AssignmentChange, BlockPtr, CheapClone, DeploymentHash, NodeId, QueryStoreManager,
+        StoreError, StoreEvent, SubgraphManifest, SubgraphName, SubgraphStore as _,
+        SubgraphVersionSwitchingMode, UnfailOutcome,
+    },
     schema::InputSchema,
     semver::Version,
 };
@@ -146,13 +143,23 @@ fn create_subgraph() {
         primary.versions_for_subgraph(SUBGRAPH_NAME).await.unwrap()
     }
 
+    async fn deployment_for_version(
+        primary: &mut Primary,
+        name: Option<String>,
+    ) -> Result<Option<String>, StoreError> {
+        match name {
+            None => Ok(None),
+            Some(name) => primary.deployment_for_version(&name).await,
+        }
+    }
+
     /// Return the deployment for the current and the pending version of the
     /// subgraph with the given `entity_id`
     async fn subgraph_deployments(primary: &mut Primary) -> (Option<String>, Option<String>) {
         let (current, pending) = subgraph_versions(primary).await;
         (
-            current.and_then(|v| primary.deployment_for_version(&v).unwrap()),
-            pending.and_then(|v| primary.deployment_for_version(&v).unwrap()),
+            deployment_for_version(primary, current).await.unwrap(),
+            deployment_for_version(primary, pending).await.unwrap(),
         )
     }
 
