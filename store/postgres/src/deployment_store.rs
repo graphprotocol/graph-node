@@ -517,7 +517,7 @@ impl DeploymentStore {
             .await?
             .map(|(_, ptr)| ptr.number);
 
-        let debug_fork = deployment::debug_fork(conn, &site.deployment)?;
+        let debug_fork = deployment::debug_fork(conn, &site.deployment).await?;
 
         // Generate an API schema for the subgraph and make sure all types in the
         // API schema have a @subgraphId directive as well

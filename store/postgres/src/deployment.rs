@@ -302,7 +302,7 @@ pub async fn graft_point(
 /// Look up the debug fork for the given subgraph in the database and
 /// return it. Returns `None` if the deployment does not have
 /// a debug fork.
-pub fn debug_fork(
+pub async fn debug_fork(
     conn: &mut PgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<DeploymentHash>, StoreError> {
