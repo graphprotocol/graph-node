@@ -1023,7 +1023,7 @@ impl Inner {
                 .ok_or_else(|| internal_error!("no chain info for {}", deployment_id))?;
             let latest_ethereum_block_number =
                 chain.latest_block.as_ref().map(|block| block.number());
-            let subgraph_info = store.subgraph_info(site.cheap_clone())?;
+            let subgraph_info = store.subgraph_info(site.cheap_clone()).await?;
             let layout = store.find_layout(site.cheap_clone())?;
             let network = site.network.clone();
 
@@ -1587,7 +1587,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         version: &ApiVersion,
     ) -> Result<Arc<ApiSchema>, StoreError> {
         let (store, site) = self.store(id).await?;
-        let info = store.subgraph_info(site)?;
+        let info = store.subgraph_info(site).await?;
         Ok(info.api.get(version).unwrap().clone())
     }
 
@@ -1597,7 +1597,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         logger: Logger,
     ) -> Result<Option<Arc<dyn SubgraphFork>>, StoreError> {
         let (store, site) = self.store(id).await?;
-        let info = store.subgraph_info(site.cheap_clone())?;
+        let info = store.subgraph_info(site.cheap_clone()).await?;
         let layout = store.find_layout(site)?;
         let fork_id = info.debug_fork;
         let schema = layout.input_schema.cheap_clone();
@@ -1662,7 +1662,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     async fn graft_pending(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
         let (store, _) = self.store(id).await?;
-        let graft_detail = store.graft_pending(id)?;
+        let graft_detail = store.graft_pending(id).await?;
         Ok(graft_detail.is_some())
     }
 
@@ -1712,7 +1712,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         let site = self.find_site(deployment.id.into()).await?;
         let store = self.for_site(&site)?;
 
-        let info = store.subgraph_info(site)?;
+        let info = store.subgraph_info(site).await?;
         Ok(info.instrument)
     }
 }

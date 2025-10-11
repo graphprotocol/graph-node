@@ -472,7 +472,7 @@ impl DeploymentStore {
         self.layout(&mut conn, site)
     }
 
-    fn subgraph_info_with_conn(
+    async fn subgraph_info_with_conn(
         &self,
         conn: &mut PgConnection,
         site: Arc<Site>,
@@ -484,8 +484,9 @@ impl DeploymentStore {
         let layout = self.layout(conn, site.cheap_clone())?;
         let manifest_info = deployment::ManifestInfo::load(conn, &site)?;
 
-        let graft_block =
-            deployment::graft_point(conn, &site.deployment)?.map(|(_, ptr)| ptr.number);
+        let graft_block = deployment::graft_point(conn, &site.deployment)
+            .await?
+            .map(|(_, ptr)| ptr.number);
 
         let debug_fork = deployment::debug_fork(conn, &site.deployment)?;
 
@@ -526,13 +527,13 @@ impl DeploymentStore {
         }
     }
 
-    pub(crate) fn subgraph_info(&self, site: Arc<Site>) -> Result<SubgraphInfo, StoreError> {
+    pub(crate) async fn subgraph_info(&self, site: Arc<Site>) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&site.deployment) {
             return Ok(info.clone());
         }
 
         let mut conn = self.get_conn()?;
-        self.subgraph_info_with_conn(&mut conn, site)
+        self.subgraph_info_with_conn(&mut conn, site).await
     }
 
     fn block_ptr_with_conn(
@@ -960,7 +961,7 @@ impl DeploymentStore {
         let site2 = site.cheap_clone();
         let store = self.cheap_clone();
         let layout = self.find_layout(site.cheap_clone())?;
-        let info = self.subgraph_info(site.cheap_clone())?;
+        let info = self.subgraph_info(site.cheap_clone()).await?;
         let poi_digest = layout.input_schema.poi_digest();
 
         let entities: Option<(Vec<Entity>, BlockPtr)> = self
@@ -1437,7 +1438,9 @@ impl DeploymentStore {
         }
 
         // Don't revert past a graft point
-        let info = self.subgraph_info_with_conn(&mut conn, site.cheap_clone())?;
+        let info = self
+            .subgraph_info_with_conn(&mut conn, site.cheap_clone())
+            .await?;
         if let Some(graft_block) = info.graft_block {
             if graft_block > block_ptr_to.number {
                 return Err(internal_error!(
@@ -1523,12 +1526,12 @@ impl DeploymentStore {
         .await
     }
 
-    pub(crate) fn graft_pending(
+    pub(crate) async fn graft_pending(
         &self,
         id: &DeploymentHash,
     ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
         let mut conn = self.get_conn()?;
-        deployment::graft_pending(&mut conn, id)
+        deployment::graft_pending(&mut conn, id).await
     }
 
     /// Bring the subgraph into a state where we can start or resume
