@@ -278,7 +278,7 @@ impl DeploymentStore {
             async {
                 crate::deployment::drop_schema(conn, &site.namespace).await?;
                 if !site.schema_version.private_data_sources() {
-                    crate::dynds::shared::drop(conn, &site.deployment)?;
+                    crate::dynds::shared::drop(conn, &site.deployment).await?;
                 }
                 crate::deployment::drop_metadata(conn, site).await
             }
@@ -1618,7 +1618,8 @@ impl DeploymentStore {
                     // the source schema which in sharded setups is only
                     // available while that function runs
                     let start = Instant::now();
-                    let count = dynds::shared::copy(conn, &src.site, &dst.site, block.number)?;
+                    let count =
+                        dynds::shared::copy(conn, &src.site, &dst.site, block.number).await?;
                     info!(logger, "Copied {} dynamic data sources", count;
                       "time_ms" => start.elapsed().as_millis());
 
