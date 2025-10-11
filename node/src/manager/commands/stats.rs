@@ -29,7 +29,8 @@ async fn site_and_conn(
     let mut conn = store_catalog::Connection::new(pconn);
 
     let site = conn
-        .locate_site(locator)?
+        .locate_site(locator)
+        .await?
         .ok_or_else(|| anyhow!("deployment `{}` does not exist", search))?;
     let site = Arc::new(site);
 

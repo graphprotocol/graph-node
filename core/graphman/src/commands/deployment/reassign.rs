@@ -76,6 +76,7 @@ pub async fn load_deployment(
 
     let site = catalog_conn
         .locate_site(locator.clone())
+        .await
         .map_err(GraphmanError::from)?
         .ok_or_else(|| {
             GraphmanError::Store(anyhow!("deployment site not found for '{locator}'"))
