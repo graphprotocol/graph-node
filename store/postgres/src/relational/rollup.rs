@@ -270,7 +270,7 @@ impl Rollup {
         })
     }
 
-    pub(crate) fn insert(
+    pub(crate) async fn insert(
         &self,
         conn: &mut PgConnection,
         bucket: &Range<BlockTime>,

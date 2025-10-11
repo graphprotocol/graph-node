@@ -1166,7 +1166,7 @@ impl DeploymentStore {
                     )?;
                     section.end();
 
-                    layout.rollup(conn, last_rollup, &batch.block_times)?;
+                    layout.rollup(conn, last_rollup, &batch.block_times).await?;
 
                     dynds::insert(conn, &site, &batch.data_sources, manifest_idx_and_name).await?;
 
