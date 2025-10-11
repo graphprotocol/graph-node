@@ -1116,7 +1116,10 @@ impl Connection {
         }
     }
 
-    pub fn resume_subgraph(&mut self, site: &Site) -> Result<Vec<AssignmentChange>, StoreError> {
+    pub async fn resume_subgraph(
+        &mut self,
+        site: &Site,
+    ) -> Result<Vec<AssignmentChange>, StoreError> {
         use subgraph_deployment_assignment as a;
 
         let conn = &mut self.conn;

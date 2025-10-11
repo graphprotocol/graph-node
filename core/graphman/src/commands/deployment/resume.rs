@@ -79,7 +79,9 @@ pub async fn resume_paused_deployment(
     let primary_conn = primary_pool.get_async().await?;
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
-    let changes = catalog_conn.resume_subgraph(&paused_deployment.site)?;
+    let changes = catalog_conn
+        .resume_subgraph(&paused_deployment.site)
+        .await?;
     catalog_conn
         .send_store_event(&notification_sender, &StoreEvent::new(changes))
         .await?;
