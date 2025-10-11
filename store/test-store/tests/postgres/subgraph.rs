@@ -74,7 +74,7 @@ async fn get_version_info(store: &Store, subgraph_name: &str) -> VersionInfo {
 
 async fn get_subgraph_features(id: String) -> Option<DeploymentFeatures> {
     let mut primary = primary_connection().await;
-    primary.get_subgraph_features(id).unwrap()
+    primary.get_subgraph_features(id).await.unwrap()
 }
 
 async fn latest_block(store: &Store, deployment_id: DeploymentId) -> BlockPtr {
