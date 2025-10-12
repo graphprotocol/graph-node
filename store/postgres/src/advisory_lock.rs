@@ -84,7 +84,7 @@ where
     F: FnOnce(&mut PgConnection) -> Fut,
     Fut: std::future::Future<Output = Result<R, StoreError>>,
 {
-    fn execute(conn: &mut PgConnection, query: &str, msg: &str) -> Result<(), StoreError> {
+    async fn execute(conn: &mut PgConnection, query: &str, msg: &str) -> Result<(), StoreError> {
         sql_query(query).execute(conn).map(|_| ()).map_err(|e| {
             StoreError::from_diesel_error(&e)
                 .unwrap_or_else(|| StoreError::Unknown(anyhow::anyhow!("{}: {}", msg, e)))
@@ -94,9 +94,9 @@ where
     const LOCK: &str = "select pg_advisory_lock(1)";
     const UNLOCK: &str = "select pg_advisory_unlock(1)";
 
-    execute(conn, LOCK, "failed to acquire migration lock")?;
+    execute(conn, LOCK, "failed to acquire migration lock").await?;
     let res = f(conn).await;
-    execute(conn, UNLOCK, "failed to release migration lock")?;
+    execute(conn, UNLOCK, "failed to release migration lock").await?;
     res
 }
 
