@@ -105,7 +105,7 @@ impl TablePair {
         let column_list = Arc::new(self.column_list());
 
         // Determine the last vid that we need to copy
-        let range = VidRange::for_prune(conn, &self.src, earliest_block, final_block)?;
+        let range = VidRange::for_prune(conn, &self.src, earliest_block, final_block).await?;
         let mut batcher = VidBatcher::load(conn, &self.src_nsp, &self.src, range).await?;
         tracker.start_copy_final(conn, &self.src, range).await?;
 
@@ -173,7 +173,7 @@ impl TablePair {
         let column_list = Arc::new(self.column_list());
 
         // Determine the last vid that we need to copy
-        let range = VidRange::for_prune(conn, &self.src, final_block + 1, BLOCK_NUMBER_MAX)?;
+        let range = VidRange::for_prune(conn, &self.src, final_block + 1, BLOCK_NUMBER_MAX).await?;
         let mut batcher = VidBatcher::load(conn, &self.src.nsp, &self.src, range).await?;
         tracker.start_copy_nonfinal(conn, &self.src, range).await?;
 
@@ -478,7 +478,7 @@ impl Layout {
                 PruningStrategy::Delete => {
                     // Delete all entity versions whose range was closed
                     // before `req.earliest_block`
-                    let range = VidRange::for_prune(conn, &table, 0, req.earliest_block)?;
+                    let range = VidRange::for_prune(conn, &table, 0, req.earliest_block).await?;
                     let mut batcher =
                         VidBatcher::load(conn, &self.site.namespace, &table, range).await?;
 

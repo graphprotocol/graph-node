@@ -336,7 +336,7 @@ impl TableState {
         dst: Arc<Table>,
         target_block: &BlockPtr,
     ) -> Result<Self, StoreError> {
-        let vid_range = VidRange::for_copy(conn, &src, target_block)?;
+        let vid_range = VidRange::for_copy(conn, &src, target_block).await?;
         let batcher =
             VidBatcher::load(conn, &src_layout.site.namespace, src.as_ref(), vid_range).await?;
         Ok(Self {

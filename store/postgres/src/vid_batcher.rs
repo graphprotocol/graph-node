@@ -274,7 +274,7 @@ impl VidRange {
     }
 
     /// Return the full range of `vid` values in the table `src`
-    pub fn for_copy(
+    pub async fn for_copy(
         conn: &mut PgConnection,
         src: &Table,
         target_block: &BlockPtr,
@@ -303,7 +303,7 @@ impl VidRange {
     /// Return the first and last vid of any entity that is visible in the
     /// block range from `first_block` (inclusive) to `last_block`
     /// (exclusive)
-    pub fn for_prune(
+    pub async fn for_prune(
         conn: &mut PgConnection,
         src: &Table,
         first_block: BlockNumber,

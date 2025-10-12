@@ -1091,7 +1091,7 @@ impl DeploymentStore {
         let mut conn = self.get_conn().await?;
         let layout = self.layout(&mut conn, site).await?;
 
-        layout.find_many(&mut conn, ids_for_type, block)
+        layout.find_many(&mut conn, ids_for_type, block).await
     }
 
     pub(crate) async fn get_range(
@@ -1103,7 +1103,9 @@ impl DeploymentStore {
     ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError> {
         let mut conn = self.get_conn().await?;
         let layout = self.layout(&mut conn, site).await?;
-        layout.find_range(&mut conn, entity_types, causality_region, block_range)
+        layout
+            .find_range(&mut conn, entity_types, causality_region, block_range)
+            .await
     }
 
     pub(crate) async fn get_derived(
