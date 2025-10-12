@@ -300,6 +300,7 @@ async fn find_many() {
 
         let entities = layout
             .find_many(conn, &id_map, BLOCK_NUMBER_MAX)
+            .await
             .expect("Failed to read many things");
         assert_eq!(2, entities.len());
 

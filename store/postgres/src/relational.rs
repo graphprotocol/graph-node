@@ -483,7 +483,7 @@ impl Layout {
     }
 
     // An optimization when looking up multiple entities, it will generate a single sql query using `UNION ALL`.
-    pub fn find_many(
+    pub async fn find_many(
         &self,
         conn: &mut PgConnection,
         ids_for_type: &BTreeMap<(EntityType, CausalityRegion), IdList>,
@@ -519,7 +519,7 @@ impl Layout {
         Ok(entities)
     }
 
-    pub fn find_range(
+    pub async fn find_range(
         &self,
         conn: &mut PgConnection,
         entity_types: Vec<EntityType>,
