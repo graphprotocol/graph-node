@@ -297,7 +297,7 @@ impl CopyState {
     }
 }
 
-pub(crate) fn source(
+pub(crate) async fn source(
     conn: &mut PgConnection,
     dst: &Site,
 ) -> Result<Option<DeploymentId>, StoreError> {
@@ -429,7 +429,7 @@ impl TableState {
         Ok(states)
     }
 
-    fn record_progress(
+    async fn record_progress(
         &mut self,
         conn: &mut PgConnection,
         elapsed: Duration,
@@ -466,7 +466,7 @@ impl TableState {
         Ok(())
     }
 
-    fn record_finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+    async fn record_finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         use copy_table_state as cts;
 
         update(
@@ -509,16 +509,20 @@ impl TableState {
 
         deployment::update_entity_count(conn, &self.dst_site, count).await?;
 
-        self.record_progress(conn, duration)?;
+        self.record_progress(conn, duration).await?;
 
         if self.finished() {
-            self.record_finished(conn)?;
+            self.record_finished(conn).await?;
         }
 
         Ok(Status::Finished)
     }
 
-    fn set_batch_size(&mut self, conn: &mut PgConnection, size: usize) -> Result<(), StoreError> {
+    async fn set_batch_size(
+        &mut self,
+        conn: &mut PgConnection,
+        size: usize,
+    ) -> Result<(), StoreError> {
         use copy_table_state as cts;
 
         self.batcher.set_batch_size(size);
@@ -835,10 +839,8 @@ impl CopyTableWorker {
                     // that is hard to predict. This mechanism ensures
                     // that if our estimation is wrong, the consequences
                     // aren't too severe.
-                    conn.transaction_async(|conn| {
-                        async { self.table.set_batch_size(conn, 1) }.scope_boxed()
-                    })
-                    .await?;
+                    conn.transaction_async(|conn| self.table.set_batch_size(conn, 1).scope_boxed())
+                        .await?;
                 }
             };
 

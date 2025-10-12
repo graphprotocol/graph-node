@@ -595,9 +595,12 @@ impl DeploymentStore {
 
     /// Return the source if `site` or `None` if `site` is neither a graft
     /// nor a copy
-    pub(crate) fn source_of_copy(&self, site: &Site) -> Result<Option<DeploymentId>, StoreError> {
+    pub(crate) async fn source_of_copy(
+        &self,
+        site: &Site,
+    ) -> Result<Option<DeploymentId>, StoreError> {
         let mut conn = self.get_conn()?;
-        crate::copy::source(&mut conn, site)
+        crate::copy::source(&mut conn, site).await
     }
 
     // Only used for tests
