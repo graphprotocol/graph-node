@@ -37,7 +37,7 @@ use crate::network_setup::Networks;
 
 pub async fn list(primary: ConnectionPool, store: BlockStore) -> Result<(), Error> {
     let mut chains = {
-        let mut conn = primary.get_async().await?;
+        let mut conn = primary.get_sync().await?;
         block_store::load_chains(&mut conn).await?
     };
     chains.sort_by_key(|chain| chain.name.clone());
@@ -122,7 +122,7 @@ pub async fn info(
         }
     }
 
-    let mut conn = primary.get_async().await?;
+    let mut conn = primary.get_sync().await?;
 
     let chain = block_store::find_chain(&mut conn, &name)
         .await?
@@ -158,7 +158,7 @@ pub async fn info(
 pub async fn remove(primary: ConnectionPool, store: BlockStore, name: String) -> Result<(), Error> {
     let sites = {
         let mut conn = graph_store_postgres::command_support::catalog::Connection::new(
-            primary.get_async().await?,
+            primary.get_sync().await?,
         );
         conn.find_sites_for_network(&name).await?
     };
@@ -232,7 +232,7 @@ pub async fn change_block_cache_shard(
 ) -> Result<(), Error> {
     println!("Changing block cache shard for {} to {}", chain_name, shard);
 
-    let mut conn = primary_store.get_async().await?;
+    let mut conn = primary_store.get_sync().await?;
 
     let chain = find_chain(&mut conn, &chain_name)
         .await?

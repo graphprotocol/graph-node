@@ -25,7 +25,7 @@ async fn site_and_conn(
     let primary_pool = pools.get(&*PRIMARY_SHARD).unwrap();
     let locator = search.locate_unique(primary_pool).await?;
 
-    let pconn = primary_pool.get_async().await?;
+    let pconn = primary_pool.get_sync().await?;
     let mut conn = store_catalog::Connection::new(pconn);
 
     let site = conn
@@ -34,7 +34,7 @@ async fn site_and_conn(
         .ok_or_else(|| anyhow!("deployment `{}` does not exist", search))?;
     let site = Arc::new(site);
 
-    let conn = pools.get(&site.shard).unwrap().get_async().await?;
+    let conn = pools.get(&site.shard).unwrap().get_sync().await?;
 
     Ok((site, conn))
 }

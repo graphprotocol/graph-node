@@ -67,7 +67,7 @@ impl CopyState {
             .get(shard)
             .ok_or_else(|| anyhow!("can not find pool for shard {}", shard))?;
 
-        let mut dconn = dpool.get_async().await?;
+        let mut dconn = dpool.get_sync().await?;
 
         let tables = cts::table
             .filter(cts::dst.eq(dst))
@@ -209,7 +209,7 @@ pub async fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
     use catalog::deployment_schemas as ds;
 
     let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
-    let mut conn = primary.get_async().await?;
+    let mut conn = primary.get_sync().await?;
 
     let copies = ac::table
         .inner_join(ds::table.on(ds::id.eq(ac::dst)))
@@ -274,7 +274,7 @@ pub async fn status(
     let primary = pools
         .get(&*PRIMARY_SHARD)
         .ok_or_else(|| anyhow!("can not find deployment with id {}", dst))?;
-    let mut pconn = primary.get_async().await?;
+    let mut pconn = primary.get_sync().await?;
     let dst = dst.locate_unique(primary).await?.id.0;
 
     let (shard, deployment) = ds::table

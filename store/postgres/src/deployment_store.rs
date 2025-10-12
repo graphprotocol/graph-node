@@ -413,7 +413,7 @@ impl DeploymentStore {
     async fn get_conn(
         &self,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.pool.get_async().await
+        self.pool.get_sync().await
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.
@@ -422,7 +422,7 @@ impl DeploymentStore {
         idx: usize,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
         self.read_only_pools[idx]
-            .get_async()
+            .get_sync()
             .await
             .map_err(Error::from)
     }

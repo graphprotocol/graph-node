@@ -1000,7 +1000,7 @@ mod status {
         pub async fn runs(&self) -> StoreResult<Vec<usize>> {
             use prune_state as ps;
 
-            let mut conn = self.pool.get_async().await?;
+            let mut conn = self.pool.get_sync().await?;
             let runs = ps::table
                 .filter(ps::id.eq(self.layout.site.id))
                 .select(ps::run)
@@ -1018,7 +1018,7 @@ mod status {
             use prune_state as ps;
             use prune_table_state as pts;
 
-            let mut conn = self.pool.get_async().await?;
+            let mut conn = self.pool.get_sync().await?;
 
             let ptss = pts::table
                 .filter(pts::id.eq(self.layout.site.id))
