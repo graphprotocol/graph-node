@@ -210,19 +210,19 @@ where
 #[tokio::test]
 async fn bad_id() {
     run_test(async |conn, layout| {
-        fn find(
+        async fn find(
             conn: &mut PgConnection,
             layout: &Layout,
             id: &str,
         ) -> Result<Option<Entity>, StoreError> {
             let key = THING_TYPE.parse_key(id)?;
-            layout.find(conn, &key, BLOCK_NUMBER_MAX)
+            layout.find(conn, &key, BLOCK_NUMBER_MAX).await
         }
 
         // We test that we get errors for various strings that are not
         // valid 'Bytes' strings; we use `find` to force the conversion
         // from String -> Bytes internally
-        let res = find(conn, layout, "bad");
+        let res = find(conn, layout, "bad").await;
         assert!(res.is_err());
         assert_eq!(
             "store error: can not convert `bad` to Id::Bytes: Odd number of digits",
@@ -230,7 +230,7 @@ async fn bad_id() {
         );
 
         // We do not allow the `\x` prefix that Postgres uses
-        let res = find(conn, layout, "\\xbadd");
+        let res = find(conn, layout, "\\xbadd").await;
         assert!(res.is_err());
         assert_eq!(
             "store error: can not convert `\\xbadd` to Id::Bytes: Invalid character '\\\\' at position 0",
@@ -238,11 +238,11 @@ async fn bad_id() {
         );
 
         // Having the '0x' prefix is ok
-        let res = find(conn, layout, "0xbadd");
+        let res = find(conn, layout, "0xbadd").await;
         assert!(res.is_ok());
 
         // Using non-hex characters is also bad
-        let res = find(conn, layout, "nope");
+        let res = find(conn, layout, "nope").await;
         assert!(res.is_err());
         assert_eq!(
             "store error: can not convert `nope` to Id::Bytes: Invalid character 'n' at position 0",
@@ -254,10 +254,11 @@ async fn bad_id() {
 #[tokio::test]
 async fn find() {
     run_test(async |mut conn, layout| {
-        fn find_entity(conn: &mut PgConnection, layout: &Layout, id: &str) -> Option<Entity> {
+        async fn find_entity(conn: &mut PgConnection, layout: &Layout, id: &str) -> Option<Entity> {
             let key = THING_TYPE.parse_key(id).unwrap();
             layout
                 .find(conn, &key, BLOCK_NUMBER_MAX)
+                .await
                 .expect(&format!("Failed to read Thing[{}]", id))
         }
 
@@ -266,12 +267,12 @@ async fn find() {
         insert_thing(&mut conn, layout, ID, NAME, 0);
 
         // Happy path: find existing entity
-        let entity = find_entity(conn, layout, ID).unwrap();
+        let entity = find_entity(conn, layout, ID).await.unwrap();
         assert_entity_eq!(BEEF_ENTITY.clone(), entity);
         assert!(CausalityRegion::from_entity(&entity) == CausalityRegion::ONCHAIN);
 
         // Find non-existing entity
-        let entity = find_entity(conn, layout, "badd");
+        let entity = find_entity(conn, layout, "badd").await;
         assert!(entity.is_none());
     })
     .await;
@@ -331,6 +332,7 @@ async fn update() {
 
         let actual = layout
             .find(conn, &THING_TYPE.key(entity_id), BLOCK_NUMBER_MAX)
+            .await
             .expect("Failed to read Thing[deadbeef]")
             .unwrap();
 

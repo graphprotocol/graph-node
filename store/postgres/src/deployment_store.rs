@@ -1074,7 +1074,7 @@ impl DeploymentStore {
     ) -> Result<Option<Entity>, StoreError> {
         let mut conn = self.get_conn().await?;
         let layout = self.layout(&mut conn, site).await?;
-        layout.find(&mut conn, key, block)
+        layout.find(&mut conn, key, block).await
     }
 
     /// Retrieve all the entities matching `ids_for_type`, both the type and causality region, from
