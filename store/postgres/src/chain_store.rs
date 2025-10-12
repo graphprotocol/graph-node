@@ -384,7 +384,7 @@ mod data {
         /// `Storage::Private`. If it uses `Storage::Shared`, do nothing since
         /// a regular migration will already have created the `ethereum_blocks`
         /// table
-        pub(super) fn create(&self, conn: &mut PgConnection) -> Result<(), Error> {
+        pub(super) async fn create(&self, conn: &mut PgConnection) -> Result<(), Error> {
             fn make_ddl(nsp: &str) -> String {
                 format!(
                     "
@@ -432,7 +432,7 @@ mod data {
             }
         }
 
-        pub(super) fn drop_storage(
+        pub(super) async fn drop_storage(
             &self,
             conn: &mut PgConnection,
             name: &str,
@@ -450,7 +450,7 @@ mod data {
             }
         }
 
-        pub(super) fn truncate_block_cache(
+        pub(super) async fn truncate_block_cache(
             &self,
             conn: &mut PgConnection,
         ) -> Result<(), StoreError> {
@@ -462,7 +462,7 @@ mod data {
             Ok(())
         }
 
-        fn truncate_call_cache(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+        async fn truncate_call_cache(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
             let table_name = match &self {
                 Storage::Shared => ETHEREUM_CALL_CACHE_TABLE_NAME,
                 Storage::Private(Schema { call_cache, .. }) => &call_cache.qname,
@@ -471,7 +471,7 @@ mod data {
             Ok(())
         }
 
-        pub(super) fn cleanup_shallow_blocks(
+        pub(super) async fn cleanup_shallow_blocks(
             &self,
             conn: &mut PgConnection,
             lowest_block: i32,
@@ -487,7 +487,7 @@ mod data {
             Ok(())
         }
 
-        pub(super) fn remove_cursor(
+        pub(super) async fn remove_cursor(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -521,7 +521,7 @@ mod data {
         /// same hash, then overwrite that block since it may be adding
         /// transaction receipts. If `overwrite` is `true`, overwrite a
         /// possibly existing entry. If it is `false`, keep the old entry.
-        pub(super) fn upsert_block(
+        pub(super) async fn upsert_block(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -596,7 +596,7 @@ mod data {
             Ok(())
         }
 
-        pub(super) fn block_ptrs_by_numbers(
+        pub(super) async fn block_ptrs_by_numbers(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -640,7 +640,7 @@ mod data {
                 .collect())
         }
 
-        pub(super) fn blocks(
+        pub(super) async fn blocks(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -693,7 +693,7 @@ mod data {
                 .collect())
         }
 
-        pub(super) fn block_hashes_by_block_number(
+        pub(super) async fn block_hashes_by_block_number(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -724,7 +724,7 @@ mod data {
             }
         }
 
-        pub(super) fn confirm_block_hash(
+        pub(super) async fn confirm_block_hash(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -761,7 +761,7 @@ mod data {
 
         /// timestamp's representation depends the blockchain::Block implementation, on
         /// ethereum this is a U256 but on different chains it will most likely be different.
-        pub(super) fn block_number(
+        pub(super) async fn block_number(
             &self,
             conn: &mut PgConnection,
             hash: &BlockHash,
@@ -816,7 +816,7 @@ mod data {
             }
         }
 
-        pub(super) fn block_numbers(
+        pub(super) async fn block_numbers(
             &self,
             conn: &mut PgConnection,
             hashes: &[BlockHash],
@@ -860,7 +860,7 @@ mod data {
         /// Find the first block that is missing from the database needed to
         /// complete the chain from block `hash` to the block with number
         /// `first_block`.
-        pub(super) fn missing_parent(
+        pub(super) async fn missing_parent(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -971,7 +971,7 @@ mod data {
         /// with a higher block number than the current chain head. The returned
         /// value if the hash and number of the candidate and the genesis block
         /// hash for the chain
-        pub(super) fn chain_head_candidate(
+        pub(super) async fn chain_head_candidate(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -1038,7 +1038,7 @@ mod data {
         /// Returns an ancestor of a specified block at a given offset, with an option to specify a `root` hash
         /// for a targeted search. If a `root` hash is provided, the search stops at the block whose parent hash
         /// matches the `root`.
-        pub(super) fn ancestor_block(
+        pub(super) async fn ancestor_block(
             &self,
             conn: &mut PgConnection,
             block_ptr: BlockPtr,
@@ -1154,7 +1154,7 @@ mod data {
             Ok(data_and_ptr)
         }
 
-        pub(super) fn delete_blocks_before(
+        pub(super) async fn delete_blocks_before(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -1184,7 +1184,7 @@ mod data {
             }
         }
 
-        pub(super) fn delete_blocks_by_hash(
+        pub(super) async fn delete_blocks_by_hash(
             &self,
             conn: &mut PgConnection,
             chain: &str,
@@ -1223,7 +1223,7 @@ mod data {
             }
         }
 
-        pub(super) fn get_call_and_access(
+        pub(super) async fn get_call_and_access(
             &self,
             conn: &mut PgConnection,
             id: &[u8],
@@ -1271,7 +1271,7 @@ mod data {
             .map(|row| row.map(|(return_value, expired)| (Bytes::from(return_value), expired)))
         }
 
-        pub(super) fn get_calls_and_access(
+        pub(super) async fn get_calls_and_access(
             &self,
             conn: &mut PgConnection,
             ids: &[&[u8]],
@@ -1322,7 +1322,7 @@ mod data {
                 .collect())
         }
 
-        pub(super) fn get_calls_in_block(
+        pub(super) async fn get_calls_in_block(
             &self,
             conn: &mut PgConnection,
             block_ptr: BlockPtr,
@@ -1362,7 +1362,7 @@ mod data {
                 .collect())
         }
 
-        pub(super) fn clear_call_cache(
+        pub(super) async fn clear_call_cache(
             &self,
             conn: &mut PgConnection,
             head: BlockNumber,
@@ -1372,7 +1372,7 @@ mod data {
             if from <= 0 && to >= head {
                 // We are removing the entire cache. Truncating is much
                 // faster in that case
-                self.truncate_call_cache(conn)?;
+                self.truncate_call_cache(conn).await?;
                 return Ok(());
             }
             match self {
@@ -1589,7 +1589,7 @@ mod data {
             }
         }
 
-        pub(super) fn update_accessed_at(
+        pub(super) async fn update_accessed_at(
             &self,
             conn: &mut PgConnection,
             contract_address: &[u8],
@@ -1615,7 +1615,7 @@ mod data {
             result.map(|_| ()).map_err(Error::from)
         }
 
-        pub(super) fn set_call(
+        pub(super) async fn set_call(
             &self,
             conn: &mut PgConnection,
             id: &[u8],
@@ -1717,7 +1717,7 @@ mod data {
 
         #[cfg(debug_assertions)]
         // used by `super::set_chain` for test support
-        pub(super) fn remove_chain(&self, conn: &mut PgConnection, chain_name: &str) {
+        pub(super) async fn remove_chain(&self, conn: &mut PgConnection, chain_name: &str) {
             match self {
                 Storage::Shared => {
                     use public::eth_call_cache as c;
@@ -1749,7 +1749,7 @@ mod data {
         }
 
         /// Queries the database for all the transaction receipts in a given block.
-        pub(crate) fn find_transaction_receipts_in_block(
+        pub(crate) async fn find_transaction_receipts_in_block(
             &self,
             conn: &mut PgConnection,
             block_hash: H256,
@@ -1970,7 +1970,7 @@ impl ChainStore {
                     .on_conflict(name)
                     .do_nothing()
                     .execute(conn)?;
-                self.storage.create(conn)
+                self.storage.create(conn).await
             }
             .scope_boxed()
         })
@@ -2001,7 +2001,7 @@ impl ChainStore {
         let mut conn = self.get_conn().await?;
         conn.transaction_async(|conn| {
             async {
-                self.storage.drop_storage(conn, &self.chain)?;
+                self.storage.drop_storage(conn, &self.chain).await?;
 
                 delete(n::table.filter(n::name.eq(&self.chain))).execute(conn)?;
                 Ok(())
@@ -2091,7 +2091,7 @@ impl ChainStore {
             .await
             .expect("can get a database connection");
 
-        self.storage.remove_chain(&mut conn, &self.chain);
+        self.storage.remove_chain(&mut conn, &self.chain).await;
         self.recent_blocks_cache.clear();
 
         for block in chain {
@@ -2121,24 +2121,26 @@ impl ChainStore {
         let mut conn = self.get_conn().await?;
         self.storage
             .delete_blocks_by_hash(&mut conn, &self.chain, block_hashes)
+            .await
     }
 
     pub async fn cleanup_shallow_blocks(&self, lowest_block: i32) -> Result<(), StoreError> {
         let mut conn = self.get_conn().await?;
         self.storage
-            .cleanup_shallow_blocks(&mut conn, lowest_block)?;
+            .cleanup_shallow_blocks(&mut conn, lowest_block)
+            .await?;
         Ok(())
     }
 
     // remove_cursor delete the chain_store cursor and return true if it was present
     pub async fn remove_cursor(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
         let mut conn = self.get_conn().await?;
-        self.storage.remove_cursor(&mut conn, chain)
+        self.storage.remove_cursor(&mut conn, chain).await
     }
 
     pub async fn truncate_block_cache(&self) -> Result<(), StoreError> {
         let mut conn = self.get_conn().await?;
-        self.storage.truncate_block_cache(&mut conn)?;
+        self.storage.truncate_block_cache(&mut conn).await?;
         Ok(())
     }
 
@@ -2153,6 +2155,7 @@ impl ChainStore {
                 store
                     .storage
                     .blocks(conn, &store.chain, &hashes)
+                    .await
                     .map_err(CancelableError::from)
             })
             .await?;
@@ -2171,6 +2174,7 @@ impl ChainStore {
                 store
                     .storage
                     .block_ptrs_by_numbers(conn, &store.chain, &numbers)
+                    .await
                     .map_err(CancelableError::from)
             })
             .await?;
@@ -2277,7 +2281,9 @@ impl ChainHeadStore for ChainStore {
         pool.with_conn(async move |conn, _| {
             conn.transaction_async(|conn| {
                 async {
-                    storage.upsert_block(conn, &network, block.as_ref(), true)?;
+                    storage
+                        .upsert_block(conn, &network, block.as_ref(), true)
+                        .await?;
 
                     update(n::table.filter(n::name.eq(&self.chain)))
                         .set((
@@ -2325,6 +2331,7 @@ impl ChainStoreTrait for ChainStore {
                 async {
                     storage
                         .upsert_block(conn, &network, block.as_ref(), true)
+                        .await
                         .map_err(CancelableError::from)
                 }
                 .scope_boxed()
@@ -2339,7 +2346,8 @@ impl ChainStoreTrait for ChainStore {
         let mut conn = self.pool.get_async().await?;
         for block in blocks {
             self.storage
-                .upsert_block(&mut conn, &self.chain, *block, false)?;
+                .upsert_block(&mut conn, &self.chain, *block, false)
+                .await?;
         }
         Ok(())
     }
@@ -2350,14 +2358,15 @@ impl ChainStoreTrait for ChainStore {
     ) -> Result<Option<H256>, Error> {
         use public::ethereum_networks as n;
 
-        let (missing, ptr) = {
-            let chain_store = self.clone();
-            let genesis_block_ptr = self.genesis_block_ptr().await?.hash_as_h256();
-            self.pool
+        let (missing, ptr) =
+            {
+                let chain_store = self.clone();
+                let genesis_block_ptr = self.genesis_block_ptr().await?.hash_as_h256();
+                self.pool
                 .with_conn(async move |conn, _| {
                     let candidate = chain_store
                         .storage
-                        .chain_head_candidate(conn, &chain_store.chain)
+                        .chain_head_candidate(conn, &chain_store.chain).await
                         .map_err(CancelableError::from)?;
                     let (ptr, first_block) = match &candidate {
                         None => return Ok((None, None)),
@@ -2372,7 +2381,7 @@ impl ChainStoreTrait for ChainStore {
                             first_block as i64,
                             ptr.hash_as_h256(),
                             genesis_block_ptr,
-                        )
+                        ).await
                         .map_err(CancelableError::from)?
                     {
                         Some(missing) => {
@@ -2401,7 +2410,7 @@ impl ChainStoreTrait for ChainStore {
                     .map_err(CancelableError::from)
                 })
                 .await?
-        };
+            };
         if let Some((hash, number)) = ptr {
             self.chain_head_update_sender.send(&hash, number)?;
         }
@@ -2591,6 +2600,7 @@ impl ChainStoreTrait for ChainStore {
                 chain_store
                     .storage
                     .ancestor_block(conn, block_ptr_clone, offset, root)
+                    .await
                     .map_err(StoreError::from)
                     .map_err(CancelableError::from)
             })
@@ -2647,25 +2657,26 @@ impl ChainStoreTrait for ChainStore {
                    and a.id = d.id
                    and not d.failed
                    and ds.network = $2) a;";
-        diesel::sql_query(query)
+        let Some(block) = diesel::sql_query(query)
             .bind::<Integer, _>(ancestor_count)
             .bind::<Text, _>(&self.chain)
             .load::<MinBlock>(&mut conn)?
             .first()
-            .map(|MinBlock { block }| {
-                // If we could not determine a minimum block, the query
-                // returns -1, and we should not do anything. We also guard
-                // against removing the genesis block
-                if *block > 0 {
-                    self.storage
-                        .delete_blocks_before(&mut conn, &self.chain, *block as i64)
-                        .map(|rows| Some((*block, rows)))
-                } else {
-                    Ok(None)
-                }
-            })
-            .unwrap_or(Ok(None))
-            .map_err(Into::into)
+            .map(|MinBlock { block }| *block)
+        else {
+            return Ok(None);
+        };
+        // If we could not determine a minimum block, the query
+        // returns -1, and we should not do anything. We also guard
+        // against removing the genesis block
+        if block > 0 {
+            self.storage
+                .delete_blocks_before(&mut conn, &self.chain, block as i64)
+                .await
+                .map(|rows| Some((block, rows)))
+        } else {
+            Ok(None)
+        }
     }
 
     async fn block_hashes_by_block_number(
@@ -2675,6 +2686,7 @@ impl ChainStoreTrait for ChainStore {
         let mut conn = self.get_conn().await?;
         self.storage
             .block_hashes_by_block_number(&mut conn, &self.chain, number)
+            .await
     }
 
     async fn confirm_block_hash(
@@ -2685,6 +2697,7 @@ impl ChainStoreTrait for ChainStore {
         let mut conn = self.get_conn().await?;
         self.storage
             .confirm_block_hash(&mut conn, &self.chain, number, hash)
+            .await
     }
 
     async fn block_number(
@@ -2698,6 +2711,7 @@ impl ChainStoreTrait for ChainStore {
             .with_conn(async move |conn, _| {
                 storage
                     .block_number(conn, &hash)
+                    .await
                     .map(|opt| {
                         opt.map(|(number, timestamp, parent_hash)| {
                             (chain.clone(), number, timestamp, parent_hash)
@@ -2721,6 +2735,7 @@ impl ChainStoreTrait for ChainStore {
             .with_conn(async move |conn, _| {
                 storage
                     .block_numbers(conn, hashes.as_slice())
+                    .await
                     .map_err(|e| e.into())
             })
             .await
@@ -2729,7 +2744,9 @@ impl ChainStoreTrait for ChainStore {
     async fn clear_call_cache(&self, from: BlockNumber, to: BlockNumber) -> Result<(), Error> {
         let mut conn = self.get_conn().await?;
         if let Some(head) = self.chain_head_block(&self.chain).await? {
-            self.storage.clear_call_cache(&mut conn, head, from, to)?;
+            self.storage
+                .clear_call_cache(&mut conn, head, from, to)
+                .await?;
         }
         Ok(())
     }
@@ -2754,6 +2771,7 @@ impl ChainStoreTrait for ChainStore {
         pool.with_conn(async move |conn, _| {
             storage
                 .find_transaction_receipts_in_block(conn, block_hash)
+                .await
                 .map_err(|e| StoreError::from(e).into())
         })
         .await
@@ -3006,11 +3024,12 @@ impl EthereumCallCache for ChainStore {
             .transaction_async::<_, Error, _>(|conn| {
                 async {
                     if let Some((return_value, update_accessed_at)) =
-                        self.storage.get_call_and_access(conn, id.as_ref())?
+                        self.storage.get_call_and_access(conn, id.as_ref()).await?
                     {
                         if update_accessed_at {
                             self.storage
-                                .update_accessed_at(conn, req.address.as_ref())?;
+                                .update_accessed_at(conn, req.address.as_ref())
+                                .await?;
                         }
                         Ok(Some(return_value))
                     } else {
@@ -3044,7 +3063,9 @@ impl EthereumCallCache for ChainStore {
         let conn = &mut *self.get_conn().await?;
         let rows = conn
             .transaction_async::<_, Error, _>(|conn| {
-                async { self.storage.get_calls_and_access(conn, &id_refs) }.scope_boxed()
+                self.storage
+                    .get_calls_and_access(conn, &id_refs)
+                    .scope_boxed()
             })
             .await?;
 
@@ -3075,7 +3096,7 @@ impl EthereumCallCache for ChainStore {
     async fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
         let conn = &mut *self.get_conn().await?;
         conn.transaction_async::<_, Error, _>(|conn| {
-            async { self.storage.get_calls_in_block(conn, block) }.scope_boxed()
+            self.storage.get_calls_in_block(conn, block).scope_boxed()
         })
         .await
     }
@@ -3115,6 +3136,7 @@ impl EthereumCallCache for ChainStore {
                                 block.number,
                                 &return_value,
                             )
+                            .await
                             .map_err(Into::into)
                     }
                     .scope_boxed()
