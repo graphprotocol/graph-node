@@ -160,7 +160,7 @@ pub mod primary {
     }
 
     pub(super) async fn drop_chain(pool: &ConnectionPool, name: &str) -> Result<(), StoreError> {
-        let mut conn = pool.get_async().await?;
+        let mut conn = pool.get_sync().await?;
 
         delete(chains::table.filter(chains::name.eq(name))).execute(&mut conn)?;
         Ok(())
@@ -419,7 +419,7 @@ impl BlockStore {
             let cached = match self.chain_head_cache.get(shard.as_str()) {
                 Some(cached) => cached,
                 None => {
-                    let mut conn = match pool.get_async().await {
+                    let mut conn = match pool.get_sync().await {
                         Ok(conn) => conn,
                         Err(StoreError::DatabaseUnavailable) => continue,
                         Err(e) => return Err(e),
@@ -561,7 +561,7 @@ impl BlockStore {
         use diesel::prelude::*;
 
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let mut conn = primary_pool.get_async().await?;
+        let mut conn = primary_pool.get_sync().await?;
         let version: i64 = dbv::table.select(dbv::version).get_result(&mut conn)?;
         if version < 3 {
             self.truncate_block_caches().await?;
@@ -596,7 +596,7 @@ impl BlockStore {
             None => {}
         }
 
-        let mut conn = self.mirror.primary().get_async().await?;
+        let mut conn = self.mirror.primary().get_sync().await?;
         let shard = self
             .shards
             .iter()
@@ -655,7 +655,7 @@ impl ChainIdStore for BlockStore {
 
         // Update the master copy in the primary
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let mut conn = primary_pool.get_async().await?;
+        let mut conn = primary_pool.get_sync().await?;
 
         diesel::update(c::table.filter(c::name.eq(chain_name.as_str())))
             .set((

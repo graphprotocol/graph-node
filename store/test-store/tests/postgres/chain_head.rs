@@ -546,7 +546,7 @@ fn test_clear_stale_call_cache() {
         let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
         let return_value: [u8; 3] = [7, 8, 9];
 
-        let mut conn = PRIMARY_POOL.get_async().await.unwrap();
+        let mut conn = PRIMARY_POOL.get_sync().await.unwrap();
 
         // Insert a call cache entry, otherwise it will hit an early return and won't test all queries
         let call = call::Request::new(address, call.to_vec(), 0);

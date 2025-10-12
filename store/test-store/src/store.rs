@@ -136,7 +136,7 @@ where
     };
 
     let mut conn = PRIMARY_POOL
-        .get_async()
+        .get_sync()
         .await
         .expect("failed to get connection for primary database");
 
@@ -412,7 +412,7 @@ pub async fn insert_ens_name(hash: &str, name: &str) {
     use diesel::prelude::*;
     use graph_store_postgres::command_support::catalog::ens_names;
 
-    let mut conn = PRIMARY_POOL.get_async().await.unwrap();
+    let mut conn = PRIMARY_POOL.get_sync().await.unwrap();
 
     insert_into(ens_names::table)
         .values((ens_names::hash.eq(hash), ens_names::name.eq(name)))
@@ -672,7 +672,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
 }
 
 pub async fn primary_connection() -> graph_store_postgres::layout_for_tests::Connection {
-    let conn = PRIMARY_POOL.get_async().await.unwrap();
+    let conn = PRIMARY_POOL.get_sync().await.unwrap();
     graph_store_postgres::layout_for_tests::Connection::new(conn)
 }
 

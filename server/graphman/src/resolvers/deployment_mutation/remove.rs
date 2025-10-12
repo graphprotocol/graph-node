@@ -9,7 +9,7 @@ use graphman::GraphmanError;
 pub async fn run(ctx: &GraphmanContext, name: &String) -> Result<()> {
     let primary_pool = ctx
         .primary_pool
-        .get_async()
+        .get_sync()
         .await
         .map_err(GraphmanError::from)?;
     let mut catalog_conn = catalog::Connection::new(primary_pool);

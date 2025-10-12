@@ -29,10 +29,7 @@ impl Deployment {
         &self,
         primary_pool: ConnectionPool,
     ) -> Result<Option<NodeId>, GraphmanError> {
-        let primary_conn = primary_pool
-            .get_async()
-            .await
-            .map_err(GraphmanError::from)?;
+        let primary_conn = primary_pool.get_sync().await.map_err(GraphmanError::from)?;
         let mut catalog_conn = catalog::Connection::new(primary_conn);
         let node = catalog_conn
             .assigned_node(&self.site)
@@ -61,10 +58,7 @@ pub async fn load_deployment(
     primary_pool: ConnectionPool,
     deployment: &DeploymentSelector,
 ) -> Result<Deployment, ReassignDeploymentError> {
-    let mut primary_conn = primary_pool
-        .get_async()
-        .await
-        .map_err(GraphmanError::from)?;
+    let mut primary_conn = primary_pool.get_sync().await.map_err(GraphmanError::from)?;
 
     let locator = crate::deployment::load_deployment_locator(
         &mut primary_conn,
@@ -92,10 +86,7 @@ pub async fn reassign_deployment(
     node: &NodeId,
     curr_node: Option<NodeId>,
 ) -> Result<ReassignResult, ReassignDeploymentError> {
-    let primary_conn = primary_pool
-        .get_async()
-        .await
-        .map_err(GraphmanError::from)?;
+    let primary_conn = primary_pool.get_sync().await.map_err(GraphmanError::from)?;
     let mut catalog_conn = catalog::Connection::new(primary_conn);
     let changes: Vec<AssignmentChange> = match &curr_node {
         Some(curr) => {
