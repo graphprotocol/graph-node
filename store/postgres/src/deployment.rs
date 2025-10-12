@@ -860,12 +860,12 @@ pub async fn fail(
 ) -> Result<(), StoreError> {
     let error_id = insert_subgraph_error(conn, error).await?;
 
-    update_deployment_status(conn, id, SubgraphHealth::Failed, Some(error_id), None)?;
+    update_deployment_status(conn, id, SubgraphHealth::Failed, Some(error_id), None).await?;
 
     Ok(())
 }
 
-pub fn update_non_fatal_errors(
+pub async fn update_non_fatal_errors(
     conn: &mut PgConnection,
     deployment_id: &DeploymentHash,
     health: SubgraphHealth,
@@ -882,13 +882,13 @@ pub fn update_non_fatal_errors(
             .collect::<Vec<_>>()
     });
 
-    update_deployment_status(conn, deployment_id, health, None, error_ids)?;
+    update_deployment_status(conn, deployment_id, health, None, error_ids).await?;
 
     Ok(())
 }
 
 /// If `block` is `None`, assumes the latest block.
-pub(crate) fn has_deterministic_errors(
+pub(crate) async fn has_deterministic_errors(
     conn: &mut PgConnection,
     id: &DeploymentHash,
     block: BlockNumber,
@@ -904,7 +904,7 @@ pub(crate) fn has_deterministic_errors(
     .map_err(|e| e.into())
 }
 
-pub fn update_deployment_status(
+pub async fn update_deployment_status(
     conn: &mut PgConnection,
     deployment_id: &DeploymentHash,
     health: SubgraphHealth,
@@ -973,7 +973,7 @@ async fn check_health(
 ) -> Result<(), StoreError> {
     use deployment as d;
 
-    let has_errors = has_deterministic_errors(conn, id, block)?;
+    let has_errors = has_deterministic_errors(conn, id, block).await?;
 
     let (new, old) = match has_errors {
         true => {
@@ -999,7 +999,7 @@ async fn check_health(
     .map_err(|e| e.into())
 }
 
-pub(crate) fn health(
+pub(crate) async fn health(
     conn: &mut PgConnection,
     id: DeploymentId,
 ) -> Result<SubgraphHealth, StoreError> {
@@ -1012,7 +1012,7 @@ pub(crate) fn health(
         .map_err(|e| e.into())
 }
 
-pub(crate) fn entities_with_causality_region(
+pub(crate) async fn entities_with_causality_region(
     conn: &mut PgConnection,
     id: DeploymentId,
     schema: &InputSchema,

@@ -1230,7 +1230,8 @@ impl DeploymentStore {
                                 &site.deployment,
                                 deployment::SubgraphHealth::Unhealthy,
                                 Some(&batch.deterministic_errors),
-                            )?;
+                            )
+                            .await?;
                         }
                     }
 
@@ -1774,7 +1775,7 @@ impl DeploymentStore {
             use deployment::SubgraphHealth::*;
             // Decide status based on if there are any errors for the previous/parent block
             let prev_health =
-                if deployment::has_deterministic_errors(conn, deployment_id, parent_ptr.number)? {
+                if deployment::has_deterministic_errors(conn, deployment_id, parent_ptr.number).await? {
                     Unhealthy
                 } else {
                     Healthy
@@ -1803,7 +1804,7 @@ impl DeploymentStore {
                     let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), &FirehoseCursor::None).await?;
 
                     // Unfail the deployment.
-                    deployment::update_deployment_status(conn, deployment_id, prev_health, None,None)?;
+                    deployment::update_deployment_status(conn, deployment_id, prev_health, None,None).await?;
 
                     Ok(UnfailOutcome::Unfailed)
                 }
@@ -1887,7 +1888,7 @@ impl DeploymentStore {
                             deployment::SubgraphHealth::Healthy,
                             None,
                             None,
-                        )?;
+                        ).await?;
 
                         // Delete the fatal error.
                         deployment::delete_error(conn, &subgraph_error.id).await?;
@@ -1960,7 +1961,7 @@ impl DeploymentStore {
         site: &Site,
     ) -> Result<deployment::SubgraphHealth, StoreError> {
         let id = site.id;
-        self.with_conn(async move |conn, _| deployment::health(conn, id).map_err(Into::into))
+        self.with_conn(async move |conn, _| deployment::health(conn, id).await.map_err(Into::into))
             .await
     }
 
