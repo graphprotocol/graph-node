@@ -464,7 +464,7 @@ impl SyncStore {
             // Handle on_sync actions. They only apply to copies (not
             // grafts) so we make sure that the source, if it exists, has
             // the same hash as `self.site`
-            if let Some(src) = self.writable.source_of_copy(&self.site)? {
+            if let Some(src) = self.writable.source_of_copy(&self.site).await? {
                 if let Some(src) = self.maybe_find_site(src).await? {
                     if src.deployment == self.site.deployment {
                         let on_sync = self.writable.on_sync(&self.site).await?;
