@@ -404,7 +404,7 @@ impl NotificationSender {
     /// connection `conn` must be into the primary database as that's the
     /// only place where listeners connect. The `network` is only used for
     /// metrics gathering and does not affect how the notification is sent
-    pub fn notify(
+    pub async fn notify(
         &self,
         conn: &mut PgConnection,
         channel: &str,

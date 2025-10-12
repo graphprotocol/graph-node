@@ -2276,7 +2276,7 @@ impl ChainHeadStore for ChainStore {
         let number = ptr.number as i64; //block height
 
         //this will send an update via postgres, channel: chain_head_updates
-        self.chain_head_update_sender.send(&hash, number)?;
+        self.chain_head_update_sender.send(&hash, number).await?;
 
         pool.with_conn(async move |conn, _| {
             conn.transaction_async(|conn| {
@@ -2412,7 +2412,7 @@ impl ChainStoreTrait for ChainStore {
                 .await?
             };
         if let Some((hash, number)) = ptr {
-            self.chain_head_update_sender.send(&hash, number)?;
+            self.chain_head_update_sender.send(&hash, number).await?;
         }
 
         Ok(missing)

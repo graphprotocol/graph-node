@@ -1539,7 +1539,9 @@ impl Connection {
                 EVENT_TAP.lock().unwrap().push(event.clone());
             }
         }
-        sender.notify(&mut self.conn, "store_events", None, &v)
+        sender
+            .notify(&mut self.conn, "store_events", None, &v)
+            .await
     }
 
     /// Return the name of the node that has the fewest assignments out of the
