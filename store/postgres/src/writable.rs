@@ -50,8 +50,8 @@ use crate::{retry, NotificationSender};
 struct WritableSubgraphStore(SubgraphStore);
 
 impl WritableSubgraphStore {
-    fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
-        self.0.primary_conn()
+    async fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
+        self.0.primary_conn().await
     }
 
     fn notification_sender(&self) -> Arc<NotificationSender> {
@@ -230,7 +230,8 @@ impl SyncStore {
                 .start_subgraph(logger, self.site.clone(), graft_base)
                 .await?;
             self.store
-                .primary_conn()?
+                .primary_conn()
+                .await?
                 .copy_finished(self.site.as_ref())
                 .await
         })
@@ -371,7 +372,7 @@ impl SyncStore {
 
     async fn unassign_subgraph(&self, site: &Site) -> Result<(), StoreError> {
         retry::forever(&self.logger, "unassign_subgraph", || async {
-            let mut pconn = self.store.primary_conn()?;
+            let mut pconn = self.store.primary_conn().await?;
             let sender = self.store.notification_sender();
             pconn
                 .transaction(|pconn| {
@@ -390,7 +391,7 @@ impl SyncStore {
 
     async fn pause_subgraph(&self, site: &Site) -> Result<(), StoreError> {
         retry::forever(&self.logger, "pause_subgraph", || async {
-            let mut pconn = self.store.primary_conn()?;
+            let mut pconn = self.store.primary_conn().await?;
             let sender = self.store.notification_sender();
             pconn
                 .transaction(|pconn| {
@@ -449,7 +450,7 @@ impl SyncStore {
                 // Make sure we drop `pconn` before we call into the deployment
                 // store so that we do not hold two database connections which
                 // might come from the same pool and could therefore deadlock
-                let mut pconn = self.store.primary_conn()?;
+                let mut pconn = self.store.primary_conn().await?;
                 pconn
                     .transaction(|pconn| {
                         async {
@@ -469,7 +470,7 @@ impl SyncStore {
                     if src.deployment == self.site.deployment {
                         let on_sync = self.writable.on_sync(&self.site).await?;
                         if on_sync.activate() {
-                            let mut pconn = self.store.primary_conn()?;
+                            let mut pconn = self.store.primary_conn().await?;
                             pconn.activate(&self.site.as_ref().into()).await?;
                         }
                         if on_sync.replace() {
@@ -483,7 +484,7 @@ impl SyncStore {
                 .deployment_synced(&self.site.deployment, block_ptr.clone())
                 .await?;
 
-            let mut pconn = self.store.primary_conn()?;
+            let mut pconn = self.store.primary_conn().await?;
             let sender = self.store.notification_sender();
             pconn
                 .transaction(|pconn| pconn.send_store_event(&sender, &event).scope_boxed())

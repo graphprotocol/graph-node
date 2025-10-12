@@ -450,7 +450,10 @@ impl DeploymentStore {
         &self,
         idx: usize,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
-        self.read_only_pools[idx].get().map_err(Error::from)
+        self.read_only_pools[idx]
+            .get_async()
+            .await
+            .map_err(Error::from)
     }
 
     pub(crate) async fn get_replica_conn(
