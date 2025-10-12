@@ -48,6 +48,7 @@ impl QueryStoreTrait for QueryStore {
         let mut conn = self
             .store
             .get_replica_conn(self.replica_id)
+            .await
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         let wait = start.elapsed();
         self.store

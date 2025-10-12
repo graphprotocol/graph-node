@@ -848,7 +848,7 @@ impl Inner {
         }
 
         for store in self.stores.values() {
-            store.drop_all_metadata()?;
+            store.drop_all_metadata().await?;
         }
         self.clear_caches().await;
         Ok(())

@@ -303,7 +303,7 @@ impl DeploymentStore {
         layout.query(&logger, conn, query).await
     }
 
-    fn check_intf_uniqueness(
+    async fn check_intf_uniqueness(
         &self,
         conn: &mut PgConnection,
         layout: &Layout,
@@ -326,7 +326,7 @@ impl DeploymentStore {
         Ok(())
     }
 
-    fn apply_entity_modifications<'a>(
+    async fn apply_entity_modifications<'a>(
         &self,
         conn: &mut PgConnection,
         layout: &Layout,
@@ -345,7 +345,7 @@ impl DeploymentStore {
             section.end();
 
             let section = stopwatch.start_section("check_interface_entity_uniqueness");
-            self.check_intf_uniqueness(conn, layout, group)?;
+            self.check_intf_uniqueness(conn, layout, group).await?;
             section.end();
 
             let section = stopwatch.start_section("apply_entity_modifications_insert");
@@ -414,20 +414,20 @@ impl DeploymentStore {
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.
-    fn read_only_conn(
+    async fn read_only_conn(
         &self,
         idx: usize,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
         self.read_only_pools[idx].get().map_err(Error::from)
     }
 
-    pub(crate) fn get_replica_conn(
+    pub(crate) async fn get_replica_conn(
         &self,
         replica: ReplicaId,
     ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
         let conn = match replica {
             ReplicaId::Main => self.get_conn()?,
-            ReplicaId::ReadOnly(idx) => self.read_only_conn(idx)?,
+            ReplicaId::ReadOnly(idx) => self.read_only_conn(idx).await?,
         };
         Ok(conn)
     }
@@ -615,7 +615,7 @@ impl DeploymentStore {
 
     // Only used for tests
     #[cfg(debug_assertions)]
-    pub(crate) fn drop_all_metadata(&self) -> Result<(), StoreError> {
+    pub(crate) async fn drop_all_metadata(&self) -> Result<(), StoreError> {
         // Delete metadata entities in each shard
 
         // This needs to touch all the tables in the subgraphs schema
@@ -1161,12 +1161,14 @@ impl DeploymentStore {
                     let layout = self.layout(conn, site.clone()).await?;
 
                     let section = stopwatch.start_section("apply_entity_modifications");
-                    let count = self.apply_entity_modifications(
-                        conn,
-                        layout.as_ref(),
-                        batch.groups(),
-                        stopwatch,
-                    )?;
+                    let count = self
+                        .apply_entity_modifications(
+                            conn,
+                            layout.as_ref(),
+                            batch.groups(),
+                            stopwatch,
+                        )
+                        .await?;
                     section.end();
 
                     layout.rollup(conn, last_rollup, &batch.block_times).await?;
