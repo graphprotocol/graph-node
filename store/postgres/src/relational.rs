@@ -1767,7 +1767,7 @@ impl LayoutCache {
     async fn load(conn: &mut PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
         let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref()).await?;
         let has_causality_region =
-            deployment::entities_with_causality_region(conn, site.id, &subgraph_schema)?;
+            deployment::entities_with_causality_region(conn, site.id, &subgraph_schema).await?;
         let catalog =
             Catalog::load(conn, site.clone(), use_bytea_prefix, has_causality_region).await?;
         let layout = Arc::new(Layout::new(site.clone(), &subgraph_schema, catalog)?);
