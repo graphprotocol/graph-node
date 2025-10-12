@@ -267,6 +267,7 @@ impl DeploymentStore {
         let layout = self.layout(&mut conn, site.clone()).await?;
         Ok(
             detail::deployment_entity(&mut conn, &site, &layout.input_schema)
+                .await
                 .with_context(|| format!("Deployment details not found for {}", site.deployment))?,
         )
     }
@@ -551,7 +552,7 @@ impl DeploymentStore {
         ids: Vec<String>,
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
         let conn = &mut *self.get_conn().await?;
-        detail::deployment_details(conn, ids)
+        detail::deployment_details(conn, ids).await
     }
 
     pub async fn deployment_details_for_id(
@@ -560,7 +561,7 @@ impl DeploymentStore {
     ) -> Result<DeploymentDetail, StoreError> {
         let id = DeploymentId::from(locator.clone());
         let conn = &mut *self.get_conn().await?;
-        detail::deployment_details_for_id(conn, &id)
+        detail::deployment_details_for_id(conn, &id).await
     }
 
     pub(crate) async fn deployment_statuses(
@@ -568,7 +569,7 @@ impl DeploymentStore {
         sites: &[Arc<Site>],
     ) -> Result<Vec<status::Info>, StoreError> {
         let conn = &mut *self.get_conn().await?;
-        detail::deployment_statuses(conn, sites)
+        detail::deployment_statuses(conn, sites).await
     }
 
     pub(crate) async fn deployment_exists_and_synced(
@@ -1005,7 +1006,7 @@ impl DeploymentStore {
                 if latest_block_ptr.number < block.number {
                     // If a subgraph has failed deterministically then any blocks past head
                     // should return the same POI
-                    let fatal_error = ErrorDetail::fatal(conn, &site.deployment)?;
+                    let fatal_error = ErrorDetail::fatal(conn, &site.deployment).await?;
                     block_ptr = match fatal_error {
                         Some(se) => TryInto::<SubgraphError>::try_into(se)?
                             .block_ptr
@@ -1732,7 +1733,7 @@ impl DeploymentStore {
         conn.transaction_async(|conn| {
             async {
             // We'll only unfail subgraphs that had fatal errors
-            let subgraph_error = match ErrorDetail::fatal(conn, deployment_id)? {
+            let subgraph_error = match ErrorDetail::fatal(conn, deployment_id).await? {
                 Some(fatal_error) => fatal_error,
                 // If the subgraph is not failed then there is nothing to do.
                 None => return Ok(UnfailOutcome::Noop),
@@ -1828,7 +1829,7 @@ impl DeploymentStore {
 
         conn.transaction_async(|conn| async {
             // We'll only unfail subgraphs that had fatal errors
-            let subgraph_error = match ErrorDetail::fatal(conn, deployment_id)? {
+            let subgraph_error = match ErrorDetail::fatal(conn, deployment_id).await? {
                 Some(fatal_error) => fatal_error,
                 // If the subgraph is not failed then there is nothing to do.
                 None => return Ok(UnfailOutcome::Noop),
