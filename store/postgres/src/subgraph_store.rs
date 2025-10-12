@@ -1211,7 +1211,7 @@ impl Inner {
         deployment: &DeploymentLocator,
     ) -> Result<(i32, BTreeMap<SqlName, BTreeMap<SqlName, i32>>), StoreError> {
         let (store, site) = self.store(&deployment.hash).await?;
-        store.stats_targets(site)
+        store.stats_targets(site).await
     }
 
     /// Set the statistics target for columns `columns` in `deployment`. If

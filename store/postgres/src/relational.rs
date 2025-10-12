@@ -384,7 +384,7 @@ impl Layout {
         index_def: Option<IndexList>,
     ) -> Result<Layout, StoreError> {
         let catalog =
-            Catalog::for_creation(conn, site.cheap_clone(), entities_with_causality_region)?;
+            Catalog::for_creation(conn, site.cheap_clone(), entities_with_causality_region).await?;
         let layout = Self::new(site, schema, catalog)?;
         let sql = layout
             .as_ddl(index_def)
@@ -412,7 +412,7 @@ impl Layout {
     /// Import the database schema for this layout from its own database
     /// shard (in `self.site.shard`) into the database represented by `conn`
     /// if the schema for this layout does not exist yet
-    pub fn import_schema(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+    pub async fn import_schema(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
         let make_query = || -> Result<String, fmt::Error> {
             let nsp = self.site.namespace.as_str();
             let srvname = ForeignServer::name(&self.site.shard);
@@ -431,7 +431,7 @@ impl Layout {
             Ok(query)
         };
 
-        if !catalog::has_namespace(conn, &self.site.namespace)? {
+        if !catalog::has_namespace(conn, &self.site.namespace).await? {
             let query = make_query().map_err(|_| {
                 StoreError::Unknown(anyhow!(
                     "failed to generate SQL to import foreign schema {}",
@@ -1094,7 +1094,7 @@ impl Layout {
         conn: &mut PgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Self>, StoreError> {
-        let account_like = crate::catalog::account_like(conn, &self.site)?;
+        let account_like = crate::catalog::account_like(conn, &self.site).await?;
         let history_blocks = deployment::history_blocks(conn, &self.site).await?;
 
         let is_account_like = { |table: &Table| account_like.contains(table.name.as_str()) };
@@ -1791,7 +1791,8 @@ impl LayoutCache {
         let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref()).await?;
         let has_causality_region =
             deployment::entities_with_causality_region(conn, site.id, &subgraph_schema)?;
-        let catalog = Catalog::load(conn, site.clone(), use_bytea_prefix, has_causality_region)?;
+        let catalog =
+            Catalog::load(conn, site.clone(), use_bytea_prefix, has_causality_region).await?;
         let layout = Arc::new(Layout::new(site.clone(), &subgraph_schema, catalog)?);
         layout.refresh(conn, site).await
     }

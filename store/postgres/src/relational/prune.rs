@@ -62,7 +62,7 @@ impl TablePair {
         let dst = src.new_like(&dst_nsp, &src.name);
 
         let mut query = String::new();
-        if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name)? {
+        if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name).await? {
             writeln!(query, "truncate table {};", dst.qualified_name)?;
         } else {
             let mut list = IndexList {
@@ -231,7 +231,7 @@ impl TablePair {
 
         // What we are about to do would get blocked by autovacuum on our
         // tables, so just kill the autovacuum
-        if let Err(e) = catalog::cancel_vacuum(conn, src_nsp) {
+        if let Err(e) = catalog::cancel_vacuum(conn, src_nsp).await {
             warn!(logger, "Failed to cancel vacuum during pruning; trying to carry on regardless";
                   "src" => src_nsp.as_str(), "error" => e.to_string());
         }
@@ -282,7 +282,7 @@ impl Layout {
             reporter.finish_analyze_table(table.name.as_str());
             cancel.check_cancel()?;
         }
-        let stats = self.catalog.stats(conn)?;
+        let stats = self.catalog.stats(conn).await?;
 
         let analyzed: Vec<_> = tables.iter().map(|table| table.name.as_str()).collect();
         reporter.finish_analyze(&stats, &analyzed);
@@ -304,7 +304,7 @@ impl Layout {
         let needs_analyze = if analyze_all {
             vec![]
         } else {
-            catalog::needs_autoanalyze(conn, &self.site.namespace)?
+            catalog::needs_autoanalyze(conn, &self.site.namespace).await?
         };
         let tables: Vec<_> = self
             .tables
@@ -431,7 +431,7 @@ impl Layout {
             match strat {
                 PruningStrategy::Rebuild => {
                     if recreate_dst_nsp {
-                        catalog::recreate_schema(conn, dst_nsp.as_str())?;
+                        catalog::recreate_schema(conn, dst_nsp.as_str()).await?;
                         recreate_dst_nsp = false;
                     }
                     let pair = TablePair::create(
@@ -518,10 +518,11 @@ impl Layout {
             tracker.finish_table(conn, table).await?;
         }
         if !recreate_dst_nsp {
-            catalog::drop_schema(conn, dst_nsp.as_str())?;
+            catalog::drop_schema(conn, dst_nsp.as_str()).await?;
         }
         for (table, _) in &prunable_tables {
-            catalog::set_last_pruned_block(conn, &self.site, &table.name, req.earliest_block)?;
+            catalog::set_last_pruned_block(conn, &self.site, &table.name, req.earliest_block)
+                .await?;
         }
         let tables = prunable_tables.iter().map(|(table, _)| *table).collect();
         self.analyze_tables(conn, reporter, tables, cancel).await?;

@@ -99,10 +99,11 @@ pub async fn show(
 ) -> Result<(), anyhow::Error> {
     let (site, mut conn) = site_and_conn(pools, search).await?;
 
-    let catalog = store_catalog::Catalog::load(&mut conn, site.cheap_clone(), false, vec![])?;
-    let stats = catalog.stats(&mut conn)?;
+    let catalog =
+        store_catalog::Catalog::load(&mut conn, site.cheap_clone(), false, vec![]).await?;
+    let stats = catalog.stats(&mut conn).await?;
 
-    let account_like = store_catalog::account_like(&mut conn, &site)?;
+    let account_like = store_catalog::account_like(&mut conn, &site).await?;
 
     show_stats(stats.as_slice(), account_like)
 }
