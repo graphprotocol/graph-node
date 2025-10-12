@@ -92,13 +92,16 @@ impl QueryStoreManager for Store {
             )
         })?;
 
-        Ok(Arc::new(QueryStore::new(
-            store,
-            chain_store,
-            site,
-            replica,
-            Arc::new(api_version.clone()),
-        )))
+        Ok(Arc::new(
+            QueryStore::new(
+                store,
+                chain_store,
+                site,
+                replica,
+                Arc::new(api_version.clone()),
+            )
+            .await,
+        ))
     }
 }
 

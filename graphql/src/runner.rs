@@ -290,6 +290,7 @@ where
         let query_start = Instant::now();
         let result = store
             .execute_sql(&req.query)
+            .await
             .map_err(|e| QueryExecutionError::from(e));
 
         self.load_manager.record_work(

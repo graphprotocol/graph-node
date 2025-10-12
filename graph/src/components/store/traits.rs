@@ -684,7 +684,7 @@ pub trait QueryStore: Send + Sync {
         query: EntityQuery,
     ) -> Result<(Vec<QueryObject>, Trace), QueryExecutionError>;
 
-    fn execute_sql(&self, sql: &str) -> Result<Vec<SqlQueryObject>, QueryExecutionError>;
+    async fn execute_sql(&self, sql: &str) -> Result<Vec<SqlQueryObject>, QueryExecutionError>;
 
     async fn is_deployment_synced(&self) -> Result<bool, Error>;
 

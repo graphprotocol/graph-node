@@ -22,7 +22,7 @@ pub(crate) struct QueryStore {
 }
 
 impl QueryStore {
-    pub(crate) fn new(
+    pub(crate) async fn new(
         store: Arc<DeploymentStore>,
         chain_store: Arc<crate::ChainStore>,
         site: Arc<Site>,
@@ -31,6 +31,7 @@ impl QueryStore {
     ) -> Self {
         let sql_parser = store
             .find_layout(site.clone())
+            .await
             .map(|layout| Parser::new(layout, BLOCK_NUMBER_MAX));
         QueryStore {
             site,
@@ -54,6 +55,7 @@ impl QueryStoreTrait for QueryStore {
         let mut conn = self
             .store
             .get_replica_conn(self.replica_id)
+            .await
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         let wait = start.elapsed();
         self.store
@@ -65,7 +67,7 @@ impl QueryStoreTrait for QueryStore {
             })
     }
 
-    fn execute_sql(
+    async fn execute_sql(
         &self,
         sql: &str,
     ) -> Result<Vec<SqlQueryObject>, graph::prelude::QueryExecutionError> {
@@ -80,6 +82,7 @@ impl QueryStoreTrait for QueryStore {
         let mut conn = self
             .store
             .get_replica_conn(self.replica_id)
+            .await
             .map_err(|e| QueryExecutionError::SqlError(format!("SQL error: {}", e)))?;
 
         let parser = self
