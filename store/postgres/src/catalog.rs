@@ -1061,7 +1061,7 @@ fn pg_stats_has_range_bounds_histogram(conn: &mut PgConnection) -> Result<bool, 
         .map_err(StoreError::from)
 }
 
-pub(crate) fn histogram_bounds(
+pub(crate) async fn histogram_bounds(
     conn: &mut PgConnection,
     namespace: &Namespace,
     table: &SqlName,
