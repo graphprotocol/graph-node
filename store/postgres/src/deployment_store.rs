@@ -227,7 +227,7 @@ impl DeploymentStore {
                         schema,
                         entities_with_causality_region.into_iter().collect(),
                         index_def,
-                    )?;
+                    ).await?;
                     // See if we are grafting and check that the graft is permissible
                     if let Some(base) = graft_base {
                         let errors = layout.can_copy_from(&base);

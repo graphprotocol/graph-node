@@ -142,7 +142,7 @@ fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: &str, 
     );
 }
 
-fn create_schema(conn: &mut PgConnection) -> Layout {
+async fn create_schema(conn: &mut PgConnection) -> Layout {
     let schema = InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
     let query = format!("create schema {}", NAMESPACE.as_str());
@@ -154,6 +154,7 @@ fn create_schema(conn: &mut PgConnection) -> Layout {
         NETWORK_NAME.to_string(),
     );
     Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), None)
+        .await
         .expect("Failed to create relational schema")
 }
 
@@ -198,7 +199,7 @@ where
         remove_test_data(conn);
 
         // Seed database with test data
-        let layout = create_schema(conn);
+        let layout = create_schema(conn).await;
 
         // Run test
         test(conn, &layout).await;

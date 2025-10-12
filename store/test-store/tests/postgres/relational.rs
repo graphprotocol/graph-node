@@ -487,7 +487,7 @@ fn insert_pets(conn: &mut PgConnection, layout: &Layout) {
     insert_pet(conn, layout, &*CAT_TYPE, "garfield", "Garfield", 0, 1);
 }
 
-fn create_schema(conn: &mut PgConnection) -> Layout {
+async fn create_schema(conn: &mut PgConnection) -> Layout {
     let schema = InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
@@ -498,6 +498,7 @@ fn create_schema(conn: &mut PgConnection) -> Layout {
     conn.batch_execute(&query).unwrap();
 
     Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), None)
+        .await
         .expect("Failed to create relational schema")
 }
 
@@ -549,7 +550,7 @@ where
         remove_schema(conn);
 
         // Create the database schema
-        let layout = create_schema(conn);
+        let layout = create_schema(conn).await;
 
         // Run test
         test(conn, &layout).await;

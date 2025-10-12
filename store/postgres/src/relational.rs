@@ -376,7 +376,7 @@ impl Layout {
         }
     }
 
-    pub fn create_relational_schema(
+    pub async fn create_relational_schema(
         conn: &mut PgConnection,
         site: Arc<Site>,
         schema: &InputSchema,
