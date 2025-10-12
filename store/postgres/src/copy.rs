@@ -209,25 +209,20 @@ impl CopyState {
             ))
             .execute(conn)?;
 
-        let mut unfinished: Vec<_> = dst
-            .tables
-            .values()
-            .filter_map(|dst_table| {
-                src.table_for_entity(&dst_table.object)
-                    .ok()
-                    .map(|src_table| {
-                        TableState::init(
-                            conn,
-                            primary.cheap_clone(),
-                            dst.site.clone(),
-                            &src,
-                            src_table.clone(),
-                            dst_table.clone(),
-                            &target_block,
-                        )
-                    })
-            })
-            .collect::<Result<_, _>>()?;
+        let mut unfinished = Vec::new();
+        for dst_table in dst.tables.values() {
+            if let Some(src_table) = src.table_for_entity(&dst_table.object).ok() {
+                unfinished.push(TableState::init(
+                    conn,
+                    primary.cheap_clone(),
+                    dst.site.clone(),
+                    &src,
+                    src_table.clone(),
+                    dst_table.clone(),
+                    &target_block,
+                )?);
+            }
+        }
         unfinished.sort_by_key(|table| table.dst.object.to_string());
 
         let values = unfinished
