@@ -921,6 +921,7 @@ async fn layout_cache() {
         assert_eq!(false, table.is_account_like);
 
         set_account_like(conn, site.as_ref(), &table_name, true)
+            .await
             .expect("we can set 'scalar' to account-like");
         sleep(Duration::from_millis(50));
 
@@ -934,6 +935,7 @@ async fn layout_cache() {
 
         // Set it back to false
         set_account_like(conn, site.as_ref(), &table_name, false)
+            .await
             .expect("we can set 'scalar' to account-like");
         sleep(Duration::from_millis(50));
 

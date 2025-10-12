@@ -758,7 +758,7 @@ pub async fn load_indexes_from_table(
     schema_name: &str,
 ) -> Result<Vec<CreateIndex>, StoreError> {
     let table_name = table.name.as_str();
-    let indexes = catalog::indexes_for_table(conn, schema_name, table_name)?;
+    let indexes = catalog::indexes_for_table(conn, schema_name, table_name).await?;
     Ok(indexes.into_iter().map(CreateIndex::parse).collect())
 }
 

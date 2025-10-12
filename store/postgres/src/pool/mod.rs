@@ -774,7 +774,7 @@ impl PoolInner {
         mut conn: PooledConnection<ConnectionManager<PgConnection>>,
     ) -> Result<(), StoreError> {
         Ok(
-            if let Err(msg) = catalog::Locale::load(&mut conn)?.suitable() {
+            if let Err(msg) = catalog::Locale::load(&mut conn).await?.suitable() {
                 if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn).await? {
                     const MSG: &str =
                     "Database does not use C locale. \
@@ -805,10 +805,10 @@ impl PoolInner {
         conn.batch_execute("create extension if not exists postgres_fdw")?;
         conn.transaction_async(|conn| {
             async {
-                let current_servers: Vec<String> = crate::catalog::current_servers(conn)?;
+                let current_servers: Vec<String> = crate::catalog::current_servers(conn).await?;
                 for server in servers.iter().filter(|server| server.shard != self.shard) {
                     if current_servers.contains(&server.name) {
-                        server.update(conn)?;
+                        server.update(conn).await?;
                     } else {
                         server.create(conn)?;
                     }
@@ -835,7 +835,7 @@ impl PoolInner {
         let (this, count) = conn
             .transaction_async::<_, StoreError, _>(|conn| {
                 async {
-                    let count = migrate_schema(&self.logger, conn)?;
+                    let count = migrate_schema(&self.logger, conn).await?;
                     Ok((self, count))
                 }
                 .scope_boxed()
@@ -893,7 +893,7 @@ impl PoolInner {
 
         let mut conn = self.get_async().await?;
         let sharded = Namespace::special(CROSS_SHARD_NSP);
-        if catalog::has_namespace(&mut conn, &sharded)? {
+        if catalog::has_namespace(&mut conn, &sharded).await? {
             // We dropped the namespace before, but another node must have
             // recreated it in the meantime so we don't need to do anything
             return Ok(());
@@ -914,7 +914,8 @@ impl PoolInner {
                             src_table,
                             CROSS_SHARD_NSP,
                             &nsps,
-                        )?;
+                        )
+                        .await?;
                         conn.batch_execute(&create_view)?;
                     }
                 }
@@ -953,7 +954,7 @@ impl PoolInner {
             info!(&self.logger, "Mapping primary");
             let mut conn = self.get_async().await?;
             conn.transaction_async(|conn| {
-                async { ForeignServer::map_primary(conn, &self.shard) }.scope_boxed()
+                ForeignServer::map_primary(conn, &self.shard).scope_boxed()
             })
             .await?;
         }
@@ -964,7 +965,7 @@ impl PoolInner {
                 server.shard.as_str()
             );
             let mut conn = self.get_async().await?;
-            conn.transaction_async(|conn| async { server.map_metadata(conn) }.scope_boxed())
+            conn.transaction_async(|conn| server.map_metadata(conn).scope_boxed())
                 .await?;
         }
         Ok(())
@@ -976,7 +977,7 @@ impl PoolInner {
         }
 
         let mut conn = self.get_async().await?;
-        server.needs_remap(&mut conn)
+        server.needs_remap(&mut conn).await
     }
 }
 
@@ -998,13 +999,16 @@ impl MigrationCount {
 /// When multiple `graph-node` processes start up at the same time, we ensure
 /// that they do not run migrations in parallel by using `blocking_conn` to
 /// serialize them. The `conn` is used to run the actual migration.
-fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<MigrationCount, StoreError> {
+async fn migrate_schema(
+    logger: &Logger,
+    conn: &mut PgConnection,
+) -> Result<MigrationCount, StoreError> {
     use diesel_migrations::MigrationHarness;
 
     // Collect migration logging output
     let mut output = vec![];
 
-    let old_count = catalog::migration_count(conn)?;
+    let old_count = catalog::migration_count(conn).await?;
     let mut harness = HarnessWithOutput::new(conn, &mut output);
 
     info!(logger, "Running migrations");
@@ -1029,7 +1033,7 @@ fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<MigrationC
         debug!(logger, "Postgres migration output"; "output" => msg);
     }
 
-    let migrations = catalog::migration_count(conn)?;
+    let migrations = catalog::migration_count(conn).await?;
 
     Ok(MigrationCount {
         new: migrations,

@@ -132,7 +132,7 @@ impl CopyState {
 
         let crosses_shards = dst.site.shard != src.site.shard;
         if crosses_shards {
-            src.import_schema(conn)?;
+            src.import_schema(conn).await?;
         }
 
         let state = match cs::table
@@ -286,7 +286,7 @@ impl CopyState {
                         self.dst.site.shard
                     ));
                 }
-                crate::catalog::drop_foreign_schema(conn, self.src.site.as_ref())?;
+                crate::catalog::drop_foreign_schema(conn, self.src.site.as_ref()).await?;
             }
         }
         Ok(())
@@ -767,7 +767,7 @@ impl CopyTableWorker {
 
             // Pause copying if replication is lagging behind to avoid
             // overloading replicas
-            let mut lag = catalog::replication_lag(conn)?;
+            let mut lag = catalog::replication_lag(conn).await?;
             if lag > MAX_REPLICATION_LAG {
                 loop {
                     info!(logger,
@@ -775,7 +775,7 @@ impl CopyTableWorker {
                              REPLICATION_SLEEP.as_secs();
                              "lag_s" => lag.as_secs());
                     std::thread::sleep(REPLICATION_SLEEP);
-                    lag = catalog::replication_lag(conn)?;
+                    lag = catalog::replication_lag(conn).await?;
                     if lag <= ACCEPTABLE_REPLICATION_LAG {
                         break;
                     }

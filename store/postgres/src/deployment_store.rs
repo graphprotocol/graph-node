@@ -226,7 +226,8 @@ impl DeploymentStore {
                         schema,
                         entities_with_causality_region.into_iter().collect(),
                         index_def,
-                    ).await?;
+                    )
+                    .await?;
                     // See if we are grafting and check that the graft is permissible
                     if let Some(base) = graft_base {
                         let errors = layout.can_copy_from(&base);
@@ -660,13 +661,13 @@ impl DeploymentStore {
         Ok(())
     }
 
-    pub(crate) fn stats_targets(
+    pub(crate) async fn stats_targets(
         &self,
         site: Arc<Site>,
     ) -> Result<(i32, BTreeMap<SqlName, BTreeMap<SqlName, i32>>), StoreError> {
         let mut conn = self.get_conn()?;
-        let default = catalog::default_stats_target(&mut conn)?;
-        let targets = catalog::stats_targets(&mut conn, &site.namespace)?;
+        let default = catalog::default_stats_target(&mut conn).await?;
+        let targets = catalog::stats_targets(&mut conn, &site.namespace).await?;
 
         Ok((default, targets))
     }
@@ -692,13 +693,8 @@ impl DeploymentStore {
                 for table in tables {
                     let (columns, _) = resolve_column_names_and_index_exprs(table, &columns)?;
 
-                    catalog::set_stats_target(
-                        conn,
-                        &site.namespace,
-                        &table.name,
-                        &columns,
-                        target,
-                    )?;
+                    catalog::set_stats_target(conn, &site.namespace, &table.name, &columns, target)
+                        .await?;
                 }
                 Ok(())
             }
@@ -749,7 +745,7 @@ impl DeploymentStore {
             sql_query(sql).execute(conn)?;
             // check if the index creation was successfull
             let index_is_valid =
-                catalog::check_index_is_valid(conn, schema_name.as_str(), &index_name)?;
+                catalog::check_index_is_valid(conn, schema_name.as_str(), &index_name).await?;
             if index_is_valid {
                 Ok(())
             } else {
@@ -779,6 +775,7 @@ impl DeploymentStore {
             let table_name = &table.name;
             let indexes =
                 catalog::indexes_for_table(conn, schema_name.as_str(), table_name.as_str())
+                    .await
                     .map_err(StoreError::from)?;
             Ok(indexes.into_iter().map(CreateIndex::parse).collect())
         })
@@ -801,7 +798,9 @@ impl DeploymentStore {
         let index_name = String::from(index_name);
         self.with_conn(async move |mut conn, _| {
             let schema_name = site.namespace.clone();
-            catalog::drop_index(&mut conn, schema_name.as_str(), &index_name).map_err(Into::into)
+            catalog::drop_index(&mut conn, schema_name.as_str(), &index_name)
+                .await
+                .map_err(Into::into)
         })
         .await
     }
@@ -818,6 +817,7 @@ impl DeploymentStore {
             let layout = store.layout(&mut conn, site.clone()).await?;
             let table = resolve_table_name(&layout, &table)?;
             catalog::set_account_like(&mut conn, &site, &table.name, is_account_like)
+                .await
                 .map_err(Into::into)
         })
         .await
@@ -1629,7 +1629,7 @@ impl DeploymentStore {
                     info!(logger, "Copied {} existing errors", count;
                       "time_ms" => start.elapsed().as_millis());
 
-                    catalog::copy_account_like(conn, &src.site, &dst.site)?;
+                    catalog::copy_account_like(conn, &src.site, &dst.site).await?;
 
                     // Analyze all tables for this deployment
                     info!(logger, "Analyzing all {} tables", dst.tables.len());
