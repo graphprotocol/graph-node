@@ -351,7 +351,7 @@ impl SubgraphStore {
             //       assignment that we used last time to avoid creating
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id).await?;
-            let mut conn = self.primary_conn()?;
+            let mut conn = self.primary_conn().await?;
             let (site, site_was_created) = conn
                 .allocate_site(shard, schema.id(), network_name, graft_base)
                 .await?;
@@ -370,7 +370,8 @@ impl SubgraphStore {
             };
 
             if let Some(graft_base) = &graft_base {
-                self.primary_conn()?
+                self.primary_conn()
+                    .await?
                     .record_active_copy(graft_base.site.as_ref(), site.as_ref())
                     .await?;
             }
@@ -414,7 +415,7 @@ impl SubgraphStore {
 
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         pconn
             .transaction(|pconn| {
                 let subgraph_store = self.cheap_clone();
@@ -658,7 +659,7 @@ impl Inner {
             }
             1 => Ok(nodes.pop().unwrap()),
             _ => {
-                let mut conn = self.primary_conn()?;
+                let mut conn = self.primary_conn().await?;
 
                 // unwrap is fine since nodes is not empty
                 let node = conn.least_assigned_node(&nodes).await?.unwrap();
@@ -672,7 +673,7 @@ impl Inner {
             0 => Ok(PRIMARY_SHARD.clone()),
             1 => Ok(shards.pop().unwrap()),
             _ => {
-                let mut conn = self.primary_conn()?;
+                let mut conn = self.primary_conn().await?;
 
                 // unwrap is fine since shards is not empty
                 let shard = conn.least_used_shard(&shards).await?.unwrap();
@@ -720,7 +721,12 @@ impl Inner {
         let src_store = self.for_site(src.as_ref())?;
         let src_loc = DeploymentLocator::from(src.as_ref());
         let src_layout = src_store.find_layout(src.cheap_clone()).await?;
-        let dst = Arc::new(self.primary_conn()?.copy_site(&src, shard.clone()).await?);
+        let dst = Arc::new(
+            self.primary_conn()
+                .await?
+                .copy_site(&src, shard.clone())
+                .await?,
+        );
         let dst_loc = DeploymentLocator::from(dst.as_ref());
 
         if src.id == dst.id {
@@ -754,7 +760,8 @@ impl Inner {
 
         let graft_base = self.layout(&src.deployment).await?;
 
-        self.primary_conn()?
+        self.primary_conn()
+            .await?
             .record_active_copy(src.as_ref(), dst.as_ref())
             .await?;
 
@@ -776,7 +783,7 @@ impl Inner {
             )
             .await?;
 
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         pconn
             .transaction(|pconn| {
                 async {
@@ -798,7 +805,7 @@ impl Inner {
     /// with the same deployment hash. Activating this specific deployment
     /// will make queries use that instead of whatever was active before
     pub async fn activate(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
-        self.primary_conn()?.activate(deployment).await?;
+        self.primary_conn().await?.activate(deployment).await?;
         // As a side-effect, this will update the `self.sites` cache with
         // the new active site
         self.find_site(deployment.id.into()).await?;
@@ -811,8 +818,8 @@ impl Inner {
     /// connections can deadlock the entire process if the pool runs out
     /// of connections in between getting the first one and trying to get the
     /// second one.
-    pub(crate) fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
-        let conn = self.mirror.primary().get()?;
+    pub(crate) async fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
+        let conn = self.mirror.primary().get_async().await?;
         Ok(primary::Connection::new(conn))
     }
 
@@ -838,7 +845,7 @@ impl Inner {
     /// it very hard to export items just for testing
     #[cfg(debug_assertions)]
     pub async fn remove_all_subgraphs_for_test_use_only(&self) -> Result<(), StoreError> {
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         let schemas = pconn.sites().await?;
 
         // Delete all subgraph schemas
@@ -877,7 +884,11 @@ impl Inner {
     /// Look for new unused deployments and add them to the `unused_deployments`
     /// table
     pub async fn record_unused_deployments(&self) -> Result<Vec<DeploymentDetail>, StoreError> {
-        let deployments = self.primary_conn()?.detect_unused_deployments().await?;
+        let deployments = self
+            .primary_conn()
+            .await?
+            .detect_unused_deployments()
+            .await?;
 
         // deployments_by_shard takes an empty vec to mean 'give me everything',
         // so we short-circuit that here
@@ -900,7 +911,8 @@ impl Inner {
             details.extend(store.deployment_details(ids).await?);
         }
 
-        self.primary_conn()?
+        self.primary_conn()
+            .await?
             .update_unused_deployments(&details)
             .await?;
         Ok(details)
@@ -910,7 +922,10 @@ impl Inner {
         &self,
         filter: unused::Filter,
     ) -> Result<Vec<UnusedDeployment>, StoreError> {
-        self.primary_conn()?.list_unused_deployments(filter).await
+        self.primary_conn()
+            .await?
+            .list_unused_deployments(filter)
+            .await
     }
 
     /// Remove a deployment, i.e., all its data and metadata. This is only permissible
@@ -927,7 +942,8 @@ impl Inner {
         // the active deployment of that subgraph
         if site.active
             && !self
-                .primary_conn()?
+                .primary_conn()
+                .await?
                 .subgraphs_using_deployment(site.as_ref())
                 .await?
                 .is_empty()
@@ -938,9 +954,10 @@ impl Inner {
         if removable {
             store.drop_deployment(&site).await?;
 
-            self.primary_conn()?.drop_site(site.as_ref()).await?;
+            self.primary_conn().await?.drop_site(site.as_ref()).await?;
         } else {
-            self.primary_conn()?
+            self.primary_conn()
+                .await?
                 .unused_deployment_is_used(site.as_ref())
                 .await?;
         }
@@ -1425,7 +1442,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     }
 
     async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         pconn
             .transaction(|pconn| pconn.create_subgraph(&name).scope_boxed())
             .await
@@ -1435,14 +1452,14 @@ impl SubgraphStoreTrait for SubgraphStore {
         &self,
         features: DeploymentFeatures,
     ) -> Result<(), StoreError> {
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         pconn
             .transaction(|pconn| pconn.create_subgraph_features(features).scope_boxed())
             .await
     }
 
     async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         pconn
             .transaction(|pconn| {
                 async {
@@ -1462,7 +1479,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         node_id: &NodeId,
     ) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         pconn
             .transaction(|pconn| {
                 async {
@@ -1478,7 +1495,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     async fn unassign_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         pconn
             .transaction(|pconn| {
                 async {
@@ -1494,7 +1511,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     async fn pause_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         pconn
             .transaction(|pconn| {
                 async {
@@ -1510,7 +1527,7 @@ impl SubgraphStoreTrait for SubgraphStore {
 
     async fn resume_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         pconn
             .transaction(|pconn| {
                 async {
@@ -1563,7 +1580,7 @@ impl SubgraphStoreTrait for SubgraphStore {
         deployment: &DeploymentHash,
     ) -> Result<Option<DeploymentFeatures>, StoreError> {
         let deployment = deployment.to_string();
-        let mut pconn = self.primary_conn()?;
+        let mut pconn = self.primary_conn().await?;
         pconn
             .get_subgraph_features(deployment)
             .await

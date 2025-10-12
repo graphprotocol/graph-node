@@ -1913,7 +1913,7 @@ impl Primary {
     pub async fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
         use active_copies as ac;
 
-        let mut conn = self.pool.get()?;
+        let mut conn = self.pool.get_async().await?;
 
         select(diesel::dsl::exists(
             ac::table
@@ -1927,7 +1927,7 @@ impl Primary {
     pub async fn is_copy_cancelled(&self, dst: &Site) -> Result<bool, StoreError> {
         use active_copies as ac;
 
-        let mut conn = self.pool.get()?;
+        let mut conn = self.pool.get_async().await?;
 
         ac::table
             .filter(ac::dst.eq(dst.id))
@@ -2018,7 +2018,7 @@ impl Mirror {
     {
         async move {
             for pool in self.pools.as_ref() {
-                let mut conn = match pool.get() {
+                let mut conn = match pool.get_async().await {
                     Ok(conn) => conn,
                     Err(StoreError::DatabaseUnavailable) => continue,
                     Err(e) => return Err(e),
