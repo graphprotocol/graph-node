@@ -121,7 +121,7 @@ struct CopyState {
 }
 
 impl CopyState {
-    fn new(
+    async fn new(
         conn: &mut PgConnection,
         primary: Primary,
         src: Arc<Layout>,
@@ -162,22 +162,22 @@ impl CopyState {
                         src.site.id
                     ));
                 }
-                Self::load(conn, primary, src, dst, target_block)
+                Self::load(conn, primary, src, dst, target_block).await
             }
-            None => Self::create(conn, primary.cheap_clone(), src, dst, target_block),
+            None => Self::create(conn, primary.cheap_clone(), src, dst, target_block).await,
         }?;
 
         Ok(state)
     }
 
-    fn load(
+    async fn load(
         conn: &mut PgConnection,
         primary: Primary,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
     ) -> Result<CopyState, StoreError> {
-        let tables = TableState::load(conn, primary, src.as_ref(), dst.as_ref())?;
+        let tables = TableState::load(conn, primary, src.as_ref(), dst.as_ref()).await?;
         let (finished, mut unfinished): (Vec<_>, Vec<_>) =
             tables.into_iter().partition(|table| table.finished());
         unfinished.sort_by_key(|table| table.dst.object.to_string());
@@ -190,7 +190,7 @@ impl CopyState {
         })
     }
 
-    fn create(
+    async fn create(
         conn: &mut PgConnection,
         primary: Primary,
         src: Arc<Layout>,
@@ -212,15 +212,18 @@ impl CopyState {
         let mut unfinished = Vec::new();
         for dst_table in dst.tables.values() {
             if let Some(src_table) = src.table_for_entity(&dst_table.object).ok() {
-                unfinished.push(TableState::init(
-                    conn,
-                    primary.cheap_clone(),
-                    dst.site.clone(),
-                    &src,
-                    src_table.clone(),
-                    dst_table.clone(),
-                    &target_block,
-                )?);
+                unfinished.push(
+                    TableState::init(
+                        conn,
+                        primary.cheap_clone(),
+                        dst.site.clone(),
+                        &src,
+                        src_table.clone(),
+                        dst_table.clone(),
+                        &target_block,
+                    )
+                    .await?,
+                );
             }
         }
         unfinished.sort_by_key(|table| table.dst.object.to_string());
@@ -324,7 +327,7 @@ struct TableState {
 }
 
 impl TableState {
-    fn init(
+    async fn init(
         conn: &mut PgConnection,
         primary: Primary,
         dst_site: Arc<Site>,
@@ -334,7 +337,8 @@ impl TableState {
         target_block: &BlockPtr,
     ) -> Result<Self, StoreError> {
         let vid_range = VidRange::for_copy(conn, &src, target_block)?;
-        let batcher = VidBatcher::load(conn, &src_layout.site.namespace, src.as_ref(), vid_range)?;
+        let batcher =
+            VidBatcher::load(conn, &src_layout.site.namespace, src.as_ref(), vid_range).await?;
         Ok(Self {
             primary,
             src,
@@ -349,7 +353,7 @@ impl TableState {
         self.batcher.finished()
     }
 
-    fn load(
+    async fn load(
         conn: &mut PgConnection,
         primary: Primary,
         src_layout: &Layout,
@@ -408,7 +412,8 @@ impl TableState {
                 &src_layout.site.namespace,
                 &src,
                 VidRange::new(current_vid, target_vid),
-            )?
+            )
+            .await?
             .with_batch_size(size as usize);
 
             let state = TableState {
@@ -1128,7 +1133,7 @@ impl Connection {
         let primary = self.primary.cheap_clone();
         let mut state = self
             .transaction(|conn| {
-                async { CopyState::new(conn, primary, src, dst, target_block) }.scope_boxed()
+                CopyState::new(conn, primary, src, dst, target_block).scope_boxed()
             })?
             .await?;
 

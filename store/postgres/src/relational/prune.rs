@@ -106,7 +106,7 @@ impl TablePair {
 
         // Determine the last vid that we need to copy
         let range = VidRange::for_prune(conn, &self.src, earliest_block, final_block)?;
-        let mut batcher = VidBatcher::load(conn, &self.src_nsp, &self.src, range)?;
+        let mut batcher = VidBatcher::load(conn, &self.src_nsp, &self.src, range).await?;
         tracker.start_copy_final(conn, &self.src, range).await?;
 
         while !batcher.finished() {
@@ -174,7 +174,7 @@ impl TablePair {
 
         // Determine the last vid that we need to copy
         let range = VidRange::for_prune(conn, &self.src, final_block + 1, BLOCK_NUMBER_MAX)?;
-        let mut batcher = VidBatcher::load(conn, &self.src.nsp, &self.src, range)?;
+        let mut batcher = VidBatcher::load(conn, &self.src.nsp, &self.src, range).await?;
         tracker.start_copy_nonfinal(conn, &self.src, range).await?;
 
         while !batcher.finished() {
@@ -479,7 +479,8 @@ impl Layout {
                     // Delete all entity versions whose range was closed
                     // before `req.earliest_block`
                     let range = VidRange::for_prune(conn, &table, 0, req.earliest_block)?;
-                    let mut batcher = VidBatcher::load(conn, &self.site.namespace, &table, range)?;
+                    let mut batcher =
+                        VidBatcher::load(conn, &self.site.namespace, &table, range).await?;
 
                     tracker.start_delete(conn, table, range, &batcher).await?;
                     while !batcher.finished() {

@@ -118,13 +118,13 @@ impl VidBatcher {
     /// The `vid_range` is inclusive, i.e., the batcher will iterate over
     /// all vids `vid_range.0 <= vid <= vid_range.1`; for an empty table,
     /// the `vid_range` must be set to `(-1, 0)`
-    pub fn load(
+    pub async fn load(
         conn: &mut PgConnection,
         nsp: &Namespace,
         table: &Table,
         vid_range: VidRange,
     ) -> Result<Self, StoreError> {
-        let bounds = catalog::histogram_bounds(conn, nsp, &table.name, VID_COLUMN)?;
+        let bounds = catalog::histogram_bounds(conn, nsp, &table.name, VID_COLUMN).await?;
         let batch_size = AdaptiveBatchSize::new(table);
         Self::new(bounds, vid_range, batch_size)
     }
