@@ -38,7 +38,7 @@ use crate::network_setup::Networks;
 pub async fn list(primary: ConnectionPool, store: BlockStore) -> Result<(), Error> {
     let mut chains = {
         let mut conn = primary.get_async().await?;
-        block_store::load_chains(&mut conn)?
+        block_store::load_chains(&mut conn).await?
     };
     chains.sort_by_key(|chain| chain.name.clone());
 
@@ -124,7 +124,8 @@ pub async fn info(
 
     let mut conn = primary.get_async().await?;
 
-    let chain = block_store::find_chain(&mut conn, &name)?
+    let chain = block_store::find_chain(&mut conn, &name)
+        .await?
         .ok_or_else(|| anyhow!("unknown chain: {}", name))?;
 
     let chain_store = store
@@ -233,7 +234,8 @@ pub async fn change_block_cache_shard(
 
     let mut conn = primary_store.get_async().await?;
 
-    let chain = find_chain(&mut conn, &chain_name)?
+    let chain = find_chain(&mut conn, &chain_name)
+        .await?
         .ok_or_else(|| anyhow!("unknown chain: {}", chain_name))?;
     let old_shard = chain.shard;
 
@@ -250,7 +252,7 @@ pub async fn change_block_cache_shard(
         async {
             let shard = Shard::new(shard.to_string())?;
 
-            let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident)?;
+            let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident).await?;
 
             graph::block_on(store.add_chain_store(&chain,ChainStatus::Ingestible, true))?;
 
@@ -261,10 +263,10 @@ pub async fn change_block_cache_shard(
             .execute(conn)?;
 
             // Update the current chain name to chain-old
-            update_chain_name(conn, &chain_name, &new_name)?;
+            update_chain_name(conn, &chain_name, &new_name).await?;
 
             // Create a new chain with the name in the destination shard
-            let _ = add_chain(conn, &chain_name, &shard, ident)?;
+            let _ = add_chain(conn, &chain_name, &shard, ident).await?;
 
             // Re-add the foreign key constraint
             sql_query(
