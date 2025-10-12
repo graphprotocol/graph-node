@@ -153,7 +153,7 @@ pub(crate) struct ErrorDetail {
 impl ErrorDetail {
     /// Fetches the fatal error, if present, associated with the given
     /// [`DeploymentHash`].
-    pub fn fatal(
+    pub async fn fatal(
         conn: &mut PgConnection,
         deployment_id: &DeploymentHash,
     ) -> Result<Option<Self>, StoreError> {
@@ -305,7 +305,7 @@ pub(crate) fn info_from_details(
 }
 
 /// Return the details for `deployments`
-pub(crate) fn deployment_details(
+pub(crate) async fn deployment_details(
     conn: &mut PgConnection,
     deployments: Vec<String>,
 ) -> Result<Vec<DeploymentDetail>, StoreError> {
@@ -334,7 +334,7 @@ pub(crate) fn deployment_details(
 }
 
 /// Return the details for `deployment`
-pub(crate) fn deployment_details_for_id(
+pub(crate) async fn deployment_details_for_id(
     conn: &mut PgConnection,
     deployment: &DeploymentId,
 ) -> Result<DeploymentDetail, StoreError> {
@@ -352,7 +352,7 @@ pub(crate) fn deployment_details_for_id(
         .map(DeploymentDetail::from)
 }
 
-pub(crate) fn deployment_statuses(
+pub(crate) async fn deployment_statuses(
     conn: &mut PgConnection,
     sites: &[Arc<Site>],
 ) -> Result<Vec<status::Info>, StoreError> {
@@ -538,7 +538,7 @@ impl StoredDeploymentEntity {
     }
 }
 
-pub fn deployment_entity(
+pub async fn deployment_entity(
     conn: &mut PgConnection,
     site: &Site,
     schema: &InputSchema,
@@ -575,7 +575,7 @@ pub struct GraphNodeVersion {
 }
 
 impl GraphNodeVersion {
-    pub(crate) fn create_or_get(conn: &mut PgConnection) -> anyhow::Result<i32> {
+    pub(crate) async fn create_or_get(conn: &mut PgConnection) -> anyhow::Result<i32> {
         let git_commit_hash = version_commit_hash!();
         let git_repository_dirty = !&TESTAMENT.modifications.is_empty();
         let crate_version = CARGO_PKG_VERSION;

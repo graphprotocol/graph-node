@@ -1227,7 +1227,7 @@ pub async fn create_deployment(
         d::debug_fork.eq(debug_fork.as_ref().map(|s| s.as_str())),
     );
 
-    let graph_node_version_id = GraphNodeVersion::create_or_get(conn)?;
+    let graph_node_version_id = GraphNodeVersion::create_or_get(conn).await?;
 
     let manifest_values = (
         m::id.eq(site.id),
