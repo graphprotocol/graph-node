@@ -379,7 +379,8 @@ impl TableState {
                 .map(|table| table.clone())
         }
 
-        cts::table
+        let mut states = Vec::new();
+        for (id, entity_type, current_vid, target_vid, size, duration_ms) in cts::table
             .filter(cts::dst.eq(dst_layout.site.id))
             .select((
                 cts::id,
@@ -392,43 +393,35 @@ impl TableState {
             .order_by(cts::entity_type)
             .load::<(i32, String, i64, i64, i64, i64)>(conn)?
             .into_iter()
-            .map(
-                |(id, entity_type, current_vid, target_vid, size, duration_ms)| {
-                    let entity_type = src_layout.input_schema.entity_type(&entity_type)?;
-                    let src =
-                        resolve_entity(src_layout, "source", &entity_type, dst_layout.site.id, id);
-                    let dst = resolve_entity(
-                        dst_layout,
-                        "destination",
-                        &entity_type,
-                        dst_layout.site.id,
-                        id,
-                    );
-                    match (src, dst) {
-                        (Ok(src), Ok(dst)) => {
-                            let batcher = VidBatcher::load(
-                                conn,
-                                &src_layout.site.namespace,
-                                &src,
-                                VidRange::new(current_vid, target_vid),
-                            )?
-                            .with_batch_size(size as usize);
+        {
+            let entity_type = src_layout.input_schema.entity_type(&entity_type)?;
+            let src = resolve_entity(src_layout, "source", &entity_type, dst_layout.site.id, id)?;
+            let dst = resolve_entity(
+                dst_layout,
+                "destination",
+                &entity_type,
+                dst_layout.site.id,
+                id,
+            )?;
+            let batcher = VidBatcher::load(
+                conn,
+                &src_layout.site.namespace,
+                &src,
+                VidRange::new(current_vid, target_vid),
+            )?
+            .with_batch_size(size as usize);
 
-                            Ok(TableState {
-                                primary: primary.cheap_clone(),
-                                src,
-                                dst,
-                                dst_site: dst_layout.site.clone(),
-                                batcher,
-                                duration_ms,
-                            })
-                        }
-                        (Err(e), _) => Err(e),
-                        (_, Err(e)) => Err(e),
-                    }
-                },
-            )
-            .collect()
+            let state = TableState {
+                primary: primary.cheap_clone(),
+                src,
+                dst,
+                dst_site: dst_layout.site.clone(),
+                batcher,
+                duration_ms,
+            };
+            states.push(state);
+        }
+        Ok(states)
     }
 
     fn record_progress(
