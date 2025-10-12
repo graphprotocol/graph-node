@@ -54,9 +54,8 @@ pub mod primary {
     use std::convert::TryFrom;
 
     use diesel::{
-        delete, insert_into,
-        r2d2::{ConnectionManager, PooledConnection},
-        update, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl, RunQueryDsl,
+        delete, insert_into, update, ExpressionMethods, OptionalExtension, PgConnection, QueryDsl,
+        RunQueryDsl,
     };
     use graph::{
         blockchain::{BlockHash, ChainIdentifier},
@@ -109,18 +108,21 @@ pub mod primary {
         }
     }
 
-    pub fn load_chains(conn: &mut PgConnection) -> Result<Vec<Chain>, StoreError> {
+    pub async fn load_chains(conn: &mut PgConnection) -> Result<Vec<Chain>, StoreError> {
         Ok(chains::table.load(conn)?)
     }
 
-    pub fn find_chain(conn: &mut PgConnection, name: &str) -> Result<Option<Chain>, StoreError> {
+    pub async fn find_chain(
+        conn: &mut PgConnection,
+        name: &str,
+    ) -> Result<Option<Chain>, StoreError> {
         Ok(chains::table
             .filter(chains::name.eq(name))
             .first(conn)
             .optional()?)
     }
 
-    pub fn add_chain(
+    pub async fn add_chain(
         conn: &mut PgConnection,
         name: &str,
         shard: &Shard,
@@ -165,24 +167,13 @@ pub mod primary {
     }
 
     // update chain name where chain name is 'name'
-    pub fn update_chain_name(
+    pub async fn update_chain_name(
         conn: &mut PgConnection,
         name: &str,
         new_name: &str,
     ) -> Result<(), StoreError> {
         update(chains::table.filter(chains::name.eq(name)))
             .set(chains::name.eq(new_name))
-            .execute(conn)?;
-        Ok(())
-    }
-
-    pub fn update_chain_genesis_hash(
-        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
-        name: &str,
-        hash: BlockHash,
-    ) -> Result<(), StoreError> {
-        update(chains::table.filter(chains::name.eq(name)))
-            .set(chains::genesis_block_hash.eq(hash.hash_hex()))
             .execute(conn)?;
         Ok(())
     }
@@ -265,7 +256,7 @@ impl BlockStore {
 
         let mirror = PrimaryMirror::new(&pools);
         let existing_chains = mirror
-            .read_async(|conn| async { primary::load_chains(conn) }.scope_boxed())
+            .read_async(|conn| primary::load_chains(conn).scope_boxed())
             .await?;
         let chain_head_cache = TimedCache::new(CHAIN_HEAD_CACHE_TTL);
         let chains = shards.clone();
@@ -345,7 +336,7 @@ impl BlockStore {
         self.mirror.primary().query_permit().await
     }
 
-    pub fn allocate_chain(
+    pub async fn allocate_chain(
         conn: &mut PgConnection,
         name: &String,
         shard: &Shard,
@@ -463,7 +454,7 @@ impl BlockStore {
         self.mirror
             .read_async(|conn| {
                 async {
-                    match primary::find_chain(conn, &chain)? {
+                    match primary::find_chain(conn, &chain).await? {
                         Some(chain) => {
                             let chain_store = this
                                 .add_chain_store(&chain, ChainStatus::ReadOnly, false)
@@ -617,7 +608,7 @@ impl BlockStore {
                 }
             })
             .ok_or_else(|| anyhow!("unable to find shard for network {}", network))?;
-        let chain = primary::add_chain(&mut conn, &network, &shard, ident)?;
+        let chain = primary::add_chain(&mut conn, &network, &shard, ident).await?;
         self.add_chain_store(&chain, ChainStatus::Ingestible, true)
             .await
             .map_err(anyhow::Error::from)
