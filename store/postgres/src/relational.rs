@@ -460,7 +460,7 @@ impl Layout {
             .ok_or_else(|| StoreError::UnknownTable(entity.to_string()))
     }
 
-    pub fn find(
+    pub async fn find(
         &self,
         conn: &mut PgConnection,
         key: &EntityKey,

@@ -570,6 +570,7 @@ async fn find() {
                 &SCALAR_TYPE.parse_key("one").unwrap(),
                 BLOCK_NUMBER_MAX,
             )
+            .await
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&SCALAR_ENTITY), entity);
@@ -581,6 +582,7 @@ async fn find() {
                 &SCALAR_TYPE.parse_key("noone").unwrap(),
                 BLOCK_NUMBER_MAX,
             )
+            .await
             .expect("Failed to read Scalar[noone]");
         assert!(entity.is_none());
     })
@@ -604,6 +606,7 @@ async fn insert_null_fulltext_fields() {
                 &NULLABLE_STRINGS_TYPE.parse_key("one").unwrap(),
                 BLOCK_NUMBER_MAX,
             )
+            .await
             .expect("Failed to read NullableStrings[one]")
             .unwrap();
         assert_entity_eq!(scrub(&EMPTY_NULLABLESTRINGS_ENTITY), entity);
@@ -637,6 +640,7 @@ async fn update() {
                 &SCALAR_TYPE.parse_key("one").unwrap(),
                 BLOCK_NUMBER_MAX,
             )
+            .await
             .expect("Failed to read Scalar[one]")
             .unwrap();
         assert_entity_eq!(scrub(&entity), actual);
@@ -694,15 +698,17 @@ async fn update_many() {
             .expect("Failed to update");
 
         // check updates took effect
-        let updated: Vec<Entity> = ["one", "two", "three"]
-            .iter()
-            .map(|&id| {
-                layout
-                    .find(conn, &SCALAR_TYPE.parse_key(id).unwrap(), BLOCK_NUMBER_MAX)
-                    .unwrap_or_else(|_| panic!("Failed to read Scalar[{}]", id))
-                    .unwrap()
-            })
-            .collect();
+        let mut updated: Vec<Entity> = Vec::new();
+        for id in &["one", "two", "three"] {
+            let entity = layout
+                .find(conn, &SCALAR_TYPE.parse_key(*id).unwrap(), BLOCK_NUMBER_MAX)
+                .await
+                .unwrap_or_else(|_| panic!("Failed to read Scalar[{}]", id))
+                .unwrap();
+            updated.push(entity);
+        }
+        let updated = updated;
+
         let new_one = &updated[0];
         let new_two = &updated[1];
         let new_three = &updated[2];
@@ -768,6 +774,7 @@ async fn serialize_bigdecimal() {
                     &SCALAR_TYPE.parse_key("one").unwrap(),
                     BLOCK_NUMBER_MAX,
                 )
+                .await
                 .expect("Failed to read Scalar[one]")
                 .unwrap();
             assert_entity_eq!(entity, actual);
@@ -806,6 +813,7 @@ async fn enum_arrays() {
                     .unwrap(),
                 BLOCK_NUMBER_MAX,
             )
+            .await
             .expect("Failed to read Spectrum[rainbow]")
             .unwrap();
         assert_entity_eq!(spectrum, actual);
@@ -1010,7 +1018,7 @@ async fn conflicting_entity() {
 
 #[tokio::test]
 async fn revert_block() {
-    fn check_fred(conn: &mut PgConnection, layout: &Layout) {
+    async fn check_fred(conn: &mut PgConnection, layout: &Layout) {
         let id = "fred";
 
         let set_fred = |conn: &mut PgConnection, name, block| {
@@ -1026,9 +1034,10 @@ async fn revert_block() {
             }
         };
 
-        let assert_fred = |conn: &mut PgConnection, name: &str| {
+        let assert_fred = async |conn: &mut PgConnection, name: &str| {
             let fred = layout
                 .find(conn, &CAT_TYPE.parse_key(id).unwrap(), BLOCK_NUMBER_MAX)
+                .await
                 .unwrap()
                 .expect("there's a fred");
             assert_eq!(name, fred.get("name").unwrap().as_str().unwrap())
@@ -1040,14 +1049,14 @@ async fn revert_block() {
         set_fred(conn, "three", 3);
 
         layout.revert_block(conn, 3).unwrap();
-        assert_fred(conn, "two");
+        assert_fred(conn, "two").await;
         layout.revert_block(conn, 2).unwrap();
-        assert_fred(conn, "one");
+        assert_fred(conn, "one").await;
 
         set_fred(conn, "three", 3);
-        assert_fred(conn, "three");
+        assert_fred(conn, "three").await;
         layout.revert_block(conn, 3).unwrap();
-        assert_fred(conn, "one");
+        assert_fred(conn, "one").await;
     }
 
     async fn check_marty(conn: &mut PgConnection, layout: &Layout) {
@@ -1113,7 +1122,7 @@ async fn revert_block() {
     }
 
     run_test(async |conn, layout| {
-        check_fred(conn, layout);
+        check_fred(conn, layout).await;
         check_marty(conn, layout).await;
     })
     .await;
