@@ -254,7 +254,7 @@ impl ChainHeadUpdateSender {
         }
     }
 
-    pub fn send(&self, hash: &str, number: i64) -> Result<(), StoreError> {
+    pub async fn send(&self, hash: &str, number: i64) -> Result<(), StoreError> {
         let msg = json! ({
             "network_name": &self.chain_name,
             "head_block_hash": hash,
@@ -262,11 +262,13 @@ impl ChainHeadUpdateSender {
         });
 
         let mut conn = self.pool.get()?;
-        self.sender.notify(
-            &mut conn,
-            CHANNEL_NAME.as_str(),
-            Some(&self.chain_name),
-            &msg,
-        )
+        self.sender
+            .notify(
+                &mut conn,
+                CHANNEL_NAME.as_str(),
+                Some(&self.chain_name),
+                &msg,
+            )
+            .await
     }
 }
