@@ -87,6 +87,7 @@ mod tests {
         prelude::{BlockPtr, DeploymentHash, Value},
         schema::InputSchema,
     };
+    use alloy::primitives::{Address, B256};
     use maplit::hashmap;
     use online::ProofOfIndexingFinisher;
     use reference::*;
@@ -96,7 +97,6 @@ mod tests {
     use stable_hash_legacy::utils::stable_hash as stable_hash_legacy;
     use std::collections::HashMap;
     use std::convert::TryInto;
-    use web3::types::{Address, H256};
 
     /// The PoI is the StableHash of this struct. This reference implementation is
     /// mostly here just to make sure that the online implementation is
@@ -106,22 +106,22 @@ mod tests {
     pub struct PoI<'a> {
         pub causality_regions: HashMap<String, PoICausalityRegion<'a>>,
         pub subgraph_id: DeploymentHash,
-        pub block_hash: H256,
+        pub block_hash: B256,
         pub indexer: Option<Address>,
     }
 
-    fn h256_as_bytes(val: &H256) -> AsBytes<&[u8]> {
-        AsBytes(val.as_bytes())
+    fn b256_as_bytes(val: &B256) -> AsBytes<&[u8]> {
+        AsBytes(val.as_slice())
     }
 
     fn indexer_opt_as_bytes(val: &Option<Address>) -> Option<AsBytes<&[u8]>> {
-        val.as_ref().map(|v| AsBytes(v.as_bytes()))
+        val.as_ref().map(|v| AsBytes(v.as_slice()))
     }
 
     impl_stable_hash!(PoI<'_> {
         causality_regions,
         subgraph_id,
-        block_hash: h256_as_bytes,
+        block_hash: b256_as_bytes,
         indexer: indexer_opt_as_bytes
     });
 
@@ -247,7 +247,7 @@ mod tests {
                 fast: "dced49c45eac68e8b3d8f857928e7be6c270f2db8b56b0d7f27ce725100bae01",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("test").unwrap(),
-                    block_hash: H256::repeat_byte(1),
+                    block_hash: B256::repeat_byte(1),
                     causality_regions: HashMap::new(),
                     indexer: None,
                 },
@@ -259,7 +259,7 @@ mod tests {
                 fast: "8bb3373fb55e02bde3202bac0eeecf1bd9a676856a4dd6667bd809aceda41885",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("test").unwrap(),
-                    block_hash: H256::repeat_byte(1),
+                    block_hash: B256::repeat_byte(1),
                     causality_regions: hashmap! {
                         "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
@@ -286,7 +286,7 @@ mod tests {
                 fast: "8b0097ad96b21f7e4bd8dcc41985e6e5506b808f1185016ab1073dd8745238ce",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("b").unwrap(),
-                    block_hash: H256::repeat_byte(3),
+                    block_hash: B256::repeat_byte(3),
                     causality_regions: hashmap! {
                         "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
@@ -324,7 +324,7 @@ mod tests {
                 fast: "2041af28678e68406247a5cfb5fe336947da75256c79b35c2f61fc7985091c0e",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("b").unwrap(),
-                    block_hash: H256::repeat_byte(3),
+                    block_hash: B256::repeat_byte(3),
                     causality_regions: hashmap! {
                         "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [
@@ -386,7 +386,7 @@ mod tests {
                 fast: "421ef30a03be64014b9eef2b999795dcabfc601368040df855635e7886eb3822",
                 data: PoI {
                     subgraph_id: DeploymentHash::new("test").unwrap(),
-                    block_hash: H256::repeat_byte(1),
+                    block_hash: B256::repeat_byte(1),
                     causality_regions: hashmap! {
                         "eth".to_owned() => PoICausalityRegion {
                             blocks: vec! [

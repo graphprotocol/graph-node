@@ -1,5 +1,6 @@
 mod adapter;
 mod buffered_call_cache;
+mod call_helper;
 mod capabilities;
 pub mod codec;
 mod data_source;
