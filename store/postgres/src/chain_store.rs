@@ -2839,13 +2839,20 @@ impl EthereumCallCache for ChainStore {
         block: BlockPtr,
         return_value: call::Retval,
     ) -> Result<(), Error> {
-        let call::Retval::Value(return_value) = return_value else {
-            // We do not want to cache unsuccessful calls as some RPC nodes
-            // have weird behavior near the chain head. The details are lost
-            // to time, but we had issues with some RPC clients in the past
-            // where calls first failed and later succeeded
-            return Ok(());
+        let return_value = match return_value {
+            call::Retval::Value(return_value) if !return_value.is_empty() => return_value,
+            _ => {
+                // We do not want to cache unsuccessful calls as some RPC nodes
+                // have weird behavior near the chain head. The details are lost
+                // to time, but we had issues with some RPC clients in the past
+                // where calls first failed and later succeeded
+                // Also in some cases RPC nodes may return empty ("0x") values
+                // which in the context of graph-node most likely means an issue
+                // with the RPC node rather than a successful call.
+                return Ok(());
+            }
         };
+
         let id = contract_call_id(&call, &block);
         let conn = &mut *self.get_conn()?;
         conn.transaction(|conn| {
