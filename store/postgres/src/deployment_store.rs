@@ -1,7 +1,7 @@
 use detail::DeploymentDetail;
-use diesel::connection::SimpleConnection;
 use diesel::{sql_query, RunQueryDsl};
 use diesel_async::scoped_futures::ScopedFutureExt;
+use diesel_async::SimpleAsyncConnection;
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
@@ -217,7 +217,7 @@ impl DeploymentStore {
                 // Create the schema for the subgraph data
                 if !exists {
                     let query = format!("create schema {}", &site.namespace);
-                    conn.batch_execute(&query)?;
+                    conn.batch_execute(&query).await?;
 
                     let layout = Layout::create_relational_schema(
                         conn,
@@ -243,9 +243,8 @@ impl DeploymentStore {
 
                     // Create data sources table
                     if site.schema_version.private_data_sources() {
-                        conn.batch_execute(
-                            &DataSourcesTable::new(site.namespace.clone()).as_ddl(),
-                        )?;
+                        conn.batch_execute(&DataSourcesTable::new(site.namespace.clone()).as_ddl())
+                            .await?;
                     }
                 }
 
@@ -625,18 +624,18 @@ impl DeploymentStore {
         delete from active_copies;
     ";
 
-        let mut conn = self.get_conn().await?;
-        conn.batch_execute(QUERY)?;
-        conn.batch_execute("delete from deployment_schemas;")?;
+        let mut conn = self.pool.get().await?;
+        conn.batch_execute(QUERY).await?;
+        conn.batch_execute("delete from deployment_schemas;")
+            .await?;
         Ok(())
     }
 
     pub(crate) async fn vacuum(&self) -> Result<(), StoreError> {
-        self.with_conn(async |conn, _| {
-            conn.batch_execute("vacuum (analyze) subgraphs.head, subgraphs.deployment")?;
-            Ok(())
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        conn.batch_execute("vacuum (analyze) subgraphs.head, subgraphs.deployment")
+            .await?;
+        Ok(())
     }
 
     /// Runs the SQL `ANALYZE` command in a table.
