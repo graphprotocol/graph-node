@@ -2375,6 +2375,7 @@ version = "0.36.0"
 dependencies = [
  "anyhow",
  "diesel",
+ "diesel-async",
  "graph",
  "graph-store-postgres",
  "graphman-store",
