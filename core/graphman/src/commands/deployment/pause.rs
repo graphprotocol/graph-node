@@ -43,7 +43,8 @@ pub async fn load_active_deployment(
         &mut primary_conn,
         deployment,
         &DeploymentVersionSelector::All,
-    )?;
+    )
+    .await?;
 
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
