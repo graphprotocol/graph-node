@@ -48,7 +48,7 @@ impl Deployment {
     }
 }
 
-pub(crate) fn load_deployments(
+pub(crate) async fn load_deployments(
     primary_conn: &mut PgConnection,
     deployment: &DeploymentSelector,
     version: &DeploymentVersionSelector,
@@ -127,12 +127,12 @@ pub(crate) fn load_deployments(
     query.load(primary_conn).map_err(Into::into)
 }
 
-pub(crate) fn load_deployment_locator(
+pub(crate) async fn load_deployment_locator(
     primary_conn: &mut PgConnection,
     deployment: &DeploymentSelector,
     version: &DeploymentVersionSelector,
 ) -> Result<DeploymentLocator, GraphmanError> {
-    let deployment_locator = load_deployments(primary_conn, deployment, version)?
+    let deployment_locator = load_deployments(primary_conn, deployment, version).await?
         .into_iter()
         .map(|deployment| deployment.locator())
         .unique()
