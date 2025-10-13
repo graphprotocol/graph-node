@@ -81,6 +81,21 @@ pub async fn clear_call_cache(
     Ok(())
 }
 
+pub async fn clear_stale_call_cache(
+    chain_store: Arc<ChainStore>,
+    ttl_days: i32,
+    ttl_max_contracts: Option<i64>,
+) -> Result<(), Error> {
+    println!(
+        "Removing stale entries from the call cache for `{}`",
+        chain_store.chain
+    );
+    chain_store
+        .clear_stale_call_cache(ttl_days, ttl_max_contracts)
+        .await?;
+    Ok(())
+}
+
 pub async fn info(
     primary: ConnectionPool,
     store: Arc<BlockStore>,
