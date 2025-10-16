@@ -795,14 +795,10 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let table = table.to_string();
-        self.with_conn(async move |mut conn, _| {
-            let layout = store.layout(&mut conn, site.clone()).await?;
-            let table = resolve_table_name(&layout, &table)?;
-            catalog::set_account_like(&mut conn, &site, &table.name, is_account_like)
-                .await
-                .map_err(Into::into)
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        let layout = store.layout(&mut conn, site.clone()).await?;
+        let table = resolve_table_name(&layout, &table)?;
+        catalog::set_account_like(&mut conn, &site, &table.name, is_account_like).await
     }
 
     pub(crate) async fn set_history_blocks(
