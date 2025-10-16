@@ -782,13 +782,9 @@ impl DeploymentStore {
         index_name: &str,
     ) -> Result<(), StoreError> {
         let index_name = String::from(index_name);
-        self.with_conn(async move |mut conn, _| {
-            let schema_name = site.namespace.clone();
-            catalog::drop_index(&mut conn, schema_name.as_str(), &index_name)
-                .await
-                .map_err(Into::into)
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        let schema_name = site.namespace.clone();
+        catalog::drop_index(&mut conn, schema_name.as_str(), &index_name).await
     }
 
     pub(crate) async fn set_account_like(
