@@ -1,7 +1,7 @@
 use detail::DeploymentDetail;
-use diesel::{sql_query, RunQueryDsl};
+use diesel::sql_query;
 use diesel_async::scoped_futures::ScopedFutureExt;
-use diesel_async::SimpleAsyncConnection;
+use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
@@ -55,7 +55,7 @@ use crate::primary::{DeploymentId, Primary};
 use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{self, Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
-use crate::{advisory_lock, catalog, retry, AsyncConnection};
+use crate::{advisory_lock, catalog, retry, AsyncConnection, AsyncPgConnection};
 use crate::{detail, ConnectionPool};
 use crate::{dynds, primary::Site};
 
@@ -448,7 +448,7 @@ impl DeploymentStore {
     /// without us knowing
     pub(crate) async fn layout(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Layout>, StoreError> {
         self.layout_cache.get(&self.logger, conn, site).await
@@ -726,34 +726,27 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        self.with_conn(async move |conn, _| {
-            let schema_name = site.namespace.clone();
-            let layout = store.layout(conn, site).await?;
-            let (index_name, sql) = generate_index_creation_sql(
-                layout,
-                &entity_name,
-                field_names,
-                index_method,
-                after,
-            )?;
+        let mut conn = self.pool.get().await?;
+        let schema_name = site.namespace.clone();
+        let layout = store.layout(&mut conn, site).await?;
+        let (index_name, sql) =
+            generate_index_creation_sql(layout, &entity_name, field_names, index_method, after)?;
 
-            // This might take a long time.
-            sql_query(sql).execute(conn)?;
-            // check if the index creation was successfull
-            let index_is_valid =
-                catalog::check_index_is_valid(conn, schema_name.as_str(), &index_name).await?;
-            if index_is_valid {
-                Ok(())
-            } else {
-                // Index creation falied. We should drop the index before returning.
-                let drop_index_sql =
-                    format!("drop index concurrently if exists {schema_name}.{index_name}");
-                sql_query(drop_index_sql).execute(conn)?;
-                Err(StoreError::Canceled)
-            }
-            .map_err(Into::into)
-        })
-        .await
+        // This might take a long time.
+        sql_query(sql).execute(&mut conn).await?;
+        // check if the index creation was successfull
+        let index_is_valid =
+            catalog::check_index_is_valid(&mut conn, schema_name.as_str(), &index_name).await?;
+        if index_is_valid {
+            Ok(())
+        } else {
+            // Index creation falied. We should drop the index before returning.
+            let drop_index_sql =
+                format!("drop index concurrently if exists {schema_name}.{index_name}");
+            sql_query(drop_index_sql).execute(&mut conn).await?;
+            Err(StoreError::Canceled)
+        }
+        .map_err(Into::into)
     }
 
     /// Returns a list of all existing indexes for the specified Entity table.
@@ -1904,7 +1897,7 @@ impl DeploymentStore {
                 .with_conn(async move |conn, cancel| {
                     for view in VIEWS {
                         let query = format!("refresh materialized view {}", view);
-                        diesel::sql_query(&query).execute(conn)?;
+                        diesel::sql_query(&query).execute(conn).await?;
                         cancel.check_cancel()?;
                     }
                     Ok(())

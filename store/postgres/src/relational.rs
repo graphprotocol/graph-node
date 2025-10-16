@@ -77,7 +77,7 @@ use graph::prelude::{
 
 use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
-use crate::{catalog, deployment};
+use crate::{catalog, deployment, AsyncPgConnection};
 use crate::{AsyncConnection, ForeignServer};
 
 use self::rollup::Rollup;
@@ -1088,7 +1088,7 @@ impl Layout {
     /// `Layout` in case changes were made
     async fn refresh(
         self: Arc<Self>,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Self>, StoreError> {
         let account_like = crate::catalog::account_like(conn, &self.site).await?;
@@ -1763,7 +1763,10 @@ impl LayoutCache {
         }
     }
 
-    async fn load(conn: &mut PgConnection, site: Arc<Site>) -> Result<Arc<Layout>, StoreError> {
+    async fn load(
+        conn: &mut AsyncPgConnection,
+        site: Arc<Site>,
+    ) -> Result<Arc<Layout>, StoreError> {
         let (subgraph_schema, use_bytea_prefix) = deployment::schema(conn, site.as_ref()).await?;
         let has_causality_region =
             deployment::entities_with_causality_region(conn, site.id, &subgraph_schema).await?;
@@ -1800,7 +1803,7 @@ impl LayoutCache {
     pub async fn get(
         &self,
         logger: &Logger,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
     ) -> Result<Arc<Layout>, StoreError> {
         let now = Instant::now();
@@ -1839,7 +1842,7 @@ impl LayoutCache {
     async fn refresh(
         &self,
         logger: &Logger,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
         value: Arc<Layout>,
     ) -> Arc<Layout> {

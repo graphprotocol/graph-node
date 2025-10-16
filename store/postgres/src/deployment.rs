@@ -1,17 +1,21 @@
 //! Utilities for dealing with deployment metadata. Any connection passed
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
-use crate::{advisory_lock, detail::GraphNodeVersion, pool::PgConnection, primary::DeploymentId};
+use crate::{
+    advisory_lock, detail::GraphNodeVersion, pool::PgConnection, primary::DeploymentId,
+    AsyncPgConnection,
+};
 use diesel::{
     connection::SimpleConnection,
     dsl::{count, delete, insert_into, now, select, sql, update},
     sql_types::{Bool, Integer},
 };
 use diesel::{
-    prelude::{ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl},
+    prelude::{ExpressionMethods, OptionalExtension, QueryDsl},
     sql_query,
     sql_types::{Nullable, Text},
 };
+use diesel_async::RunQueryDsl;
 use graph::{
     blockchain::block_stream::FirehoseCursor,
     data::subgraph::schema::SubgraphError,
@@ -231,7 +235,7 @@ joinable!(head -> deployment(id));
 /// deployment has not progressed past the graft point, i.e., data has not
 /// been copied for the graft
 async fn graft(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
     pending_only: bool,
 ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
@@ -247,11 +251,13 @@ async fn graft(
             .inner_join(h::table)
             .filter(h::block_number.is_null())
             .first(conn)
+            .await
             .optional()?
             .unwrap_or((None, None, None))
     } else {
         graft_query
             .first(conn)
+            .await
             .optional()?
             .unwrap_or((None, None, None))
     };
@@ -302,7 +308,7 @@ pub async fn graft_point(
 /// return it. Returns `None` if the deployment does not have
 /// a debug fork.
 pub async fn debug_fork(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<DeploymentHash>, StoreError> {
     use deployment as sd;
@@ -310,7 +316,8 @@ pub async fn debug_fork(
     let debug_fork: Option<String> = sd::table
         .select(sd::debug_fork)
         .filter(sd::subgraph.eq(id.as_str()))
-        .first(conn)?;
+        .first(conn)
+        .await?;
 
     match debug_fork {
         Some(fork) => Ok(Some(DeploymentHash::new(fork.clone()).map_err(|_| {
@@ -324,14 +331,15 @@ pub async fn debug_fork(
 }
 
 pub async fn schema(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
 ) -> Result<(InputSchema, bool), StoreError> {
     use subgraph_manifest as sm;
     let (s, spec_ver, use_bytea_prefix) = sm::table
         .select((sm::schema, sm::spec_version, sm::use_bytea_prefix))
         .filter(sm::id.eq(site.id))
-        .first::<(String, String, bool)>(conn)?;
+        .first::<(String, String, bool)>(conn)
+        .await?;
     let spec_version =
         Version::parse(spec_ver.as_str()).map_err(|err| StoreError::Unknown(err.into()))?;
     InputSchema::parse(&spec_version, s.as_str(), site.deployment.clone())
@@ -347,7 +355,10 @@ pub struct ManifestInfo {
 }
 
 impl ManifestInfo {
-    pub async fn load(conn: &mut PgConnection, site: &Site) -> Result<ManifestInfo, StoreError> {
+    pub async fn load(
+        conn: &mut AsyncPgConnection,
+        site: &Site,
+    ) -> Result<ManifestInfo, StoreError> {
         use subgraph_manifest as sm;
         let (description, repository, spec_version, features): (
             Option<String>,
@@ -362,7 +373,8 @@ impl ManifestInfo {
                 sm::features,
             ))
             .filter(sm::id.eq(site.id))
-            .first(conn)?;
+            .first(conn)
+            .await?;
 
         // Using the features field to store the instrument flag is a bit
         // backhanded, but since this will be used very rarely, should not
@@ -380,7 +392,7 @@ impl ManifestInfo {
 
 // Return how many blocks of history this subgraph should keep
 pub async fn history_blocks(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
 ) -> Result<BlockNumber, StoreError> {
     use subgraph_manifest as sm;
@@ -388,11 +400,12 @@ pub async fn history_blocks(
         .select(sm::history_blocks)
         .filter(sm::id.eq(site.id))
         .first::<BlockNumber>(conn)
+        .await
         .map_err(StoreError::from)
 }
 
 pub async fn set_history_blocks(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     history_blocks: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -401,13 +414,14 @@ pub async fn set_history_blocks(
     update(sm::table.filter(sm::id.eq(site.id)))
         .set(sm::history_blocks.eq(history_blocks))
         .execute(conn)
+        .await
         .map(|_| ())
         .map_err(StoreError::from)
 }
 
 /// This migrates subgraphs that existed before the raw_yaml column was added.
 pub async fn set_manifest_raw_yaml(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     raw_yaml: &str,
 ) -> Result<(), StoreError> {
@@ -417,24 +431,26 @@ pub async fn set_manifest_raw_yaml(
         .filter(sm::raw_yaml.is_null())
         .set(sm::raw_yaml.eq(raw_yaml))
         .execute(conn)
+        .await
         .map(|_| ())
         .map_err(|e| e.into())
 }
 
 /// Most of the time, this will be a noop; the only time we actually modify
 /// the deployment table is the first forward block after a reorg
-async fn reset_reorg_count(conn: &mut PgConnection, site: &Site) -> StoreResult<()> {
+async fn reset_reorg_count(conn: &mut AsyncPgConnection, site: &Site) -> StoreResult<()> {
     use deployment as d;
 
     update(d::table.filter(d::id.eq(site.id)))
         .filter(d::current_reorg_depth.gt(0))
         .set(d::current_reorg_depth.eq(0))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
 pub async fn transact_block(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     ptr: &BlockPtr,
     firehose_cursor: &FirehoseCursor,
@@ -470,6 +486,7 @@ pub async fn transact_block(
             h::entity_count.eq(sql(&count_sql)),
         ))
         .execute(conn)
+        .await
         .map_err(StoreError::from)?;
 
     match rows {
@@ -484,6 +501,7 @@ pub async fn transact_block(
                 .filter(d::id.eq(site.id))
                 .select(d::earliest_block_number)
                 .get_result::<BlockNumber>(conn)
+                .await
                 .map_err(StoreError::from)
         }
 
@@ -501,7 +519,7 @@ pub async fn transact_block(
 }
 
 pub async fn forward_block_ptr(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     ptr: &BlockPtr,
 ) -> Result<(), StoreError> {
@@ -519,6 +537,7 @@ pub async fn forward_block_ptr(
         h::block_hash.eq(ptr.hash_slice()),
     ))
     .execute(conn)
+    .await
     .map_err(StoreError::from)?;
 
     match row_count {
@@ -544,7 +563,7 @@ pub async fn forward_block_ptr(
 }
 
 pub async fn get_subgraph_firehose_cursor(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: Arc<Site>,
 ) -> Result<Option<String>, StoreError> {
     use head as h;
@@ -553,12 +572,13 @@ pub async fn get_subgraph_firehose_cursor(
         .filter(h::id.eq(site.id))
         .select(h::firehose_cursor)
         .first::<Option<String>>(conn)
+        .await
         .map_err(StoreError::from);
     res
 }
 
 pub async fn revert_block_ptr(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     ptr: BlockPtr,
     firehose_cursor: &FirehoseCursor,
@@ -580,7 +600,8 @@ pub async fn revert_block_ptr(
         d::current_reorg_depth.eq(d::current_reorg_depth + 1),
         d::max_reorg_depth.eq(sql("greatest(current_reorg_depth + 1, max_reorg_depth)")),
     ))
-    .execute(conn)?;
+    .execute(conn)
+    .await?;
 
     update(h::table.filter(h::id.eq(site.id)))
         .set((
@@ -588,7 +609,8 @@ pub async fn revert_block_ptr(
             h::block_hash.eq(ptr.hash_slice()),
             h::firehose_cursor.eq(firehose_cursor.as_ref()),
         ))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
     match affected_rows {
         1 => Ok(()),
@@ -603,7 +625,7 @@ pub async fn revert_block_ptr(
 }
 
 pub async fn block_ptr(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
 ) -> Result<Option<BlockPtr>, StoreError> {
     use head as h;
@@ -612,6 +634,7 @@ pub async fn block_ptr(
         .filter(h::id.eq(site.id))
         .select((h::block_number, h::block_hash))
         .first::<(Option<BlockNumber>, Option<Vec<u8>>)>(conn)
+        .await
         .map_err(|e| match e {
             diesel::result::Error::NotFound => {
                 StoreError::DeploymentNotFound(site.deployment.to_string())
@@ -632,14 +655,17 @@ pub async fn block_ptr(
 /// Initialize the subgraph's block pointer. If the block pointer in
 /// `latest_ethereum_block` is set already, do nothing. If it is still
 /// `null`, set it to `start_ethereum_block` from `subgraph_manifest`
-pub async fn initialize_block_ptr(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
+pub async fn initialize_block_ptr(
+    conn: &mut AsyncPgConnection,
+    site: &Site,
+) -> Result<(), StoreError> {
     use head as h;
     use subgraph_manifest as m;
 
     let needs_init = h::table
         .filter(h::id.eq(site.id))
         .select(h::block_hash)
-        .first::<Option<Vec<u8>>>(conn)
+        .first::<Option<Vec<u8>>>(conn).await
         .map_err(|e| {
             internal_error!(
                 "deployment sgd{} must have been created before calling initialize_block_ptr but we got {}",
@@ -652,11 +678,13 @@ pub async fn initialize_block_ptr(conn: &mut PgConnection, site: &Site) -> Resul
         if let (Some(hash), Some(number)) = m::table
             .filter(m::id.eq(site.id))
             .select((m::start_block_hash, m::start_block_number))
-            .first::<(Option<Vec<u8>>, Option<BlockNumber>)>(conn)?
+            .first::<(Option<Vec<u8>>, Option<BlockNumber>)>(conn)
+            .await?
         {
             update(h::table.filter(h::id.eq(site.id)))
                 .set((h::block_hash.eq(&hash), h::block_number.eq(number)))
                 .execute(conn)
+                .await
                 .map(|_| ())
                 .map_err(|e| e.into())
         } else {
@@ -682,7 +710,10 @@ fn convert_to_u32(number: Option<i32>, field: &str, subgraph: &str) -> Result<u3
         })
 }
 
-pub async fn state(conn: &mut PgConnection, site: &Site) -> Result<DeploymentState, StoreError> {
+pub async fn state(
+    conn: &mut AsyncPgConnection,
+    site: &Site,
+) -> Result<DeploymentState, StoreError> {
     use deployment as d;
     use head as h;
     use subgraph_error as e;
@@ -710,6 +741,7 @@ pub async fn state(conn: &mut PgConnection, site: &Site) -> Result<DeploymentSta
             bool,
             SubgraphHealth,
         )>(conn)
+        .await
         .optional()?
     {
         None => Err(StoreError::QueryExecutionError(format!(
@@ -751,7 +783,8 @@ pub async fn state(conn: &mut PgConnection, site: &Site) -> Result<DeploymentSta
                     .filter(e::subgraph_id.eq(site.deployment.as_str()))
                     .filter(e::deterministic)
                     .select(sql::<Nullable<Integer>>("min(lower(block_range))"))
-                    .first::<Option<i32>>(conn)?
+                    .first::<Option<i32>>(conn)
+                    .await?
             } else {
                 None
             };
@@ -769,7 +802,7 @@ pub async fn state(conn: &mut PgConnection, site: &Site) -> Result<DeploymentSta
 
 /// Mark the deployment `id` as synced
 pub async fn set_synced(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
     block_ptr: BlockPtr,
 ) -> Result<(), StoreError> {
@@ -784,30 +817,33 @@ pub async fn set_synced(
         d::synced_at.eq(now),
         d::synced_at_block_number.eq(block_ptr.number),
     ))
-    .execute(conn)?;
+    .execute(conn)
+    .await?;
     Ok(())
 }
 
 /// Returns `true` if the deployment (as identified by `site.id`)
-pub async fn exists(conn: &mut PgConnection, site: &Site) -> Result<bool, StoreError> {
+pub async fn exists(conn: &mut AsyncPgConnection, site: &Site) -> Result<bool, StoreError> {
     use deployment as d;
 
     let exists = d::table
         .filter(d::id.eq(site.id))
         .count()
-        .get_result::<i64>(conn)?
+        .get_result::<i64>(conn)
+        .await?
         > 0;
     Ok(exists)
 }
 
 /// Returns `true` if the deployment `id` exists and is synced
-pub async fn exists_and_synced(conn: &mut PgConnection, id: &str) -> Result<bool, StoreError> {
+pub async fn exists_and_synced(conn: &mut AsyncPgConnection, id: &str) -> Result<bool, StoreError> {
     use deployment as d;
 
     let synced = d::table
         .filter(d::subgraph.eq(id))
         .select(d::synced_at.is_not_null())
         .first(conn)
+        .await
         .optional()?
         .unwrap_or(false);
     Ok(synced)
@@ -815,7 +851,7 @@ pub async fn exists_and_synced(conn: &mut PgConnection, id: &str) -> Result<bool
 
 // Does nothing if the error already exists. Returns the error id.
 async fn insert_subgraph_error(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     error: &SubgraphError,
 ) -> anyhow::Result<String> {
     use subgraph_error as e;
@@ -847,7 +883,8 @@ async fn insert_subgraph_error(
             e::block_range.eq((Bound::Included(block_num), Bound::Unbounded)),
         ))
         .on_conflict_do_nothing()
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
     Ok(error_id)
 }
@@ -900,6 +937,7 @@ pub(crate) async fn has_deterministic_errors(
             .filter(sql::<Bool>("block_range @> ").bind::<Integer, _>(block)),
     ))
     .get_result(conn)
+    .await
     .map_err(|e| e.into())
 }
 
@@ -920,6 +958,7 @@ pub async fn update_deployment_status(
             d::non_fatal_errors.eq::<Vec<String>>(non_fatal_errors.unwrap_or(vec![])),
         ))
         .execute(conn)
+        .await
         .map(|_| ())
         .map_err(StoreError::from)
 }
@@ -959,7 +998,8 @@ pub(crate) async fn error_count(
     Ok(e::table
         .filter(e::subgraph_id.eq(id.as_str()))
         .count()
-        .get_result::<i64>(conn)? as usize)
+        .get_result::<i64>(conn)
+        .await? as usize)
 }
 
 /// Checks if the subgraph is healthy or unhealthy as of the given block, or the subgraph latest
@@ -994,6 +1034,7 @@ async fn check_health(
     )
     .set(d::health.eq(new))
     .execute(conn)
+    .await
     .map(|_| ())
     .map_err(|e| e.into())
 }
@@ -1008,11 +1049,12 @@ pub(crate) async fn health(
         .filter(d::id.eq(id))
         .select(d::health)
         .get_result(conn)
+        .await
         .map_err(|e| e.into())
 }
 
 pub(crate) async fn entities_with_causality_region(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: DeploymentId,
     schema: &InputSchema,
 ) -> Result<Vec<EntityType>, StoreError> {
@@ -1022,6 +1064,7 @@ pub(crate) async fn entities_with_causality_region(
         .filter(sm::id.eq(id))
         .select(sm::entities_with_causality_region)
         .get_result::<Vec<String>>(conn)
+        .await
         .map_err(|e| e.into())
         .map(|ents| {
             // It is possible to have entity types in
@@ -1049,7 +1092,8 @@ pub(crate) async fn revert_subgraph_errors(
             .filter(e::subgraph_id.eq(id.as_str()))
             .filter(sql::<Bool>(&lower_geq).bind::<Integer, _>(reverted_block)),
     )
-    .execute(conn)?;
+    .execute(conn)
+    .await?;
 
     // The result will be the same at `reverted_block` or `reverted_block - 1` since the errors at
     // `reverted_block` were just deleted, but semantically we care about `reverted_block - 1` which
@@ -1067,6 +1111,7 @@ pub(crate) async fn revert_subgraph_errors(
     )
     .set((d::failed.eq(false), d::health.eq(SubgraphHealth::Healthy)))
     .execute(conn)
+    .await
     .map(|_| ())
     .map_err(StoreError::from)
 }
@@ -1078,6 +1123,7 @@ pub(crate) async fn delete_error(
     use subgraph_error as e;
     delete(e::table.filter(e::id.eq(error_id)))
         .execute(conn)
+        .await
         .map(|_| ())
         .map_err(StoreError::from)
 }
@@ -1099,7 +1145,8 @@ pub(crate) async fn copy_errors(
     let count = e::table
         .filter(e::subgraph_id.eq(dst.deployment.as_str()))
         .select(count(e::vid))
-        .get_result::<i64>(conn)?;
+        .get_result::<i64>(conn)
+        .await?;
     if count > 0 {
         return Ok(count as usize);
     }
@@ -1129,7 +1176,8 @@ pub(crate) async fn copy_errors(
         .bind::<Text, _>(src.deployment.as_str())
         .bind::<Text, _>(dst.deployment.as_str())
         .bind::<Integer, _>(target_block.number)
-        .execute(conn)?)
+        .execute(conn)
+        .await?)
 }
 
 /// Drop the schema `namespace`. This deletes all data for the subgraph, and
@@ -1156,7 +1204,9 @@ pub async fn drop_metadata(conn: &mut PgConnection, site: &Site) -> Result<(), S
 
     // We don't need to delete from `deployment`, `subgraph_manifest`,  or
     // `subgraph_error` since that cascades from deleting `head`
-    delete(h::table.filter(h::id.eq(site.id))).execute(conn)?;
+    delete(h::table.filter(h::id.eq(site.id)))
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
@@ -1249,25 +1299,33 @@ pub async fn create_deployment(
     if exists && replace {
         update(h::table.filter(h::id.eq(site.id)))
             .set(head_values)
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         update(d::table.filter(d::subgraph.eq(site.deployment.as_str())))
             .set(deployment_values)
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         update(m::table.filter(m::id.eq(site.id)))
             .set(manifest_values)
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
     } else {
-        insert_into(h::table).values(head_values).execute(conn)?;
+        insert_into(h::table)
+            .values(head_values)
+            .execute(conn)
+            .await?;
 
         insert_into(d::table)
             .values(deployment_values)
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         insert_into(m::table)
             .values(manifest_values)
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
     }
     Ok(())
 }
@@ -1290,7 +1348,8 @@ pub async fn update_entity_count(
     let count_sql = entity_count_sql(count);
     update(h::table.filter(h::id.eq(site.id)))
         .set(h::entity_count.eq(sql(&count_sql)))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
@@ -1300,7 +1359,8 @@ pub async fn clear_entity_count(conn: &mut PgConnection, site: &Site) -> Result<
 
     update(h::table.filter(h::id.eq(site.id)))
         .set(h::entity_count.eq(0))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
@@ -1319,7 +1379,8 @@ pub async fn set_earliest_block(
     update(d::table.filter(d::id.eq(site.id)))
         .set(d::earliest_block_number.eq(earliest_block))
         .filter(d::earliest_block_number.lt(earliest_block))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
@@ -1342,7 +1403,8 @@ pub async fn copy_earliest_block(
 
     update(d::table.filter(d::id.eq(dst.id)))
         .set(d::earliest_block_number.eq(sql(&query)))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
     Ok(())
 }
@@ -1356,7 +1418,8 @@ pub async fn on_sync(
     let s = m::table
         .filter(m::id.eq(id.into()))
         .select(m::on_sync)
-        .get_result::<Option<String>>(conn)?;
+        .get_result::<Option<String>>(conn)
+        .await?;
     OnSync::try_from(s.as_deref())
 }
 
@@ -1369,7 +1432,8 @@ pub async fn set_on_sync(
 
     let n = update(m::table.filter(m::id.eq(site.id)))
         .set(m::on_sync.eq(on_sync.to_sql()))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
     match n {
         0 => Err(StoreError::DeploymentNotFound(site.to_string())),
