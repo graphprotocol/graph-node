@@ -55,7 +55,7 @@ use crate::primary::{DeploymentId, Primary};
 use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{self, Layout, LayoutCache, SqlName, Table};
 use crate::relational_queries::FromEntityData;
-use crate::{advisory_lock, catalog, retry, AsyncConnection, AsyncPgConnection};
+use crate::{advisory_lock, catalog, retry, AsyncConnection as _, AsyncPgConnection};
 use crate::{detail, ConnectionPool};
 use crate::{dynds, primary::Site};
 
