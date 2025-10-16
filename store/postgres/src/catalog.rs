@@ -1,11 +1,12 @@
+use diesel::select;
 use diesel::sql_query;
 use diesel::sql_types::{Bool, Integer};
-use diesel::{connection::SimpleConnection, prelude::RunQueryDsl, select};
 use diesel::{insert_into, OptionalExtension};
 use diesel::{
     sql_types::{Array, BigInt, Double, Nullable, Text},
     ExpressionMethods, QueryDsl,
 };
+use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
 use graph::components::store::VersionStats;
 use graph::prelude::BlockNumber;
 use graph::schema::EntityType;
@@ -23,6 +24,7 @@ use graph::{
 };
 
 use crate::pool::PgConnection;
+use crate::AsyncPgConnection;
 use crate::{
     block_range::BLOCK_RANGE_COLUMN,
     pool::ForeignServer,
@@ -128,7 +130,7 @@ pub struct Locale {
 
 impl Locale {
     /// Load locale information for current database
-    pub async fn load(conn: &mut PgConnection) -> Result<Locale, StoreError> {
+    pub async fn load(conn: &mut AsyncPgConnection) -> Result<Locale, StoreError> {
         use diesel::dsl::sql;
         use pg_database as db;
 
@@ -139,7 +141,8 @@ impl Locale {
                 db::datctype,
                 sql::<Text>("pg_encoding_to_char(encoding)::text"),
             ))
-            .get_result::<(String, String, String)>(conn)?;
+            .get_result::<(String, String, String)>(conn)
+            .await?;
         Ok(Locale {
             collate,
             ctype,
@@ -198,7 +201,7 @@ pub struct Catalog {
 impl Catalog {
     /// Load the catalog for an existing subgraph
     pub async fn load(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
         use_bytea_prefix: bool,
         entities_with_causality_region: Vec<EntityType>,
@@ -320,7 +323,7 @@ impl Catalog {
         }
 
         async fn block_range_histogram(
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             namespace: &Namespace,
         ) -> Result<Vec<RangeHistogram>, StoreError> {
             let query = format!(
@@ -334,7 +337,8 @@ impl Catalog {
             );
             let result = sql_query(query)
                 .bind::<Text, _>(namespace.as_str())
-                .get_results::<RangeHistogram>(conn)?;
+                .get_results::<RangeHistogram>(conn)
+                .await?;
             Ok(result)
         }
 
@@ -369,6 +373,7 @@ impl Catalog {
             .bind::<Integer, _>(self.site.id)
             .bind::<Text, _>(self.site.namespace.as_str())
             .load::<DbStats>(conn)
+            .await
             .map_err(StoreError::from)?;
 
         let mut range_histogram = if self.pg_stats_has_range_bounds_histogram {
@@ -401,7 +406,7 @@ impl Catalog {
 }
 
 async fn get_text_columns(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     namespace: &Namespace,
 ) -> Result<HashMap<String, HashSet<String>>, StoreError> {
     const QUERY: &str = "
@@ -419,7 +424,8 @@ async fn get_text_columns(
 
     let map: HashMap<String, HashSet<String>> = diesel::sql_query(QUERY)
         .bind::<Text, _>(namespace.as_str())
-        .load::<Column>(conn)?
+        .load::<Column>(conn)
+        .await?
         .into_iter()
         .fold(HashMap::new(), |mut map, col| {
             map.entry(col.table_name)
@@ -431,7 +437,7 @@ async fn get_text_columns(
 }
 
 pub async fn table_exists(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     namespace: &str,
     table: &SqlName,
 ) -> Result<bool, StoreError> {
@@ -446,12 +452,13 @@ pub async fn table_exists(
     let result: Vec<Table> = diesel::sql_query(query)
         .bind::<Text, _>(namespace)
         .bind::<Text, _>(table.as_str())
-        .load(conn)?;
+        .load(conn)
+        .await?;
     Ok(!result.is_empty())
 }
 
 pub async fn supports_proof_of_indexing(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     namespace: &Namespace,
 ) -> Result<bool, StoreError> {
     lazy_static! {
@@ -460,14 +467,15 @@ pub async fn supports_proof_of_indexing(
     table_exists(conn, namespace.as_str(), &POI_TABLE_NAME).await
 }
 
-pub async fn current_servers(conn: &mut PgConnection) -> Result<Vec<String>, StoreError> {
+pub async fn current_servers(conn: &mut AsyncPgConnection) -> Result<Vec<String>, StoreError> {
     #[derive(QueryableByName)]
     struct Srv {
         #[diesel(sql_type = Text)]
         srvname: String,
     }
     Ok(sql_query("select srvname from pg_foreign_server")
-        .get_results::<Srv>(conn)?
+        .get_results::<Srv>(conn)
+        .await?
         .into_iter()
         .map(|srv| srv.srvname)
         .collect())
@@ -476,7 +484,7 @@ pub async fn current_servers(conn: &mut PgConnection) -> Result<Vec<String>, Sto
 /// Return the options for the foreign server `name` as a map of option
 /// names to values
 pub async fn server_options(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     name: &str,
 ) -> Result<HashMap<String, Option<String>>, StoreError> {
     #[derive(QueryableByName)]
@@ -486,7 +494,8 @@ pub async fn server_options(
     }
     let entries = sql_query("select srvoptions from pg_foreign_server where srvname = $1")
         .bind::<Text, _>(name)
-        .get_result::<Srv>(conn)?
+        .get_result::<Srv>(conn)
+        .await?
         .srvoptions
         .into_iter()
         .filter_map(|opt| {
@@ -500,7 +509,7 @@ pub async fn server_options(
 }
 
 pub async fn has_namespace(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     namespace: &Namespace,
 ) -> Result<bool, StoreError> {
     use pg_namespace as nsp;
@@ -508,35 +517,44 @@ pub async fn has_namespace(
     Ok(select(diesel::dsl::exists(
         nsp::table.filter(nsp::name.eq(namespace.as_str())),
     ))
-    .get_result::<bool>(conn)?)
+    .get_result::<bool>(conn)
+    .await?)
 }
 
 /// Drop the schema for `src` if it is a foreign schema imported from
 /// another database. If the schema does not exist, or is not a foreign
 /// schema, do nothing. This crucially depends on the fact that we never mix
 /// foreign and local tables in the same schema.
-pub async fn drop_foreign_schema(conn: &mut PgConnection, src: &Site) -> Result<(), StoreError> {
+pub async fn drop_foreign_schema(
+    conn: &mut AsyncPgConnection,
+    src: &Site,
+) -> Result<(), StoreError> {
     use foreign_tables as ft;
 
     let is_foreign = select(diesel::dsl::exists(
         ft::table.filter(ft::foreign_table_schema.eq(src.namespace.as_str())),
     ))
-    .get_result::<bool>(conn)?;
+    .get_result::<bool>(conn)
+    .await?;
 
     if is_foreign {
         let query = format!("drop schema if exists {} cascade", src.namespace);
-        conn.batch_execute(&query)?;
+        conn.batch_execute(&query).await?;
     }
     Ok(())
 }
 
-pub async fn foreign_tables(conn: &mut PgConnection, nsp: &str) -> Result<Vec<String>, StoreError> {
+pub async fn foreign_tables(
+    conn: &mut AsyncPgConnection,
+    nsp: &str,
+) -> Result<Vec<String>, StoreError> {
     use foreign_tables as ft;
 
     ft::table
         .filter(ft::foreign_table_schema.eq(nsp))
         .select(ft::foreign_table_name)
         .get_results::<String>(conn)
+        .await
         .map_err(StoreError::from)
 }
 
@@ -548,13 +566,13 @@ pub async fn recreate_schema(conn: &mut PgConnection, nsp: &str) -> Result<(), S
          create schema {nsp};",
         nsp = nsp
     );
-    Ok(conn.batch_execute(&query)?)
+    Ok(conn.batch_execute(&query).await?)
 }
 
 /// Drop the schema `nsp` and all its contents if it exists
 pub async fn drop_schema(conn: &mut PgConnection, nsp: &str) -> Result<(), StoreError> {
     let query = format!("drop schema if exists {nsp} cascade;", nsp = nsp);
-    Ok(conn.batch_execute(&query)?)
+    Ok(conn.batch_execute(&query).await?)
 }
 
 pub async fn migration_count(conn: &mut PgConnection) -> Result<usize, StoreError> {
@@ -567,12 +585,13 @@ pub async fn migration_count(conn: &mut PgConnection) -> Result<usize, StoreErro
     m::table
         .count()
         .get_result(conn)
+        .await
         .map(|n: i64| n as usize)
         .map_err(StoreError::from)
 }
 
 pub async fn account_like(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
 ) -> Result<HashSet<String>, StoreError> {
     use table_stats as ts;
@@ -580,6 +599,7 @@ pub async fn account_like(
         .filter(ts::deployment.eq(site.id))
         .select((ts::table_name, ts::is_account_like))
         .get_results::<(String, Option<bool>)>(conn)
+        .await
         .optional()?
         .unwrap_or_default()
         .into_iter()
@@ -595,7 +615,7 @@ pub async fn account_like(
 }
 
 pub async fn set_account_like(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     table_name: &SqlName,
     is_account_like: bool,
@@ -610,12 +630,13 @@ pub async fn set_account_like(
         .on_conflict((ts::deployment, ts::table_name))
         .do_update()
         .set(ts::is_account_like.eq(is_account_like))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
 pub async fn copy_account_like(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     src: &Site,
     dst: &Site,
 ) -> Result<usize, StoreError> {
@@ -630,11 +651,12 @@ pub async fn copy_account_like(
     Ok(sql_query(query)
         .bind::<Integer, _>(src.id)
         .bind::<Integer, _>(dst.id)
-        .execute(conn)?)
+        .execute(conn)
+        .await?)
 }
 
 pub async fn set_last_pruned_block(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     table_name: &SqlName,
     last_pruned_block: BlockNumber,
@@ -650,7 +672,8 @@ pub async fn set_last_pruned_block(
         .on_conflict((ts::deployment, ts::table_name))
         .do_update()
         .set(ts::last_pruned_block.eq(last_pruned_block))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
     Ok(())
 }
 
@@ -698,7 +721,7 @@ pub(crate) mod table_schema {
     }
 
     pub async fn columns(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         nsp: &str,
         table_name: &str,
     ) -> Result<Vec<Column>, StoreError> {
@@ -716,7 +739,8 @@ pub(crate) mod table_schema {
         Ok(sql_query(QUERY)
             .bind::<Text, _>(nsp)
             .bind::<Text, _>(table_name)
-            .get_results::<ColumnInfo>(conn)?
+            .get_results::<ColumnInfo>(conn)
+            .await?
             .into_iter()
             .map(|ci| ci.into())
             .collect())
@@ -825,7 +849,7 @@ pub async fn create_cross_shard_view(
 
 /// Checks in the database if a given index is valid.
 pub(crate) async fn check_index_is_valid(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     schema_name: &str,
     index_name: &str,
 ) -> Result<bool, StoreError> {
@@ -849,6 +873,7 @@ pub(crate) async fn check_index_is_valid(
         .bind::<Text, _>(schema_name)
         .bind::<Text, _>(index_name)
         .get_result::<ManualIndexCheck>(conn)
+        .await
         .optional()
         .map_err::<StoreError, _>(Into::into)?
         .map(|check| check.is_valid);
@@ -880,6 +905,7 @@ pub(crate) async fn indexes_for_table(
         .bind::<Text, _>(schema_name)
         .bind::<Text, _>(table_name)
         .load::<IndexName>(conn)
+        .await
         .map_err::<StoreError, _>(Into::into)?;
 
     Ok(results.into_iter().map(|i| i.def).collect())
@@ -895,6 +921,7 @@ pub(crate) async fn drop_index(
         .bind::<Text, _>(schema_name)
         .bind::<Text, _>(index_name)
         .execute(conn)
+        .await
         .map_err::<StoreError, _>(Into::into)?;
     Ok(())
 }
@@ -902,7 +929,7 @@ pub(crate) async fn drop_index(
 /// Return by how much the slowest replica connected to the database `conn`
 /// is lagging. The returned value has millisecond precision. If the
 /// database has no replicas, return `0`
-pub(crate) async fn replication_lag(conn: &mut PgConnection) -> Result<Duration, StoreError> {
+pub(crate) async fn replication_lag(conn: &mut AsyncPgConnection) -> Result<Duration, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct Lag {
         #[diesel(sql_type = Nullable<Integer>)]
@@ -913,7 +940,7 @@ pub(crate) async fn replication_lag(conn: &mut PgConnection) -> Result<Duration,
         "select (extract(epoch from max(greatest(write_lag, flush_lag, replay_lag)))*1000)::int as ms \
            from pg_stat_replication",
     )
-    .get_result::<Lag>(conn)?;
+    .get_result::<Lag>(conn).await?;
 
     let lag = lag
         .ms
@@ -924,7 +951,7 @@ pub(crate) async fn replication_lag(conn: &mut PgConnection) -> Result<Duration,
 }
 
 pub(crate) async fn cancel_vacuum(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     namespace: &Namespace,
 ) -> Result<(), StoreError> {
     sql_query(
@@ -937,11 +964,12 @@ pub(crate) async fn cancel_vacuum(
             and n.nspname = $1",
     )
     .bind::<Text, _>(namespace)
-    .execute(conn)?;
+    .execute(conn)
+    .await?;
     Ok(())
 }
 
-pub(crate) async fn default_stats_target(conn: &mut PgConnection) -> Result<i32, StoreError> {
+pub(crate) async fn default_stats_target(conn: &mut AsyncPgConnection) -> Result<i32, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct Target {
         #[diesel(sql_type = Integer)]
@@ -950,12 +978,13 @@ pub(crate) async fn default_stats_target(conn: &mut PgConnection) -> Result<i32,
 
     let target =
         sql_query("select setting::int from pg_settings where name = 'default_statistics_target'")
-            .get_result::<Target>(conn)?;
+            .get_result::<Target>(conn)
+            .await?;
     Ok(target.setting)
 }
 
 pub(crate) async fn stats_targets(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     namespace: &Namespace,
 ) -> Result<BTreeMap<SqlName, BTreeMap<SqlName, i32>>, StoreError> {
     use pg_attribute as a;
@@ -969,7 +998,8 @@ pub(crate) async fn stats_targets(
         .filter(n::name.eq(namespace.as_str()))
         .filter(a::num.ge(1))
         .select((c::name, a::name, a::stats_target))
-        .load::<(String, String, i32)>(conn)?
+        .load::<(String, String, i32)>(conn)
+        .await?
         .into_iter()
         .map(|(table, column, target)| (SqlName::from(table), SqlName::from(column), target));
 
@@ -995,7 +1025,7 @@ pub(crate) async fn set_stats_target(
         .map(|column| format!("alter column {} set statistics {}", column.quoted(), target))
         .join(", ");
     let query = format!("alter table {}.{} {}", namespace, table.quoted(), columns);
-    conn.batch_execute(&query)?;
+    conn.batch_execute(&query).await?;
     Ok(())
 }
 
@@ -1023,6 +1053,7 @@ pub(crate) async fn needs_autoanalyze(
     let tables = sql_query(QUERY)
         .bind::<Text, _>(namespace.as_str())
         .get_results::<TableName>(conn)
+        .await
         .optional()?
         .map(|tables| tables.into_iter().map(|t| t.name).collect())
         .unwrap_or(vec![]);
@@ -1032,7 +1063,7 @@ pub(crate) async fn needs_autoanalyze(
 
 /// Check whether the database for `conn` supports the `minmax_multi_ops`
 /// introduced in Postgres 14
-async fn has_minmax_multi_ops(conn: &mut PgConnection) -> Result<bool, StoreError> {
+async fn has_minmax_multi_ops(conn: &mut AsyncPgConnection) -> Result<bool, StoreError> {
     const QUERY: &str = "select count(*) = 2 as has_ops \
                            from pg_opclass \
                           where opcname in('int8_minmax_multi_ops', 'int4_minmax_multi_ops')";
@@ -1043,12 +1074,14 @@ async fn has_minmax_multi_ops(conn: &mut PgConnection) -> Result<bool, StoreErro
         has_ops: bool,
     }
 
-    Ok(sql_query(QUERY).get_result::<Ops>(conn)?.has_ops)
+    Ok(sql_query(QUERY).get_result::<Ops>(conn).await?.has_ops)
 }
 
 /// Check whether the database for `conn` has the column
 /// `pg_stats.range_bounds_histogram` introduced in Postgres 17
-async fn pg_stats_has_range_bounds_histogram(conn: &mut PgConnection) -> Result<bool, StoreError> {
+async fn pg_stats_has_range_bounds_histogram(
+    conn: &mut AsyncPgConnection,
+) -> Result<bool, StoreError> {
     #[derive(Queryable, QueryableByName)]
     struct HasIt {
         #[diesel(sql_type = Bool)]
@@ -1064,12 +1097,13 @@ async fn pg_stats_has_range_bounds_histogram(conn: &mut PgConnection) -> Result<
                and column_name = 'range_bounds_histogram') as has_it";
     sql_query(query)
         .get_result::<HasIt>(conn)
+        .await
         .map(|h| h.has_it)
         .map_err(StoreError::from)
 }
 
 pub(crate) async fn histogram_bounds(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     namespace: &Namespace,
     table: &SqlName,
     column: &str,
@@ -1091,6 +1125,7 @@ pub(crate) async fn histogram_bounds(
         .bind::<Text, _>(table.as_str())
         .bind::<Text, _>(column)
         .get_result::<Bounds>(conn)
+        .await
         .optional()
         .map(|bounds| bounds.map(|b| b.bounds).unwrap_or_default())
         .map_err(StoreError::from)

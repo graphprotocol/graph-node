@@ -92,7 +92,7 @@ impl QueryStoreTrait for QueryStore {
 
         let sql = parser.parse_and_validate(sql)?;
 
-        self.store.execute_sql(&mut conn, &sql)
+        self.store.execute_sql(&mut conn, &sql).await
     }
 
     /// Return true if the deployment with the given id is fully synced,
