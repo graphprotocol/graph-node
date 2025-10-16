@@ -820,7 +820,7 @@ impl DeploymentStore {
         // will use the updated value
         self.layout_cache.remove(site);
 
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         deployment::set_history_blocks(&mut conn, site, history_blocks).await
     }
 
