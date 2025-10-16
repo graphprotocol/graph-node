@@ -757,18 +757,16 @@ impl DeploymentStore {
     ) -> Result<Vec<CreateIndex>, StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        self.with_conn(async move |conn, _| {
-            let schema_name = site.namespace.clone();
-            let layout = store.layout(conn, site).await?;
-            let table = resolve_table_name(&layout, &entity_name)?;
-            let table_name = &table.name;
-            let indexes =
-                catalog::indexes_for_table(conn, schema_name.as_str(), table_name.as_str())
-                    .await
-                    .map_err(StoreError::from)?;
-            Ok(indexes.into_iter().map(CreateIndex::parse).collect())
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        let schema_name = site.namespace.clone();
+        let layout = store.layout(&mut conn, site).await?;
+        let table = resolve_table_name(&layout, &entity_name)?;
+        let table_name = &table.name;
+        let indexes =
+            catalog::indexes_for_table(&mut conn, schema_name.as_str(), table_name.as_str())
+                .await
+                .map_err(StoreError::from)?;
+        Ok(indexes.into_iter().map(CreateIndex::parse).collect())
     }
 
     pub(crate) async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {

@@ -881,7 +881,7 @@ pub(crate) async fn check_index_is_valid(
 }
 
 pub(crate) async fn indexes_for_table(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     schema_name: &str,
     table_name: &str,
 ) -> Result<Vec<String>, StoreError> {
