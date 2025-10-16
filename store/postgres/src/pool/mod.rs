@@ -2,6 +2,7 @@ use diesel::connection::SimpleConnection;
 use diesel::{sql_query, RunQueryDsl};
 use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
 use diesel_async::pooled_connection::{mobc, AsyncDieselConnectionManager};
+use diesel_async::AsyncConnection as _;
 use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
 
 use graph::cheap_clone::CheapClone;
@@ -920,18 +921,9 @@ impl PoolInner {
         if self.shard == *PRIMARY_SHARD {
             return Ok(());
         }
-        self.with_conn(async |conn, handle| {
-            conn.transaction_async(|conn| {
-                async {
-                    primary::Mirror::refresh_tables(conn, handle)
-                        .await
-                        .map_err(CancelableError::from)
-                }
-                .scope_boxed()
-            })
+        let mut conn = self.get().await?;
+        conn.transaction(|conn| primary::Mirror::refresh_tables(conn).scope_boxed())
             .await
-        })
-        .await
     }
 
     /// The foreign server `server` had schema changes, and we therefore

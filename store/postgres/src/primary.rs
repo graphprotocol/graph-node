@@ -6,7 +6,7 @@ use crate::{
     detail::DeploymentDetail,
     pool::{PgConnection, PRIMARY_PUBLIC},
     subgraph_store::{unused, Shard, PRIMARY_SHARD},
-    ConnectionPool, ForeignServer, NotificationSender,
+    AsyncPgConnection, ConnectionPool, ForeignServer, NotificationSender,
 };
 use diesel::dsl::{delete, insert_into, sql, update};
 use diesel::prelude::{
@@ -14,7 +14,7 @@ use diesel::prelude::{
     OptionalExtension, QueryDsl, RunQueryDsl,
 };
 use diesel::{
-    connection::{SimpleConnection, TransactionManager},
+    connection::TransactionManager,
     data_types::PgTimestamp,
     deserialize::FromSql,
     dsl::{exists, not, select},
@@ -22,7 +22,10 @@ use diesel::{
     serialize::{Output, ToSql},
     sql_types::{Array, BigInt, Bool, Integer, Text},
 };
-use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
+use diesel_async::{
+    scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
+    SimpleAsyncConnection as _,
+};
 use graph::{
     components::store::DeploymentLocator,
     data::{
@@ -41,7 +44,7 @@ use graph::{
 };
 use graph::{
     components::store::{DeploymentId as GraphDeploymentId, DeploymentSchemaVersion},
-    prelude::{chrono, CancelHandle, CancelToken},
+    prelude::chrono,
 };
 use graph::{data::subgraph::schema::generate_entity_id, prelude::StoreEvent};
 use itertools::Itertools;
@@ -2032,16 +2035,13 @@ impl Mirror {
 
     /// Refresh the contents of mirrored tables from the primary (through
     /// the fdw mapping that `ForeignServer` establishes)
-    pub(crate) async fn refresh_tables(
-        conn: &mut PgConnection,
-        handle: &CancelHandle,
-    ) -> Result<(), StoreError> {
-        fn run_query(conn: &mut PgConnection, query: String) -> Result<(), StoreError> {
-            conn.batch_execute(&query).map_err(StoreError::from)
+    pub(crate) async fn refresh_tables(conn: &mut AsyncPgConnection) -> Result<(), StoreError> {
+        async fn run_query(conn: &mut AsyncPgConnection, query: String) -> Result<(), StoreError> {
+            conn.batch_execute(&query).await.map_err(StoreError::from)
         }
 
-        fn copy_table(
-            conn: &mut PgConnection,
+        async fn copy_table(
+            conn: &mut AsyncPgConnection,
             src_nsp: &str,
             dst_nsp: &str,
             table_name: &str,
@@ -2055,15 +2055,8 @@ impl Mirror {
                     table_name = table_name
                 ),
             )
+            .await
         }
-
-        let check_cancel = || {
-            if handle.is_canceled() {
-                Err(StoreError::Canceled)
-            } else {
-                Ok(())
-            }
-        };
 
         // Truncate all tables at once, otherwise truncation can fail
         // because of foreign key constraints
@@ -2078,13 +2071,11 @@ impl Mirror {
             .map(|(nsp, name)| format!("{}.{}", nsp, name))
             .join(", ");
         let query = format!("truncate table {};", tables);
-        conn.batch_execute(&query)?;
-        check_cancel()?;
+        conn.batch_execute(&query).await?;
 
         // Repopulate `PUBLIC_TABLES` by copying their data wholesale
         for table_name in Self::PUBLIC_TABLES {
-            copy_table(conn, PRIMARY_PUBLIC, NAMESPACE_PUBLIC, table_name)?;
-            check_cancel()?;
+            copy_table(conn, PRIMARY_PUBLIC, NAMESPACE_PUBLIC, table_name).await?;
         }
 
         // Repopulate `SUBGRAPHS_TABLES` but only copy the data we actually
@@ -2099,7 +2090,8 @@ impl Mirror {
                      select * from {src_nsp}.subgraph
                      where current_version is not null;"
             ),
-        )?;
+        )
+        .await?;
         run_query(
             conn,
             format!(
@@ -2107,8 +2099,9 @@ impl Mirror {
                  select v.* from {src_nsp}.subgraph_version v, {src_nsp}.subgraph s
                   where v.id = s.current_version;"
             ),
-        )?;
-        copy_table(conn, &src_nsp, dst_nsp, "subgraph_deployment_assignment")?;
+        )
+        .await?;
+        copy_table(conn, &src_nsp, dst_nsp, "subgraph_deployment_assignment").await?;
 
         Ok(())
     }
