@@ -15,12 +15,12 @@ use graph::prelude::{
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
-use crate::catalog;
 use crate::command_support::catalog::Site;
 use crate::deployment_store::DeploymentStore;
 use crate::pool::PgConnection;
 use crate::primary::Namespace;
 use crate::relational::{BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE};
+use crate::{catalog, AsyncPgConnection};
 
 use super::{Layout, Table, VID_COLUMN};
 
@@ -754,7 +754,7 @@ pub struct IndexList {
 }
 
 pub async fn load_indexes_from_table(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     table: &Arc<Table>,
     schema_name: &str,
 ) -> Result<Vec<CreateIndex>, StoreError> {
@@ -765,7 +765,7 @@ pub async fn load_indexes_from_table(
 
 impl IndexList {
     pub async fn load(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
         store: DeploymentStore,
     ) -> Result<Self, StoreError> {

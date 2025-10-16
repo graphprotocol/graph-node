@@ -804,7 +804,7 @@ impl DeploymentStore {
 
     pub(crate) async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
         let store = self.clone();
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         IndexList::load(&mut conn, site, store).await
     }
 
