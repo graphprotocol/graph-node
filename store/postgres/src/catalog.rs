@@ -912,7 +912,7 @@ pub(crate) async fn indexes_for_table(
 }
 
 pub(crate) async fn drop_index(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     schema_name: &str,
     index_name: &str,
 ) -> Result<(), StoreError> {
