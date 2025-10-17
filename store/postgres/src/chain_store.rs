@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
 use diesel::sql_types::Text;
-use diesel::{insert_into, update, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
-use diesel_async::scoped_futures::ScopedFutureExt;
+use diesel::{insert_into, update, ExpressionMethods, OptionalExtension, QueryDsl};
+use diesel_async::{scoped_futures::ScopedFutureExt, RunQueryDsl};
 
 use graph::components::store::ChainHeadStore;
 use graph::data::store::ethereum::call;
@@ -85,22 +85,21 @@ pub use data::Storage;
 /// Encapuslate access to the blocks table for a chain.
 mod data {
     use crate::diesel::dsl::IntervalDsl;
+    use crate::AsyncPgConnection;
     use diesel::dsl::sql;
-    use diesel::sql_types::{Array, Binary, Bool, Nullable};
-    use diesel::{connection::SimpleConnection, insert_into};
-    use diesel::{
-        delete, sql_query, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, RunQueryDsl,
-    };
+    use diesel::insert_into;
+    use diesel::sql_types::{Array, Binary, Bool, Nullable, Text};
+    use diesel::{delete, sql_query, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl};
     use diesel::{
         deserialize::FromSql,
         pg::Pg,
         serialize::{Output, ToSql},
-        sql_types::Text,
     };
     use diesel::{
         sql_types::{BigInt, Bytea, Integer, Jsonb},
         update,
     };
+    use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
     use graph::blockchain::{Block, BlockHash};
     use graph::data::store::scalar::Bytes;
     use graph::internal_error;
@@ -417,7 +416,7 @@ mod data {
             match self {
                 Storage::Shared => Ok(()),
                 Storage::Private(Schema { name, .. }) => {
-                    conn.batch_execute(&make_ddl(name))?;
+                    conn.batch_execute(&make_ddl(name)).await?;
                     Ok(())
                 }
             }
@@ -434,17 +433,20 @@ mod data {
 
         pub(super) async fn drop_storage(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             name: &str,
         ) -> Result<(), StoreError> {
             match &self {
                 Storage::Shared => {
                     use public::ethereum_blocks as b;
-                    delete(b::table.filter(b::network_name.eq(name))).execute(conn)?;
+                    delete(b::table.filter(b::network_name.eq(name)))
+                        .execute(conn)
+                        .await?;
                     Ok(())
                 }
                 Storage::Private(Schema { name, .. }) => {
-                    conn.batch_execute(&format!("drop schema {} cascade", name))?;
+                    conn.batch_execute(&format!("drop schema {} cascade", name))
+                        .await?;
                     Ok(())
                 }
             }
@@ -458,7 +460,8 @@ mod data {
                 Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
                 Storage::Private(Schema { blocks, .. }) => &blocks.qname,
             };
-            conn.batch_execute(&format!("truncate table {} restart identity", table_name))?;
+            conn.batch_execute(&format!("truncate table {} restart identity", table_name))
+                .await?;
             Ok(())
         }
 
@@ -467,7 +470,8 @@ mod data {
                 Storage::Shared => ETHEREUM_CALL_CACHE_TABLE_NAME,
                 Storage::Private(Schema { call_cache, .. }) => &call_cache.qname,
             };
-            conn.batch_execute(&format!("truncate table {} restart identity", table_name))?;
+            conn.batch_execute(&format!("truncate table {} restart identity", table_name))
+                .await?;
             Ok(())
         }
 
@@ -483,7 +487,8 @@ mod data {
             conn.batch_execute(&format!(
                 "delete from {} WHERE number >= {} AND data->'block'->'data' = 'null'::jsonb;",
                 table_name, lowest_block,
-            ))?;
+            ))
+            .await?;
             Ok(())
         }
 
@@ -503,6 +508,7 @@ mod data {
             .set(head_block_cursor.eq(None as Option<String>))
             .returning(head_block_number)
             .get_result::<Option<i64>>(conn)
+            .await
             .optional()
             {
                 Ok(res) => match res {
@@ -559,13 +565,15 @@ mod data {
                             .on_conflict(b::hash)
                             .do_update()
                             .set(values)
-                            .execute(conn)?;
+                            .execute(conn)
+                            .await?;
                     } else {
                         insert_into(b::table)
                             .values(values.clone())
                             .on_conflict(b::hash)
                             .do_nothing()
-                            .execute(conn)?;
+                            .execute(conn)
+                            .await?;
                     }
                 }
                 Storage::Private(Schema { blocks, .. }) => {
@@ -590,7 +598,8 @@ mod data {
                         .bind::<BigInt, _>(number)
                         .bind::<Bytea, _>(parent_hash.as_slice())
                         .bind::<Jsonb, _>(data)
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
                 }
             };
             Ok(())
@@ -616,21 +625,25 @@ mod data {
                         .filter(b::network_name.eq(chain))
                         .filter(b::number.eq_any(Vec::from_iter(numbers.iter().map(|&n| n as i64))))
                         .load::<(BlockHash, i64, BlockHash, json::Value)>(conn)
+                        .await
                 }
-                Storage::Private(Schema { blocks, .. }) => blocks
-                    .table()
-                    .select((
-                        blocks.hash(),
-                        blocks.number(),
-                        blocks.parent_hash(),
-                        sql::<Jsonb>("coalesce(data -> 'block', data)"),
-                    ))
-                    .filter(
-                        blocks
-                            .number()
-                            .eq_any(Vec::from_iter(numbers.iter().map(|&n| n as i64))),
-                    )
-                    .load::<(BlockHash, i64, BlockHash, json::Value)>(conn),
+                Storage::Private(Schema { blocks, .. }) => {
+                    blocks
+                        .table()
+                        .select((
+                            blocks.hash(),
+                            blocks.number(),
+                            blocks.parent_hash(),
+                            sql::<Jsonb>("coalesce(data -> 'block', data)"),
+                        ))
+                        .filter(
+                            blocks
+                                .number()
+                                .eq_any(Vec::from_iter(numbers.iter().map(|&n| n as i64))),
+                        )
+                        .load::<(BlockHash, i64, BlockHash, json::Value)>(conn)
+                        .await
+                }
             }?;
 
             Ok(x.into_iter()
@@ -642,7 +655,7 @@ mod data {
 
         pub(super) async fn blocks(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             chain: &str,
             hashes: &[BlockHash],
         ) -> Result<Vec<JsonBlock>, StoreError> {
@@ -670,21 +683,25 @@ mod data {
                                 .eq_any(Vec::from_iter(hashes.iter().map(|h| format!("{:x}", h)))),
                         )
                         .load::<(BlockHash, i64, BlockHash, json::Value)>(conn)
+                        .await
                 }
-                Storage::Private(Schema { blocks, .. }) => blocks
-                    .table()
-                    .select((
-                        blocks.hash(),
-                        blocks.number(),
-                        blocks.parent_hash(),
-                        sql::<Jsonb>("coalesce(data -> 'block', data)"),
-                    ))
-                    .filter(
-                        blocks
-                            .hash()
-                            .eq_any(Vec::from_iter(hashes.iter().map(|h| h.as_slice()))),
-                    )
-                    .load::<(BlockHash, i64, BlockHash, json::Value)>(conn),
+                Storage::Private(Schema { blocks, .. }) => {
+                    blocks
+                        .table()
+                        .select((
+                            blocks.hash(),
+                            blocks.number(),
+                            blocks.parent_hash(),
+                            sql::<Jsonb>("coalesce(data -> 'block', data)"),
+                        ))
+                        .filter(
+                            blocks
+                                .hash()
+                                .eq_any(Vec::from_iter(hashes.iter().map(|h| h.as_slice()))),
+                        )
+                        .load::<(BlockHash, i64, BlockHash, json::Value)>(conn)
+                        .await
+                }
             }?;
             Ok(x.into_iter()
                 .map(|(hash, nr, parent, data)| {
@@ -707,7 +724,8 @@ mod data {
                         .select(b::hash)
                         .filter(b::network_name.eq(&chain))
                         .filter(b::number.eq(number as i64))
-                        .get_results::<String>(conn)?
+                        .get_results::<String>(conn)
+                        .await?
                         .into_iter()
                         .map(|h| h.parse())
                         .collect::<Result<Vec<BlockHash>, _>>()
@@ -717,7 +735,8 @@ mod data {
                     .table()
                     .select(blocks.hash())
                     .filter(blocks.number().eq(number as i64))
-                    .get_results::<Vec<u8>>(conn)?
+                    .get_results::<Vec<u8>>(conn)
+                    .await?
                     .into_iter()
                     .map(BlockHash::from)
                     .collect::<Vec<BlockHash>>()),
@@ -743,6 +762,7 @@ mod data {
                         .filter(b::number.eq(number))
                         .filter(b::hash.ne(&hash))
                         .execute(conn)
+                        .await
                         .map_err(Error::from)
                 }
                 Storage::Private(Schema { blocks, .. }) => {
@@ -754,6 +774,7 @@ mod data {
                         .bind::<BigInt, _>(number)
                         .bind::<Bytea, _>(hash.as_slice())
                         .execute(conn)
+                        .await
                         .map_err(Error::from)
                 }
             }
@@ -781,6 +802,7 @@ mod data {
                         ))
                         .filter(b::hash.eq(format!("{:x}", hash)))
                         .first::<(i64, Option<String>, Option<String>)>(conn)
+                        .await
                         .optional()?
                         .map(|(number, ts, parent_hash)| {
                             // Convert parent_hash from Hex String to Vec<u8>
@@ -798,6 +820,7 @@ mod data {
                     ))
                     .filter(blocks.hash().eq(hash.as_slice()))
                     .first::<(i64, Option<String>, Vec<u8>)>(conn)
+                    .await
                     .optional()?
                     .map(|(number, ts, parent_hash)| (number, ts, Some(parent_hash))),
             };
@@ -833,7 +856,8 @@ mod data {
                     b::table
                         .select((b::hash, b::number))
                         .filter(b::hash.eq_any(hashes))
-                        .load::<(String, i64)>(conn)?
+                        .load::<(String, i64)>(conn)
+                        .await?
                         .into_iter()
                         .map(|(hash, n)| {
                             let hash = hex::decode(&hash).expect("Invalid hex in parent_hash");
@@ -847,7 +871,8 @@ mod data {
                         .table()
                         .select((blocks.hash(), blocks.number()))
                         .filter(blocks.hash().eq_any(hashes))
-                        .load::<(BlockHash, i64)>(conn)?
+                        .load::<(BlockHash, i64)>(conn)
+                        .await?
                 }
             };
 
@@ -908,7 +933,8 @@ mod data {
                         .bind::<Text, _>(&hash)
                         .bind::<Text, _>(&genesis)
                         .bind::<BigInt, _>(first_block)
-                        .load::<BlockHashText>(conn)?;
+                        .load::<BlockHashText>(conn)
+                        .await?;
 
                     let missing = match missing.len() {
                         0 => None,
@@ -953,7 +979,8 @@ mod data {
                         .bind::<Bytea, _>(hash.as_bytes())
                         .bind::<Bytea, _>(genesis.as_bytes())
                         .bind::<BigInt, _>(first_block)
-                        .load::<BlockHashBytea>(conn)?;
+                        .load::<BlockHashBytea>(conn)
+                        .await?;
 
                     let missing = match missing.len() {
                         0 => None,
@@ -981,7 +1008,8 @@ mod data {
             let head = n::table
                 .filter(n::name.eq(chain))
                 .select(n::head_block_number)
-                .first::<Option<i64>>(conn)?
+                .first::<Option<i64>>(conn)
+                .await?
                 .unwrap_or(-1);
 
             match self {
@@ -993,6 +1021,7 @@ mod data {
                         .order_by((b::number.desc(), b::hash))
                         .select((b::hash, b::number))
                         .first::<(String, i64)>(conn)
+                        .await
                         .optional()?
                         .map(|(hash, number)| BlockPtr::try_from((hash.as_str(), number)))
                         .transpose()
@@ -1003,6 +1032,7 @@ mod data {
                     .order_by((blocks.number().desc(), blocks.hash()))
                     .select((blocks.hash(), blocks.number()))
                     .first::<(Vec<u8>, i64)>(conn)
+                    .await
                     .optional()?
                     .map(|(hash, number)| BlockPtr::try_from((hash.as_slice(), number)))
                     .transpose(),
@@ -1075,6 +1105,7 @@ mod data {
                             .bind::<BigInt, _>(offset as i64)
                             .get_result::<BlockHashAndNumber>(conn),
                     }
+                    .await
                     .optional()?;
 
                     use public::ethereum_blocks as b;
@@ -1085,7 +1116,8 @@ mod data {
                             b::table
                                 .filter(b::hash.eq(&block.hash))
                                 .select(b::data)
-                                .first::<json::Value>(conn)?,
+                                .first::<json::Value>(conn)
+                                .await?,
                             BlockPtr::new(
                                 BlockHash::from_str(&block.hash)?,
                                 i32::try_from(block.number).unwrap(),
@@ -1105,7 +1137,7 @@ mod data {
                         number: i64,
                     }
 
-                    let block = match root {
+                    let block = match &root {
                         Some(root) => sql_query(query)
                             .bind::<Bytea, _>(block_ptr.hash_slice())
                             .bind::<BigInt, _>(offset as i64)
@@ -1116,6 +1148,7 @@ mod data {
                             .bind::<BigInt, _>(offset as i64)
                             .get_result::<BlockHashAndNumber>(conn),
                     }
+                    .await
                     .optional()?;
 
                     match block {
@@ -1125,7 +1158,8 @@ mod data {
                                 .table()
                                 .filter(blocks.hash().eq(&block.hash))
                                 .select(blocks.data())
-                                .first::<json::Value>(conn)?,
+                                .first::<json::Value>(conn)
+                                .await?,
                             BlockPtr::from((block.hash, block.number)),
                         )),
                     }
@@ -1169,6 +1203,7 @@ mod data {
                         .filter(b::number.lt(block))
                         .filter(b::number.gt(0))
                         .execute(conn)
+                        .await
                         .map_err(Error::from)
                 }
                 Storage::Private(Schema { blocks, .. }) => {
@@ -1179,6 +1214,7 @@ mod data {
                     sql_query(query)
                         .bind::<BigInt, _>(block)
                         .execute(conn)
+                        .await
                         .map_err(Error::from)
                 }
             }
@@ -1204,6 +1240,7 @@ mod data {
                         .filter(b::hash.eq_any(hashes))
                         .filter(b::number.gt(0)) // keep genesis
                         .execute(conn)
+                        .await
                         .map_err(Error::from)
                 }
                 Storage::Private(Schema { blocks, .. }) => {
@@ -1218,6 +1255,7 @@ mod data {
                     sql_query(query)
                         .bind::<Array<Bytea>, _>(hashes)
                         .execute(conn)
+                        .await
                         .map_err(Error::from)
                 }
             }
@@ -1225,7 +1263,7 @@ mod data {
 
         pub(super) async fn get_call_and_access(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             id: &[u8],
         ) -> Result<Option<(Bytes, bool)>, Error> {
             match self {
@@ -1241,6 +1279,7 @@ mod data {
                             sql::<Bool>("CURRENT_DATE > eth_call_meta.accessed_at"),
                         ))
                         .get_result(conn)
+                        .await
                         .optional()
                         .map_err(Error::from)
                 }
@@ -1265,6 +1304,7 @@ mod data {
                         )),
                     ))
                     .first::<(Vec<u8>, bool)>(conn)
+                    .await
                     .optional()
                     .map_err(Error::from),
             }
@@ -1290,6 +1330,7 @@ mod data {
                             sql::<Bool>("CURRENT_DATE > eth_call_meta.accessed_at"),
                         ))
                         .load(conn)
+                        .await
                         .map_err(Error::from)
                 }
                 Storage::Private(Schema {
@@ -1314,6 +1355,7 @@ mod data {
                         )),
                     ))
                     .load::<(Vec<u8>, Vec<u8>, bool)>(conn)
+                    .await
                     .map_err(Error::from),
             }?;
             Ok(rows
@@ -1337,18 +1379,22 @@ mod data {
                         .select((cache::id, cache::return_value, cache::contract_address))
                         .filter(cache::block_number.eq(block_num))
                         .order(cache::contract_address)
-                        .get_results::<(Vec<u8>, Vec<u8>, Vec<u8>)>(conn)?
+                        .get_results::<(Vec<u8>, Vec<u8>, Vec<u8>)>(conn)
+                        .await?
                 }
-                Storage::Private(Schema { call_cache, .. }) => call_cache
-                    .table()
-                    .select((
-                        call_cache.id(),
-                        call_cache.return_value(),
-                        call_cache.contract_address(),
-                    ))
-                    .filter(call_cache.block_number().eq(block_num as i64))
-                    .order(call_cache.contract_address())
-                    .get_results::<(Vec<u8>, Vec<u8>, Vec<u8>)>(conn)?,
+                Storage::Private(Schema { call_cache, .. }) => {
+                    call_cache
+                        .table()
+                        .select((
+                            call_cache.id(),
+                            call_cache.return_value(),
+                            call_cache.contract_address(),
+                        ))
+                        .filter(call_cache.block_number().eq(block_num as i64))
+                        .order(call_cache.contract_address())
+                        .get_results::<(Vec<u8>, Vec<u8>, Vec<u8>)>(conn)
+                        .await?
+                }
             };
 
             Ok(rows
@@ -1384,6 +1430,7 @@ mod data {
                             .filter(cache::block_number.le(to)),
                     )
                     .execute(conn)
+                    .await
                     .map_err(Error::from)?;
                     Ok(())
                 }
@@ -1399,15 +1446,16 @@ mod data {
                         .bind::<Integer, _>(from)
                         .bind::<Integer, _>(to)
                         .execute(conn)
+                        .await
                         .map_err(Error::from)
                         .map(|_| ())
                 }
             }
         }
 
-        pub fn clear_stale_call_cache(
+        pub async fn clear_stale_call_cache(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             logger: &Logger,
             ttl_days: i32,
             ttl_max_contracts: Option<i64>,
@@ -1455,7 +1503,8 @@ mod data {
                                     .lt(diesel::dsl::date(diesel::dsl::now - ttl_days.days())),
                             )
                             .limit(batch_limit)
-                            .get_results::<Vec<u8>>(conn)?;
+                            .get_results::<Vec<u8>>(conn)
+                            .await?;
 
                         if stale_contracts.is_empty() {
                             info!(
@@ -1472,10 +1521,12 @@ mod data {
                                 .select(cache::id)
                                 .filter(cache::contract_address.eq_any(&stale_contracts))
                                 .limit(cache_batch_size as i64)
-                                .get_results::<Vec<u8>>(conn)?;
+                                .get_results::<Vec<u8>>(conn)
+                                .await?;
                             let deleted_count =
                                 diesel::delete(cache::table.filter(cache::id.eq_any(&next_batch)))
-                                    .execute(conn)?;
+                                    .execute(conn)
+                                    .await?;
 
                             total_calls += deleted_count;
 
@@ -1487,7 +1538,8 @@ mod data {
                         let deleted_contracts = diesel::delete(
                             meta::table.filter(meta::contract_address.eq_any(&stale_contracts)),
                         )
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
 
                         total_contracts += deleted_contracts as i64;
                     }
@@ -1550,7 +1602,8 @@ mod data {
 
                         let stale_contracts: Vec<Vec<u8>> = sql_query(&select_query)
                             .bind::<BigInt, _>(batch_limit)
-                            .load::<ContractAddress>(conn)?
+                            .load::<ContractAddress>(conn)
+                            .await?
                             .into_iter()
                             .map(|r| r.contract_address)
                             .collect();
@@ -1568,7 +1621,8 @@ mod data {
                         loop {
                             let deleted_count = sql_query(&delete_cache_query)
                                 .bind::<Array<Bytea>, _>(&stale_contracts)
-                                .execute(conn)?;
+                                .execute(conn)
+                                .await?;
 
                             total_calls += deleted_count;
 
@@ -1579,7 +1633,8 @@ mod data {
 
                         let deleted_contracts = sql_query(&delete_meta_query)
                             .bind::<Array<Bytea>, _>(&stale_contracts)
-                            .execute(conn)?;
+                            .execute(conn)
+                            .await?;
 
                         total_contracts += deleted_contracts as i64;
                     }
@@ -1601,6 +1656,7 @@ mod data {
                     update(meta::table.find::<&[u8]>(contract_address.as_ref()))
                         .set(meta::accessed_at.eq(sql("CURRENT_DATE")))
                         .execute(conn)
+                        .await
                 }
                 Storage::Private(Schema { call_meta, .. }) => {
                     let query = format!(
@@ -1610,6 +1666,7 @@ mod data {
                     sql_query(query)
                         .bind::<Bytea, _>(contract_address)
                         .execute(conn)
+                        .await
                 }
             };
             result.map(|_| ()).map_err(Error::from)
@@ -1636,7 +1693,8 @@ mod data {
                             cache::return_value.eq(return_value),
                         ))
                         .on_conflict_do_nothing()
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
 
                     // See comment in the Private branch for why the
                     // raciness of this check is ok
@@ -1644,6 +1702,7 @@ mod data {
                         .filter(meta::contract_address.eq(contract_address))
                         .select(sql::<Bool>("accessed_at < current_date"))
                         .first::<bool>(conn)
+                        .await
                         .optional()?
                         .unwrap_or(true);
                     if update_meta {
@@ -1660,6 +1719,7 @@ mod data {
                             // branch to avoid unnecessary updates (not entirely
                             // trivial with diesel)
                             .execute(conn)
+                            .await
                     } else {
                         Ok(0)
                     }
@@ -1679,7 +1739,8 @@ mod data {
                         .bind::<Bytea, _>(contract_address)
                         .bind::<Integer, _>(block_number)
                         .bind::<Bytea, _>(return_value)
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
 
                     // Check whether we need to update `call_meta`. The
                     // check is racy, since an update can happen between the
@@ -1692,6 +1753,7 @@ mod data {
                         .filter(call_meta.contract_address().eq(contract_address))
                         .select(sql::<Bool>("accessed_at < current_date"))
                         .first::<bool>(conn)
+                        .await
                         .optional()?
                         .unwrap_or(true);
 
@@ -1707,6 +1769,7 @@ mod data {
                         sql_query(query)
                             .bind::<Bytea, _>(contract_address)
                             .execute(conn)
+                            .await
                     } else {
                         Ok(0)
                     }
@@ -1717,7 +1780,7 @@ mod data {
 
         #[cfg(debug_assertions)]
         // used by `super::set_chain` for test support
-        pub(super) async fn remove_chain(&self, conn: &mut PgConnection, chain_name: &str) {
+        pub(super) async fn remove_chain(&self, conn: &mut AsyncPgConnection, chain_name: &str) {
             match self {
                 Storage::Shared => {
                     use public::eth_call_cache as c;
@@ -1726,11 +1789,12 @@ mod data {
 
                     diesel::delete(b::table.filter(b::network_name.eq(chain_name)))
                         .execute(conn)
+                        .await
                         .expect("Failed to delete ethereum_blocks");
                     // We don't have a good way to clean out the call cache
                     // per chain; just nuke everything
-                    diesel::delete(c::table).execute(conn).unwrap();
-                    diesel::delete(m::table).execute(conn).unwrap();
+                    diesel::delete(c::table).execute(conn).await.unwrap();
+                    diesel::delete(m::table).execute(conn).await.unwrap();
                 }
                 Storage::Private(Schema {
                     blocks,
@@ -1742,6 +1806,7 @@ mod data {
                         let query = format!("delete from {}", qname);
                         sql_query(query)
                             .execute(conn)
+                            .await
                             .unwrap_or_else(|_| panic!("Failed to delete {}", qname));
                     }
                 }
@@ -1778,12 +1843,18 @@ from (
                 // `chain*.blocks` tables, so we must check which one is being queried to bind the
                 // `block_hash` parameter to the correct type
                 match self {
-                    Storage::Shared => query
-                        .bind::<Text, _>(format!("{:x}", block_hash))
-                        .get_results(conn),
-                    Storage::Private(_) => query
-                        .bind::<Binary, _>(block_hash.as_bytes())
-                        .get_results(conn),
+                    Storage::Shared => {
+                        query
+                            .bind::<Text, _>(format!("{:x}", block_hash))
+                            .get_results(conn)
+                            .await
+                    }
+                    Storage::Private(_) => {
+                        query
+                            .bind::<Binary, _>(block_hash.as_bytes())
+                            .get_results(conn)
+                            .await
+                    }
                 }
             };
             query_results
@@ -1969,7 +2040,8 @@ impl ChainStore {
                     ))
                     .on_conflict(name)
                     .do_nothing()
-                    .execute(conn)?;
+                    .execute(conn)
+                    .await?;
                 self.storage.create(conn).await
             }
             .scope_boxed()
@@ -1986,7 +2058,8 @@ impl ChainStore {
             async {
                 update(n::table.filter(n::name.eq(&self.chain)))
                     .set(n::name.eq(name))
-                    .execute(conn)?;
+                    .execute(conn)
+                    .await?;
                 Ok(())
             }
             .scope_boxed()
@@ -2003,7 +2076,9 @@ impl ChainStore {
             async {
                 self.storage.drop_storage(conn, &self.chain).await?;
 
-                delete(n::table.filter(n::name.eq(&self.chain))).execute(conn)?;
+                delete(n::table.filter(n::name.eq(&self.chain)))
+                    .execute(conn)
+                    .await?;
                 Ok(())
             }
             .scope_boxed()
@@ -2018,7 +2093,8 @@ impl ChainStore {
 
         let pointers: Vec<(String, BlockPtr)> = n::table
             .select((n::name, n::head_block_hash, n::head_block_number))
-            .load::<(String, Option<String>, Option<i64>)>(conn)?
+            .load::<(String, Option<String>, Option<i64>)>(conn)
+            .await?
             .into_iter()
             .filter_map(|(name, hash, number)| match (hash, number) {
                 (Some(hash), Some(number)) => Some((name, hash, number)),
@@ -2038,6 +2114,7 @@ impl ChainStore {
             .filter(n::name.eq(chain))
             .select(n::head_block_number)
             .first::<Option<i64>>(&mut self.get_conn().await?)
+            .await
             .optional()?
             .flatten();
 
@@ -2063,7 +2140,8 @@ impl ChainStore {
                 n::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
                 n::net_version.eq(&ident.net_version),
             ))
-            .execute(&mut conn)?;
+            .execute(&mut conn)
+            .await?;
 
         Ok(())
     }
@@ -2113,6 +2191,7 @@ impl ChainStore {
                 n::head_block_number.eq::<Option<i64>>(None),
             ))
             .execute(&mut conn)
+            .await
             .unwrap();
         self.recent_blocks_cache.blocks()
     }
@@ -2148,17 +2227,8 @@ impl ChainStore {
         self: &Arc<Self>,
         hashes: Vec<BlockHash>,
     ) -> Result<Vec<JsonBlock>, StoreError> {
-        let store = self.cheap_clone();
-        let pool = self.pool.clone();
-        let values = pool
-            .with_conn(async move |conn, _| {
-                store
-                    .storage
-                    .blocks(conn, &store.chain, &hashes)
-                    .await
-                    .map_err(CancelableError::from)
-            })
-            .await?;
+        let mut conn = self.pool.get().await?;
+        let values = self.storage.blocks(&mut conn, &self.chain, &hashes).await?;
         Ok(values)
     }
 
@@ -2222,8 +2292,10 @@ impl ChainHeadStore for ChainStore {
                     .select((head_block_hash, head_block_number))
                     .filter(name.eq(&self.chain))
                     .load::<(Option<String>, Option<i64>)>(conn)
+                    .await
                     .map(|rows| {
-                        rows.first()
+                        rows.as_slice()
+                            .first()
                             .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
                                 (Some(hash), Some(number)) => Some(
                                     (
@@ -2252,8 +2324,10 @@ impl ChainHeadStore for ChainStore {
             .select(head_block_cursor)
             .filter(name.eq(&self.chain))
             .load::<Option<String>>(&mut self.get_conn().await?)
+            .await
             .map(|rows| {
-                rows.first()
+                rows.as_slice()
+                    .first()
                     .map(|cursor_opt| cursor_opt.as_ref().cloned())
                     .and_then(|opt| opt)
             })
@@ -2291,7 +2365,8 @@ impl ChainHeadStore for ChainStore {
                             n::head_block_number.eq(number),
                             n::head_block_cursor.eq(cursor),
                         ))
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
 
                     Ok::<(), StoreError>(())
                 }
@@ -2400,7 +2475,7 @@ impl ChainStoreTrait for ChainStore {
                                         n::head_block_hash.eq(&hash),
                                         n::head_block_number.eq(number),
                                     ))
-                                    .execute(conn)?;
+                                    .execute(conn).await?;
                                 Ok((None, Some((hash, number))))
                             }
                             .scope_boxed()
@@ -2660,7 +2735,9 @@ impl ChainStoreTrait for ChainStore {
         let Some(block) = diesel::sql_query(query)
             .bind::<Integer, _>(ancestor_count)
             .bind::<Text, _>(&self.chain)
-            .load::<MinBlock>(&mut conn)?
+            .load::<MinBlock>(&mut conn)
+            .await?
+            .as_slice()
             .first()
             .map(|MinBlock { block }| *block)
         else {
@@ -2759,6 +2836,7 @@ impl ChainStoreTrait for ChainStore {
         let conn = &mut self.get_conn().await?;
         self.storage
             .clear_stale_call_cache(conn, &self.logger, ttl_days, ttl_max_contracts)
+            .await
     }
 
     async fn transaction_receipts_in_block(
@@ -2783,7 +2861,8 @@ impl ChainStoreTrait for ChainStore {
         let (genesis_block_hash, net_version) = n::table
             .select((n::genesis_block_hash, n::net_version))
             .filter(n::name.eq(&self.chain))
-            .get_result::<(BlockHash, String)>(&mut conn)?;
+            .get_result::<(BlockHash, String)>(&mut conn)
+            .await?;
 
         Ok(ChainIdentifier {
             net_version,
