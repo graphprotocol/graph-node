@@ -1675,7 +1675,7 @@ mod data {
 
         pub(super) async fn set_call(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             id: &[u8],
             contract_address: &[u8],
             block_number: i32,
@@ -3146,28 +3146,19 @@ impl EthereumCallCache for ChainStore {
         };
 
         let id = contract_call_id(&call, &block);
-        let this = self.cheap_clone();
-        self.pool
-            .with_conn(async move |conn, _| {
-                conn.transaction::<_, CancelableError<anyhow::Error>, _>(|conn| {
-                    async {
-                        this.storage
-                            .set_call(
-                                conn,
-                                id.as_ref(),
-                                call.address.as_ref(),
-                                block.number,
-                                &return_value,
-                            )
-                            .await
-                            .map_err(Into::into)
-                    }
-                    .scope_boxed()
-                })
-                .await
-                .map_err(Into::into)
-            })
-            .await?;
+        let conn = &mut self.pool.get().await?;
+        conn.transaction::<_, anyhow::Error, _>(|conn| {
+            self.storage
+                .set_call(
+                    conn,
+                    id.as_ref(),
+                    call.address.as_ref(),
+                    block.number,
+                    &return_value,
+                )
+                .scope_boxed()
+        })
+        .await?;
         Ok(())
     }
 }
