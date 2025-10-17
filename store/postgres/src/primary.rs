@@ -453,7 +453,6 @@ mod queries {
     };
     use std::{collections::HashMap, convert::TryFrom, convert::TryInto};
 
-    use crate::pool::PgConnection;
     use crate::{AsyncPgConnection, Shard};
 
     use super::{DeploymentId, Schema, Site};
@@ -480,7 +479,7 @@ mod queries {
     }
 
     pub(super) async fn find_site_by_ref(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         id: DeploymentId,
     ) -> Result<Option<Site>, StoreError> {
         let schema = ds::table.find(id).first::<Schema>(conn).await.optional()?;
@@ -488,7 +487,7 @@ mod queries {
     }
 
     pub(super) async fn subgraph_exists(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         name: &SubgraphName,
     ) -> Result<bool, StoreError> {
         Ok(
@@ -499,7 +498,7 @@ mod queries {
     }
 
     pub(super) async fn current_deployment_for_subgraph(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         name: &SubgraphName,
     ) -> Result<DeploymentHash, StoreError> {
         let id = v::table
@@ -517,7 +516,7 @@ mod queries {
     }
 
     pub(super) async fn deployments_for_subgraph(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         name: &str,
     ) -> Result<Vec<Site>, StoreError> {
         ds::table
@@ -535,7 +534,7 @@ mod queries {
     }
 
     pub(super) async fn subgraph_version(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         name: &str,
         use_current: bool,
     ) -> Result<Option<Site>, StoreError> {
@@ -564,7 +563,7 @@ mod queries {
     /// Find sites by their subgraph deployment hashes. If `ids` is empty,
     /// return all sites
     pub(super) async fn find_sites(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         ids: &[String],
         only_active: bool,
     ) -> Result<Vec<Site>, StoreError> {
@@ -595,7 +594,7 @@ mod queries {
     /// Find sites by their subgraph deployment ids. If `ids` is empty,
     /// return no sites
     pub(super) async fn find_sites_by_id(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         ids: &[DeploymentId],
     ) -> Result<Vec<Site>, StoreError> {
         let schemas = ds::table
@@ -623,7 +622,7 @@ mod queries {
     }
 
     pub(super) async fn assignments(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         node: &NodeId,
     ) -> Result<Vec<Site>, StoreError> {
         ds::table
@@ -639,7 +638,7 @@ mod queries {
 
     // All assignments for a node that are currently not paused
     pub(super) async fn active_assignments(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         node: &NodeId,
     ) -> Result<Vec<Site>, StoreError> {
         ds::table
@@ -655,7 +654,7 @@ mod queries {
     }
 
     pub(super) async fn fill_assignments(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         infos: &[status::Info],
     ) -> Result<HashMap<GraphDeploymentId, (String, bool)>, StoreError> {
         let ids: Vec<_> = infos.iter().map(|info| &info.id).collect();
@@ -725,7 +724,7 @@ mod queries {
     }
 
     pub(super) async fn version_info(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         version: &str,
     ) -> Result<Option<(String, String)>, StoreError> {
         Ok(v::table
@@ -737,7 +736,7 @@ mod queries {
     }
 
     pub(super) async fn versions_for_subgraph_id(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
         Ok(s::table
@@ -751,7 +750,7 @@ mod queries {
 
     /// Returns all (subgraph_name, version) pairs for a given deployment hash.
     pub async fn subgraphs_by_deployment_hash(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
         v::table
@@ -2091,7 +2090,7 @@ impl Mirror {
         callback: F,
     ) -> BoxFuture<'s, Result<R, StoreError>>
     where
-        F: for<'r> Fn(&'r mut PgConnection) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
+        F: for<'r> Fn(&'r mut AsyncPgConnection) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
             + Send
             + 'a,
         R: Send + 'a,
@@ -2099,7 +2098,7 @@ impl Mirror {
     {
         async move {
             for pool in self.pools.as_ref() {
-                let mut conn = match pool.get_sync().await {
+                let mut conn = match pool.get().await {
                     Ok(conn) => conn,
                     Err(StoreError::DatabaseUnavailable) => continue,
                     Err(e) => return Err(e),
