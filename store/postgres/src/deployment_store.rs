@@ -1483,13 +1483,9 @@ impl DeploymentStore {
         id: DeploymentHash,
         error: SubgraphError,
     ) -> Result<(), StoreError> {
-        self.with_conn(async move |conn, _| {
-            conn.transaction(|conn| deployment::fail(conn, &id, &error).scope_boxed())
-                .await
-                .map_err(Into::into)
-        })
-        .await?;
-        Ok(())
+        let mut conn = self.pool.get().await?;
+        conn.transaction(|conn| deployment::fail(conn, &id, &error).scope_boxed())
+            .await
     }
 
     pub(crate) fn replica_for_query(&self) -> Result<ReplicaId, StoreError> {

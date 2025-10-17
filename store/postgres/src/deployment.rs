@@ -890,7 +890,7 @@ async fn insert_subgraph_error(
 }
 
 pub async fn fail(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
     error: &SubgraphError,
 ) -> Result<(), StoreError> {
