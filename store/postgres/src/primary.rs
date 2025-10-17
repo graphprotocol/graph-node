@@ -441,9 +441,10 @@ mod queries {
     use diesel::dsl::{exists, sql};
     use diesel::prelude::{
         BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
-        OptionalExtension, QueryDsl, RunQueryDsl,
+        OptionalExtension, QueryDsl,
     };
     use diesel::sql_types::Text;
+    use diesel_async::RunQueryDsl;
     use graph::prelude::NodeId;
     use graph::{
         components::store::DeploymentId as GraphDeploymentId,
@@ -474,6 +475,7 @@ mod queries {
             .filter(ds::subgraph.eq(subgraph.to_string()))
             .filter(ds::active.eq(true))
             .first::<Schema>(conn)
+            .await
             .optional()?;
         schema.map(|schema| schema.try_into()).transpose()
     }
@@ -482,7 +484,7 @@ mod queries {
         conn: &mut PgConnection,
         id: DeploymentId,
     ) -> Result<Option<Site>, StoreError> {
-        let schema = ds::table.find(id).first::<Schema>(conn).optional()?;
+        let schema = ds::table.find(id).first::<Schema>(conn).await.optional()?;
         schema.map(|schema| schema.try_into()).transpose()
     }
 
@@ -492,7 +494,8 @@ mod queries {
     ) -> Result<bool, StoreError> {
         Ok(
             diesel::select(exists(s::table.filter(s::name.eq(name.as_str()))))
-                .get_result::<bool>(conn)?,
+                .get_result::<bool>(conn)
+                .await?,
         )
     }
 
@@ -505,6 +508,7 @@ mod queries {
             .filter(s::name.eq(name.as_str()))
             .select(v::deployment)
             .first::<String>(conn)
+            .await
             .optional()?;
         match id {
             Some(id) => DeploymentHash::new(id)
@@ -524,7 +528,8 @@ mod queries {
             .filter(ds::active)
             .order_by(v::created_at.asc())
             .select(ds::all_columns)
-            .load::<Schema>(conn)?
+            .load::<Schema>(conn)
+            .await?
             .into_iter()
             .map(Site::try_from)
             .collect::<Result<Vec<Site>, _>>()
@@ -543,6 +548,7 @@ mod queries {
                 .filter(s::name.eq(&name))
                 .filter(ds::active)
                 .first::<Schema>(conn)
+                .await
         } else {
             ds::table
                 .select(ds::all_columns)
@@ -551,6 +557,7 @@ mod queries {
                 .filter(s::name.eq(&name))
                 .filter(ds::active)
                 .first::<Schema>(conn)
+                .await
         };
         deployment.optional()?.map(Site::try_from).transpose()
     }
@@ -564,19 +571,21 @@ mod queries {
     ) -> Result<Vec<Site>, StoreError> {
         let schemas = if ids.is_empty() {
             if only_active {
-                ds::table.filter(ds::active).load::<Schema>(conn)?
+                ds::table.filter(ds::active).load::<Schema>(conn).await?
             } else {
-                ds::table.load::<Schema>(conn)?
+                ds::table.load::<Schema>(conn).await?
             }
         } else if only_active {
             ds::table
                 .filter(ds::active)
                 .filter(ds::subgraph.eq_any(ids))
-                .load::<Schema>(conn)?
+                .load::<Schema>(conn)
+                .await?
         } else {
             ds::table
                 .filter(ds::subgraph.eq_any(ids))
-                .load::<Schema>(conn)?
+                .load::<Schema>(conn)
+                .await?
         };
         schemas
             .into_iter()
@@ -590,7 +599,10 @@ mod queries {
         conn: &mut PgConnection,
         ids: &[DeploymentId],
     ) -> Result<Vec<Site>, StoreError> {
-        let schemas = ds::table.filter(ds::id.eq_any(ids)).load::<Schema>(conn)?;
+        let schemas = ds::table
+            .filter(ds::id.eq_any(ids))
+            .load::<Schema>(conn)
+            .await?;
         schemas
             .into_iter()
             .map(|schema| schema.try_into())
@@ -606,6 +618,7 @@ mod queries {
             .filter(ds::subgraph.eq(subgraph.as_str()))
             .filter(ds::shard.eq(shard.as_str()))
             .first::<Schema>(conn)
+            .await
             .optional()?;
         schema.map(|schema| schema.try_into()).transpose()
     }
@@ -618,7 +631,8 @@ mod queries {
             .inner_join(a::table.on(a::id.eq(ds::id)))
             .filter(a::node_id.eq(node.as_str()))
             .select(ds::all_columns)
-            .load::<Schema>(conn)?
+            .load::<Schema>(conn)
+            .await?
             .into_iter()
             .map(Site::try_from)
             .collect::<Result<Vec<Site>, _>>()
@@ -634,7 +648,8 @@ mod queries {
             .filter(a::node_id.eq(node.as_str()))
             .filter(a::paused_at.is_null())
             .select(ds::all_columns)
-            .load::<Schema>(conn)?
+            .load::<Schema>(conn)
+            .await?
             .into_iter()
             .map(Site::try_from)
             .collect::<Result<Vec<Site>, _>>()
@@ -649,7 +664,8 @@ mod queries {
             .inner_join(ds::table.on(ds::id.eq(a::id)))
             .filter(ds::id.eq_any(ids))
             .select((ds::id, a::node_id, a::paused_at.is_not_null()))
-            .load::<(GraphDeploymentId, String, bool)>(conn)?
+            .load::<(GraphDeploymentId, String, bool)>(conn)
+            .await?
             .into_iter()
             .map(|(id, node, paused)| (id, (node, paused)))
             .collect();
@@ -664,6 +680,7 @@ mod queries {
             .filter(a::id.eq(site.id))
             .select(a::node_id)
             .first::<String>(conn)
+            .await
             .optional()?
             .map(|node| {
                 NodeId::new(&node).map_err(|()| {
@@ -689,6 +706,7 @@ mod queries {
             .filter(a::id.eq(site.id))
             .select((a::node_id, a::paused_at))
             .first::<(String, Option<PgTimestamp>)>(conn)
+            .await
             .optional()?
             .map(|(node, ts)| {
                 let node_id = NodeId::new(&node).map_err(|()| {
@@ -715,6 +733,7 @@ mod queries {
             .select((v::deployment, sql::<Text>("created_at::text")))
             .filter(v::id.eq(version))
             .first::<(String, String)>(conn)
+            .await
             .optional()?)
     }
 
@@ -726,6 +745,7 @@ mod queries {
             .select((s::current_version.nullable(), s::pending_version.nullable()))
             .filter(s::id.eq(subgraph_id))
             .first::<(Option<String>, Option<String>)>(conn)
+            .await
             .optional()?
             .unwrap_or((None, None)))
     }
@@ -753,6 +773,7 @@ mod queries {
                     ),
                 ))
                 .get_results(conn)
+                .await
                 .map_err(Into::into)
     }
 }
