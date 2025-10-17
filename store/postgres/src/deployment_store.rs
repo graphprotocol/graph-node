@@ -863,13 +863,8 @@ impl DeploymentStore {
         self: &Arc<Self>,
         site: Arc<Site>,
     ) -> Result<relational::prune::Viewer, StoreError> {
-        let store = self.cheap_clone();
-        let layout = self
-            .pool
-            .with_conn(async move |conn, _| {
-                store.layout(conn, site.clone()).await.map_err(|e| e.into())
-            })
-            .await?;
+        let mut conn = self.pool.get().await?;
+        let layout = self.layout(&mut conn, site.clone()).await?;
 
         Ok(relational::prune::Viewer::new(self.pool.clone(), layout))
     }
