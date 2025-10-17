@@ -1,8 +1,7 @@
-use diesel::connection::SimpleConnection;
 use diesel::sql_query;
 use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
 use diesel_async::pooled_connection::{mobc, AsyncDieselConnectionManager};
-use diesel_async::{AsyncConnection as _, RunQueryDsl};
+use diesel_async::{AsyncConnection as _, RunQueryDsl, SimpleAsyncConnection};
 use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
 
 use graph::cheap_clone::CheapClone;
@@ -652,16 +651,17 @@ impl PoolInner {
 
     async fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
-        let mut conn = self.get_sync().await?;
-        conn.batch_execute("create extension if not exists postgres_fdw")?;
-        conn.transaction_async(|conn| {
+        let mut conn = self.get().await?;
+        conn.batch_execute("create extension if not exists postgres_fdw")
+            .await?;
+        conn.transaction(|conn| {
             async {
                 let current_servers: Vec<String> = crate::catalog::current_servers(conn).await?;
                 for server in servers.iter().filter(|server| server.shard != self.shard) {
                     if current_servers.contains(&server.name) {
                         server.update(conn).await?;
                     } else {
-                        server.create(conn)?;
+                        server.create(conn).await?;
                     }
                 }
                 Ok(())
@@ -705,11 +705,11 @@ impl PoolInner {
         }
 
         info!(&self.logger, "Dropping cross-shard views");
-        let mut conn = self.get_sync().await?;
-        conn.transaction_async(|conn| {
+        let mut conn = self.get().await?;
+        conn.transaction(|conn| {
             async {
                 let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
-                conn.batch_execute(&query)?;
+                conn.batch_execute(&query).await?;
                 Ok(())
             }
             .scope_boxed()
@@ -742,7 +742,7 @@ impl PoolInner {
             return Ok(());
         }
 
-        let mut conn = self.get_sync().await?;
+        let mut conn = self.get().await?;
         let sharded = Namespace::special(CROSS_SHARD_NSP);
         if catalog::has_namespace(&mut conn, &sharded).await? {
             // We dropped the namespace before, but another node must have
@@ -751,10 +751,10 @@ impl PoolInner {
         }
 
         info!(&self.logger, "Creating cross-shard views");
-        conn.transaction_async(|conn| {
+        conn.transaction(|conn| {
             async {
                 let query = format!("create schema {}", CROSS_SHARD_NSP);
-                conn.batch_execute(&query)?;
+                conn.batch_execute(&query).await?;
                 for (src_nsp, src_tables) in SHARDED_TABLES {
                     // Pairs of (shard, nsp) for all servers
                     let nsps = shard_nsp_pairs(&self.shard, src_nsp, servers);
@@ -767,7 +767,7 @@ impl PoolInner {
                             &nsps,
                         )
                         .await?;
-                        conn.batch_execute(&create_view)?;
+                        conn.batch_execute(&create_view).await?;
                     }
                 }
                 Ok(())
@@ -794,11 +794,9 @@ impl PoolInner {
     pub async fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
-            let mut conn = self.get_sync().await?;
-            conn.transaction_async(|conn| {
-                ForeignServer::map_primary(conn, &self.shard).scope_boxed()
-            })
-            .await?;
+            let mut conn = self.get().await?;
+            conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard).scope_boxed())
+                .await?;
         }
         if &server.shard != &self.shard {
             info!(
