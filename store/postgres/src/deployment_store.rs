@@ -411,7 +411,7 @@ impl DeploymentStore {
             return Ok(layout);
         }
 
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         self.layout(&mut conn, site).await
     }
 
