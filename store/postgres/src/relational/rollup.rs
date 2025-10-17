@@ -73,7 +73,6 @@ use graph::sqlparser::ast as p;
 use graph::sqlparser::parser::ParserError;
 use itertools::Itertools;
 
-use crate::pool::PgConnection;
 use crate::relational::Table;
 use crate::AsyncPgConnection;
 
@@ -288,7 +287,7 @@ impl Rollup {
 
     pub(crate) async fn last_rollup(
         rollups: &[Rollup],
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> Result<Option<BlockTime>, StoreError> {
         #[derive(QueryableByName)]
         #[diesel(check_for_backend(diesel::pg::Pg))]
