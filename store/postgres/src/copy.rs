@@ -24,9 +24,10 @@ use std::{
 
 use diesel::{
     connection::SimpleConnection as _, dsl::sql, insert_into, select, sql_query, update,
-    ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl,
+    ExpressionMethods, OptionalExtension, QueryDsl,
 };
 use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
+use diesel_async::RunQueryDsl;
 use graph::{
     futures03::{
         future::{select_all, BoxFuture},
@@ -136,6 +137,7 @@ impl CopyState {
             .filter(cs::dst.eq(dst.site.id))
             .select((cs::src, cs::target_block_hash, cs::target_block_number))
             .first::<(DeploymentId, Vec<u8>, BlockNumber)>(conn)
+            .await
             .optional()?
         {
             Some((src_id, hash, number)) => {
@@ -204,7 +206,8 @@ impl CopyState {
                 cs::target_block_hash.eq(target_block.hash_slice()),
                 cs::target_block_number.eq(target_block.number),
             ))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         let mut unfinished = Vec::new();
         for dst_table in dst.tables.values() {
@@ -237,7 +240,7 @@ impl CopyState {
                 )
             })
             .collect::<Vec<_>>();
-        insert_into(cts::table).values(values).execute(conn)?;
+        insert_into(cts::table).values(values).execute(conn).await?;
 
         Ok(CopyState {
             src,
@@ -257,7 +260,8 @@ impl CopyState {
 
         update(cs::table.filter(cs::dst.eq(self.dst.site.id)))
             .set(cs::finished_at.eq(sql("now()")))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         // If we imported the schema for `src`, and no other in-progress
         // copy is using it, get rid of it again
@@ -267,7 +271,8 @@ impl CopyState {
                     .filter(cs::src.eq(self.src.site.id))
                     .filter(cs::finished_at.is_null()),
             ))
-            .get_result::<bool>(conn)?;
+            .get_result::<bool>(conn)
+            .await?;
             if !has_active_copies {
                 // This is a foreign schema that nobody is using anymore,
                 // get rid of it. As a safety check (on top of the one that
@@ -304,6 +309,7 @@ pub(crate) async fn source(
         .filter(cs::dst.eq(dst.id))
         .select(cs::src)
         .get_result::<DeploymentId>(conn)
+        .await
         .optional()
         .map_err(StoreError::from)
 }
@@ -392,7 +398,8 @@ impl TableState {
                 cts::duration_ms,
             ))
             .order_by(cts::entity_type)
-            .load::<(i32, String, i64, i64, i64, i64)>(conn)?
+            .load::<(i32, String, i64, i64, i64, i64)>(conn)
+            .await?
             .into_iter()
         {
             let entity_type = src_layout.input_schema.entity_type(&entity_type)?;
@@ -447,7 +454,8 @@ impl TableState {
                 .filter(cts::duration_ms.eq(0)),
         )
         .set(cts::started_at.eq(sql("now()")))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
         let values = (
             cts::next_vid.eq(self.batcher.next_vid()),
             cts::batch_size.eq(self.batcher.batch_size() as i64),
@@ -459,7 +467,8 @@ impl TableState {
                 .filter(cts::entity_type.eq(self.dst.object.as_str())),
         )
         .set(values)
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
         Ok(())
     }
 
@@ -472,7 +481,8 @@ impl TableState {
                 .filter(cts::entity_type.eq(self.dst.object.as_str())),
         )
         .set(cts::finished_at.eq(sql("now()")))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
         Ok(())
     }
 
@@ -484,7 +494,8 @@ impl TableState {
 
             update(cs::table.filter(cs::dst.eq(dst.id)))
                 .set(cs::cancelled_at.eq(sql("now()")))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
         Ok(canceled)
     }
@@ -497,6 +508,7 @@ impl TableState {
                     rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
                         .count_current()
                         .get_result::<i64>(conn)
+                        .await
                         .optional()?;
                 Ok(count.unwrap_or(0) as i32)
             })
@@ -530,7 +542,8 @@ impl TableState {
                 .filter(cts::entity_type.eq(self.dst.object.as_str())),
         )
         .set(cts::batch_size.eq(self.batcher.batch_size() as i64))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
         Ok(())
     }
@@ -617,7 +630,8 @@ impl CopyProgress {
             last_log
         });
         if last_log.elapsed() > LOG_INTERVAL {
-            let total_current_vid = self.current_vid.load(Ordering::SeqCst) + batcher.next_vid();
+            let total_current_vid =
+                AtomicI64::load(&self.current_vid, Ordering::SeqCst) + batcher.next_vid();
             info!(
                 self.logger,
                 "Copied {:.2}% of `{}` entities ({}/{} entity versions), {:.2}% of overall data",
@@ -648,7 +662,7 @@ impl CopyProgress {
     }
 
     fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
+        AtomicBool::load(&self.cancelled, Ordering::SeqCst)
     }
 }
 
@@ -1232,7 +1246,7 @@ impl Connection {
             for (_, sql) in arr {
                 let query = sql_query(format!("{};", sql));
                 self.transaction(|conn| {
-                    async { query.execute(conn).map_err(StoreError::from) }.scope_boxed()
+                    async { query.execute(conn).await.map_err(StoreError::from) }.scope_boxed()
                 })?
                 .await?;
             }
@@ -1254,7 +1268,7 @@ impl Connection {
             {
                 let query = sql_query(sql);
                 self.transaction(|conn| {
-                    async { query.execute(conn).map_err(StoreError::from) }.scope_boxed()
+                    async { query.execute(conn).await.map_err(StoreError::from) }.scope_boxed()
                 })?
                 .await?;
             }
