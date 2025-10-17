@@ -4,7 +4,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use diesel::{prelude::RunQueryDsl, sql_query, sql_types::Double};
+use diesel::{sql_query, sql_types::Double};
+use diesel_async::RunQueryDsl;
 
 use graph::prelude::{error, Logger, MetricsRegistry, StoreError, ENV_VARS};
 use graph::prometheus::Gauge;
@@ -106,14 +107,12 @@ impl NotificationQueueUsage {
             usage: f64,
         }
         let usage_gauge = self.usage_gauge.clone();
-        self.primary
-            .with_conn(async move |conn, _| {
-                let res = sql_query("select pg_notification_queue_usage() as usage")
-                    .get_result::<Usage>(conn)?;
-                usage_gauge.set(res.usage);
-                Ok(())
-            })
-            .await
+        let mut conn = self.primary.get().await?;
+        let res = sql_query("select pg_notification_queue_usage() as usage")
+            .get_result::<Usage>(&mut conn)
+            .await?;
+        usage_gauge.set(res.usage);
+        Ok(())
     }
 }
 
