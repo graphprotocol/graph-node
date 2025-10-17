@@ -290,7 +290,7 @@ impl DeploymentStore {
 
     pub(crate) async fn execute_query<T: FromEntityData>(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
         query: EntityQuery,
     ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
@@ -1474,10 +1474,8 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<DeploymentState, StoreError> {
-        self.with_conn(async move |conn, _| {
-            deployment::state(conn, &site).await.map_err(|e| e.into())
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        deployment::state(&mut conn, &site).await
     }
 
     pub(crate) async fn fail_subgraph(

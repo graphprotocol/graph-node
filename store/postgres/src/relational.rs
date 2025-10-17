@@ -26,7 +26,7 @@ use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
 use diesel::{debug_query, sql_query, OptionalExtension, QueryDsl, QueryResult};
 use diesel_async::scoped_futures::ScopedFutureExt;
-use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
+use diesel_async::{AsyncConnection, RunQueryDsl, SimpleAsyncConnection};
 
 use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::BlockTime;
@@ -79,8 +79,8 @@ use graph::prelude::{
 
 use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 pub use crate::catalog::Catalog;
+use crate::ForeignServer;
 use crate::{catalog, deployment, AsyncPgConnection};
-use crate::{AsyncConnection, ForeignServer};
 
 use self::rollup::Rollup;
 
@@ -798,7 +798,7 @@ impl Layout {
     pub async fn query<T: crate::relational_queries::FromEntityData>(
         &self,
         logger: &Logger,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         query: EntityQuery,
     ) -> Result<(Vec<T>, Trace), QueryExecutionError> {
         fn log_query_timing(
@@ -861,7 +861,7 @@ impl Layout {
 
         let start = Instant::now();
         let values = conn
-            .transaction_async(|conn| {
+            .transaction(|conn| {
                 async {
                     if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
                         conn.batch_execute(timeout_sql).await?;
