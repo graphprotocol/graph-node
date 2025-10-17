@@ -6,7 +6,7 @@ use graph::data_source::CausalityRegion;
 use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry, StoreError};
 use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph::{entity, tokio};
-use graph_store_postgres::PgConnection;
+use graph_store_postgres::{AsyncPgConnection, PgConnection};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
@@ -119,17 +119,25 @@ pub fn row_group_delete(
     group
 }
 
-fn insert_entity(conn: &mut PgConnection, layout: &Layout, entity_type: &str, entity: Entity) {
+async fn insert_entity(
+    conn: &mut AsyncPgConnection,
+    layout: &Layout,
+    entity_type: &str,
+    entity: Entity,
+) {
     let entity_type = layout.input_schema.entity_type(entity_type).unwrap();
     let key = entity_type.key(entity.id());
 
     let entities = vec![(key.clone(), entity)];
     let group = row_group_insert(&entity_type, 0, entities);
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
-    layout.insert(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
+    layout
+        .insert(conn, &group, &MOCK_STOPWATCH)
+        .await
+        .expect(&errmsg);
 }
 
-fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: &str, vid: i64) {
+async fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: &str, vid: i64) {
     insert_entity(
         conn,
         layout,
@@ -139,7 +147,8 @@ fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: &str, 
             name: name,
             vid: vid,
         },
-    );
+    )
+    .await;
 }
 
 async fn create_schema(conn: &mut PgConnection) -> Layout {
@@ -264,7 +273,7 @@ async fn find() {
 
         const ID: &str = "deadbeef";
         const NAME: &str = "Beef";
-        insert_thing(&mut conn, layout, ID, NAME, 0);
+        insert_thing(&mut conn, layout, ID, NAME, 0).await;
 
         // Happy path: find existing entity
         let entity = find_entity(conn, layout, ID).await.unwrap();
@@ -285,8 +294,8 @@ async fn find_many() {
         const NAME: &str = "Beef";
         const ID2: &str = "0xdeadbeef02";
         const NAME2: &str = "Moo";
-        insert_thing(&mut conn, layout, ID, NAME, 0);
-        insert_thing(&mut conn, layout, ID2, NAME2, 1);
+        insert_thing(&mut conn, layout, ID, NAME, 0).await;
+        insert_thing(&mut conn, layout, ID2, NAME2, 1).await;
 
         let mut id_map = BTreeMap::default();
         let ids = IdList::try_from_iter(
@@ -315,7 +324,7 @@ async fn find_many() {
 #[tokio::test]
 async fn update() {
     run_test(async |mut conn, layout| {
-        insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone());
+        insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone()).await;
 
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
@@ -329,6 +338,7 @@ async fn update() {
         let group = row_group_update(&entity_type, 1, entities);
         layout
             .update(conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to update");
 
         let actual = layout
@@ -347,11 +357,11 @@ async fn delete() {
     run_test(async |mut conn, layout| {
         const TWO_ID: &str = "deadbeef02";
 
-        insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone());
+        insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone()).await;
         let mut two = BEEF_ENTITY.clone();
         two.set("id", TWO_ID).unwrap();
         two.set("vid", 1i64).unwrap();
-        insert_entity(&mut conn, layout, "Thing", two);
+        insert_entity(&mut conn, layout, "Thing", two).await;
 
         // Delete where nothing is getting deleted
         let key = THING_TYPE.parse_key("ffff").unwrap();
@@ -360,6 +370,7 @@ async fn delete() {
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
         let count = layout
             .delete(&mut conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to delete");
         assert_eq!(0, count);
 
@@ -371,6 +382,7 @@ async fn delete() {
         let group = row_group_delete(&entity_type, 1, entity_keys);
         let count = layout
             .delete(&mut conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to delete");
         assert_eq!(1, count);
     })
@@ -395,7 +407,7 @@ const GRANDCHILD2: &str = "0xfafa02";
 ///     +- child2
 ///          +- grandchild2
 ///
-fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, Entity, Entity) {
+async fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, Entity, Entity) {
     let root = entity! { layout.input_schema =>
         id: ROOT,
         name: "root",
@@ -429,11 +441,11 @@ fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, Entity,
         vid: 4i64,
     };
 
-    insert_entity(conn, layout, "Thing", root.clone());
-    insert_entity(conn, layout, "Thing", child1.clone());
-    insert_entity(conn, layout, "Thing", child2.clone());
-    insert_entity(conn, layout, "Thing", grand_child1);
-    insert_entity(conn, layout, "Thing", grand_child2);
+    insert_entity(conn, layout, "Thing", root.clone()).await;
+    insert_entity(conn, layout, "Thing", child1.clone()).await;
+    insert_entity(conn, layout, "Thing", child2.clone()).await;
+    insert_entity(conn, layout, "Thing", grand_child1).await;
+    insert_entity(conn, layout, "Thing", grand_child2).await;
     (root, child1, child2)
 }
 
@@ -463,7 +475,7 @@ async fn query() {
         // Especially the multiplicity for type A and B queries is determined
         // by knowing whether there are one or many entities per parent
         // in the test data
-        make_thing_tree(&mut conn, layout);
+        make_thing_tree(&mut conn, layout).await;
 
         // See https://graphprotocol.github.io/rfcs/engineering-plans/0001-graphql-query-prefetching.html#handling-parentchild-relationships
         // for a discussion of the various types of relationships and queries

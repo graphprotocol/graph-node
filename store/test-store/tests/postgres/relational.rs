@@ -12,7 +12,7 @@ use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph_store_postgres::layout_for_tests::set_account_like;
 use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
-use graph_store_postgres::PgConnection;
+use graph_store_postgres::{AsyncPgConnection, PgConnection};
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
@@ -246,7 +246,7 @@ fn remove_schema(conn: &mut PgConnection) {
         .expect("Failed to drop test schema");
 }
 
-fn insert_entity_at(
+async fn insert_entity_at(
     conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &EntityType,
@@ -269,23 +269,26 @@ fn insert_entity_at(
         entity_type, entities_with_keys
     );
     let group = row_group_insert(&entity_type, block, entities_with_keys_owned.clone());
-    layout.insert(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
+    layout
+        .insert(conn, &group, &MOCK_STOPWATCH)
+        .await
+        .expect(&errmsg);
     assert_eq!(
         group.entity_count_change(),
         entities_with_keys_owned.len() as i32
     );
 }
 
-fn insert_entity(
+async fn insert_entity(
     conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &EntityType,
     entities: Vec<Entity>,
 ) {
-    insert_entity_at(conn, layout, entity_type, entities, 0);
+    insert_entity_at(conn, layout, entity_type, entities, 0).await;
 }
 
-fn update_entity_at(
+async fn update_entity_at(
     conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &EntityType,
@@ -309,11 +312,14 @@ fn update_entity_at(
         entity_type, entities_with_keys
     );
     let group = row_group_update(&entity_type, block, entities_with_keys_owned.clone());
-    let updated = layout.update(conn, &group, &MOCK_STOPWATCH).expect(&errmsg);
+    let updated = layout
+        .update(conn, &group, &MOCK_STOPWATCH)
+        .await
+        .expect(&errmsg);
     assert_eq!(updated, entities_with_keys_owned.len());
 }
 
-fn insert_user_entity(
+async fn insert_user_entity(
     conn: &mut PgConnection,
     layout: &Layout,
     id: &str,
@@ -343,7 +349,7 @@ fn insert_user_entity(
         vid,
     );
 
-    insert_entity_at(conn, layout, entity_type, vec![user], block);
+    insert_entity_at(conn, layout, entity_type, vec![user], block).await;
 }
 
 fn make_user(
@@ -382,7 +388,7 @@ fn make_user(
     user
 }
 
-fn insert_users(conn: &mut PgConnection, layout: &Layout) {
+async fn insert_users(conn: &mut PgConnection, layout: &Layout) {
     insert_user_entity(
         conn,
         layout,
@@ -398,7 +404,8 @@ fn insert_users(conn: &mut PgConnection, layout: &Layout) {
         60,
         0,
         0,
-    );
+    )
+    .await;
     insert_user_entity(
         conn,
         layout,
@@ -414,7 +421,8 @@ fn insert_users(conn: &mut PgConnection, layout: &Layout) {
         50,
         0,
         1,
-    );
+    )
+    .await;
     insert_user_entity(
         conn,
         layout,
@@ -430,10 +438,11 @@ fn insert_users(conn: &mut PgConnection, layout: &Layout) {
         22,
         0,
         2,
-    );
+    )
+    .await;
 }
 
-fn update_user_entity(
+async fn update_user_entity(
     conn: &mut PgConnection,
     layout: &Layout,
     id: &str,
@@ -462,10 +471,10 @@ fn update_user_entity(
         visits,
         vid,
     );
-    update_entity_at(conn, layout, entity_type, vec![user], block);
+    update_entity_at(conn, layout, entity_type, vec![user], block).await;
 }
 
-fn insert_pet(
+async fn insert_pet(
     conn: &mut PgConnection,
     layout: &Layout,
     entity_type: &EntityType,
@@ -479,12 +488,12 @@ fn insert_pet(
         name: name,
         vid: vid,
     };
-    insert_entity_at(conn, layout, entity_type, vec![pet], block);
+    insert_entity_at(conn, layout, entity_type, vec![pet], block).await;
 }
 
-fn insert_pets(conn: &mut PgConnection, layout: &Layout) {
-    insert_pet(conn, layout, &*DOG_TYPE, "pluto", "Pluto", 0, 0);
-    insert_pet(conn, layout, &*CAT_TYPE, "garfield", "Garfield", 0, 1);
+async fn insert_pets(conn: &mut PgConnection, layout: &Layout) {
+    insert_pet(conn, layout, &*DOG_TYPE, "pluto", "Pluto", 0, 0).await;
+    insert_pet(conn, layout, &*CAT_TYPE, "garfield", "Garfield", 0, 1).await;
 }
 
 async fn create_schema(conn: &mut PgConnection) -> Layout {
@@ -561,7 +570,7 @@ where
 #[tokio::test]
 async fn find() {
     run_test(async |conn, layout| {
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
+        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
 
         // Happy path: find existing entity
         let entity = layout
@@ -597,7 +606,8 @@ async fn insert_null_fulltext_fields() {
             layout,
             &*NULLABLE_STRINGS_TYPE,
             vec![EMPTY_NULLABLESTRINGS_ENTITY.clone()],
-        );
+        )
+        .await;
 
         // Find entity with null string values
         let entity = layout
@@ -617,7 +627,7 @@ async fn insert_null_fulltext_fields() {
 #[tokio::test]
 async fn update() {
     run_test(async |conn, layout| {
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
+        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -632,6 +642,7 @@ async fn update() {
         let group = row_group_update(&entity_type, 0, entities);
         layout
             .update(conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to update");
 
         let actual = layout
@@ -663,7 +674,8 @@ async fn update_many() {
             layout,
             &*SCALAR_TYPE,
             vec![one.clone(), two.clone(), three.clone()],
-        );
+        )
+        .await;
 
         // confidence test: there should be 3 scalar entities in store right now
         assert_eq!(3, count_scalar_entities(conn, layout).await);
@@ -695,6 +707,7 @@ async fn update_many() {
         let group = row_group_update(&entity_type, 0, entities);
         layout
             .update(conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to update");
 
         // check updates took effect
@@ -748,7 +761,7 @@ async fn update_many() {
 #[tokio::test]
 async fn serialize_bigdecimal() {
     run_test(async |conn, layout| {
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
+        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -766,6 +779,7 @@ async fn serialize_bigdecimal() {
             let group = row_group_update(&entity_type, 0, entities);
             layout
                 .update(conn, &group, &MOCK_STOPWATCH)
+                .await
                 .expect("Failed to update");
 
             let actual = layout
@@ -801,7 +815,8 @@ async fn enum_arrays() {
             layout,
             &THINGS_SCHEMA.entity_type("Spectrum").unwrap(),
             vec![spectrum.clone()],
-        );
+        )
+        .await;
 
         let actual = layout
             .find(
@@ -841,11 +856,11 @@ async fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usiz
 #[tokio::test]
 async fn delete() {
     run_test(async |conn, layout| {
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]);
+        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
         two.set("vid", 1i64).unwrap();
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![two]);
+        insert_entity(conn, layout, &*SCALAR_TYPE, vec![two]).await;
 
         // Delete where nothing is getting deleted
         let key = SCALAR_TYPE.parse_key("no such entity").unwrap();
@@ -854,6 +869,7 @@ async fn delete() {
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
         let count = layout
             .delete(conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to delete");
         assert_eq!(0, count);
         assert_eq!(2, count_scalar_entities(conn, layout).await);
@@ -867,6 +883,7 @@ async fn delete() {
         let group = row_group_delete(&entity_type, 1, entity_keys);
         let count = layout
             .delete(conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to delete");
         assert_eq!(1, count);
         assert_eq!(1, count_scalar_entities(conn, layout).await);
@@ -884,7 +901,7 @@ async fn insert_many_and_delete_many() {
         let mut three = SCALAR_ENTITY.clone();
         three.set("id", "three").unwrap();
         three.set("vid", 2i64).unwrap();
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![one, two, three]);
+        insert_entity(conn, layout, &*SCALAR_TYPE, vec![one, two, three]).await;
 
         // confidence test: there should be 3 scalar entities in store right now
         assert_eq!(3, count_scalar_entities(conn, layout).await);
@@ -897,6 +914,7 @@ async fn insert_many_and_delete_many() {
         let group = row_group_delete(&*SCALAR_TYPE, 1, entity_keys);
         let num_removed = layout
             .delete(conn, &group, &MOCK_STOPWATCH)
+            .await
             .expect("Failed to delete");
         assert_eq!(2, num_removed);
         assert_eq!(1, count_scalar_entities(conn, layout).await);
@@ -961,7 +979,7 @@ async fn layout_cache() {
 async fn conflicting_entity() {
     // `id` is the id of an entity to create, `cat`, `dog`, and `ferret` are
     // the names of the types for which to check entity uniqueness
-    fn check(
+    async fn check(
         conn: &mut PgConnection,
         layout: &Layout,
         id: Value,
@@ -970,48 +988,53 @@ async fn conflicting_entity() {
         ferret: &str,
         vid: i64,
     ) {
-        let conflicting =
-            |conn: &mut PgConnection, entity_type: &EntityType, types: Vec<&EntityType>| {
-                let fred = entity! { layout.input_schema => id: id.clone(), name: id.clone() };
-                let fred = Arc::new(fred);
-                let types: Vec<_> = types.into_iter().cloned().collect();
-                let mut group = RowGroup::new(entity_type.clone(), false);
-                group
-                    .push(
-                        EntityModification::Insert {
-                            key: entity_type.key(fred.id()),
-                            data: fred,
-                            block: 2,
-                            end: None,
-                        },
-                        2,
-                    )
-                    .unwrap();
-                layout.conflicting_entities(conn, &types, &group)
-            };
+        let conflicting = async |conn: &mut AsyncPgConnection,
+                                 entity_type: &EntityType,
+                                 types: Vec<&EntityType>| {
+            let fred = entity! { layout.input_schema => id: id.clone(), name: id.clone() };
+            let fred = Arc::new(fred);
+            let types: Vec<_> = types.into_iter().cloned().collect();
+            let mut group = RowGroup::new(entity_type.clone(), false);
+            group
+                .push(
+                    EntityModification::Insert {
+                        key: entity_type.key(fred.id()),
+                        data: fred,
+                        block: 2,
+                        end: None,
+                    },
+                    2,
+                )
+                .unwrap();
+            layout.conflicting_entities(conn, &types, &group).await
+        };
 
         let cat_type = layout.input_schema.entity_type(cat).unwrap();
         let dog_type = layout.input_schema.entity_type(dog).unwrap();
         let ferret_type = layout.input_schema.entity_type(ferret).unwrap();
 
         let fred = entity! { layout.input_schema => id: id.clone(), name: id.clone(), vid: vid };
-        insert_entity(conn, layout, &cat_type, vec![fred]);
+        insert_entity(conn, layout, &cat_type, vec![fred]).await;
 
         // If we wanted to create Fred the dog, which is forbidden, we'd run this:
-        let conflict = conflicting(conn, &dog_type, vec![&cat_type, &ferret_type]).unwrap();
+        let conflict = conflicting(conn, &dog_type, vec![&cat_type, &ferret_type])
+            .await
+            .unwrap();
         assert_eq!(Some(cat.to_string()), conflict.map(|r| r.0));
 
         // If we wanted to manipulate Fred the cat, which is ok, we'd run:
-        let conflict = conflicting(conn, &cat_type, vec![&dog_type, &ferret_type]).unwrap();
+        let conflict = conflicting(conn, &cat_type, vec![&dog_type, &ferret_type])
+            .await
+            .unwrap();
         assert_eq!(None, conflict);
     }
 
     run_test(async |mut conn, layout| {
         let id = Value::String("fred".to_string());
-        check(&mut conn, layout, id, "Cat", "Dog", "Ferret", 0);
+        check(&mut conn, layout, id, "Cat", "Dog", "Ferret", 0).await;
 
         let id = Value::Bytes(scalar::Bytes::from_str("0xf1ed").unwrap());
-        check(&mut conn, layout, id, "ByteCat", "ByteDog", "ByteFerret", 1);
+        check(&mut conn, layout, id, "ByteCat", "ByteDog", "ByteFerret", 1).await;
     })
     .await
 }
@@ -1021,16 +1044,16 @@ async fn revert_block() {
     async fn check_fred(conn: &mut PgConnection, layout: &Layout) {
         let id = "fred";
 
-        let set_fred = |conn: &mut PgConnection, name, block| {
+        let set_fred = async |conn: &mut PgConnection, name, block| {
             let fred = entity! { layout.input_schema =>
                 id: id,
                 name: name,
                 vid: block as i64,
             };
             if block == 0 {
-                insert_entity_at(conn, layout, &*CAT_TYPE, vec![fred], block);
+                insert_entity_at(conn, layout, &*CAT_TYPE, vec![fred], block).await;
             } else {
-                update_entity_at(conn, layout, &*CAT_TYPE, vec![fred], block);
+                update_entity_at(conn, layout, &*CAT_TYPE, vec![fred], block).await;
             }
         };
 
@@ -1043,24 +1066,24 @@ async fn revert_block() {
             assert_eq!(name, fred.get("name").unwrap().as_str().unwrap())
         };
 
-        set_fred(conn, "zero", 0);
-        set_fred(conn, "one", 1);
-        set_fred(conn, "two", 2);
-        set_fred(conn, "three", 3);
+        set_fred(conn, "zero", 0).await;
+        set_fred(conn, "one", 1).await;
+        set_fred(conn, "two", 2).await;
+        set_fred(conn, "three", 3).await;
 
-        layout.revert_block(conn, 3).unwrap();
+        layout.revert_block(conn, 3).await.unwrap();
         assert_fred(conn, "two").await;
-        layout.revert_block(conn, 2).unwrap();
+        layout.revert_block(conn, 2).await.unwrap();
         assert_fred(conn, "one").await;
 
-        set_fred(conn, "three", 3);
+        set_fred(conn, "three", 3).await;
         assert_fred(conn, "three").await;
-        layout.revert_block(conn, 3).unwrap();
+        layout.revert_block(conn, 3).await.unwrap();
         assert_fred(conn, "one").await;
     }
 
     async fn check_marty(conn: &mut PgConnection, layout: &Layout) {
-        let set_marties = |conn: &mut PgConnection, from, to| {
+        let set_marties = async |conn: &mut PgConnection, from, to| {
             for block in from..=to {
                 let id = format!("marty-{}", block);
                 let marty = entity! { layout.input_schema =>
@@ -1068,7 +1091,7 @@ async fn revert_block() {
                     order: block,
                     vid: (block + 10) as i64
                 };
-                insert_entity_at(conn, layout, &*MINK_TYPE, vec![marty], block);
+                insert_entity_at(conn, layout, &*MINK_TYPE, vec![marty], block).await;
             }
         };
 
@@ -1105,19 +1128,19 @@ async fn revert_block() {
             assert_marties(conn, max_block, vec![]).await
         };
 
-        set_marties(conn, 0, 4);
+        set_marties(conn, 0, 4).await;
         assert_all_marties(conn, 4).await;
 
-        layout.revert_block(conn, 3).unwrap();
+        layout.revert_block(conn, 3).await.unwrap();
         assert_all_marties(conn, 2).await;
-        layout.revert_block(conn, 2).unwrap();
+        layout.revert_block(conn, 2).await.unwrap();
         assert_all_marties(conn, 1).await;
 
-        set_marties(conn, 4, 4);
+        set_marties(conn, 4, 4).await;
         // We don't have entries for 2 and 3 anymore
         assert_marties(conn, 4, vec![2, 3]).await;
 
-        layout.revert_block(conn, 2).unwrap();
+        layout.revert_block(conn, 2).await.unwrap();
         assert_all_marties(conn, 1).await;
     }
 
@@ -1134,8 +1157,8 @@ struct QueryChecker<'a> {
 }
 
 impl<'a> QueryChecker<'a> {
-    fn new(conn: &'a mut PgConnection, layout: &'a Layout) -> Self {
-        insert_users(conn, layout);
+    async fn new(conn: &'a mut PgConnection, layout: &'a Layout) -> Self {
+        insert_users(conn, layout).await;
         update_user_entity(
             conn,
             layout,
@@ -1151,8 +1174,9 @@ impl<'a> QueryChecker<'a> {
             23,
             0,
             3,
-        );
-        insert_pets(conn, layout);
+        )
+        .await;
+        insert_pets(conn, layout).await;
 
         Self { conn, layout }
     }
@@ -1236,6 +1260,7 @@ impl EasyOrder for EntityQuery {
 async fn check_fulltext_search_syntax_error() {
     run_test(async |mut conn, layout| {
         QueryChecker::new(&mut conn, layout)
+            .await
             .check(
                 vec!["1"],
                 user_query().filter(EntityFilter::Fulltext(
@@ -1251,7 +1276,7 @@ async fn check_fulltext_search_syntax_error() {
 #[tokio::test]
 async fn check_block_finds() {
     run_test(async |mut conn, layout| {
-        let checker = QueryChecker::new(&mut conn, layout);
+        let checker = QueryChecker::new(&mut conn, layout).await;
 
         update_user_entity(
             checker.conn,
@@ -1268,7 +1293,8 @@ async fn check_block_finds() {
             55,
             1,
             4,
-        );
+        )
+        .await;
 
         checker
             // Max block, we should get nothing
@@ -1299,6 +1325,7 @@ async fn check_find() {
         // find with interfaces
         let types = vec![&*CAT_TYPE, &*DOG_TYPE];
         let checker = QueryChecker::new(&mut conn, layout)
+            .await
             .check(vec!["garfield", "pluto"], query(&types))
             .await
             .check(vec!["pluto", "garfield"], query(&types).desc("name"))
@@ -1890,12 +1917,12 @@ struct FilterChecker<'a> {
 }
 
 impl<'a> FilterChecker<'a> {
-    fn new(conn: &'a mut PgConnection, layout: &'a Layout) -> Self {
+    async fn new(conn: &'a mut PgConnection, layout: &'a Layout) -> Self {
         let (a1, a2, a2b, a3) = ferrets();
-        insert_pet(conn, layout, &*FERRET_TYPE, "a1", &a1, 0, 0);
-        insert_pet(conn, layout, &*FERRET_TYPE, "a2", &a2, 0, 1);
-        insert_pet(conn, layout, &*FERRET_TYPE, "a2b", &a2b, 0, 2);
-        insert_pet(conn, layout, &*FERRET_TYPE, "a3", &a3, 0, 3);
+        insert_pet(conn, layout, &*FERRET_TYPE, "a1", &a1, 0, 0).await;
+        insert_pet(conn, layout, &*FERRET_TYPE, "a2", &a2, 0, 1).await;
+        insert_pet(conn, layout, &*FERRET_TYPE, "a2b", &a2b, 0, 2).await;
+        insert_pet(conn, layout, &*FERRET_TYPE, "a3", &a3, 0, 3).await;
 
         Self { conn, layout }
     }
@@ -1984,7 +2011,7 @@ async fn check_filters() {
     }
 
     run_test(async |conn, layout| {
-        let mut checker = FilterChecker::new(conn, layout);
+        let mut checker = FilterChecker::new(conn, layout).await;
 
         checker
             .check(vec!["a1"], filter_eq(&a1))
@@ -2084,7 +2111,8 @@ async fn check_filters() {
               vid: 5i64
             }],
             1,
-        );
+        )
+        .await;
 
         checker
             .check(vec!["a1", "a2", "a2b", "a3"], filter_block_gte(0))

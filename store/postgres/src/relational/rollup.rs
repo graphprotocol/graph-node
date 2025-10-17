@@ -58,9 +58,10 @@ use std::fmt;
 use std::ops::Range;
 use std::sync::Arc;
 
-use diesel::{sql_query, RunQueryDsl as _};
-
+use diesel::sql_query;
 use diesel::sql_types::{Integer, Nullable, Timestamptz};
+use diesel_async::RunQueryDsl;
+
 use graph::blockchain::BlockTime;
 use graph::components::store::{BlockNumber, StoreError};
 use graph::data::store::IdType;
@@ -74,6 +75,7 @@ use itertools::Itertools;
 
 use crate::pool::PgConnection;
 use crate::relational::Table;
+use crate::AsyncPgConnection;
 
 use super::{Column, SqlName};
 
@@ -273,7 +275,7 @@ impl Rollup {
 
     pub(crate) async fn insert(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         bucket: &Range<BlockTime>,
         block: BlockNumber,
     ) -> Result<usize, diesel::result::Error> {
@@ -281,7 +283,7 @@ impl Rollup {
             .bind::<Timestamptz, _>(bucket.start)
             .bind::<Timestamptz, _>(bucket.end)
             .bind::<Integer, _>(block);
-        query.execute(conn)
+        query.execute(conn).await
     }
 
     pub(crate) async fn last_rollup(
@@ -306,6 +308,7 @@ impl Rollup {
         let query = format!("select max(last_rollup) as last_rollup from ({union_all}) as a");
         let last_rollup = sql_query(&query)
             .get_result::<BlockTimeRes>(conn)
+            .await
             .map(|res| res.last_rollup)?;
         Ok(last_rollup)
     }

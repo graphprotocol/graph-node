@@ -14,13 +14,15 @@
 //!   * 2, n: to lock the deployment with id n to make sure only one write
 //!           happens to it
 
+use diesel::sql_query;
 use diesel::sql_types::Bool;
-use diesel::{sql_query, RunQueryDsl};
+use diesel_async::RunQueryDsl;
 use graph::prelude::StoreError;
 
 use crate::command_support::catalog::Site;
 use crate::pool::PgConnection;
 use crate::primary::DeploymentId;
+use crate::AsyncPgConnection;
 
 /// A locking scope for a particular deployment. We use different scopes for
 /// different purposes, and in each scope we use an advisory lock for each
@@ -34,7 +36,7 @@ impl Scope {
     /// `true` if we got the lock, and `false` if it is already locked.
     async fn try_lock(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         id: DeploymentId,
     ) -> Result<bool, StoreError> {
         #[derive(QueryableByName)]
@@ -48,6 +50,7 @@ impl Scope {
             self.id
         ))
         .get_result::<Locked>(conn)
+        .await
         .map(|res| res.locked)
         .map_err(StoreError::from)
     }
@@ -57,14 +60,20 @@ impl Scope {
     async fn lock(&self, conn: &mut PgConnection, id: DeploymentId) -> Result<(), StoreError> {
         sql_query(format!("select pg_advisory_lock({}, {id})", self.id))
             .execute(conn)
+            .await
             .map(|_| ())
             .map_err(StoreError::from)
     }
 
     /// Unlock the deployment in this scope with the given id.
-    async fn unlock(&self, conn: &mut PgConnection, id: DeploymentId) -> Result<(), StoreError> {
+    async fn unlock(
+        &self,
+        conn: &mut AsyncPgConnection,
+        id: DeploymentId,
+    ) -> Result<(), StoreError> {
         sql_query(format!("select pg_advisory_unlock({}, {id})", self.id))
             .execute(conn)
+            .await
             .map(|_| ())
             .map_err(StoreError::from)
     }
@@ -86,10 +95,14 @@ where
     Fut: std::future::Future<Output = Result<R, StoreError>>,
 {
     async fn execute(conn: &mut PgConnection, query: &str, msg: &str) -> Result<(), StoreError> {
-        sql_query(query).execute(conn).map(|_| ()).map_err(|e| {
-            StoreError::from_diesel_error(&e)
-                .unwrap_or_else(|| StoreError::Unknown(anyhow::anyhow!("{}: {}", msg, e)))
-        })
+        sql_query(query)
+            .execute(conn)
+            .await
+            .map(|_| ())
+            .map_err(|e| {
+                StoreError::from_diesel_error(&e)
+                    .unwrap_or_else(|| StoreError::Unknown(anyhow::anyhow!("{}: {}", msg, e)))
+            })
     }
 
     const LOCK: &str = "select pg_advisory_lock(1)";
@@ -117,7 +130,7 @@ pub(crate) async fn unlock_copying(conn: &mut PgConnection, dst: &Site) -> Resul
 /// not. You don't want to use this directly. Instead, use
 /// `deployment::with_lock`
 pub(crate) async fn lock_deployment_session(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
 ) -> Result<bool, StoreError> {
     WRITE.try_lock(conn, site.id).await
@@ -125,7 +138,7 @@ pub(crate) async fn lock_deployment_session(
 
 /// Release the lock acquired with `lock_deployment_session`.
 pub(crate) async fn unlock_deployment_session(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
 ) -> Result<(), StoreError> {
     WRITE.unlock(conn, site.id).await
@@ -134,12 +147,15 @@ pub(crate) async fn unlock_deployment_session(
 /// Try to take the lock used to prevent two prune operations from running at the
 /// same time. Return `true` if we got the lock, and `false` otherwise.
 pub(crate) async fn try_lock_pruning(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
 ) -> Result<bool, StoreError> {
     PRUNE.try_lock(conn, site.id).await
 }
 
-pub(crate) async fn unlock_pruning(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
+pub(crate) async fn unlock_pruning(
+    conn: &mut AsyncPgConnection,
+    site: &Site,
+) -> Result<(), StoreError> {
     PRUNE.unlock(conn, site.id).await
 }

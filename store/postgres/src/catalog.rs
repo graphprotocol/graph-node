@@ -285,7 +285,10 @@ impl Catalog {
         }
     }
 
-    pub async fn stats(&self, conn: &mut PgConnection) -> Result<Vec<VersionStats>, StoreError> {
+    pub async fn stats(
+        &self,
+        conn: &mut AsyncPgConnection,
+    ) -> Result<Vec<VersionStats>, StoreError> {
         #[derive(Queryable, QueryableByName)]
         pub struct DbStats {
             #[diesel(sql_type = BigInt)]
@@ -560,7 +563,7 @@ pub async fn foreign_tables(
 
 /// Drop the schema `nsp` and all its contents if it exists, and create it
 /// again so that `nsp` is an empty schema
-pub async fn recreate_schema(conn: &mut PgConnection, nsp: &str) -> Result<(), StoreError> {
+pub async fn recreate_schema(conn: &mut AsyncPgConnection, nsp: &str) -> Result<(), StoreError> {
     let query = format!(
         "drop schema if exists {nsp} cascade;\
          create schema {nsp};",
@@ -570,7 +573,7 @@ pub async fn recreate_schema(conn: &mut PgConnection, nsp: &str) -> Result<(), S
 }
 
 /// Drop the schema `nsp` and all its contents if it exists
-pub async fn drop_schema(conn: &mut PgConnection, nsp: &str) -> Result<(), StoreError> {
+pub async fn drop_schema(conn: &mut AsyncPgConnection, nsp: &str) -> Result<(), StoreError> {
     let query = format!("drop schema if exists {nsp} cascade;", nsp = nsp);
     Ok(conn.batch_execute(&query).await?)
 }
@@ -1035,7 +1038,7 @@ pub(crate) async fn set_stats_target(
 /// daemon](https://www.postgresql.org/docs/current/routine-vacuuming.html#AUTOVACUUM)
 /// uses
 pub(crate) async fn needs_autoanalyze(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     namespace: &Namespace,
 ) -> Result<Vec<SqlName>, StoreError> {
     const QUERY: &str = "select relname \

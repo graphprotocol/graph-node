@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 use diesel::{
     sql_query,
     sql_types::{BigInt, Integer},
-    RunQueryDsl as _,
 };
+use diesel_async::RunQueryDsl as _;
 use graph::{
     env::ENV_VARS,
     prelude::{BlockNumber, BlockPtr, StoreError},
@@ -16,6 +16,7 @@ use crate::{
     pool::PgConnection,
     primary::Namespace,
     relational::{Table, VID_COLUMN},
+    AsyncPgConnection,
 };
 
 /// The initial batch size for tables that do not have an array column
@@ -120,7 +121,7 @@ impl VidBatcher {
     /// all vids `vid_range.0 <= vid <= vid_range.1`; for an empty table,
     /// the `vid_range` must be set to `(-1, 0)`
     pub async fn load(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         nsp: &Namespace,
         table: &Table,
         vid_range: VidRange,
@@ -285,17 +286,19 @@ impl VidRange {
         } else {
             "lower(block_range) <= $1"
         };
-        let vid_range = sql_query(format!(
-            "/* controller=copy,target={target_number} */ \
-             select coalesce(min(vid), 0) as min_vid, \
-                    coalesce(max(vid), -1) as max_vid \
-               from {src_name} where {max_block_clause}",
-            target_number = target_block.number,
-            src_name = src.qualified_name.as_str(),
-            max_block_clause = max_block_clause
-        ))
-        .bind::<Integer, _>(&target_block.number)
-        .load::<VidRange>(conn)?
+        let vid_range = diesel::RunQueryDsl::load::<VidRange>(
+            sql_query(format!(
+                "/* controller=copy,target={target_number} */ \
+                 select coalesce(min(vid), 0) as min_vid, \
+                        coalesce(max(vid), -1) as max_vid \
+                   from {src_name} where {max_block_clause}",
+                target_number = target_block.number,
+                src_name = src.qualified_name.as_str(),
+                max_block_clause = max_block_clause
+            ))
+            .bind::<Integer, _>(&target_block.number),
+            conn,
+        )?
         .pop()
         .unwrap_or(EMPTY_VID_RANGE);
         Ok(vid_range)
@@ -305,7 +308,7 @@ impl VidRange {
     /// block range from `first_block` (inclusive) to `last_block`
     /// (exclusive)
     pub async fn for_prune(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         src: &Table,
         first_block: BlockNumber,
         last_block: BlockNumber,
@@ -323,6 +326,7 @@ impl VidRange {
         .bind::<Integer, _>(first_block)
         .bind::<Integer, _>(last_block)
         .get_result::<VidRange>(conn)
+        .await
         .map_err(StoreError::from)
     }
 }
