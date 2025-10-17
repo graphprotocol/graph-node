@@ -1,8 +1,8 @@
 use diesel::connection::SimpleConnection;
-use diesel::{sql_query, RunQueryDsl};
+use diesel::sql_query;
 use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
 use diesel_async::pooled_connection::{mobc, AsyncDieselConnectionManager};
-use diesel_async::AsyncConnection as _;
+use diesel_async::{AsyncConnection as _, RunQueryDsl};
 use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
 
 use graph::cheap_clone::CheapClone;
@@ -612,11 +612,11 @@ impl PoolInner {
 
     /// Check that we can connect to the database
     pub async fn check(&self) -> bool {
-        let Ok(mut conn) = self.get_sync().await else {
+        let Ok(mut conn) = self.get().await else {
             return false;
         };
 
-        sql_query("select 1").execute(&mut conn).is_ok()
+        sql_query("select 1").execute(&mut conn).await.is_ok()
     }
 
     async fn locale_check(
