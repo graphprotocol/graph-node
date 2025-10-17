@@ -1484,10 +1484,8 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<Option<CausalityRegion>, StoreError> {
-        self.with_conn(async move |conn, _| {
-            Ok(crate::dynds::causality_region_curr_val(conn, &site).await?)
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        crate::dynds::causality_region_curr_val(&mut conn, &site).await
     }
 
     pub(crate) async fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
