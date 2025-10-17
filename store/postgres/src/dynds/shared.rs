@@ -38,7 +38,7 @@ table! {
 }
 
 pub(super) async fn load(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &str,
     block: BlockNumber,
     manifest_idx_and_name: Vec<(u32, String)>,

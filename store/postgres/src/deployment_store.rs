@@ -1509,12 +1509,8 @@ impl DeploymentStore {
         block: BlockNumber,
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        self.with_conn(async move |conn, _| {
-            crate::dynds::load(conn, &site, block, manifest_idx_and_name)
-                .await
-                .map_err(Into::into)
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        crate::dynds::load(&mut conn, &site, block, manifest_idx_and_name).await
     }
 
     pub(crate) async fn causality_region_curr_val(

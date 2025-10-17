@@ -12,7 +12,7 @@ use graph::{
 };
 
 pub async fn load(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     block: BlockNumber,
     manifest_idx_and_name: Vec<(u32, String)>,
