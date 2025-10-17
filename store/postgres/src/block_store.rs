@@ -6,8 +6,8 @@ use std::{
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use diesel::{query_dsl::methods::FilterDsl as _, sql_query, ExpressionMethods as _, RunQueryDsl};
-use diesel_async::scoped_futures::ScopedFutureExt;
+use diesel::{sql_query, ExpressionMethods as _, QueryDsl};
+use diesel_async::{scoped_futures::ScopedFutureExt, RunQueryDsl};
 use graph::{
     blockchain::ChainIdentifier,
     components::store::{BlockStore as BlockStoreTrait, QueryPermit},
@@ -50,9 +50,8 @@ pub enum ChainStatus {
 pub mod primary {
     use std::convert::TryFrom;
 
-    use diesel::{
-        delete, insert_into, update, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl,
-    };
+    use diesel::{delete, insert_into, update, ExpressionMethods, OptionalExtension, QueryDsl};
+    use diesel_async::RunQueryDsl;
     use graph::{
         blockchain::{BlockHash, ChainIdentifier},
         internal_error,
@@ -105,7 +104,7 @@ pub mod primary {
     }
 
     pub async fn load_chains(conn: &mut PgConnection) -> Result<Vec<Chain>, StoreError> {
-        Ok(chains::table.load(conn)?)
+        Ok(chains::table.load(conn).await?)
     }
 
     pub async fn find_chain(
@@ -115,6 +114,7 @@ pub mod primary {
         Ok(chains::table
             .filter(chains::name.eq(name))
             .first(conn)
+            .await
             .optional()?)
     }
 
@@ -138,8 +138,12 @@ pub mod primary {
                 ))
                 .returning(chains::namespace)
                 .get_result::<Storage>(conn)
+                .await
                 .map_err(StoreError::from)?;
-            return Ok(chains::table.filter(chains::name.eq(name)).first(conn)?);
+            return Ok(chains::table
+                .filter(chains::name.eq(name))
+                .first(conn)
+                .await?);
         }
 
         insert_into(chains::table)
@@ -151,14 +155,20 @@ pub mod primary {
             ))
             .returning(chains::namespace)
             .get_result::<Storage>(conn)
+            .await
             .map_err(StoreError::from)?;
-        Ok(chains::table.filter(chains::name.eq(name)).first(conn)?)
+        Ok(chains::table
+            .filter(chains::name.eq(name))
+            .first(conn)
+            .await?)
     }
 
     pub(super) async fn drop_chain(pool: &ConnectionPool, name: &str) -> Result<(), StoreError> {
         let mut conn = pool.get_sync().await?;
 
-        delete(chains::table.filter(chains::name.eq(name))).execute(&mut conn)?;
+        delete(chains::table.filter(chains::name.eq(name)))
+            .execute(&mut conn)
+            .await?;
         Ok(())
     }
 
@@ -170,7 +180,8 @@ pub mod primary {
     ) -> Result<(), StoreError> {
         update(chains::table.filter(chains::name.eq(name)))
             .set(chains::name.eq(new_name))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
         Ok(())
     }
 }
@@ -345,8 +356,9 @@ impl BlockStore {
         }
 
         // Fetch the current last_value from the sequence
-        let result =
-            sql_query("SELECT last_value FROM chains_id_seq").get_result::<ChainIdSeq>(conn)?;
+        let result = sql_query("SELECT last_value FROM chains_id_seq")
+            .get_result::<ChainIdSeq>(conn)
+            .await?;
 
         let last_val = result.last_value;
 
@@ -554,22 +566,26 @@ impl BlockStore {
 
     pub async fn update_db_version(&self) -> Result<(), StoreError> {
         use crate::primary::db_version as dbv;
-        use diesel::prelude::*;
 
         let primary_pool = self.pools.get(&*PRIMARY_SHARD).unwrap();
-        let mut conn = primary_pool.get_sync().await?;
-        let version: i64 = dbv::table.select(dbv::version).get_result(&mut conn)?;
+        let mut conn = primary_pool.get().await?;
+        let version: i64 = dbv::table
+            .select(dbv::version)
+            .get_result(&mut conn)
+            .await?;
         if version < 3 {
             self.truncate_block_caches().await?;
             diesel::update(dbv::table)
                 .set(dbv::version.eq(3))
-                .execute(&mut conn)?;
+                .execute(&mut conn)
+                .await?;
         };
         if version < SUPPORTED_DB_VERSION {
             // Bump it to make sure that all executables are working with the same DB format
             diesel::update(dbv::table)
                 .set(dbv::version.eq(SUPPORTED_DB_VERSION))
-                .execute(&mut conn)?;
+                .execute(&mut conn)
+                .await?;
         };
         if version > SUPPORTED_DB_VERSION {
             panic!(
@@ -658,7 +674,8 @@ impl ChainIdStore for BlockStore {
                 c::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
                 c::net_version.eq(&ident.net_version),
             ))
-            .execute(&mut conn)?;
+            .execute(&mut conn)
+            .await?;
 
         Ok(())
     }
