@@ -11,7 +11,7 @@ use crate::{
 use diesel::dsl::{delete, insert_into, sql, update};
 use diesel::prelude::{
     BoolExpressionMethods, ExpressionMethods, JoinOnDsl, NullableExpressionMethods,
-    OptionalExtension, QueryDsl, RunQueryDsl,
+    OptionalExtension, QueryDsl,
 };
 use diesel::{
     connection::TransactionManager,
@@ -24,7 +24,7 @@ use diesel::{
 };
 use diesel_async::{
     scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
-    SimpleAsyncConnection as _,
+    RunQueryDsl, SimpleAsyncConnection as _,
 };
 use graph::{
     components::store::DeploymentLocator,
@@ -816,7 +816,8 @@ impl Connection {
 
         update(ac::table.filter(ac::dst.eq_any(ids)))
             .set(ac::cancelled_at.eq(sql("now()")))
-            .execute(&mut self.conn)?;
+            .execute(&mut self.conn)
+            .await?;
         Ok(())
     }
 
@@ -842,12 +843,14 @@ impl Connection {
 
         let removed = delete(a::table.filter(not(exists(named))))
             .returning(a::id)
-            .load::<i32>(conn)?;
+            .load::<i32>(conn)
+            .await?;
 
         let removed: Vec<_> = ds::table
             .filter(ds::id.eq_any(removed))
             .select((ds::id, ds::subgraph))
-            .load::<(DeploymentId, String)>(conn)?
+            .load::<(DeploymentId, String)>(conn)
+            .await?
             .into_iter()
             .collect();
 
@@ -890,7 +893,8 @@ impl Connection {
             .filter(v::deployment.eq(id.as_str()))
             .select((s::id, v::id))
             .for_update()
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
         // Switch the pending version to the current version
         for (subgraph, version) in &pending_subgraph_versions {
@@ -899,7 +903,8 @@ impl Connection {
                     s::current_version.eq(version),
                     s::pending_version.eq::<Option<&str>>(None),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
 
         // Clean up assignments if we could possibly have changed any
@@ -934,12 +939,14 @@ impl Connection {
             ))
             .on_conflict(s::name)
             .do_nothing()
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
         if inserted == 0 {
             let existing_id = s::table
                 .filter(s::name.eq(name.as_str()))
                 .select(s::id)
-                .first::<String>(conn)?;
+                .first::<String>(conn)
+                .await?;
             Ok(existing_id)
         } else {
             Ok(id)
@@ -974,6 +981,7 @@ impl Connection {
             .filter(s::name.eq(name.as_str()))
             .select((s::id, v::deployment.nullable()))
             .first::<(String, Option<String>)>(&mut self.conn)
+            .await
             .optional()?;
         let (subgraph_id, current_deployment) = match info {
             Some((subgraph_id, current_deployment)) => {
@@ -988,7 +996,8 @@ impl Connection {
             .left_outer_join(v::table.on(s::pending_version.eq(v::id.nullable())))
             .filter(s::id.eq(&subgraph_id))
             .select(v::deployment.nullable())
-            .first::<Option<String>>(&mut self.conn)?;
+            .first::<Option<String>>(&mut self.conn)
+            .await?;
 
         // See if the current version of that subgraph is synced. If the subgraph
         // has no current version, we treat it the same as if it were not synced
@@ -1020,19 +1029,22 @@ impl Connection {
                 v::created_at.eq(sql(&format!("{}", created_at))),
                 v::block_range.eq(UNVERSIONED_RANGE),
             ))
-            .execute(&mut self.conn)?;
+            .execute(&mut self.conn)
+            .await?;
 
         // Create a subgraph assignment if there isn't one already
         let new_assignment = a::table
             .filter(a::id.eq(site.id))
             .select(a::id)
             .first::<i32>(&mut self.conn)
+            .await
             .optional()?
             .is_none();
         if new_assignment {
             insert_into(a::table)
                 .values((a::id.eq(site.id), a::node_id.eq(node_id.as_str())))
-                .execute(&mut self.conn)?;
+                .execute(&mut self.conn)
+                .await?;
         }
 
         // See if we should make this the current or pending version
@@ -1047,12 +1059,14 @@ impl Connection {
                         s::current_version.eq(&version_id),
                         s::pending_version.eq::<Option<&str>>(None),
                     ))
-                    .execute(&mut self.conn)?;
+                    .execute(&mut self.conn)
+                    .await?;
             }
             (Synced, true, false) => {
                 subgraph_row
                     .set(s::pending_version.eq(&version_id))
-                    .execute(&mut self.conn)?;
+                    .execute(&mut self.conn)
+                    .await?;
             }
         }
 
@@ -1080,10 +1094,15 @@ impl Connection {
             .filter(s::name.eq(name.as_str()))
             .select(s::id)
             .first(conn)
+            .await
             .optional()?;
         if let Some(subgraph) = subgraph {
-            delete(v::table.filter(v::subgraph.eq(&subgraph))).execute(conn)?;
-            delete(s::table.filter(s::id.eq(subgraph))).execute(conn)?;
+            delete(v::table.filter(v::subgraph.eq(&subgraph)))
+                .execute(conn)
+                .await?;
+            delete(s::table.filter(s::id.eq(subgraph)))
+                .execute(conn)
+                .await?;
             self.remove_unused_assignments().await
         } else {
             Ok(vec![])
@@ -1100,7 +1119,8 @@ impl Connection {
 
         let updates = update(a::table.filter(a::id.eq(site.id)))
             .set(a::paused_at.eq(sql("now()")))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
         match updates {
             0 => Err(StoreError::DeploymentNotFound(site.deployment.to_string())),
             1 => {
@@ -1125,7 +1145,8 @@ impl Connection {
 
         let updates = update(a::table.filter(a::id.eq(site.id)))
             .set(a::paused_at.eq(sql("null")))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
         match updates {
             0 => Err(StoreError::DeploymentNotFound(site.deployment.to_string())),
             1 => {
@@ -1150,7 +1171,8 @@ impl Connection {
         let conn = &mut self.conn;
         let updates = update(a::table.filter(a::id.eq(site.id)))
             .set(a::node_id.eq(node.as_str()))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
         match updates {
             0 => Err(StoreError::DeploymentNotFound(site.deployment.to_string())),
             1 => {
@@ -1200,6 +1222,7 @@ impl Connection {
                 bool,
                 Vec<String>,
             )>(conn)
+            .await
             .optional()?;
 
         let features = features.map(
@@ -1273,7 +1296,8 @@ impl Connection {
         insert_into(f::table)
             .values(changes.clone())
             .on_conflict_do_nothing()
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
         Ok(())
     }
 
@@ -1287,7 +1311,8 @@ impl Connection {
         let conn = &mut self.conn;
         insert_into(a::table)
             .values((a::id.eq(site.id), a::node_id.eq(node.as_str())))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         let change = AssignmentChange::set(site.into());
         Ok(vec![change])
@@ -1300,7 +1325,9 @@ impl Connection {
         use subgraph_deployment_assignment as a;
 
         let conn = &mut self.conn;
-        let delete_count = delete(a::table.filter(a::id.eq(site.id))).execute(conn)?;
+        let delete_count = delete(a::table.filter(a::id.eq(site.id)))
+            .execute(conn)
+            .await?;
 
         self.cancel_copies(vec![site.id]).await?;
 
@@ -1343,8 +1370,10 @@ impl Connection {
                 ds::active.eq(active),
             ))
             .returning((ds::id, ds::name))
-            .get_results(conn)?;
+            .get_results(conn)
+            .await?;
         let (id, namespace) = schemas
+            .as_slice()
             .first()
             .cloned()
             .ok_or_else(|| anyhow!("failed to read schema name for {} back", deployment))?;
@@ -1442,11 +1471,13 @@ impl Connection {
         // `subgraph where active`
         update(ds::table.filter(ds::subgraph.eq(deployment.hash.as_str())))
             .set(ds::active.eq(false))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         update(ds::table.filter(ds::id.eq(DeploymentId::from(deployment.id))))
             .set(ds::active.eq(true))
             .execute(conn)
+            .await
             .map_err(|e| e.into())
             .map(|_| ())
     }
@@ -1463,25 +1494,32 @@ impl Connection {
             async {
                 let conn = &mut pconn.conn;
 
-                delete(ds::table.filter(ds::id.eq(site.id))).execute(conn)?;
+                delete(ds::table.filter(ds::id.eq(site.id)))
+                    .execute(conn)
+                    .await?;
 
                 // If there is no site for this deployment any more, we can get
                 // rid of versions pointing to it
                 let exists = select(exists(
                     ds::table.filter(ds::subgraph.eq(site.deployment.as_str())),
                 ))
-                .get_result::<bool>(conn)?;
+                .get_result::<bool>(conn)
+                .await?;
                 if !exists {
                     delete(v::table.filter(v::deployment.eq(site.deployment.as_str())))
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
 
                     // Remove the entry in `subgraph_features`
-                    delete(f::table.filter(f::id.eq(site.deployment.as_str()))).execute(conn)?;
+                    delete(f::table.filter(f::id.eq(site.deployment.as_str())))
+                        .execute(conn)
+                        .await?;
                 }
 
                 update(u::table.filter(u::id.eq(site.id)))
                     .set(u::removed_at.eq(sql("now()")))
-                    .execute(conn)?;
+                    .execute(conn)
+                    .await?;
                 Ok(())
             }
             .scope_boxed()
@@ -1496,6 +1534,7 @@ impl Connection {
         let schema = deployment_schemas::table
             .filter(deployment_schemas::id.eq::<DeploymentId>(locator.into()))
             .first::<Schema>(&mut self.conn)
+            .await
             .optional()?;
         schema.map(|schema| schema.try_into()).transpose()
     }
@@ -1505,7 +1544,8 @@ impl Connection {
 
         ds::table
             .filter(ds::network.eq(network))
-            .load::<Schema>(&mut self.conn)?
+            .load::<Schema>(&mut self.conn)
+            .await?
             .into_iter()
             .map(|schema| schema.try_into())
             .collect()
@@ -1516,7 +1556,8 @@ impl Connection {
 
         ds::table
             .filter(ds::name.ne("subgraphs"))
-            .load::<Schema>(&mut self.conn)?
+            .load::<Schema>(&mut self.conn)
+            .await?
             .into_iter()
             .map(|schema| schema.try_into())
             .collect()
@@ -1560,7 +1601,8 @@ impl Connection {
             .select((a::node_id, sql::<BigInt>("count(*)")))
             .group_by(a::node_id)
             .order_by(sql::<BigInt>("count(*)"))
-            .load::<(String, i64)>(conn)?;
+            .load::<(String, i64)>(conn)
+            .await?;
 
         // Any nodes without assignments will be missing from `assigned`
         let missing = nodes
@@ -1603,7 +1645,8 @@ impl Connection {
             .select((ds::shard, sql::<BigInt>("count(*)")))
             .group_by(ds::shard)
             .order_by(sql::<BigInt>("count(*)"))
-            .load::<(String, i64)>(conn)?;
+            .load::<(String, i64)>(conn)
+            .await?;
 
         // Any shards that have no deployments in them will not be in
         // 'used'; add them in with a count of 0
@@ -1633,6 +1676,7 @@ impl Connection {
             .select((s::current_version.nullable(), s::pending_version.nullable()))
             .filter(s::name.eq(&name))
             .first::<(Option<String>, Option<String>)>(&mut self.conn)
+            .await
             .optional()?
             .unwrap_or((None, None)))
     }
@@ -1648,6 +1692,7 @@ impl Connection {
             .select(v::deployment)
             .filter(v::id.eq(name))
             .first::<String>(&mut self.conn)
+            .await
             .optional()?)
     }
 
@@ -1716,14 +1761,16 @@ impl Connection {
             .on_conflict(u::id)
             .do_nothing()
             .returning(u::id)
-            .get_results::<DeploymentId>(conn)?;
+            .get_results::<DeploymentId>(conn)
+            .await?;
 
         // We need to load again since we do not record the network in
         // unused_deployments
         ds::table
             .filter(ds::id.eq_any(ids))
             .select(ds::all_columns)
-            .load::<Schema>(conn)?
+            .load::<Schema>(conn)
+            .await?
             .into_iter()
             .map(Site::try_from)
             .collect()
@@ -1758,7 +1805,8 @@ impl Connection {
                     u::synced_at.eq(detail.synced_at),
                     u::synced_at_block_number.eq(detail.synced_at_block_number.clone()),
                 ))
-                .execute(&mut self.conn)?;
+                .execute(&mut self.conn)
+                .await?;
         }
         Ok(())
     }
@@ -1770,6 +1818,7 @@ impl Connection {
         use unused_deployments as u;
         delete(u::table.filter(u::id.eq(site.id)))
             .execute(&mut self.conn)
+            .await
             .map(|_| ())
             .map_err(StoreError::from)
     }
@@ -1783,11 +1832,12 @@ impl Connection {
 
         let conn = &mut self.conn;
         match filter {
-            All => Ok(u::table.order_by(u::unused_at.desc()).load(conn)?),
+            All => Ok(u::table.order_by(u::unused_at.desc()).load(conn).await?),
             New => Ok(u::table
                 .filter(u::removed_at.is_null())
                 .order_by(u::entity_count)
-                .load(conn)?),
+                .load(conn)
+                .await?),
             UnusedLongerThan(duration) => {
                 let ts = chrono::offset::Local::now()
                     .checked_sub_signed(duration)
@@ -1798,7 +1848,8 @@ impl Connection {
                     .filter(u::removed_at.is_null())
                     .filter(u::unused_at.lt(ts))
                     .order_by(u::entity_count)
-                    .load(conn)?)
+                    .load(conn)
+                    .await?)
             }
 
             Name(name) => Ok(u::table
@@ -1809,17 +1860,20 @@ impl Connection {
                         .sql("] <@ subgraphs"),
                 )
                 .order_by(u::entity_count)
-                .load(conn)?),
+                .load(conn)
+                .await?),
 
             Hash(hash) => Ok(u::table
                 .filter(u::deployment.eq(hash))
                 .order_by(u::entity_count)
-                .load(conn)?),
+                .load(conn)
+                .await?),
 
             Deployment(id) => Ok(u::table
                 .filter(u::namespace.eq(id))
                 .order_by(u::entity_count)
-                .load(conn)?),
+                .load(conn)
+                .await?),
         }
     }
 
@@ -1840,7 +1894,8 @@ impl Connection {
             .filter(v::deployment.eq(site.deployment.as_str()))
             .select(s::name)
             .distinct()
-            .load(&mut self.conn)?)
+            .load(&mut self.conn)
+            .await?)
     }
 
     pub async fn find_ens_name(&mut self, hash: &str) -> Result<Option<String>, StoreError> {
@@ -1850,6 +1905,7 @@ impl Connection {
             .select(dsl::name)
             .find(hash)
             .get_result::<String>(&mut self.conn)
+            .await
             .optional()
             .map_err(|e| anyhow!("error looking up ens_name for hash {}: {}", hash, e).into())
     }
@@ -1861,6 +1917,7 @@ impl Connection {
             .select(dsl::name)
             .limit(1)
             .get_result::<String>(&mut self.conn)
+            .await
             .optional()
             .map(|r| r.is_none())
             .map_err(|e| anyhow!("error if ens table is empty: {}", e).into())
@@ -1876,7 +1933,8 @@ impl Connection {
                 cp::queued_at.eq(sql("now()")),
             ))
             .on_conflict_do_nothing()
-            .execute(&mut self.conn)?;
+            .execute(&mut self.conn)
+            .await?;
 
         Ok(())
     }
@@ -1884,7 +1942,9 @@ impl Connection {
     pub async fn copy_finished(&mut self, dst: &Site) -> Result<(), StoreError> {
         use active_copies as cp;
 
-        delete(cp::table.filter(cp::dst.eq(dst.id))).execute(&mut self.conn)?;
+        delete(cp::table.filter(cp::dst.eq(dst.id)))
+            .execute(&mut self.conn)
+            .await?;
 
         Ok(())
     }
@@ -1920,6 +1980,7 @@ impl Primary {
                 .filter(ac::cancelled_at.is_null()),
         ))
         .get_result::<bool>(&mut conn)
+        .await
         .map_err(StoreError::from)
     }
 
@@ -1932,6 +1993,7 @@ impl Primary {
             .filter(ac::dst.eq(dst.id))
             .select(ac::cancelled_at.is_not_null())
             .get_result::<bool>(&mut conn)
+            .await
             .map_err(StoreError::from)
     }
 }
@@ -1942,8 +2004,8 @@ pub async fn is_empty(conn: &mut PgConnection) -> Result<bool, StoreError> {
     use deployment_schemas as ds;
     use subgraph as s;
 
-    let empty = ds::table.count().get_result::<i64>(conn)? == 0
-        && s::table.count().get_result::<i64>(conn)? == 0;
+    let empty = ds::table.count().get_result::<i64>(conn).await? == 0
+        && s::table.count().get_result::<i64>(conn).await? == 0;
     Ok(empty)
 }
 
