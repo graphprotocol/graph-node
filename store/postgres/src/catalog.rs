@@ -1017,7 +1017,7 @@ pub(crate) async fn stats_targets(
 }
 
 pub(crate) async fn set_stats_target(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     namespace: &Namespace,
     table: &SqlName,
     columns: &[&SqlName],

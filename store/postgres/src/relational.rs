@@ -462,7 +462,7 @@ impl Layout {
 
     pub async fn find(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
@@ -1142,7 +1142,7 @@ impl Layout {
     /// that interval, but we did try to aggregate at that time.
     pub(crate) async fn last_rollup(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> Result<Option<BlockTime>, StoreError> {
         Rollup::last_rollup(&self.rollups, conn).await
     }

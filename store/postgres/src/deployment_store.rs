@@ -523,7 +523,7 @@ impl DeploymentStore {
         &self,
         ids: Vec<String>,
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
-        let conn = &mut self.get_conn().await?;
+        let conn = &mut self.pool.get().await?;
         detail::deployment_details(conn, ids).await
     }
 
@@ -532,7 +532,7 @@ impl DeploymentStore {
         locator: &DeploymentLocator,
     ) -> Result<DeploymentDetail, StoreError> {
         let id = DeploymentId::from(locator.clone());
-        let conn = &mut self.get_conn().await?;
+        let conn = &mut self.pool.get().await?;
         detail::deployment_details_for_id(conn, &id).await
     }
 
@@ -540,7 +540,7 @@ impl DeploymentStore {
         &self,
         sites: &[Arc<Site>],
     ) -> Result<Vec<status::Info>, StoreError> {
-        let conn = &mut self.get_conn().await?;
+        let conn = &mut self.pool.get().await?;
         detail::deployment_statuses(conn, sites).await
     }
 
@@ -548,7 +548,7 @@ impl DeploymentStore {
         &self,
         id: &DeploymentHash,
     ) -> Result<bool, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         deployment::exists_and_synced(&mut conn, id.as_str()).await
     }
 
@@ -557,14 +557,14 @@ impl DeploymentStore {
         id: &DeploymentHash,
         block_ptr: BlockPtr,
     ) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         conn.transaction(|conn| deployment::set_synced(conn, id, block_ptr).scope_boxed())
             .await
     }
 
     /// Look up the on_sync action for this deployment
     pub(crate) async fn on_sync(&self, site: &Site) -> Result<OnSync, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         deployment::on_sync(&mut conn, site.id).await
     }
 
@@ -584,7 +584,7 @@ impl DeploymentStore {
         &self,
         namespace: &crate::primary::Namespace,
     ) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         deployment::drop_schema(&mut conn, namespace).await
     }
 
@@ -626,7 +626,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         entity: Option<&str>,
     ) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let layout = self.layout(&mut conn, site).await?;
         let tables = entity
             .map(|entity| resolve_table_name(&layout, entity))
@@ -643,7 +643,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<(i32, BTreeMap<SqlName, BTreeMap<SqlName, i32>>), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let default = catalog::default_stats_target(&mut conn).await?;
         let targets = catalog::stats_targets(&mut conn, &site.namespace).await?;
 
@@ -657,7 +657,7 @@ impl DeploymentStore {
         columns: Vec<String>,
         target: i32,
     ) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let layout = self.layout(&mut conn, site.clone()).await?;
 
         let tables = entity
@@ -894,7 +894,7 @@ impl DeploymentStore {
     ) -> Result<Option<BlockTime>, StoreError> {
         let store = self.cheap_clone();
 
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let layout = store.layout(&mut conn, site.cheap_clone()).await?;
         layout.last_rollup(&mut conn).await
     }
@@ -998,7 +998,7 @@ impl DeploymentStore {
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let layout = self.layout(&mut conn, site).await?;
         layout.find(&mut conn, key, block).await
     }

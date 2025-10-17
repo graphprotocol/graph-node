@@ -1412,7 +1412,7 @@ pub async fn copy_earliest_block(
 }
 
 pub async fn on_sync(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: impl Into<DeploymentId>,
 ) -> Result<OnSync, StoreError> {
     use subgraph_manifest as m;
