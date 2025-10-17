@@ -2277,37 +2277,31 @@ impl ChainHeadStore for ChainStore {
     async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
         use public::ethereum_networks::dsl::*;
 
-        Ok(self
-            .cheap_clone()
-            .pool
-            .with_conn(async move |conn, _| {
-                ethereum_networks
-                    .select((head_block_hash, head_block_number))
-                    .filter(name.eq(&self.chain))
-                    .load::<(Option<String>, Option<i64>)>(conn)
-                    .await
-                    .map(|rows| {
-                        rows.as_slice()
-                            .first()
-                            .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
-                                (Some(hash), Some(number)) => Some(
-                                    (
-                                        // FIXME:
-                                        //
-                                        // workaround for arweave
-                                        H256::from_slice(&hex::decode(hash).unwrap()[..32]),
-                                        *number,
-                                    )
-                                        .into(),
-                                ),
-                                (None, None) => None,
-                                _ => unreachable!(),
-                            })
-                            .and_then(|opt: Option<BlockPtr>| opt)
+        let mut conn = self.pool.get().await?;
+        Ok(ethereum_networks
+            .select((head_block_hash, head_block_number))
+            .filter(name.eq(&self.chain))
+            .load::<(Option<String>, Option<i64>)>(&mut conn)
+            .await
+            .map(|rows| {
+                rows.as_slice()
+                    .first()
+                    .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
+                        (Some(hash), Some(number)) => Some(
+                            (
+                                // FIXME:
+                                //
+                                // workaround for arweave
+                                H256::from_slice(&hex::decode(hash).unwrap()[..32]),
+                                *number,
+                            )
+                                .into(),
+                        ),
+                        (None, None) => None,
+                        _ => unreachable!(),
                     })
-                    .map_err(|e| CancelableError::from(StoreError::from(e)))
-            })
-            .await?)
+                    .and_then(|opt: Option<BlockPtr>| opt)
+            })?)
     }
 
     async fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
