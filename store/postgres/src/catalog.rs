@@ -754,7 +754,7 @@ pub(crate) mod table_schema {
 /// `{dst_nsp}.{table_name}` for the server `server` which has the same
 /// schema as the (local) table `{src_nsp}.{table_name}`
 pub async fn create_foreign_table(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     src_nsp: &str,
     table_name: &str,
     dst_nsp: &str,
@@ -812,7 +812,7 @@ pub async fn create_foreign_table(
 /// is the name of the shard and `namespace` is the namespace where the
 /// `src_table` is mapped
 pub async fn create_cross_shard_view(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     src_nsp: &str,
     src_table: &str,
     dst_nsp: &str,
