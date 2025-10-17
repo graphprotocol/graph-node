@@ -323,7 +323,7 @@ impl DataSourcesTable {
     /// value existing in the table.
     pub(super) async fn causality_region_curr_val(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> Result<Option<CausalityRegion>, StoreError> {
         // Get the maximum `causality_region` leveraging the btree index.
         Ok(self

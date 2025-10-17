@@ -3,7 +3,7 @@ pub(crate) mod shared;
 
 pub(crate) use private::DataSourcesTable;
 
-use crate::{pool::PgConnection, primary::Site, AsyncPgConnection};
+use crate::{primary::Site, AsyncPgConnection};
 use graph::{
     components::store::{write, StoredDynamicDataSource},
     data_source::CausalityRegion,
@@ -81,7 +81,7 @@ pub(crate) async fn update_offchain_status(
 
 /// The maximum assigned causality region. Any higher number is therefore free to be assigned.
 pub(crate) async fn causality_region_curr_val(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
 ) -> Result<Option<CausalityRegion>, StoreError> {
     match site.schema_version.private_data_sources() {
