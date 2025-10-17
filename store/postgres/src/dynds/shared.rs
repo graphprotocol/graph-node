@@ -236,7 +236,7 @@ pub(super) async fn revert(
 }
 
 pub(crate) async fn drop(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
 ) -> Result<usize, StoreError> {
     use dynamic_ethereum_contract_data_source as decds;

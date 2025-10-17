@@ -188,7 +188,7 @@ impl DeploymentStore {
         on_sync: OnSync,
         index_def: Option<IndexList>,
     ) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         conn.transaction::<_, StoreError, _>(|conn| {
             async {
                 let exists = deployment::exists(conn, &site).await?;
@@ -258,7 +258,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<SubgraphDeploymentEntity, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let layout = self.layout(&mut conn, site.clone()).await?;
         Ok(
             detail::deployment_entity(&mut conn, &site, &layout.input_schema)
@@ -270,7 +270,7 @@ impl DeploymentStore {
     // Remove the data and metadata for the deployment `site`. This operation
     // is not reversible
     pub(crate) async fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         conn.transaction(|conn| {
             async {
                 crate::deployment::drop_schema(conn, &site.namespace).await?;
