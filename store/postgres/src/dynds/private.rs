@@ -88,7 +88,7 @@ impl DataSourcesTable {
     // reverts and the execution order of triggers. See also 8f1bca33-d3b7-4035-affc-fd6161a12448.
     pub(super) async fn load(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         block: BlockNumber,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
         type Tuple = (
