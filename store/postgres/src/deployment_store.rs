@@ -1489,19 +1489,15 @@ impl DeploymentStore {
     }
 
     pub(crate) async fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
-        self.with_conn(async move |conn, _| {
-            deployment::exists_and_synced(conn, &id)
-                .await
-                .map_err(Into::into)
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        deployment::exists_and_synced(&mut conn, &id).await
     }
 
     pub(crate) async fn graft_pending(
         &self,
         id: &DeploymentHash,
     ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         deployment::graft_pending(&mut conn, id).await
     }
 

@@ -288,7 +288,7 @@ async fn graft(
 /// a graft or if the subgraph has already progress past the graft point,
 /// indicating that the data copying for grafting has been performed
 pub async fn graft_pending(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
     graft(conn, id, true).await
@@ -298,7 +298,7 @@ pub async fn graft_pending(
 /// return it. Returns `None` if the deployment does not have
 /// a graft.
 pub async fn graft_point(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
 ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
     graft(conn, id, false).await
