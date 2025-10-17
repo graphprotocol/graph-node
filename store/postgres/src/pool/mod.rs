@@ -816,7 +816,7 @@ impl PoolInner {
             return Ok(false);
         }
 
-        let mut conn = self.get_sync().await?;
+        let mut conn = self.get().await?;
         server.needs_remap(&mut conn).await
     }
 }

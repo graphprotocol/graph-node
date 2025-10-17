@@ -15,7 +15,7 @@ use crate::primary::NAMESPACE_PUBLIC;
 use crate::{catalog, AsyncPgConnection};
 use crate::{Shard, PRIMARY_SHARD};
 
-use super::{PgConnection, PRIMARY_PUBLIC, PRIMARY_TABLES, SHARDED_TABLES};
+use super::{PRIMARY_PUBLIC, PRIMARY_TABLES, SHARDED_TABLES};
 
 #[derive(Clone)]
 pub struct ForeignServer {
@@ -216,7 +216,10 @@ impl ForeignServer {
         Ok(conn.batch_execute(&query).await?)
     }
 
-    pub(super) async fn needs_remap(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
+    pub(super) async fn needs_remap(
+        &self,
+        conn: &mut AsyncPgConnection,
+    ) -> Result<bool, StoreError> {
         fn different(mut existing: Vec<String>, mut needed: Vec<String>) -> bool {
             existing.sort();
             needed.sort();
