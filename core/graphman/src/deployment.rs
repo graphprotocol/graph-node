@@ -14,7 +14,6 @@ use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::DeploymentHash;
 use graph_store_postgres::command_support::catalog;
 use graph_store_postgres::AsyncPgConnection;
-use graph_store_postgres::PgConnection;
 use itertools::Itertools;
 
 use crate::GraphmanError;
@@ -137,7 +136,7 @@ pub(crate) async fn load_deployments(
 }
 
 pub(crate) async fn load_deployment_locator(
-    primary_conn: &mut PgConnection,
+    primary_conn: &mut AsyncPgConnection,
     deployment: &DeploymentSelector,
     version: &DeploymentVersionSelector,
 ) -> Result<DeploymentLocator, GraphmanError> {
