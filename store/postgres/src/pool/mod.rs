@@ -682,9 +682,13 @@ impl PoolInner {
         servers: &[ForeignServer],
     ) -> Result<MigrationCount, StoreError> {
         self.configure_fdw(servers).await?;
-        let mut conn = self.get_sync().await?;
+        // We use AsyncConnectionWrapper here since diesel_async doesn't
+        // offer an async analog to `HarnessWithOutput` yet, and we
+        // therefore use sync infrastructure to run migrations. That's not a
+        // big deal, since this happens at server startup only.
+        let mut conn = self.get().await.map(AsyncConnectionWrapper::from)?;
         let (this, count) = conn
-            .transaction_async::<_, StoreError, _>(|conn| {
+            .transaction::<_, StoreError, _>(|conn| {
                 async {
                     let count = migrate_schema(&self.logger, conn).await?;
                     Ok((self, count))
@@ -841,7 +845,7 @@ impl MigrationCount {
 /// serialize them. The `conn` is used to run the actual migration.
 async fn migrate_schema(
     logger: &Logger,
-    conn: &mut PgConnection,
+    conn: &mut AsyncConnectionWrapper<AsyncPgConnection>,
 ) -> Result<MigrationCount, StoreError> {
     use diesel_migrations::MigrationHarness;
 
