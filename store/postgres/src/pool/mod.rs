@@ -544,12 +544,6 @@ impl PoolInner {
             .map_err(|_| StoreError::DatabaseUnavailable)
     }
 
-    /// An async version of `get`. For now, this calls `get` synchronously.
-    /// Once `get` is not used anymore, we can make it truly async.
-    pub async fn get_sync(&self) -> Result<PgConnection, StoreError> {
-        self.get().await.map(AsyncConnectionWrapper::from)
-    }
-
     /// Get the pool for fdw connections. It is an error if none is configured
     fn fdw_pool(&self, logger: &Logger) -> Result<&AsyncPool, StoreError> {
         let pool = match &self.fdw_pool {
