@@ -804,8 +804,8 @@ impl PoolInner {
                 "Mapping metadata from {}",
                 server.shard.as_str()
             );
-            let mut conn = self.get_sync().await?;
-            conn.transaction_async(|conn| server.map_metadata(conn).scope_boxed())
+            let mut conn = self.get().await?;
+            conn.transaction(|conn| server.map_metadata(conn).scope_boxed())
                 .await?;
         }
         Ok(())
