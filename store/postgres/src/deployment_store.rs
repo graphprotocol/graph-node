@@ -417,7 +417,7 @@ impl DeploymentStore {
 
     async fn subgraph_info_with_conn(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
     ) -> Result<SubgraphInfo, StoreError> {
         if let Some(info) = self.subgraph_cache.lock().unwrap().get(&site.deployment) {
@@ -475,7 +475,7 @@ impl DeploymentStore {
             return Ok(info.clone());
         }
 
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         self.subgraph_info_with_conn(&mut conn, site).await
     }
 
