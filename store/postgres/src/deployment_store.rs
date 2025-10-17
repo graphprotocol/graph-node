@@ -932,28 +932,17 @@ impl DeploymentStore {
     pub(crate) async fn block_ptr(&self, site: Arc<Site>) -> Result<Option<BlockPtr>, StoreError> {
         let site = site.cheap_clone();
 
-        self.with_conn(async move |conn, cancel| {
-            cancel.check_cancel()?;
-
-            Self::block_ptr_with_conn(conn, site)
-                .await
-                .map_err(Into::into)
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        Self::block_ptr_with_conn(&mut conn, site).await
     }
 
     pub(crate) async fn block_cursor(&self, site: Arc<Site>) -> Result<FirehoseCursor, StoreError> {
         let site = site.cheap_clone();
 
-        self.with_conn(async move |conn, cancel| {
-            cancel.check_cancel()?;
-
-            deployment::get_subgraph_firehose_cursor(conn, site)
-                .await
-                .map(FirehoseCursor::from)
-                .map_err(Into::into)
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        deployment::get_subgraph_firehose_cursor(&mut conn, site)
+            .await
+            .map(FirehoseCursor::from)
     }
 
     pub(crate) async fn block_time(
@@ -980,59 +969,53 @@ impl DeploymentStore {
         let info = self.subgraph_info(site.cheap_clone()).await?;
         let poi_digest = layout.input_schema.poi_digest();
 
-        let entities: Option<(Vec<Entity>, BlockPtr)> = self
-            .with_conn(async move |conn, cancel| {
-                let site = site.clone();
-                cancel.check_cancel()?;
+        let mut conn = self.pool.get().await?;
+        let entities: Option<(Vec<Entity>, BlockPtr)> = {
+            let site = site.clone();
 
-                let layout = store.layout(conn, site.cheap_clone()).await?;
+            let layout = store.layout(&mut conn, site.cheap_clone()).await?;
 
-                let mut block_ptr = block.cheap_clone();
-                let latest_block_ptr =
-                    match Self::block_ptr_with_conn(conn, site.cheap_clone()).await? {
-                        Some(inner) => inner,
-                        None => return Ok(None),
-                    };
-
-                cancel.check_cancel()?;
-
-                // FIXME: (Determinism)
-                //
-                // It is vital to ensure that the block hash given in the query
-                // is a parent of the latest block indexed for the subgraph.
-                // Unfortunately the machinery needed to do this is not yet in place.
-                // The best we can do right now is just to make sure that the block number
-                // is high enough.
-                if latest_block_ptr.number < block.number {
-                    // If a subgraph has failed deterministically then any blocks past head
-                    // should return the same POI
-                    let fatal_error = ErrorDetail::fatal(conn, &site.deployment).await?;
-                    block_ptr = match fatal_error {
-                        Some(se) => TryInto::<SubgraphError>::try_into(se)?
-                            .block_ptr
-                            .unwrap_or(block_ptr),
-                        None => return Ok(None),
-                    };
+            let mut block_ptr = block.cheap_clone();
+            let latest_block_ptr =
+                match Self::block_ptr_with_conn(&mut conn, site.cheap_clone()).await? {
+                    Some(inner) => inner,
+                    None => return Ok(None),
                 };
 
-                let query = EntityQuery::new(
-                    site.deployment.cheap_clone(),
-                    block_ptr.number,
-                    EntityCollection::All(vec![(
-                        layout.input_schema.poi_type().clone(),
-                        AttributeNames::All,
-                    )]),
-                );
-                let entities = store
-                    .execute_query::<Entity>(conn, site, query)
-                    .await
-                    .map(|(entities, _)| entities)
-                    .map_err(StoreError::from)?;
+            // FIXME: (Determinism)
+            //
+            // It is vital to ensure that the block hash given in the query
+            // is a parent of the latest block indexed for the subgraph.
+            // Unfortunately the machinery needed to do this is not yet in place.
+            // The best we can do right now is just to make sure that the block number
+            // is high enough.
+            if latest_block_ptr.number < block.number {
+                // If a subgraph has failed deterministically then any blocks past head
+                // should return the same POI
+                let fatal_error = ErrorDetail::fatal(&mut conn, &site.deployment).await?;
+                block_ptr = match fatal_error {
+                    Some(se) => TryInto::<SubgraphError>::try_into(se)?
+                        .block_ptr
+                        .unwrap_or(block_ptr),
+                    None => return Ok(None),
+                };
+            };
 
-                Ok(Some((entities, block_ptr)))
-            })
-            .await?;
-
+            let query = EntityQuery::new(
+                site.deployment.cheap_clone(),
+                block_ptr.number,
+                EntityCollection::All(vec![(
+                    layout.input_schema.poi_type().clone(),
+                    AttributeNames::All,
+                )]),
+            );
+            let entities = store
+                .execute_query::<Entity>(&mut conn, site, query)
+                .await
+                .map(|(entities, _)| entities)
+                .map_err(StoreError::from)?;
+            Some((entities, block_ptr))
+        };
         let (entities, block_ptr) = if let Some((entities, bp)) = entities {
             (entities, bp)
         } else {
