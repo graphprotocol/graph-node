@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use diesel::sql_types::Text;
 use diesel::{insert_into, update, ExpressionMethods, OptionalExtension, QueryDsl};
+use diesel_async::AsyncConnection;
 use diesel_async::{scoped_futures::ScopedFutureExt, RunQueryDsl};
 
 use graph::components::store::ChainHeadStore;
@@ -34,7 +35,7 @@ use graph::prelude::{
 use graph::{ensure, internal_error};
 
 use self::recent_blocks_cache::RecentBlocksCache;
-use crate::pool::{AsyncConnection, PgConnection};
+use crate::pool::PgConnection;
 use crate::{
     block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender, pool::ConnectionPool,
 };
@@ -383,7 +384,7 @@ mod data {
         /// `Storage::Private`. If it uses `Storage::Shared`, do nothing since
         /// a regular migration will already have created the `ethereum_blocks`
         /// table
-        pub(super) async fn create(&self, conn: &mut PgConnection) -> Result<(), Error> {
+        pub(super) async fn create(&self, conn: &mut AsyncPgConnection) -> Result<(), Error> {
             fn make_ddl(nsp: &str) -> String {
                 format!(
                     "
@@ -529,7 +530,7 @@ mod data {
         /// possibly existing entry. If it is `false`, keep the old entry.
         pub(super) async fn upsert_block(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             chain: &str,
             block: &dyn Block,
             overwrite: bool,
@@ -2026,8 +2027,8 @@ impl ChainStore {
     pub(crate) async fn create(&self, ident: &ChainIdentifier) -> Result<(), Error> {
         use public::ethereum_networks::dsl::*;
 
-        let mut conn = self.get_conn().await?;
-        conn.transaction_async(|conn| {
+        let mut conn = self.pool.get().await?;
+        conn.transaction(|conn| {
             async move {
                 insert_into(ethereum_networks)
                     .values((
@@ -2053,8 +2054,8 @@ impl ChainStore {
 
     pub async fn update_name(&self, name: &str) -> Result<(), Error> {
         use public::ethereum_networks as n;
-        let mut conn = self.get_conn().await?;
-        conn.transaction_async(|conn| {
+        let mut conn = self.pool.get().await?;
+        conn.transaction(|conn| {
             async {
                 update(n::table.filter(n::name.eq(&self.chain)))
                     .set(n::name.eq(name))
@@ -2071,8 +2072,8 @@ impl ChainStore {
         use diesel::dsl::delete;
         use public::ethereum_networks as n;
 
-        let mut conn = self.get_conn().await?;
-        conn.transaction_async(|conn| {
+        let mut conn = self.pool.get().await?;
+        conn.transaction(|conn| {
             async {
                 self.storage.drop_storage(conn, &self.chain).await?;
 
@@ -2328,10 +2329,6 @@ impl ChainHeadStore for ChainStore {
     ) -> Result<(), Error> {
         use public::ethereum_networks as n;
 
-        let pool = self.pool.clone();
-        let network = self.chain.clone();
-        let storage = self.storage.clone();
-
         let ptr = block.ptr();
         let hash = ptr.hash_hex();
         let number = ptr.number as i64; //block height
@@ -2339,28 +2336,25 @@ impl ChainHeadStore for ChainStore {
         //this will send an update via postgres, channel: chain_head_updates
         self.chain_head_update_sender.send(&hash, number).await?;
 
-        pool.with_conn(async move |conn, _| {
-            conn.transaction_async(|conn| {
-                async {
-                    storage
-                        .upsert_block(conn, &network, block.as_ref(), true)
-                        .await?;
+        let mut conn = self.pool.get().await?;
+        conn.transaction(|conn| {
+            async {
+                self.storage
+                    .upsert_block(conn, &self.chain, block.as_ref(), true)
+                    .await?;
 
-                    update(n::table.filter(n::name.eq(&self.chain)))
-                        .set((
-                            n::head_block_hash.eq(&hash),
-                            n::head_block_number.eq(number),
-                            n::head_block_cursor.eq(cursor),
-                        ))
-                        .execute(conn)
-                        .await?;
+                update(n::table.filter(n::name.eq(&self.chain)))
+                    .set((
+                        n::head_block_hash.eq(&hash),
+                        n::head_block_number.eq(number),
+                        n::head_block_cursor.eq(cursor),
+                    ))
+                    .execute(conn)
+                    .await?;
 
-                    Ok::<(), StoreError>(())
-                }
-                .scope_boxed()
-            })
-            .await?;
-            Ok(())
+                Ok::<(), StoreError>(())
+            }
+            .scope_boxed()
         })
         .await?;
         Ok(())
@@ -2385,20 +2379,11 @@ impl ChainStoreTrait for ChainStore {
             self.recent_blocks_cache.insert_block(block);
         }
 
-        let pool = self.pool.clone();
-        let network = self.chain.clone();
-        let storage = self.storage.clone();
-        pool.with_conn(async move |conn, _| {
-            conn.transaction_async(|conn| {
-                async {
-                    storage
-                        .upsert_block(conn, &network, block.as_ref(), true)
-                        .await
-                        .map_err(CancelableError::from)
-                }
+        let mut conn = self.pool.get().await?;
+        conn.transaction(|conn| {
+            self.storage
+                .upsert_block(conn, &self.chain, block.as_ref(), true)
                 .scope_boxed()
-            })
-            .await
         })
         .await
         .map_err(Error::from)
@@ -2420,15 +2405,15 @@ impl ChainStoreTrait for ChainStore {
     ) -> Result<Option<H256>, Error> {
         use public::ethereum_networks as n;
 
-        let (missing, ptr) =
-            {
-                let chain_store = self.clone();
-                let genesis_block_ptr = self.genesis_block_ptr().await?.hash_as_h256();
-                self.pool
+        let (missing, ptr) = {
+            let chain_store = self.clone();
+            let genesis_block_ptr = self.genesis_block_ptr().await?.hash_as_h256();
+            self.pool
                 .with_conn(async move |conn, _| {
                     let candidate = chain_store
                         .storage
-                        .chain_head_candidate(conn, &chain_store.chain).await
+                        .chain_head_candidate(conn, &chain_store.chain)
+                        .await
                         .map_err(CancelableError::from)?;
                     let (ptr, first_block) = match &candidate {
                         None => return Ok((None, None)),
@@ -2443,7 +2428,8 @@ impl ChainStoreTrait for ChainStore {
                             first_block as i64,
                             ptr.hash_as_h256(),
                             genesis_block_ptr,
-                        ).await
+                        )
+                        .await
                         .map_err(CancelableError::from)?
                     {
                         Some(missing) => {
@@ -2454,7 +2440,7 @@ impl ChainStoreTrait for ChainStore {
 
                     let hash = ptr.hash_hex();
                     let number = ptr.number as i64;
-                    conn.transaction_async::<(Option<H256>, Option<(String, i64)>), StoreError, _>(
+                    conn.transaction::<(Option<H256>, Option<(String, i64)>), StoreError, _>(
                         |conn| {
                             async move {
                                 update(n::table.filter(n::name.eq(&chain_store.chain)))
@@ -2462,7 +2448,8 @@ impl ChainStoreTrait for ChainStore {
                                         n::head_block_hash.eq(&hash),
                                         n::head_block_number.eq(number),
                                     ))
-                                    .execute(conn).await?;
+                                    .execute(conn)
+                                    .await?;
                                 Ok((None, Some((hash, number))))
                             }
                             .scope_boxed()
@@ -2472,7 +2459,7 @@ impl ChainStoreTrait for ChainStore {
                     .map_err(CancelableError::from)
                 })
                 .await?
-            };
+        };
         if let Some((hash, number)) = ptr {
             self.chain_head_update_sender.send(&hash, number).await?;
         }
@@ -3087,7 +3074,7 @@ impl EthereumCallCache for ChainStore {
         let id = contract_call_id(req, &block);
         let conn = &mut self.get_conn().await?;
         let return_value = conn
-            .transaction_async::<_, Error, _>(|conn| {
+            .transaction::<_, Error, _>(|conn| {
                 async {
                     if let Some((return_value, update_accessed_at)) =
                         self.storage.get_call_and_access(conn, id.as_ref()).await?
@@ -3128,7 +3115,7 @@ impl EthereumCallCache for ChainStore {
 
         let conn = &mut self.get_conn().await?;
         let rows = conn
-            .transaction_async::<_, Error, _>(|conn| {
+            .transaction::<_, Error, _>(|conn| {
                 self.storage
                     .get_calls_and_access(conn, &id_refs)
                     .scope_boxed()
@@ -3161,7 +3148,7 @@ impl EthereumCallCache for ChainStore {
 
     async fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
         let conn = &mut self.get_conn().await?;
-        conn.transaction_async::<_, Error, _>(|conn| {
+        conn.transaction::<_, Error, _>(|conn| {
             self.storage.get_calls_in_block(conn, block).scope_boxed()
         })
         .await
@@ -3192,7 +3179,7 @@ impl EthereumCallCache for ChainStore {
         let this = self.cheap_clone();
         self.pool
             .with_conn(async move |conn, _| {
-                conn.transaction_async::<_, CancelableError<anyhow::Error>, _>(|conn| {
+                conn.transaction::<_, CancelableError<anyhow::Error>, _>(|conn| {
                     async {
                         this.storage
                             .set_call(
