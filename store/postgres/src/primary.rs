@@ -14,7 +14,6 @@ use diesel::prelude::{
     OptionalExtension, QueryDsl,
 };
 use diesel::{
-    connection::TransactionManager,
     data_types::PgTimestamp,
     deserialize::FromSql,
     dsl::{exists, not, select},
@@ -24,7 +23,7 @@ use diesel::{
 };
 use diesel_async::{
     scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
-    RunQueryDsl, SimpleAsyncConnection as _,
+    RunQueryDsl, SimpleAsyncConnection as _, TransactionManager,
 };
 use graph::{
     components::store::DeploymentLocator,
@@ -455,7 +454,7 @@ mod queries {
     use std::{collections::HashMap, convert::TryFrom, convert::TryInto};
 
     use crate::pool::PgConnection;
-    use crate::Shard;
+    use crate::{AsyncPgConnection, Shard};
 
     use super::{DeploymentId, Schema, Site};
 
@@ -468,7 +467,7 @@ mod queries {
     use super::subgraph_version as v;
 
     pub(super) async fn find_active_site(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         subgraph: &DeploymentHash,
     ) -> Result<Option<Site>, StoreError> {
         let schema = ds::table
@@ -610,7 +609,7 @@ mod queries {
     }
 
     pub(super) async fn find_site_in_shard(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         subgraph: &DeploymentHash,
         shard: &Shard,
     ) -> Result<Option<Site>, StoreError> {
@@ -673,7 +672,7 @@ mod queries {
     }
 
     pub(super) async fn assigned_node(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: &Site,
     ) -> Result<Option<NodeId>, StoreError> {
         a::table
@@ -699,7 +698,7 @@ mod queries {
     /// subgraph is paused.
     /// Returns None if the deployment does not exist.
     pub(super) async fn assignment_status(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: &Site,
     ) -> Result<Option<(NodeId, bool)>, StoreError> {
         a::table
@@ -781,11 +780,11 @@ mod queries {
 /// A wrapper for a database connection that provides access to functionality
 /// that works only on the primary database
 pub struct Connection {
-    conn: PgConnection,
+    conn: AsyncPgConnection,
 }
 
 impl Connection {
-    pub fn new(conn: PgConnection) -> Self {
+    pub fn new(conn: AsyncPgConnection) -> Self {
         Self { conn }
     }
 
@@ -806,16 +805,16 @@ impl Connection {
         R: Send + 'a,
         'a: 'conn,
     {
-        type TM = <PgConnection as diesel::Connection>::TransactionManager;
+        type TM = <AsyncPgConnection as diesel_async::AsyncConnection>::TransactionManager;
 
         async move {
-            TM::begin_transaction(&mut self.conn)?;
+            TM::begin_transaction(&mut self.conn).await?;
             match callback(self).await {
                 Ok(value) => {
-                    TM::commit_transaction(&mut self.conn)?;
+                    TM::commit_transaction(&mut self.conn).await?;
                     Ok(value)
                 }
-                Err(user_error) => match TM::rollback_transaction(&mut self.conn) {
+                Err(user_error) => match TM::rollback_transaction(&mut self.conn).await {
                     Ok(()) => Err(user_error),
                     Err(diesel::result::Error::BrokenTransactionManager) => {
                         // In this case we are probably more interested by the
