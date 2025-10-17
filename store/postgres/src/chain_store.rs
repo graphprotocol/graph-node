@@ -1071,7 +1071,7 @@ mod data {
         /// matches the `root`.
         pub(super) async fn ancestor_block(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             block_ptr: BlockPtr,
             offset: BlockNumber,
             root: Option<BlockHash>,
@@ -2641,20 +2641,10 @@ impl ChainStoreTrait for ChainStore {
             return Ok(Some((data, ptr)));
         }
 
-        let block_ptr_clone = block_ptr.clone();
-        let chain_store = self.cheap_clone();
-
-        self.pool
-            .with_conn(async move |conn, _| {
-                chain_store
-                    .storage
-                    .ancestor_block(conn, block_ptr_clone, offset, root)
-                    .await
-                    .map_err(StoreError::from)
-                    .map_err(CancelableError::from)
-            })
+        let mut conn = self.pool.get().await?;
+        self.storage
+            .ancestor_block(&mut conn, block_ptr, offset, root)
             .await
-            .map_err(Into::into)
     }
 
     async fn cleanup_cached_blocks(
