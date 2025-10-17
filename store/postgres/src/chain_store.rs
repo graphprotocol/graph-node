@@ -2255,6 +2255,56 @@ impl ChainStore {
 
         Ok(block_map)
     }
+
+    async fn attempt_chain_head_update_inner(
+        &self,
+        conn: &mut PgConnection,
+        ancestor_count: BlockNumber,
+    ) -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
+        use public::ethereum_networks as n;
+
+        let genesis_block_ptr = self.genesis_block_ptr().await?.hash_as_h256();
+
+        let candidate = self.storage.chain_head_candidate(conn, &self.chain).await?;
+        let (ptr, first_block) = match &candidate {
+            None => return Ok((None, None)),
+            Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
+        };
+
+        match self
+            .storage
+            .missing_parent(
+                conn,
+                &self.chain,
+                first_block as i64,
+                ptr.hash_as_h256(),
+                genesis_block_ptr,
+            )
+            .await?
+        {
+            Some(missing) => {
+                return Ok((Some(missing), None));
+            }
+            None => { /* we have a complete chain, no missing parents */ }
+        }
+
+        let hash = ptr.hash_hex();
+        let number = ptr.number as i64;
+        conn.transaction::<(Option<H256>, Option<(String, i64)>), StoreError, _>(|conn| {
+            async move {
+                update(n::table.filter(n::name.eq(&self.chain)))
+                    .set((
+                        n::head_block_hash.eq(&hash),
+                        n::head_block_number.eq(number),
+                    ))
+                    .execute(conn)
+                    .await?;
+                Ok((None, Some((hash, number))))
+            }
+            .scope_boxed()
+        })
+        .await
+    }
 }
 
 fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<ExtendedBlockPtr, Error> {
@@ -2403,60 +2453,14 @@ impl ChainStoreTrait for ChainStore {
         self: Arc<Self>,
         ancestor_count: BlockNumber,
     ) -> Result<Option<H256>, Error> {
-        use public::ethereum_networks as n;
-
         let (missing, ptr) = {
             let chain_store = self.clone();
-            let genesis_block_ptr = self.genesis_block_ptr().await?.hash_as_h256();
             self.pool
                 .with_conn(async move |conn, _| {
-                    let candidate = chain_store
-                        .storage
-                        .chain_head_candidate(conn, &chain_store.chain)
+                    chain_store
+                        .attempt_chain_head_update_inner(conn, ancestor_count)
                         .await
-                        .map_err(CancelableError::from)?;
-                    let (ptr, first_block) = match &candidate {
-                        None => return Ok((None, None)),
-                        Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
-                    };
-
-                    match chain_store
-                        .storage
-                        .missing_parent(
-                            conn,
-                            &chain_store.chain,
-                            first_block as i64,
-                            ptr.hash_as_h256(),
-                            genesis_block_ptr,
-                        )
-                        .await
-                        .map_err(CancelableError::from)?
-                    {
-                        Some(missing) => {
-                            return Ok((Some(missing), None));
-                        }
-                        None => { /* we have a complete chain, no missing parents */ }
-                    }
-
-                    let hash = ptr.hash_hex();
-                    let number = ptr.number as i64;
-                    conn.transaction::<(Option<H256>, Option<(String, i64)>), StoreError, _>(
-                        |conn| {
-                            async move {
-                                update(n::table.filter(n::name.eq(&chain_store.chain)))
-                                    .set((
-                                        n::head_block_hash.eq(&hash),
-                                        n::head_block_number.eq(number),
-                                    ))
-                                    .execute(conn)
-                                    .await?;
-                                Ok((None, Some((hash, number))))
-                            }
-                            .scope_boxed()
-                        },
-                    )
-                    .await
-                    .map_err(CancelableError::from)
+                        .map_err(CancelableError::from)
                 })
                 .await?
         };
