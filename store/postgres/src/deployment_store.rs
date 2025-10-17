@@ -1,7 +1,7 @@
 use detail::DeploymentDetail;
 use diesel::sql_query;
 use diesel_async::scoped_futures::ScopedFutureExt;
-use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
+use diesel_async::{AsyncConnection as _, RunQueryDsl, SimpleAsyncConnection};
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
@@ -193,7 +193,7 @@ impl DeploymentStore {
         index_def: Option<IndexList>,
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn().await?;
-        conn.transaction_async::<_, StoreError, _>(|conn| {
+        conn.transaction::<_, StoreError, _>(|conn| {
             async {
                 let exists = deployment::exists(conn, &site).await?;
 
@@ -275,7 +275,7 @@ impl DeploymentStore {
     // is not reversible
     pub(crate) async fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
         let mut conn = self.get_conn().await?;
-        conn.transaction_async(|conn| {
+        conn.transaction(|conn| {
             async {
                 crate::deployment::drop_schema(conn, &site.namespace).await?;
                 if !site.schema_version.private_data_sources() {
@@ -337,7 +337,7 @@ impl DeploymentStore {
 
     async fn check_intf_uniqueness(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         layout: &Layout,
         group: &RowGroup,
     ) -> Result<(), StoreError> {
@@ -346,8 +346,9 @@ impl DeploymentStore {
             return Ok(());
         }
 
-        if let Some((conflicting_entity, id)) =
-            layout.conflicting_entities(conn, &types_with_shared_interface, group)?
+        if let Some((conflicting_entity, id)) = layout
+            .conflicting_entities(conn, &types_with_shared_interface, group)
+            .await?
         {
             return Err(StoreError::ConflictingId(
                 group.entity_type.to_string(),
@@ -360,7 +361,7 @@ impl DeploymentStore {
 
     async fn apply_entity_modifications<'a>(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         layout: &Layout,
         groups: impl Iterator<Item = &'a RowGroup>,
         stopwatch: &StopwatchMetrics,
@@ -373,7 +374,7 @@ impl DeploymentStore {
             // Clamp entities before inserting them to avoid having versions
             // with overlapping block ranges
             let section = stopwatch.start_section("apply_entity_modifications_delete");
-            layout.delete(conn, group, stopwatch)?;
+            layout.delete(conn, group, stopwatch).await?;
             section.end();
 
             let section = stopwatch.start_section("check_interface_entity_uniqueness");
@@ -381,7 +382,7 @@ impl DeploymentStore {
             section.end();
 
             let section = stopwatch.start_section("apply_entity_modifications_insert");
-            layout.insert(conn, group, stopwatch)?;
+            layout.insert(conn, group, stopwatch).await?;
             section.end();
         }
 
@@ -564,7 +565,7 @@ impl DeploymentStore {
     }
 
     async fn block_ptr_with_conn(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
     ) -> Result<Option<BlockPtr>, StoreError> {
         deployment::block_ptr(conn, &site).await
@@ -609,7 +610,7 @@ impl DeploymentStore {
         block_ptr: BlockPtr,
     ) -> Result<(), StoreError> {
         let mut conn = self.get_conn().await?;
-        conn.transaction_async(|conn| deployment::set_synced(conn, id, block_ptr).scope_boxed())
+        conn.transaction(|conn| deployment::set_synced(conn, id, block_ptr).scope_boxed())
             .await
     }
 
@@ -685,7 +686,7 @@ impl DeploymentStore {
             .map(|table| vec![table])
             .unwrap_or_else(|| layout.tables.values().map(Arc::as_ref).collect());
         for table in tables {
-            table.analyze(&mut conn)?;
+            table.analyze(&mut conn).await?;
         }
         Ok(())
     }
@@ -717,7 +718,7 @@ impl DeploymentStore {
             .map(|table| vec![table])
             .unwrap_or_else(|| layout.tables.values().map(Arc::as_ref).collect());
 
-        conn.transaction_async(|conn| {
+        conn.transaction(|conn| {
             async {
                 for table in tables {
                     let (columns, _) = resolve_column_names_and_index_exprs(table, &columns)?;
@@ -737,13 +738,13 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
         entity_name: &str,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
         let layout = store.layout(conn, site).await?;
         let table = resolve_table_name(&layout, &entity_name)?;
-        table.analyze(conn)
+        table.analyze(conn).await
     }
 
     /// Creates a new index in the specified Entity table if it doesn't already exist.
@@ -865,14 +866,12 @@ impl DeploymentStore {
     ) -> Result<Box<dyn PruneReporter>, StoreError> {
         async fn do_prune(
             store: Arc<DeploymentStore>,
-            mut conn: &mut PgConnection,
+            mut conn: &mut AsyncPgConnection,
             site: Arc<Site>,
-            cancel: &CancelHandle,
             req: PruneRequest,
             mut reporter: Box<dyn PruneReporter>,
-        ) -> Result<Box<dyn PruneReporter>, CancelableError<StoreError>> {
+        ) -> Result<Box<dyn PruneReporter>, StoreError> {
             let layout = store.layout(&mut conn, site.clone()).await?;
-            cancel.check_cancel()?;
             let state = deployment::state(&mut conn, &site).await?;
 
             if state.latest_block.number <= req.history_blocks {
@@ -886,34 +885,30 @@ impl DeploymentStore {
                 return Ok(reporter);
             }
 
-            conn.transaction_async(|conn| {
+            conn.transaction(|conn| {
                 deployment::set_earliest_block(conn, site.as_ref(), req.earliest_block)
                     .scope_boxed()
             })
             .await?;
 
-            cancel.check_cancel()?;
-
             layout
-                .prune(&store.logger, reporter.as_mut(), &mut conn, &req, cancel)
+                .prune(&store.logger, reporter.as_mut(), &mut conn, &req)
                 .await?;
             Ok(reporter)
         }
 
         let store = self.clone();
-        self.with_conn(async move |conn, cancel| {
-            // We lock pruning for this deployment to make sure that if the
-            // deployment is reassigned to another node, that node won't
-            // kick off a pruning run while this node might still be pruning
-            if advisory_lock::try_lock_pruning(conn, &site).await? {
-                let res = do_prune(store, conn, site.cheap_clone(), cancel, req, reporter).await;
-                advisory_lock::unlock_pruning(conn, &site).await?;
-                res
-            } else {
-                Ok(reporter)
-            }
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        // We lock pruning for this deployment to make sure that if the
+        // deployment is reassigned to another node, that node won't
+        // kick off a pruning run while this node might still be pruning
+        if advisory_lock::try_lock_pruning(&mut conn, &site).await? {
+            let res = do_prune(store, &mut conn, site.cheap_clone(), req, reporter).await;
+            advisory_lock::unlock_pruning(&mut conn, &site).await?;
+            res
+        } else {
+            Ok(reporter)
+        }
     }
 
     pub(crate) async fn prune_viewer(
@@ -1122,7 +1117,9 @@ impl DeploymentStore {
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let mut conn = self.get_conn().await?;
         let layout = self.layout(&mut conn, site).await?;
-        layout.find_derived(&mut conn, derived_query, block, excluded_keys)
+        layout
+            .find_derived(&mut conn, derived_query, block, excluded_keys)
+            .await
     }
 
     pub(crate) async fn get_changes(
@@ -1132,7 +1129,7 @@ impl DeploymentStore {
     ) -> Result<Vec<EntityOperation>, StoreError> {
         let mut conn = self.get_conn().await?;
         let layout = self.layout(&mut conn, site).await?;
-        let changes = layout.find_changes(&mut conn, block)?;
+        let changes = layout.find_changes(&mut conn, block).await?;
 
         Ok(changes)
     }
@@ -1165,7 +1162,7 @@ impl DeploymentStore {
         };
 
         let (layout, earliest_block) = deployment::with_lock(&mut conn, &site, async |conn| {
-            conn.transaction_async(|conn| {
+            conn.transaction(|conn| {
                 async {
                     // Make the changes
                     let layout = self.layout(conn, site.clone()).await?;
@@ -1347,7 +1344,7 @@ impl DeploymentStore {
 
     async fn rewind_or_truncate_with_conn(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,
@@ -1355,7 +1352,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let logger = self.logger.cheap_clone();
         deployment::with_lock(conn, &site, async |conn| {
-            conn.transaction_async(|conn| {
+            conn.transaction(|conn| {
                 async {
                     // The revert functions want the number of the first block that we need to get rid of
                     let block = block_ptr_to.number + 1;
@@ -1367,10 +1364,10 @@ impl DeploymentStore {
                     let layout = self.layout(conn, site.clone()).await?;
 
                     if truncate {
-                        layout.truncate_tables(conn)?;
+                        layout.truncate_tables(conn).await?;
                         deployment::clear_entity_count(conn, site.as_ref()).await?;
                     } else {
-                        let count = layout.revert_block(conn, block)?;
+                        let count = layout.revert_block(conn, block).await?;
                         deployment::update_entity_count(conn, site.as_ref(), count).await?;
                     }
 
@@ -1506,7 +1503,7 @@ impl DeploymentStore {
         error: SubgraphError,
     ) -> Result<(), StoreError> {
         self.with_conn(async move |conn, _| {
-            conn.transaction_async(|conn| deployment::fail(conn, &id, &error).scope_boxed())
+            conn.transaction(|conn| deployment::fail(conn, &id, &error).scope_boxed())
                 .await
                 .map_err(Into::into)
         })
@@ -1626,7 +1623,7 @@ impl DeploymentStore {
             }
 
             let mut conn = self.get_conn().await?;
-            conn.transaction_async::<(), StoreError, _>(|conn| {
+            conn.transaction::<(), StoreError, _>(|conn| {
                 async {
                     // Copy shared dynamic data sources and adjust their ID; if
                     // the subgraph uses private data sources, that is done by
@@ -1665,7 +1662,7 @@ impl DeploymentStore {
                         .checked_add(1)
                         .expect("block numbers fit into an i32");
                     info!(logger, "Rewinding to block {}", block.number);
-                    let count = dst.revert_block(conn, block_to_revert)?;
+                    let count = dst.revert_block(conn, block_to_revert).await?;
                     deployment::update_entity_count(conn, &dst.site, count).await?;
 
                     info!(logger, "Rewound subgraph to block {}", block.number;
@@ -1711,7 +1708,7 @@ impl DeploymentStore {
         // Make sure the block pointer is set. This is important for newly
         // deployed subgraphs so that we respect the 'startBlock' setting
         // the first time the subgraph is started
-        conn.transaction_async(|conn| {
+        conn.transaction(|conn| {
             crate::deployment::initialize_block_ptr(conn, &dst.site).scope_boxed()
         })
         .await?;
@@ -1737,7 +1734,7 @@ impl DeploymentStore {
         let mut conn = self.get_conn().await?;
         let deployment_id = &site.deployment;
 
-        conn.transaction_async(|conn| {
+        conn.transaction(|conn| {
             async {
             // We'll only unfail subgraphs that had fatal errors
             let subgraph_error = match ErrorDetail::fatal(conn, deployment_id).await? {
@@ -1834,7 +1831,7 @@ impl DeploymentStore {
         let mut conn = self.get_conn().await?;
         let deployment_id = &site.deployment;
 
-        conn.transaction_async(|conn| async {
+        conn.transaction(|conn| async {
             // We'll only unfail subgraphs that had fatal errors
             let subgraph_error = match ErrorDetail::fatal(conn, deployment_id).await? {
                 Some(fatal_error) => fatal_error,

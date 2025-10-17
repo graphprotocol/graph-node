@@ -1,18 +1,16 @@
 use std::{collections::HashMap, fmt::Write, sync::Arc};
 
 use diesel::{
-    connection::SimpleConnection,
     sql_query,
     sql_types::{BigInt, Integer},
-    RunQueryDsl,
 };
-use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
+use diesel_async::{
+    scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
+    AsyncConnection, RunQueryDsl, SimpleAsyncConnection,
+};
 use graph::{
     components::store::{PrunePhase, PruneReporter, PruneRequest, PruningStrategy, VersionStats},
-    prelude::{
-        BlockNumber, CancelHandle, CancelToken, CancelableError, CheapClone, StoreError,
-        BLOCK_NUMBER_MAX,
-    },
+    prelude::{BlockNumber, CancelableError, CheapClone, StoreError, BLOCK_NUMBER_MAX},
     schema::InputSchema,
     slog::{warn, Logger},
 };
@@ -22,10 +20,9 @@ use crate::{
     catalog,
     copy::BATCH_STATEMENT_TIMEOUT,
     deployment,
-    pool::PgConnection,
     relational::{Table, VID_COLUMN},
     vid_batcher::{VidBatcher, VidRange},
-    AsyncConnection,
+    AsyncPgConnection,
 };
 
 use super::{
@@ -53,7 +50,7 @@ impl TablePair {
     /// the same structure as the `src` table in the database, but in a
     /// different namespace so that the names of indexes etc. don't clash
     async fn create(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         src: Arc<Table>,
         src_nsp: Namespace,
         dst_nsp: Namespace,
@@ -80,7 +77,7 @@ impl TablePair {
             // as the asumption is that there is not that much data inserted.
             dst.as_ddl(schema, catalog, Some(&list), &mut query)?;
         }
-        conn.batch_execute(&query)?;
+        conn.batch_execute(&query).await?;
 
         Ok(TablePair {
             src,
@@ -96,12 +93,11 @@ impl TablePair {
     /// concurrently to this copy
     async fn copy_final_entities(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         reporter: &mut dyn PruneReporter,
         tracker: &status::Tracker,
         earliest_block: BlockNumber,
         final_block: BlockNumber,
-        cancel: &CancelHandle,
     ) -> Result<(), CancelableError<StoreError>> {
         let column_list = Arc::new(self.column_list());
 
@@ -140,6 +136,7 @@ impl TablePair {
                     .bind::<BigInt, _>(start)
                     .bind::<BigInt, _>(end)
                     .execute(conn)
+                    .await
                     .map_err(StoreError::from)
                 }
                 .scope_boxed()
@@ -149,7 +146,6 @@ impl TablePair {
             tracker
                 .finish_batch(conn, &self.src, rows as i64, &batcher)
                 .await?;
-            cancel.check_cancel()?;
 
             reporter.prune_batch(
                 self.src.name.as_str(),
@@ -166,7 +162,7 @@ impl TablePair {
     /// other write activity to the source table is blocked while we copy
     async fn copy_nonfinal_entities(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         reporter: &mut dyn PruneReporter,
         tracker: &status::Tracker,
         final_block: BlockNumber,
@@ -203,6 +199,7 @@ impl TablePair {
                     .bind::<BigInt, _>(start)
                     .bind::<BigInt, _>(end)
                     .execute(conn)
+                    .await
                     .map_err(StoreError::from)
             }.scope_boxed()}).await?;
             let rows = rows.unwrap_or(0);
@@ -222,7 +219,7 @@ impl TablePair {
     }
 
     /// Replace the `src` table with the `dst` table
-    async fn switch(self, logger: &Logger, conn: &mut PgConnection) -> Result<(), StoreError> {
+    async fn switch(self, logger: &Logger, conn: &mut AsyncPgConnection) -> Result<(), StoreError> {
         let src_qname = &self.src.qualified_name;
         let dst_qname = &self.dst.qualified_name;
         let src_nsp = &self.src_nsp;
@@ -251,7 +248,7 @@ impl TablePair {
 
         writeln!(query, "drop table {src_qname};")?;
         writeln!(query, "alter table {dst_qname} set schema {src_nsp}")?;
-        conn.transaction_async(|conn| async { conn.batch_execute(&query) }.scope_boxed())
+        conn.transaction(|conn| conn.batch_execute(&query).scope_boxed())
             .await?;
 
         Ok(())
@@ -270,18 +267,16 @@ impl Layout {
     /// this `Layout`
     async fn analyze_tables(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         reporter: &mut dyn PruneReporter,
         mut tables: Vec<&Arc<Table>>,
-        cancel: &CancelHandle,
-    ) -> Result<Vec<VersionStats>, CancelableError<StoreError>> {
+    ) -> Result<Vec<VersionStats>, StoreError> {
         reporter.start_analyze();
         tables.sort_by_key(|table| table.name.as_str());
         for table in &tables {
             reporter.start_analyze_table(table.name.as_str());
-            table.analyze(conn)?;
+            table.analyze(conn).await?;
             reporter.finish_analyze_table(table.name.as_str());
-            cancel.check_cancel()?;
         }
         let stats = self.catalog.stats(conn).await?;
 
@@ -297,11 +292,10 @@ impl Layout {
     /// consider needing analysis.
     async fn version_stats(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         reporter: &mut dyn PruneReporter,
         analyze_all: bool,
-        cancel: &CancelHandle,
-    ) -> Result<Vec<VersionStats>, CancelableError<StoreError>> {
+    ) -> Result<Vec<VersionStats>, StoreError> {
         let needs_analyze = if analyze_all {
             vec![]
         } else {
@@ -313,7 +307,7 @@ impl Layout {
             .filter(|table| analyze_all || needs_analyze.contains(&table.name))
             .collect();
 
-        self.analyze_tables(conn, reporter, tables, cancel).await
+        self.analyze_tables(conn, reporter, tables).await
     }
 
     /// Return all tables and the strategy to prune them withir stats whose ratio of distinct entities
@@ -386,25 +380,24 @@ impl Layout {
         self: Arc<Self>,
         logger: &Logger,
         reporter: &mut dyn PruneReporter,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         req: &PruneRequest,
-        cancel: &CancelHandle,
     ) -> Result<(), CancelableError<StoreError>> {
         let tracker = status::Tracker::new(conn, self.clone()).await?;
 
         let res = self
-            .prune_inner(logger, reporter, conn, req, cancel, &tracker)
+            .prune_inner(logger, reporter, conn, req, &tracker)
             .await;
 
         match res {
             Ok(_) => {
-                tracker.finish(conn)?;
+                tracker.finish(conn).await?;
             }
             Err(e) => {
                 // If we get an error, we need to set the error in the
                 // database and finish the tracker
                 let err = e.to_string();
-                tracker.error(conn, &err)?;
+                tracker.error(conn, &err).await?;
             }
         }
 
@@ -415,13 +408,12 @@ impl Layout {
         self: Arc<Self>,
         logger: &Logger,
         reporter: &mut dyn PruneReporter,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         req: &PruneRequest,
-        cancel: &CancelHandle,
         tracker: &status::Tracker,
     ) -> Result<(), CancelableError<StoreError>> {
         reporter.start(req);
-        let stats = self.version_stats(conn, reporter, true, cancel).await?;
+        let stats = self.version_stats(conn, reporter, true).await?;
         let prunable_tables: Vec<_> = self.prunable_tables(&stats, req).into_iter().collect();
         tracker.start(conn, req, &prunable_tables).await?;
         let dst_nsp = Namespace::prune(self.site.id);
@@ -452,7 +444,6 @@ impl Layout {
                         tracker,
                         req.earliest_block,
                         req.final_block,
-                        cancel,
                     )
                     .await?;
                     // Copy nonfinal entities, and replace the original `src` table with
@@ -465,10 +456,8 @@ impl Layout {
                         async |conn| -> Result<_, StoreError> {
                             pair.copy_nonfinal_entities(conn, reporter, tracker, req.final_block)
                                 .await?;
-                            cancel.check_cancel().map_err(CancelableError::from)?;
 
                             pair.switch(logger, conn).await?;
-                            cancel.check_cancel().map_err(CancelableError::from)?;
 
                             Ok(())
                         },
@@ -498,7 +487,9 @@ impl Layout {
                         .bind::<Integer, _>(req.earliest_block)
                         .bind::<BigInt, _>(start)
                         .bind::<BigInt, _>(end)
-                        .execute(conn).map_err(StoreError::from)
+                        .execute(conn)
+                        .await
+                        .map_err(StoreError::from)
                         }.scope_boxed()}).await?;
                         let rows = rows.unwrap_or(0);
 
@@ -526,7 +517,7 @@ impl Layout {
                 .await?;
         }
         let tables = prunable_tables.iter().map(|(table, _)| *table).collect();
-        self.analyze_tables(conn, reporter, tables, cancel).await?;
+        self.analyze_tables(conn, reporter, tables).await?;
         reporter.finish();
         Ok(())
     }
@@ -540,22 +531,26 @@ impl Layout {
 /// Doing this serves as a safeguard against very bad batch size estimations
 /// so that batches never take longer than `BATCH_SIZE_TIMEOUT`
 async fn batch_with_timeout<'a, 'conn, R, F>(
-    conn: &'conn mut PgConnection,
+    conn: &'conn mut AsyncPgConnection,
     batcher: &mut VidBatcher,
     query: F,
 ) -> Result<Option<R>, StoreError>
 where
     R: Send,
-    F: for<'r> Fn(&'r mut PgConnection, i64, i64) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
+    F: for<'r> Fn(
+            &'r mut AsyncPgConnection,
+            i64,
+            i64,
+        ) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
         + Sync,
     'a: 'conn,
 {
     let res = batcher
         .step(async |start, end| {
-            conn.transaction_async(|conn| {
+            conn.transaction(|conn| {
                 async {
                     if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
-                        conn.batch_execute(timeout)?;
+                        conn.batch_execute(timeout).await?;
                     }
                     query(conn, start, end).await
                 }
@@ -573,7 +568,7 @@ where
     batcher.set_batch_size(1);
     batcher
         .step(async |start, end| {
-            conn.transaction_async(|conn| async { query(conn, start, end).await }.scope_boxed())
+            conn.transaction(|conn| query(conn, start, end).scope_boxed())
                 .await
         })
         .await
@@ -592,9 +587,9 @@ mod status {
         serialize::{Output, ToSql},
         sql_types::Text,
         table, update, AsChangeset, ExpressionMethods as _, OptionalExtension, QueryDsl as _,
-        RunQueryDsl as _,
     };
-    use diesel_async::scoped_futures::ScopedFutureExt;
+    use diesel_async::RunQueryDsl as _;
+    use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection};
     use graph::{
         components::store::{PruneRequest, PruningStrategy, StoreResult},
         env::ENV_VARS,
@@ -602,10 +597,9 @@ mod status {
     };
 
     use crate::{
-        pool::PgConnection,
         relational::{Layout, Table},
         vid_batcher::{VidBatcher, VidRange},
-        AsyncConnection, ConnectionPool,
+        AsyncPgConnection, ConnectionPool,
     };
 
     table! {
@@ -760,13 +754,17 @@ mod status {
     }
 
     impl Tracker {
-        pub(super) async fn new(conn: &mut PgConnection, layout: Arc<Layout>) -> StoreResult<Self> {
+        pub(super) async fn new(
+            conn: &mut AsyncPgConnection,
+            layout: Arc<Layout>,
+        ) -> StoreResult<Self> {
             use prune_state as ps;
             let run = ps::table
                 .filter(ps::id.eq(layout.site.id))
                 .order(ps::run.desc())
                 .select(ps::run)
                 .get_result::<i32>(conn)
+                .await
                 .optional()
                 .map_err(StoreError::from)?
                 .unwrap_or(0)
@@ -779,6 +777,7 @@ mod status {
                 .filter(ps::run.gt(1))
                 .filter(ps::run.lt(run - (ENV_VARS.store.prune_keep_history as i32 - 1)))
                 .execute(conn)
+                .await
                 .map_err(StoreError::from)?;
 
             Ok(Tracker { layout, run })
@@ -786,14 +785,14 @@ mod status {
 
         pub(super) async fn start(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             req: &PruneRequest,
             prunable_tables: &[(&Arc<Table>, PruningStrategy)],
         ) -> StoreResult<()> {
             use prune_state as ps;
             use prune_table_state as pts;
 
-            conn.transaction_async(|conn| {
+            conn.transaction(|conn| {
                 async move {
                     insert_into(ps::table)
                         .values((
@@ -805,7 +804,8 @@ mod status {
                             ps::history_blocks.eq(req.history_blocks),
                             ps::started_at.eq(diesel::dsl::now),
                         ))
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
 
                     for (table, strat) in prunable_tables {
                         let strat = match strat {
@@ -820,7 +820,8 @@ mod status {
                                 pts::strategy.eq(strat),
                                 pts::phase.eq(Phase::Queued),
                             ))
-                            .execute(conn)?;
+                            .execute(conn)
+                            .await?;
                     }
                     Ok(())
                 }
@@ -831,7 +832,7 @@ mod status {
 
         pub(crate) async fn start_table(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             table: &Table,
         ) -> StoreResult<()> {
             use prune_table_state as pts;
@@ -851,7 +852,7 @@ mod status {
 
         pub(crate) async fn start_copy_final(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             table: &Table,
             range: VidRange,
         ) -> StoreResult<()> {
@@ -870,7 +871,7 @@ mod status {
 
         pub(crate) async fn start_copy_nonfinal(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             table: &Table,
             range: VidRange,
         ) -> StoreResult<()> {
@@ -887,7 +888,7 @@ mod status {
 
         pub(crate) async fn finish_batch(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             src: &Table,
             rows: i64,
             batcher: &VidBatcher,
@@ -905,7 +906,7 @@ mod status {
 
         pub(crate) async fn finish_table(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             table: &Table,
         ) -> StoreResult<()> {
             use prune_table_state as pts;
@@ -920,7 +921,7 @@ mod status {
 
         pub(crate) async fn start_delete(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             table: &Table,
             range: VidRange,
             batcher: &VidBatcher,
@@ -942,13 +943,13 @@ mod status {
 
         async fn update_table_state<V, C>(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             table: &Table,
             values: V,
         ) -> StoreResult<()>
         where
             V: AsChangeset<Target = prune_table_state::table, Changeset = C>,
-            C: QueryFragment<diesel::pg::Pg>,
+            C: QueryFragment<diesel::pg::Pg> + Send,
         {
             use prune_table_state as pts;
 
@@ -957,22 +958,28 @@ mod status {
                 .filter(pts::run.eq(self.run))
                 .filter(pts::table_name.eq(table.name.as_str()))
                 .set(values)
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
             Ok(())
         }
 
-        pub(crate) fn finish(&self, conn: &mut PgConnection) -> StoreResult<()> {
+        pub(crate) async fn finish(&self, conn: &mut AsyncPgConnection) -> StoreResult<()> {
             use prune_state as ps;
 
             update(ps::table)
                 .filter(ps::id.eq(self.layout.site.id))
                 .filter(ps::run.eq(self.run))
                 .set((ps::finished_at.eq(diesel::dsl::now),))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
             Ok(())
         }
 
-        pub(crate) fn error(&self, conn: &mut PgConnection, err: &str) -> StoreResult<()> {
+        pub(crate) async fn error(
+            &self,
+            conn: &mut AsyncPgConnection,
+            err: &str,
+        ) -> StoreResult<()> {
             use prune_state as ps;
 
             update(ps::table)
@@ -983,7 +990,8 @@ mod status {
                     ps::errored_at.eq(diesel::dsl::now),
                     ps::error.eq(err),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
             Ok(())
         }
     }
@@ -1008,6 +1016,7 @@ mod status {
                 .select(ps::run)
                 .order(ps::run.asc())
                 .load::<i32>(&mut conn)
+                .await
                 .map_err(StoreError::from)?;
             let runs = runs.into_iter().map(|run| run as usize).collect::<Vec<_>>();
             Ok(runs)
@@ -1027,12 +1036,14 @@ mod status {
                 .filter(pts::run.eq(run as i32))
                 .order(pts::table_name.asc())
                 .load::<PruneTableState>(&mut conn)
+                .await
                 .map_err(StoreError::from)?;
 
             ps::table
                 .filter(ps::id.eq(self.layout.site.id))
                 .filter(ps::run.eq(run as i32))
                 .first::<PruneState>(&mut conn)
+                .await
                 .optional()
                 .map_err(StoreError::from)
                 .map(|state| state.map(|state| (state, ptss)))

@@ -902,7 +902,7 @@ pub async fn fail(
 }
 
 pub async fn update_non_fatal_errors(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     deployment_id: &DeploymentHash,
     health: SubgraphHealth,
     non_fatal_errors: Option<&[SubgraphError]>,
@@ -925,7 +925,7 @@ pub async fn update_non_fatal_errors(
 
 /// If `block` is `None`, assumes the latest block.
 pub(crate) async fn has_deterministic_errors(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
     block: BlockNumber,
 ) -> Result<bool, StoreError> {
@@ -942,7 +942,7 @@ pub(crate) async fn has_deterministic_errors(
 }
 
 pub async fn update_deployment_status(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     deployment_id: &DeploymentHash,
     health: SubgraphHealth,
     fatal_error: Option<String>,
@@ -969,7 +969,7 @@ pub async fn update_deployment_status(
 /// `block_ptr` they contain
 pub(crate) async fn insert_subgraph_errors(
     logger: &Logger,
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
     deterministic_errors: &[SubgraphError],
     latest_block: BlockNumber,
@@ -1006,7 +1006,7 @@ pub(crate) async fn error_count(
 /// block if `None`, based on the presence of deterministic errors. Has no effect on failed subgraphs.
 async fn check_health(
     logger: &Logger,
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -1079,7 +1079,7 @@ pub(crate) async fn entities_with_causality_region(
 /// Reverts the errors and updates the subgraph health if necessary.
 pub(crate) async fn revert_subgraph_errors(
     logger: &Logger,
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
     reverted_block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -1335,7 +1335,7 @@ fn entity_count_sql(count: i32) -> String {
 }
 
 pub async fn update_entity_count(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     count: i32,
 ) -> Result<(), StoreError> {
@@ -1354,7 +1354,10 @@ pub async fn update_entity_count(
 }
 
 /// Set the deployment's entity count back to `0`
-pub async fn clear_entity_count(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
+pub async fn clear_entity_count(
+    conn: &mut AsyncPgConnection,
+    site: &Site,
+) -> Result<(), StoreError> {
     use head as h;
 
     update(h::table.filter(h::id.eq(site.id)))
@@ -1370,7 +1373,7 @@ pub async fn clear_entity_count(conn: &mut PgConnection, site: &Site) -> Result<
 /// `site` can not move the earliest block backwards if `site` was also
 /// pruned while the copy was running.
 pub async fn set_earliest_block(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     earliest_block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -1450,9 +1453,13 @@ pub async fn set_on_sync(
 /// while other write activity for that deployment is locked out. Block the
 /// current thread until we can acquire the lock.
 //  see also: deployment-lock-for-update
-pub async fn with_lock<F, R>(conn: &mut PgConnection, site: &Site, f: F) -> Result<R, StoreError>
+pub async fn with_lock<F, R>(
+    conn: &mut AsyncPgConnection,
+    site: &Site,
+    f: F,
+) -> Result<R, StoreError>
 where
-    F: AsyncFnOnce(&mut PgConnection) -> Result<R, StoreError>,
+    F: AsyncFnOnce(&mut AsyncPgConnection) -> Result<R, StoreError>,
 {
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(100), Duration::from_secs(15));
     while !advisory_lock::lock_deployment_session(conn, site).await? {

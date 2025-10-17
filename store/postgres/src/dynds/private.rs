@@ -5,8 +5,9 @@ use diesel::{
     query_builder::{AstPass, QueryFragment, QueryId},
     sql_query,
     sql_types::{Binary, Bool, Integer, Jsonb, Nullable},
-    ExpressionMethods, OptionalExtension, QueryDsl, QueryResult, RunQueryDsl,
+    ExpressionMethods, OptionalExtension, QueryDsl, QueryResult,
 };
+use diesel_async::RunQueryDsl;
 
 use graph::{
     anyhow::{anyhow, Context},
@@ -16,7 +17,10 @@ use graph::{
     prelude::{serde_json, BlockNumber, StoreError},
 };
 
-use crate::{pool::PgConnection, primary::Namespace, relational_queries::POSTGRES_MAX_PARAMETERS};
+use crate::{
+    pool::PgConnection, primary::Namespace, relational_queries::POSTGRES_MAX_PARAMETERS,
+    AsyncPgConnection,
+};
 
 type DynTable = diesel_dynamic_schema::Table<String, Namespace>;
 type DynColumn<ST> = diesel_dynamic_schema::Column<DynTable, &'static str, ST>;
@@ -108,7 +112,8 @@ impl DataSourcesTable {
                 &self.done_at,
             ))
             .order_by(&self.vid)
-            .load::<Tuple>(conn)?;
+            .load::<Tuple>(conn)
+            .await?;
 
         let mut dses: Vec<_> = tuples
             .into_iter()
@@ -143,7 +148,7 @@ impl DataSourcesTable {
 
     pub(crate) async fn insert(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         data_sources: &write::DataSources,
     ) -> Result<usize, StoreError> {
         let mut inserted_total = 0;
@@ -186,7 +191,7 @@ impl DataSourcesTable {
                     .bind::<Integer, _>(causality_region)
                     .bind::<Nullable<Integer>, _>(done_at);
 
-                inserted_total += query.execute(conn)?;
+                inserted_total += query.execute(conn).await?;
             }
         }
         Ok(inserted_total)
@@ -194,7 +199,7 @@ impl DataSourcesTable {
 
     pub(crate) async fn revert(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         block: BlockNumber,
     ) -> Result<(), StoreError> {
         // Use the 'does not extend to the left of' operator `&>` to leverage the gist index, this
@@ -206,7 +211,10 @@ impl DataSourcesTable {
             "delete from {} where block_range &> int4range($1, null)",
             self.qname
         );
-        sql_query(query).bind::<Integer, _>(block).execute(conn)?;
+        sql_query(query)
+            .bind::<Integer, _>(block)
+            .execute(conn)
+            .await?;
         Ok(())
     }
 
@@ -221,7 +229,7 @@ impl DataSourcesTable {
         dst_manifest_idx_and_name: &[(i32, String)],
     ) -> Result<usize, StoreError> {
         // Check if there are any data sources for dst which indicates we already copied
-        let count = dst.table.clone().count().get_result::<i64>(conn)?;
+        let count = dst.table.clone().count().get_result::<i64>(conn).await?;
         if count > 0 {
             return Ok(count as usize);
         }
@@ -246,7 +254,8 @@ impl DataSourcesTable {
                 &self.done_at,
             ))
             .order_by(&self.vid)
-            .load::<DsForCopy>(conn)?
+            .load::<DsForCopy>(conn)
+            .await?
             .into_iter()
             .map(|ds| ds.src_to_dst(target_block, &manifest_map, &self.namespace, &dst.namespace))
             .collect::<Result<_, _>>()?;
@@ -257,7 +266,7 @@ impl DataSourcesTable {
         let mut count = 0;
         for chunk in dss.chunks(chunk_size) {
             let query = CopyDsQuery::new(dst, chunk)?;
-            count += query.execute(conn)?;
+            count += query.execute(conn).await?;
         }
 
         // If the manifest idxes remained constant, we can test that both tables have the same
@@ -281,7 +290,7 @@ impl DataSourcesTable {
     // identifies an offchain data source.
     pub(super) async fn update_offchain_status(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         data_sources: &write::DataSources,
     ) -> Result<(), StoreError> {
         for (_, dss) in &data_sources.entries {
@@ -294,7 +303,8 @@ impl DataSourcesTable {
                 let count = sql_query(query)
                     .bind::<Nullable<Integer>, _>(ds.done_at)
                     .bind::<Integer, _>(ds.causality_region)
-                    .execute(conn)?;
+                    .execute(conn)
+                    .await?;
 
                 if count > 1 {
                     return Err(internal_error!(
@@ -311,7 +321,7 @@ impl DataSourcesTable {
 
     /// The current causality sequence according to the store, which is infered to be the maximum
     /// value existing in the table.
-    pub(super) fn causality_region_curr_val(
+    pub(super) async fn causality_region_curr_val(
         &self,
         conn: &mut PgConnection,
     ) -> Result<Option<CausalityRegion>, StoreError> {
@@ -322,6 +332,7 @@ impl DataSourcesTable {
             .select(&self.causality_region)
             .order_by((&self.causality_region).desc())
             .first::<CausalityRegion>(conn)
+            .await
             .optional()?)
     }
 }
@@ -461,5 +472,3 @@ impl<'a> QueryId for CopyDsQuery<'a> {
 
     const HAS_STATIC_QUERY_ID: bool = false;
 }
-
-impl<'a, Conn> RunQueryDsl<Conn> for CopyDsQuery<'a> {}

@@ -3,7 +3,7 @@ pub(crate) mod shared;
 
 pub(crate) use private::DataSourcesTable;
 
-use crate::{pool::PgConnection, primary::Site};
+use crate::{pool::PgConnection, primary::Site, AsyncPgConnection};
 use graph::{
     components::store::{write, StoredDynamicDataSource},
     data_source::CausalityRegion,
@@ -28,7 +28,7 @@ pub async fn load(
 }
 
 pub(crate) async fn insert(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     data_sources: &write::DataSources,
     manifest_idx_and_name: &[(u32, String)],
@@ -44,7 +44,7 @@ pub(crate) async fn insert(
 }
 
 pub(crate) async fn revert(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     block: BlockNumber,
 ) -> Result<(), StoreError> {
@@ -59,7 +59,7 @@ pub(crate) async fn revert(
 }
 
 pub(crate) async fn update_offchain_status(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     data_sources: &write::DataSources,
 ) -> Result<(), StoreError> {
@@ -85,7 +85,11 @@ pub(crate) async fn causality_region_curr_val(
     site: &Site,
 ) -> Result<Option<CausalityRegion>, StoreError> {
     match site.schema_version.private_data_sources() {
-        true => DataSourcesTable::new(site.namespace.clone()).causality_region_curr_val(conn),
+        true => {
+            DataSourcesTable::new(site.namespace.clone())
+                .causality_region_curr_val(conn)
+                .await
+        }
 
         // Subgraphs on the legacy shared table do not use offchain data sources.
         false => Ok(None),
