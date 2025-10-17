@@ -377,7 +377,7 @@ impl Layout {
     }
 
     pub async fn create_relational_schema(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
         schema: &InputSchema,
         entities_with_causality_region: BTreeSet<EntityType>,

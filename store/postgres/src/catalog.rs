@@ -224,7 +224,7 @@ impl Catalog {
 
     /// Return a new catalog suitable for creating a new subgraph
     pub async fn for_creation(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
         entities_with_causality_region: BTreeSet<EntityType>,
     ) -> Result<Self, StoreError> {

@@ -6,7 +6,6 @@ use crate::{
     AsyncPgConnection,
 };
 use diesel::{
-    connection::SimpleConnection,
     dsl::{count, delete, insert_into, now, select, sql, update},
     sql_types::{Bool, Integer},
 };
@@ -15,7 +14,7 @@ use diesel::{
     sql_query,
     sql_types::{Nullable, Text},
 };
-use diesel_async::RunQueryDsl;
+use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
 use graph::{
     blockchain::block_stream::FirehoseCursor,
     data::subgraph::schema::SubgraphError,
@@ -1189,17 +1188,17 @@ pub(crate) async fn copy_errors(
 /// will wait at most 2s to acquire all necessary locks, and fail if that is
 /// not possible.
 pub async fn drop_schema(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     namespace: &crate::primary::Namespace,
 ) -> Result<(), StoreError> {
     let query = format!(
         "set local lock_timeout=2000; drop schema if exists {} cascade",
         namespace
     );
-    Ok(conn.batch_execute(&query)?)
+    Ok(conn.batch_execute(&query).await?)
 }
 
-pub async fn drop_metadata(conn: &mut PgConnection, site: &Site) -> Result<(), StoreError> {
+pub async fn drop_metadata(conn: &mut AsyncPgConnection, site: &Site) -> Result<(), StoreError> {
     use head as h;
 
     // We don't need to delete from `deployment`, `subgraph_manifest`,  or
@@ -1211,7 +1210,7 @@ pub async fn drop_metadata(conn: &mut PgConnection, site: &Site) -> Result<(), S
 }
 
 pub async fn create_deployment(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     create: DeploymentCreate,
     exists: bool,
@@ -1427,7 +1426,7 @@ pub async fn on_sync(
 }
 
 pub async fn set_on_sync(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     site: &Site,
     on_sync: OnSync,
 ) -> Result<(), StoreError> {
