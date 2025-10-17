@@ -18,10 +18,7 @@ use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::data_source::CausalityRegion;
 use graph::derive::CheapClone;
 use graph::futures03::FutureExt;
-use graph::prelude::{
-    ApiVersion, CancelHandle, CancelToken, CancelableError, EntityOperation, PoolWaitStats,
-    SubgraphDeploymentEntity,
-};
+use graph::prelude::{ApiVersion, EntityOperation, PoolWaitStats, SubgraphDeploymentEntity};
 use graph::semver::Version;
 use graph::tokio::task::JoinHandle;
 use itertools::Itertools;
@@ -387,55 +384,6 @@ impl DeploymentStore {
         }
 
         Ok(count)
-    }
-
-    /// Execute an async closure with a connection to the database.
-    ///
-    /// # API
-    ///   The API of using a closure to bound the usage of the connection serves several
-    ///   purposes:
-    ///
-    ///   * Moves blocking database access out of the `Future::poll`. Within
-    ///     `Future::poll` (which includes all `async` methods) it is illegal to
-    ///     perform a blocking operation. This includes all accesses to the
-    ///     database, acquiring of locks, etc. Calling a blocking operation can
-    ///     cause problems with `Future` combinators (including but not limited
-    ///     to select, timeout, and FuturesUnordered) and problems with
-    ///     executors/runtimes. This method moves the database work onto another
-    ///     thread in a way which does not block `Future::poll`.
-    ///
-    ///   * Limit the total number of connections. Because the supplied closure
-    ///     takes a reference, we know the scope of the usage of all entity
-    ///     connections and can limit their use in a non-blocking way.
-    ///
-    /// # Cancellation
-    ///   The normal pattern for futures in Rust is drop to cancel. Once we
-    ///   spawn the database work in a thread though, this expectation no longer
-    ///   holds because the spawned task is the independent of this future. So,
-    ///   this method provides a cancel token which indicates that the `Future`
-    ///   has been dropped. This isn't *quite* as good as drop on cancel,
-    ///   because a drop on cancel can do things like cancel http requests that
-    ///   are in flight, but checking for cancel periodically is a significant
-    ///   improvement.
-    ///
-    ///   The implementation of the supplied closure should check for cancel
-    ///   between every operation that is potentially blocking. This includes
-    ///   any method which may interact with the database. The check can be
-    ///   conveniently written as `token.check_cancel()?;`. It is low overhead
-    ///   to check for cancel, so when in doubt it is better to have too many
-    ///   checks than too few.
-    ///
-    /// # Panics:
-    ///   * This task will panic if the supplied closure panics
-    ///   * This task will panic if the supplied closure returns Err(Cancelled)
-    ///     when the supplied cancel token is not cancelled.
-    pub(crate) async fn with_conn<T: Send + 'static>(
-        &self,
-        f: impl 'static
-            + Send
-            + AsyncFnOnce(&mut PgConnection, &CancelHandle) -> Result<T, CancelableError<StoreError>>,
-    ) -> Result<T, StoreError> {
-        self.pool.with_conn(f).await
     }
 
     /// Deprecated. Use `with_conn` instead.
@@ -1880,16 +1828,12 @@ impl DeploymentStore {
                 "info.subgraph_sizes",
                 "info.chain_sizes",
             ];
-            store
-                .with_conn(async move |conn, cancel| {
-                    for view in VIEWS {
-                        let query = format!("refresh materialized view {}", view);
-                        diesel::sql_query(&query).execute(conn).await?;
-                        cancel.check_cancel()?;
-                    }
-                    Ok(())
-                })
-                .await
+            let mut conn = store.pool.get().await?;
+            for view in VIEWS {
+                let query = format!("refresh materialized view {}", view);
+                diesel::sql_query(&query).execute(&mut conn).await?;
+            }
+            Ok(())
         }
 
         run(self).await.unwrap_or_else(|e| {
@@ -1904,8 +1848,8 @@ impl DeploymentStore {
         site: &Site,
     ) -> Result<deployment::SubgraphHealth, StoreError> {
         let id = site.id;
-        self.with_conn(async move |conn, _| deployment::health(conn, id).await.map_err(Into::into))
-            .await
+        let mut conn = self.pool.get().await?;
+        deployment::health(&mut conn, id).await
     }
 
     pub(crate) async fn set_manifest_raw_yaml(
@@ -1913,12 +1857,8 @@ impl DeploymentStore {
         site: Arc<Site>,
         raw_yaml: String,
     ) -> Result<(), StoreError> {
-        self.with_conn(async move |conn, _| {
-            deployment::set_manifest_raw_yaml(conn, &site, &raw_yaml)
-                .await
-                .map_err(Into::into)
-        })
-        .await
+        let mut conn = self.pool.get().await?;
+        deployment::set_manifest_raw_yaml(&mut conn, &site, &raw_yaml).await
     }
 
     async fn is_source(&self, site: &Site) -> Result<bool, StoreError> {

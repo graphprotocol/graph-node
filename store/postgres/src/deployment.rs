@@ -1040,7 +1040,7 @@ async fn check_health(
 }
 
 pub(crate) async fn health(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: DeploymentId,
 ) -> Result<SubgraphHealth, StoreError> {
     use deployment as d;
