@@ -785,7 +785,7 @@ mod data {
         /// ethereum this is a U256 but on different chains it will most likely be different.
         pub(super) async fn block_number(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             hash: &BlockHash,
         ) -> Result<Option<(BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
             const TIMESTAMP_QUERY: &str =
@@ -2745,22 +2745,12 @@ impl ChainStoreTrait for ChainStore {
         &self,
         hash: &BlockHash,
     ) -> Result<Option<(String, BlockNumber, Option<u64>, Option<BlockHash>)>, StoreError> {
-        let hash = hash.clone();
-        let storage = self.storage.clone();
-        let chain = self.chain.clone();
-        self.pool
-            .with_conn(async move |conn, _| {
-                storage
-                    .block_number(conn, &hash)
-                    .await
-                    .map(|opt| {
-                        opt.map(|(number, timestamp, parent_hash)| {
-                            (chain.clone(), number, timestamp, parent_hash)
-                        })
-                    })
-                    .map_err(|e| e.into())
+        let mut conn = self.pool.get().await?;
+        self.storage.block_number(&mut conn, hash).await.map(|opt| {
+            opt.map(|(number, timestamp, parent_hash)| {
+                (self.chain.clone(), number, timestamp, parent_hash)
             })
-            .await
+        })
     }
 
     async fn block_numbers(
