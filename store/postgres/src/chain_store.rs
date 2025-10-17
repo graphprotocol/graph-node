@@ -1817,7 +1817,7 @@ mod data {
         /// Queries the database for all the transaction receipts in a given block.
         pub(crate) async fn find_transaction_receipts_in_block(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             block_hash: H256,
         ) -> anyhow::Result<Vec<LightTransactionReceipt>> {
             let query = sql_query(format!(
@@ -2792,16 +2792,11 @@ impl ChainStoreTrait for ChainStore {
         &self,
         block_hash: &H256,
     ) -> Result<Vec<LightTransactionReceipt>, StoreError> {
-        let pool = self.pool.clone();
-        let storage = self.storage.clone();
-        let block_hash = *block_hash;
-        pool.with_conn(async move |conn, _| {
-            storage
-                .find_transaction_receipts_in_block(conn, block_hash)
-                .await
-                .map_err(|e| StoreError::from(e).into())
-        })
-        .await
+        let mut conn = self.pool.get_sync().await?;
+        self.storage
+            .find_transaction_receipts_in_block(&mut conn, *block_hash)
+            .await
+            .map_err(StoreError::from)
     }
 
     async fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
