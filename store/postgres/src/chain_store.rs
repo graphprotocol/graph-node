@@ -607,7 +607,7 @@ mod data {
 
         pub(super) async fn block_ptrs_by_numbers(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             chain: &str,
             numbers: &[BlockNumber],
         ) -> Result<Vec<JsonBlock>, StoreError> {
@@ -2236,17 +2236,10 @@ impl ChainStore {
         self: &Arc<Self>,
         numbers: Vec<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<JsonBlock>>, StoreError> {
-        let store = self.cheap_clone();
-        let pool = self.pool.clone();
-
-        let values = pool
-            .with_conn(async move |conn, _| {
-                store
-                    .storage
-                    .block_ptrs_by_numbers(conn, &store.chain, &numbers)
-                    .await
-                    .map_err(CancelableError::from)
-            })
+        let mut conn = self.pool.get().await?;
+        let values = self
+            .storage
+            .block_ptrs_by_numbers(&mut conn, &self.chain, &numbers)
             .await?;
 
         let mut block_map = BTreeMap::new();
