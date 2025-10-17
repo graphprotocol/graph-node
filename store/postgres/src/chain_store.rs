@@ -29,8 +29,7 @@ use graph::cheap_clone::CheapClone;
 use graph::prelude::web3::types::{H256, U256};
 use graph::prelude::{
     serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber, BlockPtr,
-    CachedEthereumCall, CancelableError, ChainStore as ChainStoreTrait, Error, EthereumCallCache,
-    StoreError,
+    CachedEthereumCall, ChainStore as ChainStoreTrait, Error, EthereumCallCache, StoreError,
 };
 use graph::{ensure, internal_error};
 
@@ -888,7 +887,7 @@ mod data {
         /// `first_block`.
         pub(super) async fn missing_parent(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             chain: &str,
             first_block: i64,
             hash: H256,
@@ -1001,7 +1000,7 @@ mod data {
         /// hash for the chain
         pub(super) async fn chain_head_candidate(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             chain: &str,
         ) -> Result<Option<BlockPtr>, Error> {
             use public::ethereum_networks as n;
@@ -2258,14 +2257,17 @@ impl ChainStore {
 
     async fn attempt_chain_head_update_inner(
         &self,
-        conn: &mut PgConnection,
         ancestor_count: BlockNumber,
     ) -> Result<(Option<H256>, Option<(String, i64)>), StoreError> {
         use public::ethereum_networks as n;
 
         let genesis_block_ptr = self.genesis_block_ptr().await?.hash_as_h256();
 
-        let candidate = self.storage.chain_head_candidate(conn, &self.chain).await?;
+        let mut conn = self.pool.get().await?;
+        let candidate = self
+            .storage
+            .chain_head_candidate(&mut conn, &self.chain)
+            .await?;
         let (ptr, first_block) = match &candidate {
             None => return Ok((None, None)),
             Some(ptr) => (ptr, 0.max(ptr.number.saturating_sub(ancestor_count))),
@@ -2274,7 +2276,7 @@ impl ChainStore {
         match self
             .storage
             .missing_parent(
-                conn,
+                &mut conn,
                 &self.chain,
                 first_block as i64,
                 ptr.hash_as_h256(),
@@ -2453,17 +2455,8 @@ impl ChainStoreTrait for ChainStore {
         self: Arc<Self>,
         ancestor_count: BlockNumber,
     ) -> Result<Option<H256>, Error> {
-        let (missing, ptr) = {
-            let chain_store = self.clone();
-            self.pool
-                .with_conn(async move |conn, _| {
-                    chain_store
-                        .attempt_chain_head_update_inner(conn, ancestor_count)
-                        .await
-                        .map_err(CancelableError::from)
-                })
-                .await?
-        };
+        let (missing, ptr) = self.attempt_chain_head_update_inner(ancestor_count).await?;
+
         if let Some((hash, number)) = ptr {
             self.chain_head_update_sender.send(&hash, number).await?;
         }

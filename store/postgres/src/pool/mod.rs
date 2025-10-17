@@ -11,9 +11,8 @@ use graph::derive::CheapClone;
 use graph::internal_error;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{
-    anyhow::anyhow, crit, debug, error, info, o, tokio::sync::Semaphore, CancelGuard, CancelHandle,
-    CancelToken as _, CancelableError, Gauge, Logger, MovingStats, PoolWaitStats, StoreError,
-    ENV_VARS,
+    anyhow::anyhow, crit, debug, error, info, o, Gauge, Logger, MovingStats, PoolWaitStats,
+    StoreError, ENV_VARS,
 };
 use graph::prelude::{tokio, MetricsRegistry};
 use graph::slog::warn;
@@ -319,56 +318,6 @@ impl ConnectionPool {
         }
     }
 
-    /// Execute an async closure with a connection to the database.
-    ///
-    /// # API
-    ///   The API of using a closure to bound the usage of the connection serves several
-    ///   purposes:
-    ///
-    ///   * Moves blocking database access out of the `Future::poll`. Within
-    ///     `Future::poll` (which includes all `async` methods) it is illegal to
-    ///     perform a blocking operation. This includes all accesses to the
-    ///     database, acquiring of locks, etc. Calling a blocking operation can
-    ///     cause problems with `Future` combinators (including but not limited
-    ///     to select, timeout, and FuturesUnordered) and problems with
-    ///     executors/runtimes. This method moves the database work onto another
-    ///     thread in a way which does not block `Future::poll`.
-    ///
-    ///   * Limit the total number of connections. Because the supplied closure
-    ///     takes a reference, we know the scope of the usage of all entity
-    ///     connections and can limit their use in a non-blocking way.
-    ///
-    /// # Cancellation
-    ///   The normal pattern for futures in Rust is drop to cancel. Once we
-    ///   spawn the database work in a thread though, this expectation no longer
-    ///   holds because the spawned task is the independent of this future. So,
-    ///   this method provides a cancel token which indicates that the `Future`
-    ///   has been dropped. This isn't *quite* as good as drop on cancel,
-    ///   because a drop on cancel can do things like cancel http requests that
-    ///   are in flight, but checking for cancel periodically is a significant
-    ///   improvement.
-    ///
-    ///   The implementation of the supplied closure should check for cancel
-    ///   between every operation that is potentially blocking. This includes
-    ///   any method which may interact with the database. The check can be
-    ///   conveniently written as `token.check_cancel()?;`. It is low overhead
-    ///   to check for cancel, so when in doubt it is better to have too many
-    ///   checks than too few.
-    ///
-    /// # Panics:
-    ///   * This task will panic if the supplied closure panics
-    ///   * This task will panic if the supplied closure returns Err(Cancelled)
-    ///     when the supplied cancel token is not cancelled.
-    pub(crate) async fn with_conn<T: Send + 'static>(
-        &self,
-        f: impl 'static
-            + Send
-            + AsyncFnOnce(&mut PgConnection, &CancelHandle) -> Result<T, CancelableError<StoreError>>,
-    ) -> Result<T, StoreError> {
-        let pool = self.get_ready()?;
-        pool.with_conn(f).await
-    }
-
     pub async fn get(&self) -> Result<AsyncPgConnection, StoreError> {
         self.get_ready()?.get().await
     }
@@ -470,7 +419,6 @@ pub struct PoolInner {
     // explicitly close connections to foreign servers when a connection is
     // returned to the pool.
     fdw_pool: Option<AsyncPool>,
-    limiter: Arc<Semaphore>,
     postgres_url: String,
     pub(crate) wait_stats: PoolWaitStats,
 
@@ -566,8 +514,6 @@ impl PoolInner {
             builder.build(conn_manager)
         });
 
-        let max_concurrent_queries = pool_size as usize + ENV_VARS.store.extra_query_permits;
-        let limiter = Arc::new(Semaphore::new(max_concurrent_queries));
         info!(logger_store, "Pool successfully connected to Postgres");
 
         let semaphore_wait_gauge = registry
@@ -577,6 +523,7 @@ impl PoolInner {
                 const_labels,
             )
             .expect("failed to create `query_effort_ms` counter");
+        let max_concurrent_queries = pool_size as usize + ENV_VARS.store.extra_query_permits;
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         PoolInner {
             logger: logger_pool,
@@ -584,95 +531,10 @@ impl PoolInner {
             postgres_url,
             pool,
             fdw_pool,
-            limiter,
             wait_stats,
             semaphore_wait_stats: Arc::new(RwLock::new(MovingStats::default())),
             query_semaphore,
             semaphore_wait_gauge,
-        }
-    }
-
-    /// Execute an async closure with a connection to the database.
-    ///
-    /// # API
-    ///   The API of using a closure to bound the usage of the connection serves several
-    ///   purposes:
-    ///
-    ///   * Moves blocking database access out of the `Future::poll`. Within
-    ///     `Future::poll` (which includes all `async` methods) it is illegal to
-    ///     perform a blocking operation. This includes all accesses to the
-    ///     database, acquiring of locks, etc. Calling a blocking operation can
-    ///     cause problems with `Future` combinators (including but not limited
-    ///     to select, timeout, and FuturesUnordered) and problems with
-    ///     executors/runtimes. This method moves the database work onto another
-    ///     thread in a way which does not block `Future::poll`.
-    ///
-    ///   * Limit the total number of connections. Because the supplied closure
-    ///     takes a reference, we know the scope of the usage of all entity
-    ///     connections and can limit their use in a non-blocking way.
-    ///
-    /// # Cancellation
-    ///   The normal pattern for futures in Rust is drop to cancel. Once we
-    ///   spawn the database work in a thread though, this expectation no longer
-    ///   holds because the spawned task is the independent of this future. So,
-    ///   this method provides a cancel token which indicates that the `Future`
-    ///   has been dropped. This isn't *quite* as good as drop on cancel,
-    ///   because a drop on cancel can do things like cancel http requests that
-    ///   are in flight, but checking for cancel periodically is a significant
-    ///   improvement.
-    ///
-    ///   The implementation of the supplied closure should check for cancel
-    ///   between every operation that is potentially blocking. This includes
-    ///   any method which may interact with the database. The check can be
-    ///   conveniently written as `token.check_cancel()?;`. It is low overhead
-    ///   to check for cancel, so when in doubt it is better to have too many
-    ///   checks than too few.
-    ///
-    /// # Panics:
-    ///   * This task will panic if the supplied closure panics
-    ///   * This task will panic if the supplied closure returns Err(Cancelled)
-    ///     when the supplied cancel token is not cancelled.
-    pub(crate) async fn with_conn<T: Send + 'static>(
-        &self,
-        f: impl 'static
-            + Send
-            + AsyncFnOnce(&mut PgConnection, &CancelHandle) -> Result<T, CancelableError<StoreError>>,
-    ) -> Result<T, StoreError> {
-        let _permit = self.limiter.acquire().await;
-        let pool = self.clone();
-
-        let cancel_guard = CancelGuard::new();
-        let cancel_handle = cancel_guard.handle();
-
-        let result = graph::spawn_blocking_allow_panic(move || {
-            // It is possible time has passed between scheduling on the
-            // threadpool and being executed. Time to check for cancel.
-            cancel_handle.check_cancel()?;
-
-            // A failure to establish a connection is propagated as though the
-            // closure failed.
-            let mut conn = graph::block_on(pool.get_sync())
-                .map_err(|_| CancelableError::Error(StoreError::DatabaseUnavailable))?;
-
-            // It is possible time has passed while establishing a connection.
-            // Time to check for cancel.
-            cancel_handle.check_cancel()?;
-
-            graph::block_on(f(&mut conn, &cancel_handle))
-        })
-        .await
-        .unwrap(); // Propagate panics, though there shouldn't be any.
-
-        drop(cancel_guard);
-
-        // Finding cancel isn't technically unreachable, since there is nothing
-        // stopping the supplied closure from returning Canceled even if the
-        // supplied handle wasn't canceled. That would be very unexpected, the
-        // doc comment for this function says we will panic in this scenario.
-        match result {
-            Ok(t) => Ok(t),
-            Err(CancelableError::Error(e)) => Err(e),
-            Err(CancelableError::Cancel) => panic!("The closure supplied to with_entity_conn must not return Err(Canceled) unless the supplied token was canceled."),
         }
     }
 
