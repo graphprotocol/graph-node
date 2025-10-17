@@ -58,7 +58,7 @@ pub mod primary {
         prelude::StoreError,
     };
 
-    use crate::{chain_store::Storage, pool::PgConnection};
+    use crate::{chain_store::Storage, pool::PgConnection, AsyncPgConnection};
     use crate::{ConnectionPool, Shard};
 
     table! {
@@ -103,12 +103,12 @@ pub mod primary {
         }
     }
 
-    pub async fn load_chains(conn: &mut PgConnection) -> Result<Vec<Chain>, StoreError> {
+    pub async fn load_chains(conn: &mut AsyncPgConnection) -> Result<Vec<Chain>, StoreError> {
         Ok(chains::table.load(conn).await?)
     }
 
     pub async fn find_chain(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         name: &str,
     ) -> Result<Option<Chain>, StoreError> {
         Ok(chains::table
