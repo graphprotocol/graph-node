@@ -842,7 +842,7 @@ mod data {
 
         pub(super) async fn block_numbers(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             hashes: &[BlockHash],
         ) -> Result<HashMap<BlockHash, BlockNumber>, StoreError> {
             let pairs = match self {
@@ -2761,14 +2761,9 @@ impl ChainStoreTrait for ChainStore {
             return Ok(HashMap::new());
         }
 
-        let storage = self.storage.clone();
-        self.pool
-            .with_conn(async move |conn, _| {
-                storage
-                    .block_numbers(conn, hashes.as_slice())
-                    .await
-                    .map_err(|e| e.into())
-            })
+        let mut conn = self.pool.get().await?;
+        self.storage
+            .block_numbers(&mut conn, hashes.as_slice())
             .await
     }
 
