@@ -392,16 +392,16 @@ impl DeploymentStore {
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.
-    async fn read_only_conn(&self, idx: usize) -> Result<PgConnection, Error> {
-        self.read_only_pools[idx]
-            .get_sync()
-            .await
-            .map_err(Error::from)
+    async fn read_only_conn(&self, idx: usize) -> Result<AsyncPgConnection, Error> {
+        self.read_only_pools[idx].get().await.map_err(Error::from)
     }
 
-    pub(crate) async fn get_replica_conn(&self, replica: ReplicaId) -> Result<PgConnection, Error> {
+    pub(crate) async fn get_replica_conn(
+        &self,
+        replica: ReplicaId,
+    ) -> Result<AsyncPgConnection, Error> {
         let conn = match replica {
-            ReplicaId::Main => self.get_conn().await?,
+            ReplicaId::Main => self.pool.get().await?,
             ReplicaId::ReadOnly(idx) => self.read_only_conn(idx).await?,
         };
         Ok(conn)
