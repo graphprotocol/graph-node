@@ -265,10 +265,7 @@ impl PoolCoordinator {
 
         let primary = self.primary()?;
 
-        let mut pconn = primary
-            .get_sync()
-            .await
-            .map_err(|_| StoreError::DatabaseUnavailable)?;
+        let mut pconn = primary.get().await?;
 
         let states: Vec<_> = states
             .into_iter()

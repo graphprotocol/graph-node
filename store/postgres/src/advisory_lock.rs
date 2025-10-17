@@ -87,14 +87,18 @@ const PRUNE: Scope = Scope { id: 3 };
 /// it is done. This is used to make sure that only one node runs setup at a
 /// time.
 pub(crate) async fn with_migration_lock<F, Fut, R>(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     f: F,
 ) -> Result<R, StoreError>
 where
-    F: FnOnce(&mut PgConnection) -> Fut,
+    F: FnOnce(&mut AsyncPgConnection) -> Fut,
     Fut: std::future::Future<Output = Result<R, StoreError>>,
 {
-    async fn execute(conn: &mut PgConnection, query: &str, msg: &str) -> Result<(), StoreError> {
+    async fn execute(
+        conn: &mut AsyncPgConnection,
+        query: &str,
+        msg: &str,
+    ) -> Result<(), StoreError> {
         sql_query(query)
             .execute(conn)
             .await
