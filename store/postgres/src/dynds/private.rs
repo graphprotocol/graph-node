@@ -17,10 +17,7 @@ use graph::{
     prelude::{serde_json, BlockNumber, StoreError},
 };
 
-use crate::{
-    pool::PgConnection, primary::Namespace, relational_queries::POSTGRES_MAX_PARAMETERS,
-    AsyncPgConnection,
-};
+use crate::{primary::Namespace, relational_queries::POSTGRES_MAX_PARAMETERS, AsyncPgConnection};
 
 type DynTable = diesel_dynamic_schema::Table<String, Namespace>;
 type DynColumn<ST> = diesel_dynamic_schema::Column<DynTable, &'static str, ST>;
@@ -222,7 +219,7 @@ impl DataSourcesTable {
     /// were created up to and including `target_block` will be copied.
     pub(crate) async fn copy_to(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         dst: &DataSourcesTable,
         target_block: BlockNumber,
         src_manifest_idx_and_name: &[(i32, String)],
