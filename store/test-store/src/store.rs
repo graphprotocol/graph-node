@@ -25,7 +25,7 @@ use graph_graphql::prelude::{
 use graph_graphql::test_support::GraphQLMetrics;
 use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
-use graph_store_postgres::PgConnection;
+use graph_store_postgres::AsyncPgConnection;
 use graph_store_postgres::{
     layout_for_tests::FAKE_NETWORK_SHARED, BlockStore as DieselBlockStore, ConnectionPool,
     DeploymentPlacer, Shard, SubgraphStore as DieselSubgraphStore, SubscriptionManager,
@@ -128,7 +128,7 @@ where
 /// Run a test with a connection into the primary database, not a full store
 pub async fn run_test_with_conn<F>(test: F)
 where
-    F: AsyncFnOnce(&mut PgConnection),
+    F: AsyncFnOnce(&mut AsyncPgConnection),
 {
     // Lock regardless of poisoning. This also forces sequential test execution.
     let _lock = match SEQ_LOCK.lock() {
@@ -137,7 +137,7 @@ where
     };
 
     let mut conn = PRIMARY_POOL
-        .get_sync()
+        .get()
         .await
         .expect("failed to get connection for primary database");
 

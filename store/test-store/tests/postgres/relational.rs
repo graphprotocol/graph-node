@@ -1,5 +1,5 @@
 //! Test mapping of GraphQL schema to a relational schema
-use diesel::connection::SimpleConnection as _;
+use diesel_async::SimpleAsyncConnection;
 use graph::components::store::write::{EntityModification, RowGroup};
 use graph::data::store::scalar;
 use graph::entity;
@@ -12,7 +12,7 @@ use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph_store_postgres::layout_for_tests::set_account_like;
 use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
-use graph_store_postgres::{AsyncPgConnection, PgConnection};
+use graph_store_postgres::AsyncPgConnection;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
@@ -240,14 +240,15 @@ lazy_static! {
 }
 
 /// Removes test data from the database behind the store.
-fn remove_schema(conn: &mut PgConnection) {
+async fn remove_schema(conn: &mut AsyncPgConnection) {
     let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
+        .await
         .expect("Failed to drop test schema");
 }
 
 async fn insert_entity_at(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     layout: &Layout,
     entity_type: &EntityType,
     mut entities: Vec<Entity>,
@@ -280,7 +281,7 @@ async fn insert_entity_at(
 }
 
 async fn insert_entity(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     layout: &Layout,
     entity_type: &EntityType,
     entities: Vec<Entity>,
@@ -289,7 +290,7 @@ async fn insert_entity(
 }
 
 async fn update_entity_at(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     layout: &Layout,
     entity_type: &EntityType,
     mut entities: Vec<Entity>,
@@ -320,7 +321,7 @@ async fn update_entity_at(
 }
 
 async fn insert_user_entity(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     layout: &Layout,
     id: &str,
     entity_type: &EntityType,
@@ -388,7 +389,7 @@ fn make_user(
     user
 }
 
-async fn insert_users(conn: &mut PgConnection, layout: &Layout) {
+async fn insert_users(conn: &mut AsyncPgConnection, layout: &Layout) {
     insert_user_entity(
         conn,
         layout,
@@ -443,7 +444,7 @@ async fn insert_users(conn: &mut PgConnection, layout: &Layout) {
 }
 
 async fn update_user_entity(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     layout: &Layout,
     id: &str,
     entity_type: &EntityType,
@@ -475,7 +476,7 @@ async fn update_user_entity(
 }
 
 async fn insert_pet(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     layout: &Layout,
     entity_type: &EntityType,
     id: &str,
@@ -491,12 +492,12 @@ async fn insert_pet(
     insert_entity_at(conn, layout, entity_type, vec![pet], block).await;
 }
 
-async fn insert_pets(conn: &mut PgConnection, layout: &Layout) {
+async fn insert_pets(conn: &mut AsyncPgConnection, layout: &Layout) {
     insert_pet(conn, layout, &*DOG_TYPE, "pluto", "Pluto", 0, 0).await;
     insert_pet(conn, layout, &*CAT_TYPE, "garfield", "Garfield", 0, 1).await;
 }
 
-async fn create_schema(conn: &mut PgConnection) -> Layout {
+async fn create_schema(conn: &mut AsyncPgConnection) -> Layout {
     let schema = InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
@@ -504,7 +505,7 @@ async fn create_schema(conn: &mut PgConnection) -> Layout {
         NETWORK_NAME.to_string(),
     );
     let query = format!("create schema {}", NAMESPACE.as_str());
-    conn.batch_execute(&query).unwrap();
+    conn.batch_execute(&query).await.unwrap();
 
     Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), None)
         .await
@@ -552,11 +553,11 @@ macro_rules! assert_entity_eq {
 /// Test harness for running database integration tests.
 async fn run_test<F>(test: F)
 where
-    F: AsyncFnOnce(&mut PgConnection, &Layout),
+    F: AsyncFnOnce(&mut AsyncPgConnection, &Layout),
 {
     run_test_with_conn(async |conn| {
         // Reset state before starting
-        remove_schema(conn);
+        remove_schema(conn).await;
 
         // Create the database schema
         let layout = create_schema(conn).await;
@@ -836,7 +837,7 @@ async fn enum_arrays() {
     .await
 }
 
-async fn count_scalar_entities(conn: &mut PgConnection, layout: &Layout) -> usize {
+async fn count_scalar_entities(conn: &mut AsyncPgConnection, layout: &Layout) -> usize {
     let filter = EntityFilter::Or(vec![
         EntityFilter::Equal("bool".into(), true.into()),
         EntityFilter::Equal("bool".into(), false.into()),
@@ -980,7 +981,7 @@ async fn conflicting_entity() {
     // `id` is the id of an entity to create, `cat`, `dog`, and `ferret` are
     // the names of the types for which to check entity uniqueness
     async fn check(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         layout: &Layout,
         id: Value,
         cat: &str,
@@ -1041,10 +1042,10 @@ async fn conflicting_entity() {
 
 #[tokio::test]
 async fn revert_block() {
-    async fn check_fred(conn: &mut PgConnection, layout: &Layout) {
+    async fn check_fred(conn: &mut AsyncPgConnection, layout: &Layout) {
         let id = "fred";
 
-        let set_fred = async |conn: &mut PgConnection, name, block| {
+        let set_fred = async |conn: &mut AsyncPgConnection, name, block| {
             let fred = entity! { layout.input_schema =>
                 id: id,
                 name: name,
@@ -1057,7 +1058,7 @@ async fn revert_block() {
             }
         };
 
-        let assert_fred = async |conn: &mut PgConnection, name: &str| {
+        let assert_fred = async |conn: &mut AsyncPgConnection, name: &str| {
             let fred = layout
                 .find(conn, &CAT_TYPE.parse_key(id).unwrap(), BLOCK_NUMBER_MAX)
                 .await
@@ -1082,8 +1083,8 @@ async fn revert_block() {
         assert_fred(conn, "one").await;
     }
 
-    async fn check_marty(conn: &mut PgConnection, layout: &Layout) {
-        let set_marties = async |conn: &mut PgConnection, from, to| {
+    async fn check_marty(conn: &mut AsyncPgConnection, layout: &Layout) {
+        let set_marties = async |conn: &mut AsyncPgConnection, from, to| {
             for block in from..=to {
                 let id = format!("marty-{}", block);
                 let marty = entity! { layout.input_schema =>
@@ -1095,7 +1096,7 @@ async fn revert_block() {
             }
         };
 
-        let assert_marties = async |conn: &mut PgConnection,
+        let assert_marties = async |conn: &mut AsyncPgConnection,
                                     max_block,
                                     except: Vec<BlockNumber>| {
             let id = DeploymentHash::new("QmXW3qvxV7zXnwRntpj7yoK8HZVtaraZ67uMqaLRvXdxha").unwrap();
@@ -1124,7 +1125,7 @@ async fn revert_block() {
             }
         };
 
-        let assert_all_marties = async |conn: &mut PgConnection, max_block| {
+        let assert_all_marties = async |conn: &mut AsyncPgConnection, max_block| {
             assert_marties(conn, max_block, vec![]).await
         };
 
@@ -1152,12 +1153,12 @@ async fn revert_block() {
 }
 
 struct QueryChecker<'a> {
-    conn: &'a mut PgConnection,
+    conn: &'a mut AsyncPgConnection,
     layout: &'a Layout,
 }
 
 impl<'a> QueryChecker<'a> {
-    async fn new(conn: &'a mut PgConnection, layout: &'a Layout) -> Self {
+    async fn new(conn: &'a mut AsyncPgConnection, layout: &'a Layout) -> Self {
         insert_users(conn, layout).await;
         update_user_entity(
             conn,
@@ -1912,12 +1913,12 @@ fn ferrets() -> (String, String, String, String) {
 }
 
 struct FilterChecker<'a> {
-    conn: &'a mut PgConnection,
+    conn: &'a mut AsyncPgConnection,
     layout: &'a Layout,
 }
 
 impl<'a> FilterChecker<'a> {
-    async fn new(conn: &'a mut PgConnection, layout: &'a Layout) -> Self {
+    async fn new(conn: &'a mut AsyncPgConnection, layout: &'a Layout) -> Self {
         let (a1, a2, a2b, a3) = ferrets();
         insert_pet(conn, layout, &*FERRET_TYPE, "a1", &a1, 0, 0).await;
         insert_pet(conn, layout, &*FERRET_TYPE, "a2", &a2, 0, 1).await;
