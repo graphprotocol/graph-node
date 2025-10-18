@@ -334,47 +334,30 @@ impl ConnectionPool {
     /// The `timeout` is called every time we time out waiting for a
     /// connection. If `timeout` returns `true`, `get_fdw` returns with that
     /// error, otherwise we try again to get a connection.
-    pub fn get_fdw<F>(&self, logger: &Logger, timeout: F) -> Result<PgConnection, StoreError>
-    where
-        F: FnMut() -> bool,
-    {
-        self.get_ready()?.get_fdw(logger, timeout)
-    }
-
-    /// An async version of `get_fdw`. For now, this calls `get_fdw`
-    /// synchronously. Once `get_fdw` is not used anymore, we can make it
-    /// truly async.
-    pub async fn get_fdw_async<F>(
+    pub async fn get_fdw<F>(
         &self,
         logger: &Logger,
         timeout: F,
-    ) -> Result<PgConnection, StoreError>
+    ) -> Result<AsyncPgConnection, StoreError>
     where
         F: FnMut() -> bool,
     {
-        self.get_fdw(logger, timeout)
+        self.get_ready()?.get_fdw(logger, timeout).await
     }
 
     /// Get a connection from the pool for foreign data wrapper access if
     /// one is available
-    async fn try_get_fdw(&self, logger: &Logger, timeout: Duration) -> Option<PgConnection> {
+    pub async fn try_get_fdw(
+        &self,
+        logger: &Logger,
+        timeout: Duration,
+    ) -> Option<AsyncPgConnection> {
         let Ok(inner) = self.get_ready() else {
             return None;
         };
         self.state_tracker
             .ignore_timeout(|| inner.try_get_fdw(logger, timeout))
             .await
-    }
-
-    /// An async version of `try_get_fdw`. For now, this calls `try_get_fdw`
-    /// synchronously. Once `try_get_fdw` is not used anymore, we can make it
-    /// truly async.
-    pub async fn try_get_fdw_async(
-        &self,
-        logger: &Logger,
-        timeout: Duration,
-    ) -> Option<PgConnection> {
-        self.try_get_fdw(logger, timeout).await
     }
 
     pub(crate) async fn query_permit(&self) -> QueryPermit {
@@ -565,14 +548,18 @@ impl PoolInner {
     /// The `timeout` is called every time we time out waiting for a
     /// connection. If `timeout` returns `true`, `get_fdw` returns with that
     /// error, otherwise we try again to get a connection.
-    fn get_fdw<F>(&self, logger: &Logger, mut timeout: F) -> Result<PgConnection, StoreError>
+    async fn get_fdw<F>(
+        &self,
+        logger: &Logger,
+        mut timeout: F,
+    ) -> Result<AsyncPgConnection, StoreError>
     where
         F: FnMut() -> bool,
     {
         let pool = self.fdw_pool(logger)?;
         loop {
-            match graph::block_on(pool.get()) {
-                Ok(conn) => return Ok(AsyncConnectionWrapper::from(conn)),
+            match pool.get().await {
+                Ok(conn) => return Ok(conn),
                 Err(e) => {
                     if timeout() {
                         return Err(anyhow!("timeout in get_fdw: {e}").into());
@@ -585,7 +572,7 @@ impl PoolInner {
     /// Get a connection from the fdw pool if one is available. We wait for
     /// `timeout` for a connection which should be set just big enough to
     /// allow establishing a connection
-    fn try_get_fdw(&self, logger: &Logger, timeout: Duration) -> Option<PgConnection> {
+    async fn try_get_fdw(&self, logger: &Logger, timeout: Duration) -> Option<AsyncPgConnection> {
         // Any error trying to get a connection is treated as "couldn't get
         // a connection in time". If there is a serious error with the
         // database, e.g., because it's not available, the next database
@@ -593,10 +580,10 @@ impl PoolInner {
         let Ok(fdw_pool) = self.fdw_pool(logger) else {
             return None;
         };
-        let Ok(conn) = graph::block_on(fdw_pool.get_timeout(timeout)) else {
+        let Ok(conn) = fdw_pool.get_timeout(timeout).await else {
             return None;
         };
-        Some(AsyncConnectionWrapper::from(conn))
+        Some(conn)
     }
 
     pub fn connection_detail(&self) -> Result<ForeignServer, StoreError> {
