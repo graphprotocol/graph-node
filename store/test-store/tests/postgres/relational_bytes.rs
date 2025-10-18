@@ -1,12 +1,12 @@
 //! Test relational schemas that use `Bytes` to store ids
-use diesel::connection::SimpleConnection as _;
+use diesel_async::SimpleAsyncConnection;
 use graph::components::store::write::RowGroup;
 use graph::data::store::scalar;
 use graph::data_source::CausalityRegion;
 use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry, StoreError};
 use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph::{entity, tokio};
-use graph_store_postgres::{AsyncPgConnection, PgConnection};
+use graph_store_postgres::AsyncPgConnection;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
@@ -71,9 +71,10 @@ lazy_static! {
 }
 
 /// Removes test data from the database behind the store.
-fn remove_test_data(conn: &mut PgConnection) {
+async fn remove_test_data(conn: &mut AsyncPgConnection) {
     let query = format!("drop schema if exists {} cascade", NAMESPACE.as_str());
     conn.batch_execute(&query)
+        .await
         .expect("Failed to drop test schema");
 }
 
@@ -137,7 +138,13 @@ async fn insert_entity(
         .expect(&errmsg);
 }
 
-async fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: &str, vid: i64) {
+async fn insert_thing(
+    conn: &mut AsyncPgConnection,
+    layout: &Layout,
+    id: &str,
+    name: &str,
+    vid: i64,
+) {
     insert_entity(
         conn,
         layout,
@@ -151,11 +158,11 @@ async fn insert_thing(conn: &mut PgConnection, layout: &Layout, id: &str, name: 
     .await;
 }
 
-async fn create_schema(conn: &mut PgConnection) -> Layout {
+async fn create_schema(conn: &mut AsyncPgConnection) -> Layout {
     let schema = InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
 
     let query = format!("create schema {}", NAMESPACE.as_str());
-    conn.batch_execute(&query).unwrap();
+    conn.batch_execute(&query).await.unwrap();
 
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
@@ -201,11 +208,11 @@ macro_rules! assert_entity_eq {
 
 async fn run_test<F>(test: F)
 where
-    F: AsyncFnOnce(&mut PgConnection, &Layout),
+    F: AsyncFnOnce(&mut AsyncPgConnection, &Layout),
 {
     run_test_with_conn(async |conn| {
         // Reset state before starting
-        remove_test_data(conn);
+        remove_test_data(conn).await;
 
         // Seed database with test data
         let layout = create_schema(conn).await;
@@ -220,7 +227,7 @@ where
 async fn bad_id() {
     run_test(async |conn, layout| {
         async fn find(
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             layout: &Layout,
             id: &str,
         ) -> Result<Option<Entity>, StoreError> {
@@ -263,7 +270,11 @@ async fn bad_id() {
 #[tokio::test]
 async fn find() {
     run_test(async |mut conn, layout| {
-        async fn find_entity(conn: &mut PgConnection, layout: &Layout, id: &str) -> Option<Entity> {
+        async fn find_entity(
+            conn: &mut AsyncPgConnection,
+            layout: &Layout,
+            id: &str,
+        ) -> Option<Entity> {
             let key = THING_TYPE.parse_key(id).unwrap();
             layout
                 .find(conn, &key, BLOCK_NUMBER_MAX)
@@ -407,7 +418,10 @@ const GRANDCHILD2: &str = "0xfafa02";
 ///     +- child2
 ///          +- grandchild2
 ///
-async fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, Entity, Entity) {
+async fn make_thing_tree(
+    conn: &mut AsyncPgConnection,
+    layout: &Layout,
+) -> (Entity, Entity, Entity) {
     let root = entity! { layout.input_schema =>
         id: ROOT,
         name: "root",
@@ -452,7 +466,7 @@ async fn make_thing_tree(conn: &mut PgConnection, layout: &Layout) -> (Entity, E
 #[tokio::test]
 async fn query() {
     async fn fetch(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         layout: &Layout,
         coll: EntityCollection,
     ) -> Vec<String> {
