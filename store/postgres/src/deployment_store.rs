@@ -48,7 +48,6 @@ use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
-use crate::pool::PgConnection;
 use crate::primary::{DeploymentId, Primary};
 use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{self, Layout, LayoutCache, SqlName, Table, STATEMENT_TIMEOUT};
@@ -384,11 +383,6 @@ impl DeploymentStore {
         }
 
         Ok(count)
-    }
-
-    /// Deprecated. Use `with_conn` instead.
-    async fn get_conn(&self) -> Result<PgConnection, StoreError> {
-        self.pool.get_sync().await
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.
@@ -1014,7 +1008,7 @@ impl DeploymentStore {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let layout = self.layout(&mut conn, site).await?;
 
         layout.find_many(&mut conn, ids_for_type, block).await
@@ -1027,7 +1021,7 @@ impl DeploymentStore {
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let layout = self.layout(&mut conn, site).await?;
         layout
             .find_range(&mut conn, entity_types, causality_region, block_range)
@@ -1041,7 +1035,7 @@ impl DeploymentStore {
         block: BlockNumber,
         excluded_keys: &Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let layout = self.layout(&mut conn, site).await?;
         layout
             .find_derived(&mut conn, derived_query, block, excluded_keys)
@@ -1053,7 +1047,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         block: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let layout = self.layout(&mut conn, site).await?;
         let changes = layout.find_changes(&mut conn, block).await?;
 
@@ -1067,7 +1061,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         self.execute_query(&mut conn, site, query)
             .await
             .map(|(entities, _)| entities)
@@ -1084,7 +1078,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let mut conn = {
             let _section = stopwatch.start_section("transact_blocks_get_conn");
-            self.get_conn().await?
+            self.pool.get().await?
         };
 
         let (layout, earliest_block) = deployment::with_lock(&mut conn, &site, async |conn| {
@@ -1318,7 +1312,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
     ) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
 
         let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone()).await?;
 
@@ -1349,7 +1343,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
     ) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
 
         let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone()).await?;
 
@@ -1381,7 +1375,7 @@ impl DeploymentStore {
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,
     ) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
         let deployment_head = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())
             .await?
@@ -1532,7 +1526,7 @@ impl DeploymentStore {
                 return Err(StoreError::Canceled);
             }
 
-            let mut conn = self.get_conn().await?;
+            let mut conn = self.pool.get().await?;
             conn.transaction::<(), StoreError, _>(|conn| {
                 async {
                     // Copy shared dynamic data sources and adjust their ID; if
@@ -1606,7 +1600,7 @@ impl DeploymentStore {
             .await?;
         }
 
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         if ENV_VARS.postpone_attribute_index_creation {
             // check if all indexes are valid and recreate them if they aren't
             self.load_indexes(site.clone())
@@ -1641,7 +1635,7 @@ impl DeploymentStore {
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| {
@@ -1738,7 +1732,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| async {
@@ -1801,7 +1795,7 @@ impl DeploymentStore {
 
     #[cfg(debug_assertions)]
     pub async fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         deployment::error_count(&mut conn, id).await
     }
 
