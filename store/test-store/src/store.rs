@@ -410,15 +410,17 @@ pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, pt
 
 pub async fn insert_ens_name(hash: &str, name: &str) {
     use diesel::insert_into;
-    use diesel::prelude::*;
+    use diesel::ExpressionMethods;
+    use diesel_async::RunQueryDsl;
     use graph_store_postgres::command_support::catalog::ens_names;
 
-    let mut conn = PRIMARY_POOL.get_sync().await.unwrap();
+    let mut conn = PRIMARY_POOL.get().await.unwrap();
 
     insert_into(ens_names::table)
         .values((ens_names::hash.eq(hash), ens_names::name.eq(name)))
         .on_conflict_do_nothing()
         .execute(&mut conn)
+        .await
         .unwrap();
 }
 

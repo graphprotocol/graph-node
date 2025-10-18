@@ -1991,7 +1991,7 @@ impl Primary {
     pub async fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
         use active_copies as ac;
 
-        let mut conn = self.pool.get_sync().await?;
+        let mut conn = self.pool.get().await?;
 
         select(diesel::dsl::exists(
             ac::table
@@ -2006,7 +2006,7 @@ impl Primary {
     pub async fn is_copy_cancelled(&self, dst: &Site) -> Result<bool, StoreError> {
         use active_copies as ac;
 
-        let mut conn = self.pool.get_sync().await?;
+        let mut conn = self.pool.get().await?;
 
         ac::table
             .filter(ac::dst.eq(dst.id))
