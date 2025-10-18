@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::fmt::{Display, Write};
 use std::sync::Arc;
 
+use diesel::sql_query;
 use diesel::sql_types::{Bool, Text};
-use diesel::{sql_query, RunQueryDsl};
+use diesel_async::RunQueryDsl;
 use graph::components::store::StoreError;
 use graph::itertools::Itertools;
 use graph::prelude::{
@@ -852,7 +853,8 @@ impl IndexList {
                         .bind::<Text, _>(namespace.to_string())
                         .bind::<Text, _>(table_name)
                         .bind::<Text, _>(index_name.clone())
-                        .get_results::<IndexInfo>(conn)?
+                        .get_results::<IndexInfo>(conn)
+                        .await?
                         .into_iter()
                         .map(|ii| ii.into())
                         .collect::<Vec<IndexInfo>>();
@@ -865,9 +867,9 @@ impl IndexList {
                                 namespace.to_string(),
                                 index_name
                             ));
-                            drop_query.execute(conn)?;
+                            drop_query.execute(conn).await?;
                         }
-                        sql_query(create_query).execute(conn)?;
+                        sql_query(create_query).execute(conn).await?;
                     }
                 }
             }
