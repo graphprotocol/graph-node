@@ -31,7 +31,7 @@ pub async fn load_deployments(
     deployment: &DeploymentSelector,
     version: &DeploymentVersionSelector,
 ) -> Result<Vec<Deployment>, GraphmanError> {
-    let mut primary_conn = primary_pool.get_sync().await?;
+    let mut primary_conn = primary_pool.get().await?;
 
     crate::deployment::load_deployments(&mut primary_conn, &deployment, &version).await
 }
