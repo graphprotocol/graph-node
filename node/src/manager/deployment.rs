@@ -93,7 +93,7 @@ impl DeploymentSearch {
     }
 
     pub async fn lookup(&self, primary: &ConnectionPool) -> Result<Vec<Deployment>, anyhow::Error> {
-        let mut conn = primary.get_sync().await?;
+        let mut conn = primary.get().await?;
         self.lookup_with_conn(&mut conn).await
     }
 

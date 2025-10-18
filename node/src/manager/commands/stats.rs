@@ -10,8 +10,8 @@ use graph::prelude::anyhow;
 use graph::prelude::CheapClone as _;
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::command_support::catalog::Site;
+use graph_store_postgres::AsyncPgConnection;
 use graph_store_postgres::ConnectionPool;
-use graph_store_postgres::PgConnection;
 use graph_store_postgres::Shard;
 use graph_store_postgres::SubgraphStore;
 use graph_store_postgres::PRIMARY_SHARD;
@@ -19,7 +19,7 @@ use graph_store_postgres::PRIMARY_SHARD;
 async fn site_and_conn(
     pools: HashMap<Shard, ConnectionPool>,
     search: &DeploymentSearch,
-) -> Result<(Arc<Site>, PgConnection), anyhow::Error> {
+) -> Result<(Arc<Site>, AsyncPgConnection), anyhow::Error> {
     let primary_pool = pools.get(&*PRIMARY_SHARD).unwrap();
     let locator = search.locate_unique(primary_pool).await?;
 
@@ -32,7 +32,7 @@ async fn site_and_conn(
         .ok_or_else(|| anyhow!("deployment `{}` does not exist", search))?;
     let site = Arc::new(site);
 
-    let conn = pools.get(&site.shard).unwrap().get_sync().await?;
+    let conn = pools.get(&site.shard).unwrap().get().await?;
 
     Ok((site, conn))
 }

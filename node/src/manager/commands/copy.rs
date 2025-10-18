@@ -1,4 +1,5 @@
-use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl, RunQueryDsl};
+use diesel::{ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl};
+use diesel_async::RunQueryDsl;
 use std::{collections::HashMap, sync::Arc};
 
 use graph::{
@@ -67,18 +68,20 @@ impl CopyState {
             .get(shard)
             .ok_or_else(|| anyhow!("can not find pool for shard {}", shard))?;
 
-        let mut dconn = dpool.get_sync().await?;
+        let mut dconn = dpool.get().await?;
 
         let tables = cts::table
             .filter(cts::dst.eq(dst))
             .order_by(cts::entity_type)
-            .load::<CopyTableState>(&mut dconn)?;
+            .load::<CopyTableState>(&mut dconn)
+            .await?;
 
         let on_sync = on_sync(&mut dconn, DeploymentId(dst)).await?;
 
         Ok(cs::table
             .filter(cs::dst.eq(dst))
             .get_result::<CopyState>(&mut dconn)
+            .await
             .optional()?
             .map(|state| (state, tables, on_sync)))
     }
@@ -209,7 +212,7 @@ pub async fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
     use catalog::deployment_schemas as ds;
 
     let primary = pools.get(&*PRIMARY_SHARD).expect("there is a primary pool");
-    let mut conn = primary.get_sync().await?;
+    let mut conn = primary.get().await?;
 
     let copies = ac::table
         .inner_join(ds::table.on(ds::id.eq(ac::dst)))
@@ -221,7 +224,8 @@ pub async fn list(pools: HashMap<Shard, ConnectionPool>) -> Result<(), Error> {
             ds::subgraph,
             ds::shard,
         ))
-        .load::<(i32, i32, Option<UtcDateTime>, UtcDateTime, String, Shard)>(&mut conn)?;
+        .load::<(i32, i32, Option<UtcDateTime>, UtcDateTime, String, Shard)>(&mut conn)
+        .await?;
     if copies.is_empty() {
         println!("no active copies");
     } else {
@@ -274,18 +278,20 @@ pub async fn status(
     let primary = pools
         .get(&*PRIMARY_SHARD)
         .ok_or_else(|| anyhow!("can not find deployment with id {}", dst))?;
-    let mut pconn = primary.get_sync().await?;
+    let mut pconn = primary.get().await?;
     let dst = dst.locate_unique(primary).await?.id.0;
 
     let (shard, deployment) = ds::table
         .filter(ds::id.eq(dst))
         .select((ds::shard, ds::subgraph))
-        .get_result::<(Shard, String)>(&mut pconn)?;
+        .get_result::<(Shard, String)>(&mut pconn)
+        .await?;
 
     let (active, cancelled_at) = ac::table
         .filter(ac::dst.eq(dst))
         .select((ac::src, ac::cancelled_at))
         .get_result::<(i32, Option<UtcDateTime>)>(&mut pconn)
+        .await
         .optional()?
         .map(|(_, cancelled_at)| (true, cancelled_at))
         .unwrap_or((false, None));
