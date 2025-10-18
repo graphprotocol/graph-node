@@ -55,7 +55,6 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::pool::PgConnection;
 use crate::relational::value::{FromOidRow, OidRow};
 use crate::relational_queries::{
     ConflictingEntitiesData, ConflictingEntitiesQuery, EntityDataExt, FindChangesQuery,
@@ -411,7 +410,7 @@ impl Layout {
     /// Import the database schema for this layout from its own database
     /// shard (in `self.site.shard`) into the database represented by `conn`
     /// if the schema for this layout does not exist yet
-    pub async fn import_schema(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+    pub async fn import_schema(&self, conn: &mut AsyncPgConnection) -> Result<(), StoreError> {
         let make_query = || -> Result<String, fmt::Error> {
             let nsp = self.site.namespace.as_str();
             let srvname = ForeignServer::name(&self.site.shard);
@@ -484,7 +483,7 @@ impl Layout {
     // An optimization when looking up multiple entities, it will generate a single sql query using `UNION ALL`.
     pub async fn find_many(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         ids_for_type: &BTreeMap<(EntityType, CausalityRegion), IdList>,
         block: BlockNumber,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
@@ -520,7 +519,7 @@ impl Layout {
 
     pub async fn find_range(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         entity_types: Vec<EntityType>,
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
@@ -659,7 +658,7 @@ impl Layout {
 
     pub async fn find_derived(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         derived_query: &DerivedEntityQuery,
         block: BlockNumber,
         excluded_keys: &Vec<EntityKey>,
@@ -684,7 +683,7 @@ impl Layout {
 
     pub async fn find_changes(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         block: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError> {
         let mut tables = Vec::new();
@@ -911,7 +910,7 @@ impl Layout {
 
     pub async fn update<'a>(
         &'a self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         group: &'a RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
