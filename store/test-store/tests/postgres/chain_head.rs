@@ -1,7 +1,7 @@
 //! Test ChainStore implementation of Store, in particular, how
 //! the chain head pointer gets updated in various situations
 
-use diesel::RunQueryDsl;
+use diesel_async::RunQueryDsl;
 use graph::blockchain::{BlockHash, BlockPtr};
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar::Bytes;
@@ -575,6 +575,7 @@ fn test_clear_stale_call_cache() {
             chain_store.chain
         ))
         .get_result::<Namespace>(&mut conn)
+        .await
         .unwrap()
         .namespace;
 
@@ -589,6 +590,7 @@ fn test_clear_stale_call_cache() {
             "UPDATE {meta_table} SET accessed_at = NOW() - INTERVAL '8 days' WHERE contract_address = $1"
         )).bind::<diesel::sql_types::Bytea, _>(address.as_bytes())
         .execute(&mut conn)
+        .await
         .unwrap();
 
         let result = chain_store.clear_stale_call_cache(7, None).await;
