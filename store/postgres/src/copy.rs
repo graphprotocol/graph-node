@@ -120,7 +120,7 @@ struct CopyState {
 
 impl CopyState {
     async fn new(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         primary: Primary,
         src: Arc<Layout>,
         dst: Arc<Layout>,
@@ -170,7 +170,7 @@ impl CopyState {
     }
 
     async fn load(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         primary: Primary,
         src: Arc<Layout>,
         dst: Arc<Layout>,
@@ -190,7 +190,7 @@ impl CopyState {
     }
 
     async fn create(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         primary: Primary,
         src: Arc<Layout>,
         dst: Arc<Layout>,
@@ -255,7 +255,7 @@ impl CopyState {
         self.dst.site.shard != self.src.site.shard
     }
 
-    async fn finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+    async fn finished(&self, conn: &mut AsyncPgConnection) -> Result<(), StoreError> {
         use copy_state as cs;
 
         update(cs::table.filter(cs::dst.eq(self.dst.site.id)))
@@ -331,7 +331,7 @@ struct TableState {
 
 impl TableState {
     async fn init(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         primary: Primary,
         dst_site: Arc<Site>,
         src_layout: &Layout,
@@ -357,7 +357,7 @@ impl TableState {
     }
 
     async fn load(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         primary: Primary,
         src_layout: &Layout,
         dst_layout: &Layout,
@@ -435,7 +435,7 @@ impl TableState {
 
     async fn record_progress(
         &mut self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         elapsed: Duration,
     ) -> Result<(), StoreError> {
         use copy_table_state as cts;
@@ -472,7 +472,7 @@ impl TableState {
         Ok(())
     }
 
-    async fn record_finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+    async fn record_finished(&self, conn: &mut AsyncPgConnection) -> Result<(), StoreError> {
         use copy_table_state as cts;
 
         update(
@@ -486,7 +486,7 @@ impl TableState {
         Ok(())
     }
 
-    async fn is_cancelled(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
+    async fn is_cancelled(&self, conn: &mut AsyncPgConnection) -> Result<bool, StoreError> {
         let dst = self.dst_site.as_ref();
         let canceled = self.primary.is_copy_cancelled(dst).await?;
         if canceled {
@@ -500,7 +500,7 @@ impl TableState {
         Ok(canceled)
     }
 
-    async fn copy_batch(&mut self, conn: &mut PgConnection) -> Result<Status, StoreError> {
+    async fn copy_batch(&mut self, conn: &mut AsyncPgConnection) -> Result<Status, StoreError> {
         let (duration, count) = self
             .batcher
             .step(async |start, end| {
@@ -529,7 +529,7 @@ impl TableState {
 
     async fn set_batch_size(
         &mut self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         size: usize,
     ) -> Result<(), StoreError> {
         use copy_table_state as cts;

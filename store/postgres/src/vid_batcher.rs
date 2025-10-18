@@ -13,7 +13,6 @@ use graph::{
 
 use crate::{
     catalog,
-    pool::PgConnection,
     primary::Namespace,
     relational::{Table, VID_COLUMN},
     AsyncPgConnection,
@@ -277,7 +276,7 @@ impl VidRange {
 
     /// Return the full range of `vid` values in the table `src`
     pub async fn for_copy(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         src: &Table,
         target_block: &BlockPtr,
     ) -> Result<Self, StoreError> {
@@ -286,7 +285,7 @@ impl VidRange {
         } else {
             "lower(block_range) <= $1"
         };
-        let vid_range = diesel::RunQueryDsl::load::<VidRange>(
+        let vid_range = diesel_async::RunQueryDsl::load::<VidRange>(
             sql_query(format!(
                 "/* controller=copy,target={target_number} */ \
                  select coalesce(min(vid), 0) as min_vid, \
@@ -298,7 +297,8 @@ impl VidRange {
             ))
             .bind::<Integer, _>(&target_block.number),
             conn,
-        )?
+        )
+        .await?
         .pop()
         .unwrap_or(EMPTY_VID_RANGE);
         Ok(vid_range)
