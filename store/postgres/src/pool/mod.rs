@@ -602,11 +602,11 @@ impl PoolInner {
     async fn locale_check(
         &self,
         logger: &Logger,
-        mut conn: PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> Result<(), StoreError> {
         Ok(
-            if let Err(msg) = catalog::Locale::load(&mut conn).await?.suitable() {
-                if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn).await? {
+            if let Err(msg) = catalog::Locale::load(conn).await?.suitable() {
+                if &self.shard == &*PRIMARY_SHARD && primary::is_empty(conn).await? {
                     const MSG: &str =
                     "Database does not use C locale. \
                     Please check the graph-node documentation for how to set up the database locale";
@@ -678,7 +678,7 @@ impl PoolInner {
             })
             .await?;
 
-        this.locale_check(&this.logger, conn).await?;
+        this.locale_check(&this.logger, &mut conn).await?;
 
         Ok(count)
     }
