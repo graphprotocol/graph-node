@@ -34,7 +34,6 @@ use graph::prelude::{
 use graph::{ensure, internal_error};
 
 use self::recent_blocks_cache::RecentBlocksCache;
-use crate::pool::PgConnection;
 use crate::AsyncPgConnection;
 use crate::{
     block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender, pool::ConnectionPool,
@@ -2022,10 +2021,6 @@ impl ChainStore {
         matches!(self.status, ChainStatus::Ingestible)
     }
 
-    async fn get_conn(&self) -> Result<PgConnection, Error> {
-        self.pool.get_sync().await.map_err(Error::from)
-    }
-
     pub(crate) async fn create(&self, ident: &ChainIdentifier) -> Result<(), Error> {
         use public::ethereum_networks::dsl::*;
 
@@ -2116,7 +2111,7 @@ impl ChainStore {
         let number: Option<i64> = n::table
             .filter(n::name.eq(chain))
             .select(n::head_block_number)
-            .first::<Option<i64>>(&mut self.get_conn().await?)
+            .first::<Option<i64>>(&mut self.pool.get().await?)
             .await
             .optional()?
             .flatten();
@@ -2200,14 +2195,14 @@ impl ChainStore {
     }
 
     pub async fn delete_blocks(&self, block_hashes: &[&H256]) -> Result<usize, Error> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         self.storage
             .delete_blocks_by_hash(&mut conn, &self.chain, block_hashes)
             .await
     }
 
     pub async fn cleanup_shallow_blocks(&self, lowest_block: i32) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         self.storage
             .cleanup_shallow_blocks(&mut conn, lowest_block)
             .await?;
@@ -2216,12 +2211,12 @@ impl ChainStore {
 
     // remove_cursor delete the chain_store cursor and return true if it was present
     pub async fn remove_cursor(&self, chain: &str) -> Result<Option<BlockNumber>, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         self.storage.remove_cursor(&mut conn, chain).await
     }
 
     pub async fn truncate_block_cache(&self) -> Result<(), StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         self.storage.truncate_block_cache(&mut conn).await?;
         Ok(())
     }
@@ -2366,7 +2361,7 @@ impl ChainHeadStore for ChainStore {
         ethereum_networks
             .select(head_block_cursor)
             .filter(name.eq(&self.chain))
-            .load::<Option<String>>(&mut self.get_conn().await?)
+            .load::<Option<String>>(&mut self.pool.get().await?)
             .await
             .map(|rows| {
                 rows.as_slice()
@@ -2678,7 +2673,7 @@ impl ChainStoreTrait for ChainStore {
         //
         // See 8b6ad0c64e244023ac20ced7897fe666
 
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         let query = "
             select coalesce(
                    least(a.block,
@@ -2724,7 +2719,7 @@ impl ChainStoreTrait for ChainStore {
         &self,
         number: BlockNumber,
     ) -> Result<Vec<BlockHash>, Error> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         self.storage
             .block_hashes_by_block_number(&mut conn, &self.chain, number)
             .await
@@ -2735,7 +2730,7 @@ impl ChainStoreTrait for ChainStore {
         number: BlockNumber,
         hash: &BlockHash,
     ) -> Result<usize, Error> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         self.storage
             .confirm_block_hash(&mut conn, &self.chain, number, hash)
             .await
@@ -2768,7 +2763,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn clear_call_cache(&self, from: BlockNumber, to: BlockNumber) -> Result<(), Error> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         if let Some(head) = self.chain_head_block(&self.chain).await? {
             self.storage
                 .clear_call_cache(&mut conn, head, from, to)
@@ -2782,7 +2777,7 @@ impl ChainStoreTrait for ChainStore {
         ttl_days: i32,
         ttl_max_contracts: Option<i64>,
     ) -> Result<(), Error> {
-        let conn = &mut self.get_conn().await?;
+        let conn = &mut self.pool.get().await?;
         self.storage
             .clear_stale_call_cache(conn, &self.logger, ttl_days, ttl_max_contracts)
             .await
@@ -2792,7 +2787,7 @@ impl ChainStoreTrait for ChainStore {
         &self,
         block_hash: &H256,
     ) -> Result<Vec<LightTransactionReceipt>, StoreError> {
-        let mut conn = self.pool.get_sync().await?;
+        let mut conn = self.pool.get().await?;
         self.storage
             .find_transaction_receipts_in_block(&mut conn, *block_hash)
             .await
@@ -3042,7 +3037,7 @@ impl EthereumCallCache for ChainStore {
         block: BlockPtr,
     ) -> Result<Option<call::Response>, Error> {
         let id = contract_call_id(req, &block);
-        let conn = &mut self.get_conn().await?;
+        let conn = &mut self.pool.get().await?;
         let return_value = conn
             .transaction::<_, Error, _>(|conn| {
                 async {
@@ -3083,7 +3078,7 @@ impl EthereumCallCache for ChainStore {
             .collect();
         let id_refs: Vec<_> = ids.iter().map(|id| id.as_slice()).collect();
 
-        let conn = &mut self.get_conn().await?;
+        let conn = &mut self.pool.get().await?;
         let rows = conn
             .transaction::<_, Error, _>(|conn| {
                 self.storage
@@ -3117,7 +3112,7 @@ impl EthereumCallCache for ChainStore {
     }
 
     async fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
-        let conn = &mut self.get_conn().await?;
+        let conn = &mut self.pool.get().await?;
         conn.transaction::<_, Error, _>(|conn| {
             self.storage.get_calls_in_block(conn, block).scope_boxed()
         })
