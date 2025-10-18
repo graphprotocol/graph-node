@@ -36,11 +36,12 @@ where
 }
 
 async fn cleanup_graphman_command_executions_table() {
-    use diesel::prelude::*;
+    use diesel_async::RunQueryDsl;
 
-    let mut conn = PRIMARY_POOL.get_sync().await.unwrap();
+    let mut conn = PRIMARY_POOL.get().await.unwrap();
 
     diesel::sql_query("truncate table public.graphman_command_executions;")
         .execute(&mut conn)
+        .await
         .expect("truncate is successful");
 }

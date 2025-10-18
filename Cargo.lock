@@ -2395,6 +2395,7 @@ dependencies = [
  "axum 0.8.4",
  "chrono",
  "diesel",
+ "diesel-async",
  "graph",
  "graph-store-postgres",
  "graphman",
