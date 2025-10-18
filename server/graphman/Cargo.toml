@@ -21,6 +21,7 @@ tower-http = { workspace = true }
 
 [dev-dependencies]
 diesel = { workspace = true }
+diesel-async = { workspace = true }
 lazy_static = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

@@ -2131,7 +2131,7 @@ impl ChainStore {
     pub(crate) async fn set_chain_identifier(&self, ident: &ChainIdentifier) -> Result<(), Error> {
         use public::ethereum_networks as n;
 
-        let mut conn = self.pool.get_sync().await?;
+        let mut conn = self.pool.get().await?;
 
         diesel::update(n::table.filter(n::name.eq(&self.chain)))
             .set((
@@ -2163,7 +2163,7 @@ impl ChainStore {
     ) -> Vec<(BlockPtr, BlockHash)> {
         let mut conn = self
             .pool
-            .get_sync()
+            .get()
             .await
             .expect("can get a database connection");
 
@@ -2440,7 +2440,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn upsert_light_blocks(&self, blocks: &[&dyn Block]) -> Result<(), Error> {
-        let mut conn = self.pool.get_sync().await?;
+        let mut conn = self.pool.get().await?;
         for block in blocks {
             self.storage
                 .upsert_block(&mut conn, &self.chain, *block, false)
@@ -2795,7 +2795,7 @@ impl ChainStoreTrait for ChainStore {
     }
 
     async fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
-        let mut conn = self.pool.get_sync().await?;
+        let mut conn = self.pool.get().await?;
         use public::ethereum_networks as n;
         let (genesis_block_hash, net_version) = n::table
             .select((n::genesis_block_hash, n::net_version))
