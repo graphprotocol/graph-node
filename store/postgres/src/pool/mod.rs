@@ -26,14 +26,12 @@ use crate::catalog;
 use crate::primary::{self, Mirror, Namespace};
 use crate::{Shard, PRIMARY_SHARD};
 
-mod async_txn;
 mod coordinator;
 mod foreign_server;
 mod state_tracker;
 
 pub use diesel_async::scoped_futures::ScopedFutureExt;
 
-pub use async_txn::AsyncConnection;
 pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
 use state_tracker::{ErrorHandler, EventHandler, StateTracker};
@@ -41,8 +39,6 @@ use state_tracker::{ErrorHandler, EventHandler, StateTracker};
 type AsyncPool = mobc::Pool<diesel_async::AsyncPgConnection>;
 /// A database connection for asynchronous diesel operations
 pub type AsyncPgConnection = mobc::PooledConnection<diesel_async::AsyncPgConnection>;
-/// A database connection for 'classic' synchronous diesel operations
-pub type PgConnection = AsyncConnectionWrapper<AsyncPgConnection>;
 
 /// The namespace under which the `PRIMARY_TABLES` are mapped into each
 /// shard
@@ -319,12 +315,6 @@ impl ConnectionPool {
 
     pub async fn get(&self) -> Result<AsyncPgConnection, StoreError> {
         self.get_ready()?.get().await
-    }
-
-    /// An async version of `get`. For now, this calls `get` synchronously.
-    /// Once `get` is not used anymore, we can make it truly async.
-    pub async fn get_sync(&self) -> Result<PgConnection, StoreError> {
-        self.get().await.map(AsyncConnectionWrapper::from)
     }
 
     /// Get a connection from the pool for foreign data wrapper access;
