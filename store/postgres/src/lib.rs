@@ -62,8 +62,7 @@ pub use self::detail::DeploymentDetail;
 pub use self::jobs::register as register_jobs;
 pub use self::notification_listener::NotificationSender;
 pub use self::pool::{
-    AsyncConnection, AsyncPgConnection, ConnectionPool, ForeignServer, PgConnection,
-    PoolCoordinator, PoolRole, ScopedFutureExt,
+    AsyncPgConnection, ConnectionPool, ForeignServer, PoolCoordinator, PoolRole, ScopedFutureExt,
 };
 pub use self::primary::{db_version, UnusedDeployment};
 pub use self::store::Store;
