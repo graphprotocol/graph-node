@@ -35,6 +35,7 @@ use graph::{ensure, internal_error};
 
 use self::recent_blocks_cache::RecentBlocksCache;
 use crate::pool::PgConnection;
+use crate::AsyncPgConnection;
 use crate::{
     block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender, pool::ConnectionPool,
 };
@@ -117,7 +118,6 @@ mod data {
     use std::iter::FromIterator;
     use std::str::FromStr;
 
-    use crate::pool::PgConnection;
     use crate::transaction_receipt::RawTransactionReceipt;
 
     use super::JsonBlock;
@@ -454,7 +454,7 @@ mod data {
 
         pub(super) async fn truncate_block_cache(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
         ) -> Result<(), StoreError> {
             let table_name = match &self {
                 Storage::Shared => ETHEREUM_BLOCKS_TABLE_NAME,
@@ -465,7 +465,10 @@ mod data {
             Ok(())
         }
 
-        async fn truncate_call_cache(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+        async fn truncate_call_cache(
+            &self,
+            conn: &mut AsyncPgConnection,
+        ) -> Result<(), StoreError> {
             let table_name = match &self {
                 Storage::Shared => ETHEREUM_CALL_CACHE_TABLE_NAME,
                 Storage::Private(Schema { call_cache, .. }) => &call_cache.qname,
@@ -477,7 +480,7 @@ mod data {
 
         pub(super) async fn cleanup_shallow_blocks(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             lowest_block: i32,
         ) -> Result<(), StoreError> {
             let table_name = match &self {
@@ -494,7 +497,7 @@ mod data {
 
         pub(super) async fn remove_cursor(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             chain: &str,
         ) -> Result<Option<BlockNumber>, StoreError> {
             use diesel::dsl::not;
@@ -712,7 +715,7 @@ mod data {
 
         pub(super) async fn block_hashes_by_block_number(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             chain: &str,
             number: BlockNumber,
         ) -> Result<Vec<BlockHash>, Error> {
@@ -745,7 +748,7 @@ mod data {
 
         pub(super) async fn confirm_block_hash(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             chain: &str,
             number: BlockNumber,
             hash: &BlockHash,
@@ -1190,7 +1193,7 @@ mod data {
 
         pub(super) async fn delete_blocks_before(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             chain: &str,
             block: i64,
         ) -> Result<usize, Error> {
@@ -1222,7 +1225,7 @@ mod data {
 
         pub(super) async fn delete_blocks_by_hash(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             chain: &str,
             block_hashes: &[&H256],
         ) -> Result<usize, Error> {
@@ -1313,7 +1316,7 @@ mod data {
 
         pub(super) async fn get_calls_and_access(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             ids: &[&[u8]],
         ) -> Result<Vec<(Vec<u8>, Bytes, bool)>, Error> {
             let rows = match self {
@@ -1366,7 +1369,7 @@ mod data {
 
         pub(super) async fn get_calls_in_block(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             block_ptr: BlockPtr,
         ) -> Result<Vec<CachedEthereumCall>, Error> {
             let block_num = block_ptr.block_number();
@@ -1410,7 +1413,7 @@ mod data {
 
         pub(super) async fn clear_call_cache(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             head: BlockNumber,
             from: BlockNumber,
             to: BlockNumber,
@@ -1646,7 +1649,7 @@ mod data {
 
         pub(super) async fn update_accessed_at(
             &self,
-            conn: &mut PgConnection,
+            conn: &mut AsyncPgConnection,
             contract_address: &[u8],
         ) -> Result<(), Error> {
             let result = match self {
@@ -2087,7 +2090,7 @@ impl ChainStore {
     }
 
     pub async fn chain_head_pointers(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> Result<HashMap<String, BlockPtr>, StoreError> {
         use public::ethereum_networks as n;
 
