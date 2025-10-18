@@ -23,11 +23,14 @@ use std::{
 };
 
 use diesel::{
-    connection::SimpleConnection as _, dsl::sql, insert_into, select, sql_query, update,
-    ExpressionMethods, OptionalExtension, QueryDsl,
+    dsl::sql, insert_into, select, sql_query, update, ExpressionMethods, OptionalExtension,
+    QueryDsl,
 };
-use diesel_async::scoped_futures::{ScopedBoxFuture, ScopedFutureExt};
-use diesel_async::RunQueryDsl;
+use diesel_async::{
+    scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
+    AsyncConnection,
+};
+use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
 use graph::{
     futures03::{
         future::{select_all, BoxFuture},
@@ -46,12 +49,11 @@ use itertools::Itertools;
 use crate::{
     advisory_lock, catalog, deployment,
     dynds::DataSourcesTable,
-    pool::PgConnection,
     primary::{DeploymentId, Primary, Site},
     relational::{index::IndexList, Layout, Table},
     relational_queries as rq,
     vid_batcher::{VidBatcher, VidRange},
-    AsyncConnection, AsyncPgConnection, ConnectionPool,
+    AsyncPgConnection, ConnectionPool,
 };
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
@@ -690,12 +692,12 @@ impl From<Result<CopyTableWorker, StoreError>> for WorkerResult {
 /// This struct helps us with that. It wraps a connection and tracks whether
 /// the connection was used to acquire the copy lock
 struct LockTrackingConnection {
-    inner: PgConnection,
+    inner: AsyncPgConnection,
     has_lock: bool,
 }
 
 impl LockTrackingConnection {
-    fn new(inner: PgConnection) -> Self {
+    fn new(inner: AsyncPgConnection) -> Self {
         Self {
             inner,
             has_lock: false,
@@ -804,10 +806,10 @@ impl CopyTableWorker {
                     }
 
                     match conn
-                        .transaction_async(|conn| {
+                        .transaction(|conn| {
                             async {
                                 if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
-                                    conn.batch_execute(timeout)?;
+                                    conn.batch_execute(timeout).await?;
                                 }
                                 self.table.copy_batch(conn).await
                             }
@@ -850,7 +852,7 @@ impl CopyTableWorker {
                     // that is hard to predict. This mechanism ensures
                     // that if our estimation is wrong, the consequences
                     // aren't too severe.
-                    conn.transaction_async(|conn| self.table.set_batch_size(conn, 1).scope_boxed())
+                    conn.transaction(|conn| self.table.set_batch_size(conn, 1).scope_boxed())
                         .await?;
                 }
             };
@@ -972,7 +974,7 @@ impl Connection {
 
         let mut last_log = Instant::now();
         let conn = pool
-            .get_fdw_async(&logger, || {
+            .get_fdw(&logger, || {
                 if last_log.elapsed() > LOG_INTERVAL {
                     info!(&logger, "waiting for other copy operations to finish");
                     last_log = Instant::now();
@@ -1005,7 +1007,9 @@ impl Connection {
         callback: F,
     ) -> Result<BoxFuture<'conn, Result<R, StoreError>>, StoreError>
     where
-        F: for<'r> FnOnce(&'r mut PgConnection) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
+        F: for<'r> FnOnce(
+                &'r mut AsyncPgConnection,
+            ) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
             + Send
             + 'a,
         R: Send + 'a,
@@ -1017,7 +1021,7 @@ impl Connection {
             ));
         };
         let conn = &mut conn.inner;
-        Ok(conn.transaction_async(|conn| async { callback(conn).await }.scope_boxed()))
+        Ok(conn.transaction(|conn| callback(conn).scope_boxed()))
     }
 
     /// Copy private data sources if the source uses a schema version that
@@ -1080,7 +1084,7 @@ impl Connection {
         // we remove the table from the state and could drop it otherwise
         let Some(conn) = self
             .pool
-            .try_get_fdw_async(&self.logger, ENV_VARS.store.batch_worker_wait)
+            .try_get_fdw(&self.logger, ENV_VARS.store.batch_worker_wait)
             .await
         else {
             return None;
