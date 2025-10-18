@@ -574,7 +574,7 @@ impl DeploymentStore {
         &self,
         site: &Site,
     ) -> Result<Option<DeploymentId>, StoreError> {
-        let mut conn = self.get_conn().await?;
+        let mut conn = self.pool.get().await?;
         crate::copy::source(&mut conn, site).await
     }
 

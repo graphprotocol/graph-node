@@ -51,7 +51,7 @@ use crate::{
     relational::{index::IndexList, Layout, Table},
     relational_queries as rq,
     vid_batcher::{VidBatcher, VidRange},
-    AsyncConnection, ConnectionPool,
+    AsyncConnection, AsyncPgConnection, ConnectionPool,
 };
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
@@ -300,7 +300,7 @@ impl CopyState {
 }
 
 pub(crate) async fn source(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     dst: &Site,
 ) -> Result<Option<DeploymentId>, StoreError> {
     use copy_state as cs;
