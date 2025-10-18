@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use diesel::sql_query;
-use diesel::RunQueryDsl;
+use diesel_async::AsyncConnection;
+use diesel_async::RunQueryDsl;
 use graph::blockchain::BlockHash;
 use graph::blockchain::BlockPtr;
 use graph::blockchain::ChainIdentifier;
@@ -24,7 +25,6 @@ use graph_chain_ethereum::EthereumAdapterTrait as _;
 use graph_store_postgres::add_chain;
 use graph_store_postgres::find_chain;
 use graph_store_postgres::update_chain_name;
-use graph_store_postgres::AsyncConnection;
 use graph_store_postgres::BlockStore;
 use graph_store_postgres::ChainStatus;
 use graph_store_postgres::ChainStore;
@@ -37,7 +37,7 @@ use crate::network_setup::Networks;
 
 pub async fn list(primary: ConnectionPool, store: BlockStore) -> Result<(), Error> {
     let mut chains = {
-        let mut conn = primary.get_sync().await?;
+        let mut conn = primary.get().await?;
         block_store::load_chains(&mut conn).await?
     };
     chains.sort_by_key(|chain| chain.name.clone());
@@ -122,7 +122,7 @@ pub async fn info(
         }
     }
 
-    let mut conn = primary.get_sync().await?;
+    let mut conn = primary.get().await?;
 
     let chain = block_store::find_chain(&mut conn, &name)
         .await?
@@ -231,7 +231,7 @@ pub async fn change_block_cache_shard(
 ) -> Result<(), Error> {
     println!("Changing block cache shard for {} to {}", chain_name, shard);
 
-    let mut conn = primary_store.get_sync().await?;
+    let mut conn = primary_store.get().await?;
 
     let chain = find_chain(&mut conn, &chain_name)
         .await?
@@ -247,7 +247,7 @@ pub async fn change_block_cache_shard(
     let new_name = format!("{}-old", &chain_name);
     let ident = chain_store.chain_identifier().await?;
 
-    conn.transaction_async::<(), StoreError, _>(|conn|  {
+    conn.transaction::<(), StoreError, _>(|conn|  {
         async {
             let shard = Shard::new(shard.to_string())?;
 
@@ -259,7 +259,7 @@ pub async fn change_block_cache_shard(
             sql_query(
                 "alter table deployment_schemas drop constraint deployment_schemas_network_fkey;",
             )
-            .execute(conn)?;
+            .execute(conn).await?;
 
             // Update the current chain name to chain-old
             update_chain_name(conn, &chain_name, &new_name).await?;
@@ -271,7 +271,7 @@ pub async fn change_block_cache_shard(
             sql_query(
                 "alter table deployment_schemas add constraint deployment_schemas_network_fkey foreign key (network) references chains(name);",
             )
-            .execute(conn)?;
+            .execute(conn).await?;
             Ok(())
         }.scope_boxed()
     }).await?;
