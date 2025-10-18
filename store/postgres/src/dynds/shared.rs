@@ -19,8 +19,8 @@ use graph::{
 };
 
 use crate::primary::Site;
+use crate::AsyncPgConnection;
 use crate::ForeignServer;
-use crate::{pool::PgConnection, AsyncPgConnection};
 
 table! {
     subgraphs.dynamic_ethereum_contract_data_source (vid) {
@@ -173,7 +173,7 @@ pub(super) async fn insert(
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
 /// were created up to and including `target_block` will be copied.
 pub(crate) async fn copy(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     src: &Site,
     dst: &Site,
     target_block: BlockNumber,
