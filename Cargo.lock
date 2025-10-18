@@ -2182,6 +2182,7 @@ dependencies = [
  "anyhow",
  "clap",
  "diesel",
+ "diesel-async",
  "env_logger",
  "git-testament",
  "globset",
