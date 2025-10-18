@@ -23,7 +23,6 @@ use graph::{
     prelude::{lazy_static, StoreError, BLOCK_NUMBER_MAX},
 };
 
-use crate::pool::PgConnection;
 use crate::AsyncPgConnection;
 use crate::{
     block_range::BLOCK_RANGE_COLUMN,
@@ -578,7 +577,7 @@ pub async fn drop_schema(conn: &mut AsyncPgConnection, nsp: &str) -> Result<(), 
     Ok(conn.batch_execute(&query).await?)
 }
 
-pub async fn migration_count(conn: &mut PgConnection) -> Result<usize, StoreError> {
+pub async fn migration_count(conn: &mut AsyncPgConnection) -> Result<usize, StoreError> {
     use __diesel_schema_migrations as m;
 
     if !table_exists(conn, NAMESPACE_PUBLIC, &MIGRATIONS_TABLE).await? {

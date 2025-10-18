@@ -25,9 +25,9 @@ use graph::{prelude::StoreError, util::timed_cache::TimedCache};
 use crate::{
     chain_head_listener::ChainHeadUpdateSender,
     chain_store::{ChainStoreMetrics, Storage},
-    pool::{ConnectionPool, PgConnection},
+    pool::ConnectionPool,
     primary::Mirror as PrimaryMirror,
-    ChainStore, NotificationSender, Shard, PRIMARY_SHARD,
+    AsyncPgConnection, ChainStore, NotificationSender, Shard, PRIMARY_SHARD,
 };
 
 use self::primary::Chain;
@@ -58,7 +58,7 @@ pub mod primary {
         prelude::StoreError,
     };
 
-    use crate::{chain_store::Storage, pool::PgConnection, AsyncPgConnection};
+    use crate::{chain_store::Storage, AsyncPgConnection};
     use crate::{ConnectionPool, Shard};
 
     table! {
@@ -119,7 +119,7 @@ pub mod primary {
     }
 
     pub async fn add_chain(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         name: &str,
         shard: &Shard,
         ident: ChainIdentifier,
@@ -174,7 +174,7 @@ pub mod primary {
 
     // update chain name where chain name is 'name'
     pub async fn update_chain_name(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         name: &str,
         new_name: &str,
     ) -> Result<(), StoreError> {
@@ -344,7 +344,7 @@ impl BlockStore {
     }
 
     pub async fn allocate_chain(
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         name: &String,
         shard: &Shard,
         ident: &ChainIdentifier,

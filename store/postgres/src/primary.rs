@@ -4,7 +4,7 @@
 use crate::{
     block_range::UNVERSIONED_RANGE,
     detail::DeploymentDetail,
-    pool::{PgConnection, PRIMARY_PUBLIC},
+    pool::PRIMARY_PUBLIC,
     subgraph_store::{unused, Shard, PRIMARY_SHARD},
     AsyncPgConnection, ConnectionPool, ForeignServer, NotificationSender,
 };
@@ -2019,7 +2019,7 @@ impl Primary {
 
 /// Return `true` if we deem this installation to be empty, defined as
 /// having no deployments and no subgraph names in the database
-pub async fn is_empty(conn: &mut PgConnection) -> Result<bool, StoreError> {
+pub async fn is_empty(conn: &mut AsyncPgConnection) -> Result<bool, StoreError> {
     use deployment_schemas as ds;
     use subgraph as s;
 

@@ -1,10 +1,7 @@
 //! Utilities for dealing with deployment metadata. Any connection passed
 //! into these methods must be for the shard that holds the actual
 //! deployment data and metadata
-use crate::{
-    advisory_lock, detail::GraphNodeVersion, pool::PgConnection, primary::DeploymentId,
-    AsyncPgConnection,
-};
+use crate::{advisory_lock, detail::GraphNodeVersion, primary::DeploymentId, AsyncPgConnection};
 use diesel::{
     dsl::{count, delete, insert_into, now, select, sql, update},
     sql_types::{Bool, Integer},
@@ -989,7 +986,7 @@ pub(crate) async fn insert_subgraph_errors(
 
 #[cfg(debug_assertions)]
 pub(crate) async fn error_count(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     id: &DeploymentHash,
 ) -> Result<usize, StoreError> {
     use subgraph_error as e;
@@ -1116,7 +1113,7 @@ pub(crate) async fn revert_subgraph_errors(
 }
 
 pub(crate) async fn delete_error(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     error_id: &str,
 ) -> Result<(), StoreError> {
     use subgraph_error as e;
@@ -1130,7 +1127,7 @@ pub(crate) async fn delete_error(
 /// Copy the dynamic data sources for `src` to `dst`. All data sources that
 /// were created up to and including `target_block` will be copied.
 pub(crate) async fn copy_errors(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     src: &Site,
     dst: &Site,
     target_block: &BlockPtr,
@@ -1390,7 +1387,7 @@ pub async fn set_earliest_block(
 /// go across shards and use the metadata tables mapped into the shard for
 /// `conn` which must be the shard for `dst`
 pub async fn copy_earliest_block(
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
     src: &Site,
     dst: &Site,
 ) -> Result<(), StoreError> {

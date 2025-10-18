@@ -20,7 +20,6 @@ use diesel_async::RunQueryDsl;
 use graph::prelude::StoreError;
 
 use crate::command_support::catalog::Site;
-use crate::pool::PgConnection;
 use crate::primary::DeploymentId;
 use crate::AsyncPgConnection;
 
@@ -57,7 +56,7 @@ impl Scope {
 
     /// Lock the deployment in this scope with the given id. Blocks until we
     /// can get the lock
-    async fn lock(&self, conn: &mut PgConnection, id: DeploymentId) -> Result<(), StoreError> {
+    async fn lock(&self, conn: &mut AsyncPgConnection, id: DeploymentId) -> Result<(), StoreError> {
         sql_query(format!("select pg_advisory_lock({}, {id})", self.id))
             .execute(conn)
             .await
@@ -120,12 +119,18 @@ where
 
 /// Take the lock used to keep two copy operations to run simultaneously on
 /// the same deployment. Block until we can get the lock
-pub(crate) async fn lock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), StoreError> {
+pub(crate) async fn lock_copying(
+    conn: &mut AsyncPgConnection,
+    dst: &Site,
+) -> Result<(), StoreError> {
     COPY.lock(conn, dst.id).await
 }
 
 /// Release the lock acquired with `lock_copying`.
-pub(crate) async fn unlock_copying(conn: &mut PgConnection, dst: &Site) -> Result<(), StoreError> {
+pub(crate) async fn unlock_copying(
+    conn: &mut AsyncPgConnection,
+    dst: &Site,
+) -> Result<(), StoreError> {
     COPY.unlock(conn, dst.id).await
 }
 

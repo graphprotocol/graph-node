@@ -18,7 +18,6 @@ use graph::prelude::{
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::command_support::catalog::Site;
 use crate::deployment_store::DeploymentStore;
-use crate::pool::PgConnection;
 use crate::primary::Namespace;
 use crate::relational::{BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE};
 use crate::{catalog, AsyncPgConnection};
@@ -822,7 +821,7 @@ impl IndexList {
 
     pub async fn recreate_invalid_indexes(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         layout: &Layout,
     ) -> Result<(), StoreError> {
         #[derive(QueryableByName, Debug)]
