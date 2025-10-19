@@ -589,14 +589,11 @@ impl PoolInner {
         sql_query("select 1").execute(&mut conn).await.is_ok()
     }
 
-    async fn locale_check(
-        &self,
-        logger: &Logger,
-        conn: &mut AsyncPgConnection,
-    ) -> Result<(), StoreError> {
+    async fn locale_check(&self, logger: &Logger) -> Result<(), StoreError> {
+        let mut conn = self.get().await?;
         Ok(
-            if let Err(msg) = catalog::Locale::load(conn).await?.suitable() {
-                if &self.shard == &*PRIMARY_SHARD && primary::is_empty(conn).await? {
+            if let Err(msg) = catalog::Locale::load(&mut conn).await?.suitable() {
+                if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn).await? {
                     const MSG: &str =
                     "Database does not use C locale. \
                     Please check the graph-node documentation for how to set up the database locale";
@@ -652,25 +649,24 @@ impl PoolInner {
         self: Arc<Self>,
         servers: &[ForeignServer],
     ) -> Result<MigrationCount, StoreError> {
+        self.locale_check(&self.logger).await?;
+
         self.configure_fdw(servers).await?;
+
         // We use AsyncConnectionWrapper here since diesel_async doesn't
-        // offer an async analog to `HarnessWithOutput` yet, and we
-        // therefore use sync infrastructure to run migrations. That's not a
-        // big deal, since this happens at server startup only.
+        // offer a truly async way to run migrations, and we need to be very
+        // careful that block_on only gets called on a blocking thread to
+        // avoid errors from the tokio runtime
+        let logger = self.logger.cheap_clone();
         let mut conn = self.get().await.map(AsyncConnectionWrapper::from)?;
-        let (this, count) = conn
-            .transaction::<_, StoreError, _>(|conn| {
-                async {
-                    let count = migrate_schema(&self.logger, conn).await?;
-                    Ok((self, count))
-                }
-                .scope_boxed()
+
+        tokio::task::spawn_blocking(move || {
+            diesel::Connection::transaction::<_, StoreError, _>(&mut conn, |conn| {
+                migrate_schema(&logger, conn)
             })
-            .await?;
-
-        this.locale_check(&this.logger, &mut conn).await?;
-
-        Ok(count)
+        })
+        .await
+        .expect("migration task panicked")
     }
 
     /// If this is the primary shard, drop the namespace `CROSS_SHARD_NSP`
@@ -810,11 +806,7 @@ impl MigrationCount {
 }
 
 /// Run all schema migrations.
-///
-/// When multiple `graph-node` processes start up at the same time, we ensure
-/// that they do not run migrations in parallel by using `blocking_conn` to
-/// serialize them. The `conn` is used to run the actual migration.
-async fn migrate_schema(
+fn migrate_schema(
     logger: &Logger,
     conn: &mut AsyncConnectionWrapper<AsyncPgConnection>,
 ) -> Result<MigrationCount, StoreError> {
@@ -823,7 +815,7 @@ async fn migrate_schema(
     // Collect migration logging output
     let mut output = vec![];
 
-    let old_count = catalog::migration_count(conn).await?;
+    let old_count = graph::block_on(catalog::migration_count(conn))?;
     let mut harness = HarnessWithOutput::new(conn, &mut output);
 
     info!(logger, "Running migrations");
@@ -848,7 +840,7 @@ async fn migrate_schema(
         debug!(logger, "Postgres migration output"; "output" => msg);
     }
 
-    let migrations = catalog::migration_count(conn).await?;
+    let migrations = graph::block_on(catalog::migration_count(conn))?;
 
     Ok(MigrationCount {
         new: migrations,
