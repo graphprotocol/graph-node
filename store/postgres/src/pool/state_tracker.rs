@@ -1,7 +1,10 @@
 //! Event/error handlers for our r2d2 pools
 
+use deadpool::managed::Hook;
 use diesel::r2d2::{self, event as e, HandleEvent};
 
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+use diesel_async::AsyncPgConnection;
 use graph::prelude::error;
 use graph::prelude::Counter;
 use graph::prelude::Gauge;
@@ -37,7 +40,7 @@ impl StateTracker {
         self.available.store(true, Ordering::Relaxed);
     }
 
-    fn mark_unavailable(&self) {
+    pub(super) fn mark_unavailable(&self) {
         self.available.store(false, Ordering::Relaxed);
     }
 
@@ -57,6 +60,19 @@ impl StateTracker {
         let res = f().await;
         self.ignore_timeout.store(false, Ordering::Relaxed);
         res
+    }
+
+    pub(super) fn mark_available_hook(
+        &self,
+    ) -> Hook<AsyncDieselConnectionManager<AsyncPgConnection>> {
+        let state_tracker = self.clone();
+        Hook::async_fn(move |_conn, _metrics| {
+            let state_tracker = state_tracker.clone();
+            Box::pin(async move {
+                state_tracker.mark_available();
+                Ok(())
+            })
+        })
     }
 }
 
