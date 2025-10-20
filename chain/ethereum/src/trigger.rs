@@ -236,23 +236,42 @@ impl ToAscPtr for MappingTrigger {
 }
 
 #[derive(Clone, Debug)]
+pub struct LogPosition {
+    pub index: usize,
+    pub receipt: Arc<TransactionReceipt>,
+    pub requires_transaction_receipt: bool,
+}
+
+#[derive(Clone, Debug)]
 pub enum LogRef {
     FullLog(Arc<Log>, Option<Arc<TransactionReceipt>>),
-    LogPosition(usize, Arc<TransactionReceipt>),
+    LogPosition(LogPosition),
 }
 
 impl LogRef {
     pub fn log(&self) -> &Log {
         match self {
             LogRef::FullLog(log, _) => log.as_ref(),
-            LogRef::LogPosition(index, receipt) => receipt.logs.get(*index).unwrap(),
+            LogRef::LogPosition(pos) => pos.receipt.logs.get(pos.index).unwrap(),
         }
     }
 
+    /// Returns the transaction receipt if it's available and required.
+    ///
+    /// For `FullLog` variants, returns the receipt if present.
+    /// For `LogPosition` variants, only returns the receipt if the
+    /// `requires_transaction_receipt` flag is true, otherwise returns None
+    /// even though the receipt is stored internally.
     pub fn receipt(&self) -> Option<&Arc<TransactionReceipt>> {
         match self {
             LogRef::FullLog(_, receipt) => receipt.as_ref(),
-            LogRef::LogPosition(_, receipt) => Some(receipt),
+            LogRef::LogPosition(pos) => {
+                if pos.requires_transaction_receipt {
+                    Some(&pos.receipt)
+                } else {
+                    None
+                }
+            }
         }
     }
 
