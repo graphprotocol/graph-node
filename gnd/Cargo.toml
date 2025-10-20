@@ -25,7 +25,7 @@ serde = { workspace = true }
 # File watching
 notify = "8.2.0"
 globset = "0.4.16"
-pq-sys = { version = "0.7.2", features = ["bundled"] }
+pq-sys = { version = "0.7.5", features = ["bundled"] }
 openssl-sys = { version = "0.9.100", features = ["vendored"] }
 
 [target.'cfg(unix)'.dependencies]
