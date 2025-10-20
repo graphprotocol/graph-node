@@ -1,6 +1,9 @@
+use deadpool::managed::Timeouts;
+use deadpool::Runtime;
 use diesel::sql_query;
 use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
-use diesel_async::pooled_connection::{mobc, AsyncDieselConnectionManager};
+use diesel_async::pooled_connection::deadpool::Pool as DeadpoolPool;
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::{AsyncConnection as _, RunQueryDsl, SimpleAsyncConnection};
 use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
 
@@ -36,9 +39,10 @@ pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
 use state_tracker::{ErrorHandler, EventHandler, StateTracker};
 
-type AsyncPool = mobc::Pool<diesel_async::AsyncPgConnection>;
+type AsyncPool = DeadpoolPool<diesel_async::AsyncPgConnection>;
 /// A database connection for asynchronous diesel operations
-pub type AsyncPgConnection = mobc::PooledConnection<diesel_async::AsyncPgConnection>;
+pub type AsyncPgConnection =
+    diesel_async::pooled_connection::deadpool::Object<diesel_async::AsyncPgConnection>;
 
 /// The namespace under which the `PRIMARY_TABLES` are mapped into each
 /// shard
@@ -180,6 +184,7 @@ impl PoolState {
         // We just tried to set up the pool; if it is still not set up and
         // we didn't have an error, it means the database is not available
         if self.needs_setup() {
+            error!(self.logger, "Database is not available, setup did not work");
             return Err(StoreError::DatabaseUnavailable);
         } else {
             Ok(pool)
@@ -424,6 +429,10 @@ impl PoolInner {
             map.insert("shard".to_string(), shard.to_string());
             map
         };
+        // Note: deadpool provides built-in metrics via pool.status()
+        // The r2d2-style ErrorHandler and EventHandler are not needed with deadpool.
+        // Metrics can be obtained from pool.status() and custom hooks can be added
+        // to the pool builder if needed.
         let error_counter = registry
             .global_counter(
                 "store_connection_error_count",
@@ -450,40 +459,59 @@ impl PoolInner {
             registry.cheap_clone(),
             wait_stats.clone(),
             const_labels.clone(),
-            state_tracker,
+            state_tracker.clone(),
         ));
 
         // Connect to Postgres
-        let conn_manager = AsyncDieselConnectionManager::new(postgres_url.clone());
-        crit!(
-            logger_pool,
-            "Unfinished: need to replicate min_idle with mobc"
-        );
-        let _min_idle = ENV_VARS.store.connection_min_idle.filter(|min_idle| {
-            if *min_idle <= pool_size {
-                true
-            } else {
-                warn!(
-                    logger_pool,
-                    "Configuration error: min idle {} exceeds pool size {}, ignoring min idle",
-                    min_idle,
-                    pool_size
-                );
-                false
-            }
-        });
-        let builder: mobc::Builder<_> = mobc::Pool::builder()
-            .get_timeout(Some(ENV_VARS.store.connection_timeout))
-            .max_open(pool_size as u64)
-            .max_idle_lifetime(Some(ENV_VARS.store.connection_idle_timeout));
-        let pool = builder.build(conn_manager);
+        let conn_manager = {
+            let mut config = diesel_async::pooled_connection::ManagerConfig::default();
+            config.recycling_method = diesel_async::pooled_connection::RecyclingMethod::Verified;
+            AsyncDieselConnectionManager::new_with_config(postgres_url.clone(), config)
+        };
+
+        // Note: deadpool does not support min_idle configuration
+        if let Some(min_idle) = ENV_VARS.store.connection_min_idle {
+            warn!(
+                logger_pool,
+                "min_idle configuration ({}) is not supported by deadpool and will be ignored",
+                min_idle
+            );
+        }
+
+        let timeouts = Timeouts {
+            wait: Some(ENV_VARS.store.connection_timeout),
+            create: Some(ENV_VARS.store.connection_timeout),
+            recycle: Some(ENV_VARS.store.connection_timeout),
+        };
+
+        // The post_create and post_recycle hooks are only called when
+        // create and recycle succeed; we can therefore mark the pool
+        // available
+        let pool = AsyncPool::builder(conn_manager)
+            .max_size(pool_size as usize)
+            .timeouts(timeouts)
+            .runtime(Runtime::Tokio1)
+            .post_create(state_tracker.mark_available_hook())
+            .post_recycle(state_tracker.mark_available_hook())
+            .build()
+            .expect("failed to create connection pool");
+
         let fdw_pool = fdw_pool_size.map(|pool_size| {
             let conn_manager = AsyncDieselConnectionManager::new(postgres_url.clone());
-            let builder = mobc::Pool::builder()
-                .get_timeout(Some(ENV_VARS.store.connection_timeout))
-                .max_open(pool_size as u64)
-                .max_idle_lifetime(Some(FDW_IDLE_TIMEOUT));
-            builder.build(conn_manager)
+            let fdw_timeouts = Timeouts {
+                wait: Some(ENV_VARS.store.connection_timeout),
+                create: None,
+                recycle: Some(FDW_IDLE_TIMEOUT),
+            };
+
+            AsyncPool::builder(conn_manager)
+                .max_size(pool_size as usize)
+                .timeouts(fdw_timeouts)
+                .runtime(Runtime::Tokio1)
+                .post_create(state_tracker.mark_available_hook())
+                .post_recycle(state_tracker.mark_available_hook())
+                .build()
+                .expect("failed to create fdw connection pool")
         });
 
         info!(logger_store, "Pool successfully connected to Postgres");
@@ -570,7 +598,12 @@ impl PoolInner {
         let Ok(fdw_pool) = self.fdw_pool(logger) else {
             return None;
         };
-        let Ok(conn) = fdw_pool.get_timeout(timeout).await else {
+        let timeouts = Timeouts {
+            wait: Some(timeout),
+            create: None,
+            recycle: None,
+        };
+        let Ok(conn) = fdw_pool.timeout_get(&timeouts).await else {
             return None;
         };
         Some(conn)
