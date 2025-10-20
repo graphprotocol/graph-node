@@ -492,13 +492,19 @@ fn deployment_sizes(
     "#,
     );
 
-    let rows = if sites.is_empty() {
-        diesel::sql_query(query).load::<SubgraphSizeRow>(conn)?
+    let result = if sites.is_empty() {
+        diesel::sql_query(query).load::<SubgraphSizeRow>(conn)
     } else {
         query.push_str(" WHERE ds.id = ANY($1)");
         diesel::sql_query(query)
             .bind::<Array<Integer>, _>(sites.iter().map(|site| site.id).collect::<Vec<_>>())
-            .load::<SubgraphSizeRow>(conn)?
+            .load::<SubgraphSizeRow>(conn)
+    };
+
+    let rows = match result {
+        Ok(rows) => rows,
+        Err(e) if e.to_string().contains("has not been populated") => Vec::new(),
+        Err(e) => return Err(e.into()),
     };
 
     let mut sizes: HashMap<DeploymentId, status::SubgraphSize> = HashMap::new();
