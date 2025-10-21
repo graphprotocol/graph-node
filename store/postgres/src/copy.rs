@@ -868,6 +868,8 @@ impl CopyTableWorker {
     }
 }
 
+type WorkerFuture = Pin<Box<dyn Future<Output = WorkerResult> + Send>>;
+
 /// A helper to manage the workers that are copying data. Besides the actual
 /// workers it also keeps a worker that wakes us up periodically to give us
 /// a chance to create more workers if there are database connections
@@ -875,7 +877,7 @@ impl CopyTableWorker {
 struct Workers {
     /// The list of workers that are currently running. This will always
     /// include a future that wakes us up periodically
-    futures: Vec<Pin<Box<dyn Future<Output = WorkerResult>>>>,
+    futures: Vec<WorkerFuture>,
 }
 
 impl Workers {
@@ -885,7 +887,7 @@ impl Workers {
         }
     }
 
-    fn add(&mut self, worker: Pin<Box<dyn Future<Output = WorkerResult>>>) {
+    fn add(&mut self, worker: WorkerFuture) {
         self.futures.push(worker);
     }
 
@@ -908,7 +910,7 @@ impl Workers {
         result
     }
 
-    fn waker() -> Pin<Box<dyn Future<Output = WorkerResult>>> {
+    fn waker() -> WorkerFuture {
         let sleep = tokio::time::sleep(ENV_VARS.store.batch_target_duration);
         Box::pin(sleep.map(|()| WorkerResult::Wake))
     }
@@ -1057,7 +1059,7 @@ impl Connection {
         &mut self,
         state: &mut CopyState,
         progress: &Arc<CopyProgress>,
-    ) -> Option<Pin<Box<dyn Future<Output = WorkerResult>>>> {
+    ) -> Option<WorkerFuture> {
         let Some(conn) = self.conn.take() else {
             return None;
         };
@@ -1079,7 +1081,7 @@ impl Connection {
         &mut self,
         state: &mut CopyState,
         progress: &Arc<CopyProgress>,
-    ) -> Option<Pin<Box<dyn Future<Output = WorkerResult>>>> {
+    ) -> Option<WorkerFuture> {
         // It's important that we get the connection before the table since
         // we remove the table from the state and could drop it otherwise
         let Some(conn) = self
