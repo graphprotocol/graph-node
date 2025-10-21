@@ -97,7 +97,7 @@ impl std::fmt::Display for IdVal {
 }
 
 #[derive(Clone, Copy, Debug)]
-enum IdType {
+pub enum IdType {
     String,
     Bytes,
     Int8,
@@ -157,7 +157,7 @@ impl IdType {
         }
     }
 
-    fn deployment_id(&self) -> &str {
+    pub fn deployment_id(&self) -> &str {
         match self {
             IdType::String => "graphqlTestsQuery",
             IdType::Bytes => "graphqlTestsQueryBytes",
@@ -176,7 +176,7 @@ async fn setup_readonly(store: &Store) -> DeploymentLocator {
 /// data. If the `id` is the same as `id_type.deployment_id()`, the test
 /// must not modify the deployment in any way as these are reused for other
 /// tests that expect pristine data
-async fn setup(
+pub async fn setup(
     store: &Store,
     id: &str,
     features: BTreeSet<SubgraphFeature>,
