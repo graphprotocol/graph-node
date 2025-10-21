@@ -123,7 +123,7 @@ impl<S: Store> IndexNodeResolver<S> {
     }
 
     fn resolve_indexing_statuses(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
-        let deployments = field
+        let deployments: Vec<String> = field
             .argument_value("subgraphs")
             .map(|value| match value {
                 r::Value::List(ids) => ids
@@ -135,7 +135,7 @@ impl<S: Store> IndexNodeResolver<S> {
                     .collect(),
                 _ => unreachable!(),
             })
-            .unwrap_or_else(Vec::new);
+            .unwrap();
 
         if deployments.is_empty() {
             return Ok(r::Value::List(vec![]));
@@ -169,6 +169,35 @@ impl<S: Store> IndexNodeResolver<S> {
             .status(status::Filter::SubgraphName(subgraph_name))?;
 
         Ok(infos.into_value())
+    }
+
+    fn resolve_indexing_status_for_version(
+        &self,
+        field: &a::Field,
+
+        // If `true` return the current version, if `false` return the pending version.
+        current_version: bool,
+    ) -> Result<r::Value, QueryExecutionError> {
+        // We can safely unwrap because the argument is non-nullable and has been validated.
+        let subgraph_name = field.get_required::<String>("subgraphName").unwrap();
+
+        debug!(
+            self.logger,
+            "Resolve indexing status for subgraph name";
+            "name" => &subgraph_name,
+            "current_version" => current_version,
+        );
+
+        let infos = self.store.status(status::Filter::SubgraphVersion(
+            subgraph_name,
+            current_version,
+        ))?;
+
+        Ok(infos
+            .into_iter()
+            .next()
+            .map(|info| info.into_value())
+            .unwrap_or(r::Value::Null))
     }
 
     fn resolve_entity_changes_in_block(
@@ -441,35 +470,6 @@ impl<S: Store> IndexNodeResolver<S> {
         }
 
         Ok(r::Value::List(public_poi_results))
-    }
-
-    fn resolve_indexing_status_for_version(
-        &self,
-        field: &a::Field,
-
-        // If `true` return the current version, if `false` return the pending version.
-        current_version: bool,
-    ) -> Result<r::Value, QueryExecutionError> {
-        // We can safely unwrap because the argument is non-nullable and has been validated.
-        let subgraph_name = field.get_required::<String>("subgraphName").unwrap();
-
-        debug!(
-            self.logger,
-            "Resolve indexing status for subgraph name";
-            "name" => &subgraph_name,
-            "current_version" => current_version,
-        );
-
-        let infos = self.store.status(status::Filter::SubgraphVersion(
-            subgraph_name,
-            current_version,
-        ))?;
-
-        Ok(infos
-            .into_iter()
-            .next()
-            .map(|info| info.into_value())
-            .unwrap_or(r::Value::Null))
     }
 
     async fn validate_and_extract_features<C, SgStore>(
