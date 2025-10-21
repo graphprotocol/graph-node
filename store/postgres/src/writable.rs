@@ -29,7 +29,7 @@ use graph::{
     components::store::{self, write::EntityOp, WritableStore as WritableStoreTrait},
     data::subgraph::schema::SubgraphError,
     prelude::{
-        BlockPtr, DeploymentHash, EntityModification, Error, Logger, StopwatchMetrics, StoreError,
+        BlockPtr, DeploymentHash, EntityModification, Logger, StopwatchMetrics, StoreError,
         StoreEvent, UnfailOutcome, ENV_VARS,
     },
     slog::error,
@@ -1675,11 +1675,8 @@ impl WritableStoreTrait for WritableStore {
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
         let store = self.store.cheap_clone();
         let logger = logger.cheap_clone();
-        graph::spawn_blocking_allow_panic(move || {
-            graph::block_on(store.start_subgraph_deployment(&logger))
-        })
-        .await
-        .map_err(Error::from)??;
+
+        store.start_subgraph_deployment(&logger).await?;
 
         // Refresh all in memory state in case this instance was used before
         *self.block_ptr.lock().unwrap() = self.store.block_ptr().await?;
