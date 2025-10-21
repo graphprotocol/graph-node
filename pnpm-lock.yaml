@@ -8,6 +8,15 @@ importers:
 
   .: {}
 
+  tests/integration-tests/address-corruption:
+    devDependencies:
+      '@graphprotocol/graph-cli':
+        specifier: 0.97.1
+        version: 0.97.1(@types/node@24.3.0)(bufferutil@4.0.9)(typescript@5.9.2)(utf-8-validate@5.0.10)(zod@3.25.76)
+      '@graphprotocol/graph-ts':
+        specifier: 0.37.0
+        version: 0.37.0
+
   tests/integration-tests/base:
     devDependencies:
       '@graphprotocol/graph-cli':
@@ -469,6 +478,9 @@ packages:
 
   '@graphprotocol/graph-ts@0.36.0-alpha-20241129215038-b75cda9':
     resolution: {integrity: sha512-DPLx/owGh38n6HCQaxO6rk40zfYw3EYqSvyHp+s3ClMCxQET9x4/hberkOXrPaxxiPxgUTVa6ie4mwc7GTroEw==}
+
+  '@graphprotocol/graph-ts@0.37.0':
+    resolution: {integrity: sha512-3xp/sO8zFDBkX44ydGB87ow5Cyrfr/SAm/cWzIRzUVL7ROw0KUyFBG1xj4KKlMnAod7/RL99zChYquC15H4Oqg==}
 
   '@inquirer/checkbox@4.2.1':
     resolution: {integrity: sha512-bevKGO6kX1eM/N+pdh9leS5L7TBF4ICrzi9a+cbWkrxeAeIcwlo/7OfWGCDERdRCI2/Q6tjltX4bt07ALHDwFw==}
@@ -1020,6 +1032,11 @@ packages:
     resolution: {integrity: sha512-fwOQNZVTMga5KRsfY80g7cpOl4PsFQczMwHzdtgoqLXaYhkhavufKb0sB0l3T1DUxpAufA0KNhlbpuuhZUwxMA==}
     hasBin: true
 
+  assemblyscript@0.27.31:
+    resolution: {integrity: sha512-Ra8kiGhgJQGZcBxjtMcyVRxOEJZX64kd+XGpjWzjcjgxWJVv+CAQO0aDBk4GQVhjYbOkATarC83mHjAVGtwPBQ==}
+    engines: {node: '>=16', npm: '>=7'}
+    hasBin: true
+
   assert-plus@1.0.0:
     resolution: {integrity: sha512-NfJ4UzBCcQGLDlQq7nHxH+tv3kyZ0hHQqF5BO6J7tNJeP5do1llPr8dZ8zHonfhAu0PHAdMkSo+8o0wxg9lZWw==}
     engines: {node: '>=0.8'}
@@ -1085,6 +1102,10 @@ packages:
 
   binaryen@102.0.0-nightly.20211028:
     resolution: {integrity: sha512-GCJBVB5exbxzzvyt8MGDv/MeUjs6gkXDvf4xOIItRBptYl0Tz5sm1o/uG95YK0L0VeG5ajDu3hRtkBP2kzqC5w==}
+    hasBin: true
+
+  binaryen@116.0.0-nightly.20240114:
+    resolution: {integrity: sha512-0GZrojJnuhoe+hiwji7QFaL3tBlJoA+KFUN7ouYSDGZLSo9CKM8swQX8n/UcbR0d1VuZKU+nhogNzv423JEu5A==}
     hasBin: true
 
   bl@1.2.3:
@@ -3714,6 +3735,10 @@ snapshots:
     dependencies:
       assemblyscript: 0.19.10
 
+  '@graphprotocol/graph-ts@0.37.0':
+    dependencies:
+      assemblyscript: 0.27.31
+
   '@inquirer/checkbox@4.2.1(@types/node@24.3.0)':
     dependencies:
       '@inquirer/core': 10.1.15(@types/node@24.3.0)
@@ -4499,6 +4524,11 @@ snapshots:
       long: 5.3.2
       source-map-support: 0.5.21
 
+  assemblyscript@0.27.31:
+    dependencies:
+      binaryen: 116.0.0-nightly.20240114
+      long: 5.3.2
+
   assert-plus@1.0.0: {}
 
   astral-regex@2.0.0: {}
@@ -4574,6 +4604,8 @@ snapshots:
   binaryen@101.0.0-nightly.20210723: {}
 
   binaryen@102.0.0-nightly.20211028: {}
+
+  binaryen@116.0.0-nightly.20240114: {}
 
   bl@1.2.3:
     dependencies:
