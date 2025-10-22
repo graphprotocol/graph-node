@@ -546,8 +546,6 @@ fn test_clear_stale_call_cache() {
         let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
         let return_value: [u8; 3] = [7, 8, 9];
 
-        let mut conn = PRIMARY_POOL.get().await.unwrap();
-
         // Insert a call cache entry, otherwise it will hit an early return and won't test all queries
         let call = call::Request::new(address, call.to_vec(), 0);
         chain_store
@@ -569,15 +567,18 @@ fn test_clear_stale_call_cache() {
         assert!(ret.is_some());
 
         // Now we need to update the accessed_at timestamp to be stale, so it gets deleted
-        // Get namespace from chains table
-        let namespace: String = diesel::sql_query(format!(
-            "SELECT namespace FROM public.chains WHERE name = '{}'",
-            chain_store.chain
-        ))
-        .get_result::<Namespace>(&mut conn)
-        .await
-        .unwrap()
-        .namespace;
+        // Get namespace from chains table in the primary
+        let namespace: String = {
+            let mut conn = PRIMARY_POOL.get().await.unwrap();
+            diesel::sql_query(format!(
+                "SELECT namespace FROM public.chains WHERE name = '{}'",
+                chain_store.chain
+            ))
+            .get_result::<Namespace>(&mut conn)
+            .await
+            .unwrap()
+            .namespace
+        };
 
         // Determine the correct meta table name
         let meta_table: String = match namespace.as_str() {
@@ -585,14 +586,18 @@ fn test_clear_stale_call_cache() {
             _ => format!("{namespace}.call_meta"),
         };
 
-        // Update accessed_at to be 8 days ago, so it's stale for a 7 day threshold
-        let _ = diesel::sql_query(format!(
-            "UPDATE {meta_table} SET accessed_at = NOW() - INTERVAL '8 days' WHERE contract_address = $1"
-        )).bind::<diesel::sql_types::Bytea, _>(address.as_bytes())
-        .execute(&mut conn)
-        .await
-        .unwrap();
-
+        // Update accessed_at to be 8 days ago, so it's stale for a 7 day
+        // threshold in the shard where the chain lives
+        {
+            let mut conn = chain_store.get_conn_for_test().await.unwrap();
+            diesel::sql_query(format!(
+                "UPDATE {meta_table} SET accessed_at = NOW() - INTERVAL '8 days' WHERE contract_address = $1"
+            ))
+            .bind::<diesel::sql_types::Bytea, _>(address.as_bytes())
+            .execute(&mut conn)
+            .await
+            .unwrap();
+        }
         let result = chain_store.clear_stale_call_cache(7, None).await;
         assert!(result.is_ok());
 

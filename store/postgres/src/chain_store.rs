@@ -2305,6 +2305,14 @@ impl ChainStore {
         })
         .await
     }
+
+    /// Helper for tests that need to directly modify the tables for the
+    /// chain store
+    #[cfg(debug_assertions)]
+    pub async fn get_conn_for_test(&self) -> Result<AsyncPgConnection, Error> {
+        let conn = self.pool.get().await?;
+        Ok(conn)
+    }
 }
 
 fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<ExtendedBlockPtr, Error> {
