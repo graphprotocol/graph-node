@@ -38,8 +38,10 @@ pub mod env;
 pub mod ipfs;
 
 /// Wrapper for spawning tasks that abort on panic, which is our default.
-mod task_spawn;
-pub use task_spawn::{
+mod tokio;
+#[cfg(debug_assertions)]
+pub use tokio::TEST_RUNTIME;
+pub use tokio::{
     block_on, spawn, spawn_allow_panic, spawn_blocking, spawn_blocking_allow_panic, spawn_thread,
 };
 

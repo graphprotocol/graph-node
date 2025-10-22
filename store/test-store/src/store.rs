@@ -37,7 +37,6 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::time::Instant;
 use std::{marker::PhantomData, sync::Mutex};
-use tokio::runtime::{Builder, Runtime};
 use web3::types::H256;
 
 pub const NETWORK_NAME: &str = "fake_network";
@@ -54,8 +53,6 @@ lazy_static! {
         None => Logger::root(slog::Discard, o!()),
     };
     static ref SEQ_LOCK: Mutex<()> = Mutex::new(());
-    pub static ref STORE_RUNTIME: Runtime =
-        Builder::new_multi_thread().enable_all().build().unwrap();
     pub static ref METRICS_REGISTRY: Arc<MetricsRegistry> = Arc::new(MetricsRegistry::mock());
     pub static ref LOAD_MANAGER: Arc<LoadManager> = Arc::new(LoadManager::new(
         &LOGGER,
@@ -119,7 +116,7 @@ where
         Err(err) => err.into_inner(),
     };
 
-    STORE_RUNTIME.handle().block_on(async {
+    graph::TEST_RUNTIME.handle().block_on(async {
         let store = STORE.clone();
         test(store).await
     })
@@ -630,7 +627,7 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
         .unwrap_or_else(|_| panic!("config is not valid (file={:?})", &opt.config));
     let registry = Arc::new(MetricsRegistry::mock());
     std::thread::spawn(move || {
-        STORE_RUNTIME.handle().block_on(async {
+        graph::TEST_RUNTIME.handle().block_on(async {
             let builder = StoreBuilder::new(&LOGGER, &NODE_ID, &config, None, registry).await;
             let subscription_manager = builder.subscription_manager();
             let primary_pool = builder.primary_pool();
