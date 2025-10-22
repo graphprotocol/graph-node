@@ -2,12 +2,12 @@ use anyhow::{anyhow, Context, Result};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use graph::prelude::{DeploymentHash, SubgraphName};
 use graph::slog::{self, error, info, Logger};
-use graph::tokio::sync::mpsc::Sender;
 use notify::{recommended_watcher, Event, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
+use tokio::sync::mpsc::Sender;
 
 const WATCH_DELAY: Duration = Duration::from_secs(5);
 const DEFAULT_BUILD_DIR: &str = "build";

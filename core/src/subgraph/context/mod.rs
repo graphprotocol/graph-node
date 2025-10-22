@@ -25,10 +25,10 @@ use graph::{
         TriggerProcessor,
     },
     slog::Logger,
-    tokio::sync::mpsc,
 };
 use std::sync::{Arc, RwLock};
 use std::{collections::HashMap, time::Instant};
+use tokio::sync::mpsc;
 
 use self::instance::SubgraphInstance;
 use super::Decoder;
@@ -281,7 +281,7 @@ impl OffchainMonitor {
     }
 
     pub fn ready_offchain_events(&mut self) -> Result<Vec<offchain::TriggerData>, Error> {
-        use graph::tokio::sync::mpsc::error::TryRecvError;
+        use tokio::sync::mpsc::error::TryRecvError;
 
         let mut triggers = vec![];
         loop {

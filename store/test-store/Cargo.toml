@@ -17,6 +17,7 @@ hex-literal = "1.0"
 diesel = { workspace = true }
 diesel-async = { workspace = true }
 prost-types = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 hex = "0.4.3"

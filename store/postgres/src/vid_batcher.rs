@@ -333,7 +333,7 @@ impl VidRange {
 
 #[cfg(test)]
 mod tests {
-    use graph::tokio;
+    use tokio;
 
     use super::*;
 

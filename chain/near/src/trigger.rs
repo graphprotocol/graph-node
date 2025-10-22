@@ -154,6 +154,8 @@ pub struct ReceiptWithOutcome {
 mod tests {
     use std::convert::TryFrom;
 
+    use tokio;
+
     use super::*;
 
     use graph::{
@@ -162,7 +164,6 @@ mod tests {
         data::subgraph::API_VERSION_0_0_5,
         prelude::{hex, BigInt},
         runtime::{gas::GasCounter, DeterministicHostError, HostExportError},
-        tokio,
         util::mem::init_slice,
     };
 

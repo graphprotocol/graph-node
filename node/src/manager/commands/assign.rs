@@ -1,8 +1,8 @@
 use graph::components::store::DeploymentLocator;
 use graph::prelude::{anyhow::anyhow, Error, NodeId, StoreEvent};
-use graph::tokio;
 use graph_store_postgres::{command_support::catalog, ConnectionPool, NotificationSender};
 use std::time::Duration;
+use tokio;
 
 use crate::manager::deployment::DeploymentSearch;
 

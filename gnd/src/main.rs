@@ -9,11 +9,11 @@ use graph::{
     log::logger,
     prelude::{CheapClone, DeploymentHash, LinkResolver, SubgraphName},
     slog::{error, info, Logger},
-    tokio::{self, sync::mpsc},
 };
 use graph_core::polling_monitor::ipfs_service;
 use graph_node::{launcher, opt::Opt};
 use lazy_static::lazy_static;
+use tokio::{self, sync::mpsc};
 
 use gnd::watcher::{deploy_all_subgraphs, parse_manifest_args, watch_subgraphs};
 

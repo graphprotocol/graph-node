@@ -2,6 +2,8 @@ use detail::DeploymentDetail;
 use diesel::sql_query;
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection as _, RunQueryDsl, SimpleAsyncConnection};
+use tokio::task::JoinHandle;
+
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
@@ -20,7 +22,6 @@ use graph::derive::CheapClone;
 use graph::futures03::FutureExt;
 use graph::prelude::{ApiVersion, EntityOperation, PoolWaitStats, SubgraphDeploymentEntity};
 use graph::semver::Version;
-use graph::tokio::task::JoinHandle;
 use itertools::Itertools;
 use lru_time_cache::LruCache;
 use rand::{rng, seq::SliceRandom};
@@ -52,7 +53,7 @@ use crate::primary::{DeploymentId, Primary};
 use crate::relational::index::{CreateIndex, IndexList, Method};
 use crate::relational::{self, Layout, LayoutCache, SqlName, Table, STATEMENT_TIMEOUT};
 use crate::relational_queries::{FromEntityData, JSONData};
-use crate::{advisory_lock, catalog, retry, AsyncConnection as _, AsyncPgConnection};
+use crate::{advisory_lock, catalog, retry, AsyncPgConnection};
 use crate::{detail, ConnectionPool};
 use crate::{dynds, primary::Site};
 
@@ -301,7 +302,7 @@ impl DeploymentStore {
 
     pub(crate) async fn execute_sql(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         query: &str,
     ) -> Result<Vec<SqlQueryObject>, QueryExecutionError> {
         let query = format!(
@@ -311,7 +312,7 @@ impl DeploymentStore {
         let query = diesel::sql_query(query);
 
         let results = conn
-            .transaction_async(|conn| {
+            .transaction(|conn| {
                 async {
                     if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
                         conn.batch_execute(timeout_sql).await?;

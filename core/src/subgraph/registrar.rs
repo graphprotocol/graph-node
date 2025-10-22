@@ -18,9 +18,9 @@ use graph::prelude::{
     CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
     SubgraphRegistrar as SubgraphRegistrarTrait, *,
 };
-use graph::tokio_retry::Retry;
 use graph::util::futures::retry_strategy;
 use graph::util::futures::RETRY_DEFAULT_LIMIT;
+use tokio_retry::Retry;
 
 pub struct SubgraphRegistrar<P, S, SM> {
     logger: Logger,

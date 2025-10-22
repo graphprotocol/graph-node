@@ -1268,8 +1268,10 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
 #[cfg(test)]
 mod tests {
+    use tokio;
+
     use graph::blockchain::mock::MockChainStore;
-    use graph::{slog, tokio};
+    use graph::slog;
 
     use super::*;
     use std::sync::Arc;

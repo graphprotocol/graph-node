@@ -13,6 +13,8 @@ graph-chain-near = { path = "../chain/near" }
 graph-chain-substreams = { path = "../chain/substreams" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 serde_yaml = { workspace = true }
+tokio = { workspace = true }
+tokio-retry = { workspace = true }
 # Switch to crates.io once tower 0.5 is released
 tower = { git = "https://github.com/tower-rs/tower.git", features = ["full"] }
 thiserror = { workspace = true }

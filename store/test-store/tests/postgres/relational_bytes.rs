@@ -1,11 +1,13 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel_async::SimpleAsyncConnection;
+use tokio;
+
 use graph::components::store::write::RowGroup;
 use graph::data::store::scalar;
 use graph::data_source::CausalityRegion;
+use graph::entity;
 use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry, StoreError};
 use graph::schema::{EntityKey, EntityType, InputSchema};
-use graph::{entity, tokio};
 use graph_store_postgres::AsyncPgConnection;
 use hex_literal::hex;
 use lazy_static::lazy_static;

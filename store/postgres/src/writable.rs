@@ -20,9 +20,6 @@ use graph::prelude::{
 };
 use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph::slog::{debug, info, warn};
-use graph::tokio::select;
-use graph::tokio::sync::Notify;
-use graph::tokio::task::JoinHandle;
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
     cheap_clone::CheapClone,
@@ -35,6 +32,9 @@ use graph::{
     slog::error,
 };
 use store::StoredDynamicDataSource;
+use tokio::select;
+use tokio::sync::Notify;
+use tokio::task::JoinHandle;
 
 use crate::deployment_store::DeploymentStore;
 use crate::primary::DeploymentId;
@@ -933,7 +933,7 @@ impl Queue {
                         // batch should be processed or after some time
                         // passed. The latter is just for safety in case
                         // there is a mistake with notifications.
-                        let sleep = graph::tokio::time::sleep(ENV_VARS.store.write_batch_duration);
+                        let sleep = tokio::time::sleep(ENV_VARS.store.write_batch_duration);
                         let notify = batch_stop_notify.notified();
                         select!(
                             () = sleep => (),
