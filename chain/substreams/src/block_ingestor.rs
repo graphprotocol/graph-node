@@ -13,7 +13,6 @@ use graph::components::store::ChainHeadStore;
 use graph::prelude::MetricsRegistry;
 use graph::slog::trace;
 use graph::substreams::Package;
-use graph::tokio_stream::StreamExt;
 use graph::{
     blockchain::block_stream::BlockStreamEvent,
     cheap_clone::CheapClone,
@@ -21,6 +20,7 @@ use graph::{
     util::backoff::ExponentialBackoff,
 };
 use prost::Message;
+use tokio_stream::StreamExt;
 
 const SUBSTREAMS_HEAD_TRACKER_BYTES: &[u8; 89935] = include_bytes!(
     "../../../substreams/substreams-head-tracker/substreams-head-tracker-v1.0.0.spkg"

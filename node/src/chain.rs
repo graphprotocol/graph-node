@@ -26,13 +26,13 @@ use graph::log::factory::LoggerFactory;
 use graph::prelude::anyhow;
 use graph::prelude::MetricsRegistry;
 use graph::slog::{debug, info, o, warn, Logger};
-use graph::tokio::time::timeout;
 use graph::url::Url;
 use graph_chain_ethereum::{self as ethereum, Transport};
 use graph_store_postgres::{BlockStore, ChainHeadUpdateListener};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use tokio::time::timeout;
 
 // The status of a provider that we learned from connecting to it
 #[derive(PartialEq)]

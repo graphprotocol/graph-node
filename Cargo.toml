@@ -93,6 +93,9 @@ syn = { version = "2.0.106", features = ["full"] }
 test-store = { path = "./store/test-store" }
 thiserror = "2.0.16"
 tokio = { version = "1.45.1", features = ["full"] }
+tokio-stream = { version = "0.1.15", features = ["sync"] }
+tokio-retry = "0.3.0"
+
 tonic = { version = "0.12.3", features = ["tls-roots", "gzip"] }
 tonic-build = { version = "0.12.3", features = ["prost"] }
 tower-http = { version = "0.6.6", features = ["cors"] }

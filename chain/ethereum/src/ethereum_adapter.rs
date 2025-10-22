@@ -1,5 +1,8 @@
 use async_trait::async_trait;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
+use tokio::sync::RwLock;
+use tokio::time::timeout;
+
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
 use graph::blockchain::ChainIdentifier;
@@ -23,8 +26,6 @@ use graph::prelude::ethabi::Token;
 use graph::prelude::tokio::try_join;
 use graph::prelude::web3::types::U256;
 use graph::slog::o;
-use graph::tokio::sync::RwLock;
-use graph::tokio::time::timeout;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
@@ -2368,7 +2369,7 @@ async fn fetch_individual_receipts_with_retry(
     }
 
     // Use a stream to fetch receipts individually
-    let hash_stream = graph::tokio_stream::iter(hashes);
+    let hash_stream = tokio_stream::iter(hashes);
     let receipt_stream = hash_stream
         .map(move |tx_hash| {
             fetch_transaction_receipt_with_retry(
@@ -2380,7 +2381,7 @@ async fn fetch_individual_receipts_with_retry(
         })
         .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls);
 
-    graph::tokio_stream::StreamExt::collect::<Result<Vec<Arc<TransactionReceipt>>, IngestorError>>(
+    tokio_stream::StreamExt::collect::<Result<Vec<Arc<TransactionReceipt>>, IngestorError>>(
         receipt_stream,
     )
     .await

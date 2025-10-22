@@ -28,6 +28,8 @@ rand.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
 anyhow = "1.0.100"
 git-testament = "0.2.6"
 itertools = "0.14.0"

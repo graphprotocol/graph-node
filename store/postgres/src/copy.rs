@@ -31,6 +31,8 @@ use diesel_async::{
     AsyncConnection,
 };
 use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
+use tokio;
+
 use graph::{
     futures03::{
         future::{select_all, BoxFuture},
@@ -42,7 +44,6 @@ use graph::{
     },
     schema::EntityType,
     slog::error,
-    tokio,
 };
 use itertools::Itertools;
 

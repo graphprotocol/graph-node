@@ -109,7 +109,7 @@ mod test {
     use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
     use graph::ipfs::{IpfsContext, IpfsMetrics, IpfsRpcClient, ServerAddress};
     use graph::log::discard;
-    use graph::tokio;
+    use tokio;
     use tower::ServiceExt;
     use wiremock::matchers as m;
     use wiremock::Mock;

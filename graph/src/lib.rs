@@ -62,9 +62,6 @@ pub use slog;
 pub use sqlparser;
 pub use stable_hash;
 pub use stable_hash_legacy;
-pub use tokio;
-pub use tokio_retry;
-pub use tokio_stream;
 pub use url;
 
 /// A prelude that makes all system component traits and data types available.

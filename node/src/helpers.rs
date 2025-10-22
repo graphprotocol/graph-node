@@ -5,12 +5,12 @@ use graph::prelude::{
     BlockPtr, DeploymentHash, NodeId, SubgraphRegistrarError, SubgraphStore as SubgraphStoreTrait,
 };
 use graph::slog::{error, info, Logger};
-use graph::tokio::sync::mpsc::Receiver;
 use graph::{
     components::store::DeploymentLocator,
     prelude::{SubgraphName, SubgraphRegistrar},
 };
 use graph_store_postgres::SubgraphStore;
+use tokio::sync::mpsc::Receiver;
 
 /// Cleanup a subgraph
 /// This is used to remove a subgraph before redeploying it when using the watch flag

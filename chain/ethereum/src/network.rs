@@ -309,6 +309,8 @@ impl EthereumNetworkAdapters {
 
 #[cfg(test)]
 mod tests {
+    use tokio;
+
     use graph::cheap_clone::CheapClone;
     use graph::components::network_provider::ProviderCheckStrategy;
     use graph::components::network_provider::ProviderManager;
@@ -320,7 +322,6 @@ mod tests {
         firehose::SubgraphLimit,
         prelude::MetricsRegistry,
         slog::{o, Discard, Logger},
-        tokio,
         url::Url,
     };
     use std::sync::Arc;

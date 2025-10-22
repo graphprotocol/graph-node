@@ -27,6 +27,7 @@ use diesel::sql_types::Text;
 use diesel::{debug_query, sql_query, OptionalExtension, QueryDsl, QueryResult};
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl, SimpleAsyncConnection};
+use tokio;
 
 use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::BlockTime;
@@ -36,12 +37,12 @@ use graph::data::graphql::TypeExt as _;
 use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
+use graph::internal_error;
 use graph::prelude::{q, EntityQuery, StopwatchMetrics, ENV_VARS};
 use graph::schema::{
     EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition, InputSchema,
 };
 use graph::slog::warn;
-use graph::{internal_error, tokio};
 use index::IndexList;
 use inflector::Inflector;
 use itertools::Itertools;

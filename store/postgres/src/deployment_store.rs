@@ -2,6 +2,8 @@ use detail::DeploymentDetail;
 use diesel::sql_query;
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection as _, RunQueryDsl, SimpleAsyncConnection};
+use tokio::task::JoinHandle;
+
 use graph::anyhow::Context;
 use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
@@ -19,7 +21,6 @@ use graph::derive::CheapClone;
 use graph::futures03::FutureExt;
 use graph::prelude::{ApiVersion, EntityOperation, PoolWaitStats, SubgraphDeploymentEntity};
 use graph::semver::Version;
-use graph::tokio::task::JoinHandle;
 use itertools::Itertools;
 use lru_time_cache::LruCache;
 use rand::{rng, seq::SliceRandom};
