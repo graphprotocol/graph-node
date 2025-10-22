@@ -1268,8 +1268,6 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
 
 #[cfg(test)]
 mod tests {
-    use tokio;
-
     use graph::blockchain::mock::MockChainStore;
     use graph::slog;
 
@@ -1288,7 +1286,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_fetch_unique_blocks_single_block() {
         let logger = Logger::root(slog::Discard, o!());
         let mut chain_store = MockChainStore::default();
@@ -1307,7 +1305,7 @@ mod tests {
         assert!(missing.is_empty());
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_fetch_unique_blocks_duplicate_blocks() {
         let logger = Logger::root(slog::Discard, o!());
         let mut chain_store = MockChainStore::default();
@@ -1330,7 +1328,7 @@ mod tests {
         assert_eq!(missing[0], 1);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_fetch_unique_blocks_missing_blocks() {
         let logger = Logger::root(slog::Discard, o!());
         let mut chain_store = MockChainStore::default();
@@ -1349,7 +1347,7 @@ mod tests {
         assert_eq!(missing, vec![2]);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_fetch_unique_blocks_multiple_valid_blocks() {
         let logger = Logger::root(slog::Discard, o!());
         let mut chain_store = MockChainStore::default();
@@ -1371,7 +1369,7 @@ mod tests {
         assert!(missing.is_empty());
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_fetch_unique_blocks_mixed_scenario() {
         let logger = Logger::root(slog::Discard, o!());
         let mut chain_store = MockChainStore::default();

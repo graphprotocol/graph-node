@@ -593,7 +593,7 @@ mod test {
     use graph::{
         blockchain::{block_stream::BlockWithTriggers, DataSource as _, TriggersAdapter as _},
         data::subgraph::LATEST_VERSION,
-        prelude::{tokio, Link},
+        prelude::Link,
         semver::Version,
         slog::{self, o, Logger},
     };
@@ -917,7 +917,7 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_trigger_filter_empty() {
         let account1: String = "account1".into();
 
@@ -935,7 +935,7 @@ mod test {
         assert_eq!(block_with_triggers.trigger_count(), 0);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_trigger_filter_every_block() {
         let account1: String = "account1".into();
 
@@ -961,7 +961,7 @@ mod test {
         assert_eq!(height, vec![1]);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_trigger_filter_every_receipt() {
         let account1: String = "account1".into();
 

@@ -1,6 +1,5 @@
 //! Test relational schemas that use `Bytes` to store ids
 use diesel_async::SimpleAsyncConnection;
-use tokio;
 
 use graph::components::store::write::RowGroup;
 use graph::data::store::scalar;
@@ -225,7 +224,7 @@ where
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn bad_id() {
     run_test(async |conn, layout| {
         async fn find(
@@ -269,7 +268,7 @@ async fn bad_id() {
     }).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn find() {
     run_test(async |mut conn, layout| {
         async fn find_entity(
@@ -300,7 +299,7 @@ async fn find() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn find_many() {
     run_test(async |mut conn, layout| {
         const ID: &str = "0xdeadbeef";
@@ -334,7 +333,7 @@ async fn find_many() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn update() {
     run_test(async |mut conn, layout| {
         insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone()).await;
@@ -365,7 +364,7 @@ async fn update() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn delete() {
     run_test(async |mut conn, layout| {
         const TWO_ID: &str = "deadbeef02";
@@ -465,7 +464,7 @@ async fn make_thing_tree(
     (root, child1, child2)
 }
 
-#[tokio::test]
+#[graph::test]
 async fn query() {
     async fn fetch(
         conn: &mut AsyncPgConnection,

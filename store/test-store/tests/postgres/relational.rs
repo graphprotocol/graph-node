@@ -4,7 +4,7 @@ use graph::components::store::write::{EntityModification, RowGroup};
 use graph::data::store::scalar;
 use graph::entity;
 use graph::prelude::{
-    o, slog, tokio, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
+    o, slog, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
     EntityOrder, EntityQuery, Logger, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
 };
 use graph::prelude::{BlockNumber, MetricsRegistry};
@@ -568,7 +568,7 @@ where
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn find() {
     run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
@@ -599,7 +599,7 @@ async fn find() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn insert_null_fulltext_fields() {
     run_test(async |conn, layout| {
         insert_entity(
@@ -625,7 +625,7 @@ async fn insert_null_fulltext_fields() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn update() {
     run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
@@ -660,7 +660,7 @@ async fn update() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn update_many() {
     run_test(async |conn, layout| {
         let mut one = SCALAR_ENTITY.clone();
@@ -759,7 +759,7 @@ async fn update_many() {
 }
 
 /// Test that we properly handle BigDecimal values with a negative scale.
-#[tokio::test]
+#[graph::test]
 async fn serialize_bigdecimal() {
     run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
@@ -798,7 +798,7 @@ async fn serialize_bigdecimal() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn enum_arrays() {
     // We had an issue where we would read an array of enums back as a
     // single string; for this test, we would get back the string
@@ -854,7 +854,7 @@ async fn count_scalar_entities(conn: &mut AsyncPgConnection, layout: &Layout) ->
         .len()
 }
 
-#[tokio::test]
+#[graph::test]
 async fn delete() {
     run_test(async |conn, layout| {
         insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
@@ -892,7 +892,7 @@ async fn delete() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn insert_many_and_delete_many() {
     run_test(async |conn, layout| {
         let one = SCALAR_ENTITY.clone();
@@ -923,7 +923,7 @@ async fn insert_many_and_delete_many() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn layout_cache() {
     run_test_with_conn(async |conn| {
         let id = DeploymentHash::new("primaryLayoutCache").unwrap();
@@ -976,7 +976,7 @@ async fn layout_cache() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn conflicting_entity() {
     // `id` is the id of an entity to create, `cat`, `dog`, and `ferret` are
     // the names of the types for which to check entity uniqueness
@@ -1040,7 +1040,7 @@ async fn conflicting_entity() {
     .await
 }
 
-#[tokio::test]
+#[graph::test]
 async fn revert_block() {
     async fn check_fred(conn: &mut AsyncPgConnection, layout: &Layout) {
         let id = "fred";
@@ -1254,7 +1254,7 @@ impl EasyOrder for EntityQuery {
     }
 }
 
-#[tokio::test]
+#[graph::test]
 #[should_panic(
     expected = "layout.query failed to execute query: FulltextQueryInvalidSyntax(\"syntax error in tsquery: \\\"Jono 'a\\\"\")"
 )]
@@ -1274,7 +1274,7 @@ async fn check_fulltext_search_syntax_error() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn check_block_finds() {
     run_test(async |mut conn, layout| {
         let checker = QueryChecker::new(&mut conn, layout).await;
@@ -1320,7 +1320,7 @@ async fn check_block_finds() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn check_find() {
     run_test(async |mut conn, layout| {
         // find with interfaces
@@ -1959,7 +1959,7 @@ impl<'a> FilterChecker<'a> {
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn check_filters() {
     let (a1, a2, a2b, a3) = ferrets();
 

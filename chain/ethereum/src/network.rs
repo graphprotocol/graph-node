@@ -309,8 +309,6 @@ impl EthereumNetworkAdapters {
 
 #[cfg(test)]
 mod tests {
-    use tokio;
-
     use graph::cheap_clone::CheapClone;
     use graph::components::network_provider::ProviderCheckStrategy;
     use graph::components::network_provider::ProviderManager;
@@ -385,7 +383,7 @@ mod tests {
         assert_eq!(true, &full_traces >= &full_traces);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn adapter_selector_selects_eth_call() {
         let metrics = Arc::new(EndpointMetrics::mock());
         let logger = graph::log::logger(true);
@@ -491,7 +489,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn adapter_selector_unlimited() {
         let metrics = Arc::new(EndpointMetrics::mock());
         let logger = graph::log::logger(true);
@@ -562,7 +560,7 @@ mod tests {
         assert_eq!(keep.iter().any(|a| !a.is_call_only()), false);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn adapter_selector_disable_call_only_fallback() {
         let metrics = Arc::new(EndpointMetrics::mock());
         let logger = graph::log::logger(true);
@@ -629,7 +627,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn adapter_selector_no_call_only_fallback() {
         let metrics = Arc::new(EndpointMetrics::mock());
         let logger = graph::log::logger(true);
@@ -675,7 +673,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn eth_adapter_selection_multiple_adapters() {
         let logger = Logger::root(Discard, o!());
         let unavailable_provider = "unavailable-provider";
@@ -788,7 +786,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn eth_adapter_selection_single_adapter() {
         let logger = Logger::root(Discard, o!());
         let unavailable_provider = "unavailable-provider";

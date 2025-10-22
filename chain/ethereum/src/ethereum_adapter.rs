@@ -2674,7 +2674,6 @@ mod tests {
     };
     use graph::blockchain::BlockPtr;
     use graph::prelude::ethabi::ethereum_types::U64;
-    use graph::prelude::tokio::{self};
     use graph::prelude::web3::transports::test::TestTransport;
     use graph::prelude::web3::types::{Address, Block, Bytes, H256};
     use graph::prelude::web3::Web3;
@@ -2722,7 +2721,7 @@ mod tests {
         );
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_check_block_receipts_support() {
         let mut transport = TestTransport::default();
 

@@ -57,7 +57,7 @@ mod tests {
         ContentPath::new(CID).unwrap()
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn retry_policy_none_disables_retries() {
         let counter = Arc::new(AtomicU64::new(0));
 
@@ -81,7 +81,7 @@ mod tests {
         assert!(matches!(err, IpfsError::RequestTimeout { .. }));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn retry_policy_networking_retries_only_network_related_errors() {
         let counter = Arc::new(AtomicU64::new(0));
 
@@ -116,7 +116,7 @@ mod tests {
         assert!(matches!(err, IpfsError::RequestTimeout { .. }));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn retry_policy_networking_stops_on_success() {
         let counter = Arc::new(AtomicU64::new(0));
 
@@ -150,7 +150,7 @@ mod tests {
         assert_eq!(counter.load(Ordering::SeqCst), 10);
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn retry_policy_non_deterministic_retries_all_non_deterministic_errors() {
         let counter = Arc::new(AtomicU64::new(0));
 
@@ -182,7 +182,7 @@ mod tests {
         assert!(matches!(err, IpfsError::ContentTooLarge { .. }));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn retry_policy_non_deterministic_stops_on_success() {
         let counter = Arc::new(AtomicU64::new(0));
 

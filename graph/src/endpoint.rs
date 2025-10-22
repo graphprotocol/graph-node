@@ -178,7 +178,7 @@ mod test {
         endpoint::{EndpointMetrics, ProviderName},
     };
 
-    #[tokio::test]
+    #[crate::test]
     async fn should_increment_and_reset() {
         let (a, b, c): (ProviderName, ProviderName, ProviderName) =
             ("a".into(), "b".into(), "c".into());

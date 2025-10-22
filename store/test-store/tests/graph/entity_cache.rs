@@ -191,7 +191,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
     mods
 }
 
-#[tokio::test]
+#[graph::test]
 async fn empty_cache_modifications() {
     let store = Arc::new(MockStore::new(BTreeMap::new()));
     let cache = EntityCache::new(store);
@@ -199,7 +199,7 @@ async fn empty_cache_modifications() {
     assert_eq!(result.unwrap().modifications, vec![]);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn insert_modifications() {
     // Return no entities from the store, forcing the cache to treat any `set`
     // operation as an insert.
@@ -244,7 +244,7 @@ fn entity_version_map(entity_type: &str, entities: Vec<Entity>) -> BTreeMap<Enti
     map
 }
 
-#[tokio::test]
+#[graph::test]
 async fn overwrite_modifications() {
     // Pre-populate the store with entities so that the cache treats
     // every set operation as an overwrite.
@@ -286,7 +286,7 @@ async fn overwrite_modifications() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn consecutive_modifications() {
     // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
@@ -327,7 +327,7 @@ async fn consecutive_modifications() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn check_vid_sequence() {
     let store = MockStore::new(BTreeMap::new());
     let store = Arc::new(store);
