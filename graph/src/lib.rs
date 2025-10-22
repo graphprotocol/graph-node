@@ -50,6 +50,7 @@ pub use bytes;
 pub use futures01;
 pub use futures03;
 pub use graph_derive as derive;
+pub use graph_derive::test;
 pub use http;
 pub use http0;
 pub use http_body_util;

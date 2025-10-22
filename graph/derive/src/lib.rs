@@ -3,7 +3,9 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput, Fields, Generics, Ident, Index, TypeParamBound};
+use syn::{
+    parse_macro_input, Data, DeriveInput, Fields, Generics, Ident, Index, ItemFn, TypeParamBound,
+};
 
 #[proc_macro_derive(CheapClone)]
 pub fn derive_cheap_clone(input: TokenStream) -> TokenStream {
@@ -232,6 +234,68 @@ pub fn derive_cache_weight(input: TokenStream) -> TokenStream {
     };
 
     // Hand the output tokens back to the compiler
+    TokenStream::from(expanded)
+}
+
+/// A proc macro attribute similar to `tokio::test` but uses the
+/// `TEST_RUNTIME` instead of creating a new runtime for each test.
+///
+/// # Example
+///
+/// ```ignore
+/// use graph::prelude::*;
+///
+/// #[graph::test]
+/// async fn my_test() {
+///     // Test code here
+/// }
+/// ```
+///
+/// The macro transforms the async test function to use
+/// `TEST_RUNTIME.block_on()`.
+///
+/// Note that for tests in the `graph` crate itself, the macro must be used
+/// as `#[crate::test]`
+#[proc_macro_attribute]
+pub fn test(args: TokenStream, item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as ItemFn);
+
+    if !args.is_empty() {
+        let msg = "the `#[graph::test]` attribute does not take any arguments";
+        return syn::Error::new(Span::call_site(), msg)
+            .to_compile_error()
+            .into();
+    }
+
+    let ret = &input.sig.output;
+    let name = &input.sig.ident;
+    let body = &input.block;
+    let attrs = &input.attrs;
+    let vis = &input.vis;
+
+    if input.sig.asyncness.is_none() {
+        let msg = "the `async` keyword is missing from the function declaration";
+        return syn::Error::new_spanned(&input.sig.fn_token, msg)
+            .to_compile_error()
+            .into();
+    }
+
+    let crate_name = std::env::var("CARGO_CRATE_NAME").unwrap();
+    let pkg_name = std::env::var("CARGO_PKG_NAME").unwrap();
+    let runtime = if crate_name == "graph" && pkg_name == "graph" {
+        quote! { crate::tokio::TEST_RUNTIME }
+    } else {
+        quote! { graph::TEST_RUNTIME }
+    };
+
+    let expanded = quote! {
+        #[::core::prelude::v1::test]
+        #(#attrs)*
+        #vis fn #name() #ret {
+            #runtime.block_on(async #body)
+        }
+    };
+
     TokenStream::from(expanded)
 }
 
