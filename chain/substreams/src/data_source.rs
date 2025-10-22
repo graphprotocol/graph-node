@@ -443,7 +443,7 @@ mod test {
         assert_eq!(ds, expected);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn data_source_conversion() {
         let ds: UnresolvedDataSource = serde_yaml::from_str(TEMPLATE_DATA_SOURCE).unwrap();
         let link_resolver: Arc<dyn LinkResolver> = Arc::new(NoopLinkResolver {});
@@ -477,7 +477,7 @@ mod test {
         assert_eq!(ds, expected);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn data_source_conversion_override_params() {
         let mut package = gen_package();
         let mut modules = package.modules.unwrap();

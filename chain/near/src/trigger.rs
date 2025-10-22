@@ -154,8 +154,6 @@ pub struct ReceiptWithOutcome {
 mod tests {
     use std::convert::TryFrom;
 
-    use tokio;
-
     use super::*;
 
     use graph::{
@@ -167,7 +165,7 @@ mod tests {
         util::mem::init_slice,
     };
 
-    #[tokio::test]
+    #[graph::test]
     async fn block_trigger_to_asc_ptr() {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Block(Arc::new(block()));
@@ -178,7 +176,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn receipt_trigger_to_asc_ptr() {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Receipt(Arc::new(ReceiptWithOutcome {

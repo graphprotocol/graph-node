@@ -1,5 +1,4 @@
 use crate::protobuf;
-use graph::prelude::tokio;
 use wasmtime::AsContextMut;
 
 use self::data::BadFixed;
@@ -145,22 +144,22 @@ pub mod data {
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn test_v5_manual_padding_manualy_fixed_ok() {
     manual_padding_manualy_fixed_ok(super::test::API_VERSION_0_0_5).await
 }
 
-#[tokio::test]
+#[graph::test]
 async fn test_v4_manual_padding_manualy_fixed_ok() {
     manual_padding_manualy_fixed_ok(super::test::API_VERSION_0_0_4).await
 }
 
-#[tokio::test]
+#[graph::test]
 async fn test_v5_manual_padding_should_fail() {
     manual_padding_should_fail(super::test::API_VERSION_0_0_5).await
 }
 
-#[tokio::test]
+#[graph::test]
 async fn test_v4_manual_padding_should_fail() {
     manual_padding_should_fail(super::test::API_VERSION_0_0_4).await
 }

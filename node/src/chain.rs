@@ -548,11 +548,11 @@ mod test {
     use graph::components::network_provider::ChainName;
     use graph::endpoint::EndpointMetrics;
     use graph::log::logger;
-    use graph::prelude::{tokio, MetricsRegistry};
+    use graph::prelude::MetricsRegistry;
     use graph_chain_ethereum::NodeCapabilities;
     use std::sync::Arc;
 
-    #[tokio::test]
+    #[graph::test]
     async fn correctly_parse_ethereum_networks() {
         let logger = logger(true);
 

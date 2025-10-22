@@ -8,7 +8,7 @@ use graph_tests::{
     recipe::RunnerTestRecipe,
 };
 
-#[tokio::test]
+#[graph::test]
 async fn file_link_resolver() -> anyhow::Result<()> {
     std::env::set_var("GRAPH_NODE_DISABLE_DEPLOYMENT_HASH_VALIDATION", "true");
     let RunnerTestRecipe { stores, test_info } = RunnerTestRecipe::new_with_file_link_resolver(

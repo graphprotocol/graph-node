@@ -404,12 +404,12 @@ async fn test_json_conversions(api_version: Version, gas_used: u64) {
     assert_eq!(module.gas_used(), gas_used);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn json_conversions_v0_0_4() {
     test_json_conversions(API_VERSION_0_0_4, 52976429).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn json_conversions_v0_0_5() {
     test_json_conversions(API_VERSION_0_0_5, 2289897).await;
 }
@@ -450,12 +450,12 @@ async fn test_json_parsing(api_version: Version, gas_used: u64) {
     assert_eq!(output, "ERROR: true");
 }
 
-#[tokio::test]
+#[graph::test]
 async fn json_parsing_v0_0_4() {
     test_json_parsing(API_VERSION_0_0_4, 4373087).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn json_parsing_v0_0_5() {
     test_json_parsing(API_VERSION_0_0_5, 5153540).await;
 }
@@ -478,17 +478,17 @@ async fn test_ipfs_cat(api_version: Version) {
     assert_eq!(data, "42");
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[graph::test]
 async fn ipfs_cat_v0_0_4() {
     test_ipfs_cat(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[graph::test]
 async fn ipfs_cat_v0_0_5() {
     test_ipfs_cat(API_VERSION_0_0_5).await;
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[graph::test]
 async fn test_ipfs_block() {
     let fut = add_files_to_local_ipfs_node_for_testing(["42".as_bytes().to_vec()]);
     let hash = fut.await.unwrap()[0].hash.to_owned();
@@ -635,12 +635,12 @@ async fn test_ipfs_map(api_version: Version, json_error_msg: &str) {
     assert!(format!("{err:?}").contains("invalid CID"));
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[graph::test]
 async fn ipfs_map_v0_0_4() {
     test_ipfs_map(API_VERSION_0_0_4, "JSON value is not a string.").await;
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[graph::test]
 async fn ipfs_map_v0_0_5() {
     test_ipfs_map(API_VERSION_0_0_5, "'id' should not be null").await;
 }
@@ -663,12 +663,12 @@ async fn test_ipfs_fail(api_version: Version) {
     assert!(ptr.is_null());
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[graph::test]
 async fn ipfs_fail_v0_0_4() {
     test_ipfs_fail(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[graph::test]
 async fn ipfs_fail_v0_0_5() {
     test_ipfs_fail(API_VERSION_0_0_5).await;
 }
@@ -693,12 +693,12 @@ async fn test_crypto_keccak256(api_version: Version) {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn crypto_keccak256_v0_0_4() {
     test_crypto_keccak256(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn crypto_keccak256_v0_0_5() {
     test_crypto_keccak256(API_VERSION_0_0_5).await;
 }
@@ -739,7 +739,7 @@ async fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
     assert_eq!(instance.gas_used(), gas_used);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn test_big_int_size_limit() {
     let mut module = test_module(
         "BigIntSizeLimit",
@@ -769,12 +769,12 @@ async fn test_big_int_size_limit() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn big_int_to_hex_v0_0_4() {
     test_big_int_to_hex(API_VERSION_0_0_4, 53113760).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn big_int_to_hex_v0_0_5() {
     test_big_int_to_hex(API_VERSION_0_0_5, 2858580).await;
 }
@@ -835,12 +835,12 @@ async fn test_big_int_arithmetic(api_version: Version, gas_used: u64) {
     assert_eq!(module.gas_used(), gas_used);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn big_int_arithmetic_v0_0_4() {
     test_big_int_arithmetic(API_VERSION_0_0_4, 54962411).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn big_int_arithmetic_v0_0_5() {
     test_big_int_arithmetic(API_VERSION_0_0_5, 7318364).await;
 }
@@ -865,7 +865,7 @@ async fn test_abort(api_version: Version, error_msg: &str) {
     assert!(format!("{err:?}").contains(error_msg));
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abort_v0_0_4() {
     test_abort(
         API_VERSION_0_0_4,
@@ -874,7 +874,7 @@ async fn abort_v0_0_4() {
     .await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn abort_v0_0_5() {
     test_abort(
         API_VERSION_0_0_5,
@@ -904,12 +904,12 @@ async fn test_bytes_to_base58(api_version: Version, gas_used: u64) {
     assert_eq!(module.gas_used(), gas_used);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn bytes_to_base58_v0_0_4() {
     test_bytes_to_base58(API_VERSION_0_0_4, 52301689).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn bytes_to_base58_v0_0_5() {
     test_bytes_to_base58(API_VERSION_0_0_5, 1310019).await;
 }
@@ -973,12 +973,12 @@ async fn run_data_source_create(
         .drain_created_data_sources())
 }
 
-#[tokio::test]
+#[graph::test]
 async fn data_source_create_v0_0_4() {
     test_data_source_create(API_VERSION_0_0_4, 152102833).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn data_source_create_v0_0_5() {
     test_data_source_create(API_VERSION_0_0_5, 101450079).await;
 }
@@ -1007,12 +1007,12 @@ async fn test_ens_name_by_hash(api_version: Version) {
         .is_null());
 }
 
-#[tokio::test]
+#[graph::test]
 async fn ens_name_by_hash_v0_0_4() {
     test_ens_name_by_hash(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn ens_name_by_hash_v0_0_5() {
     test_ens_name_by_hash(API_VERSION_0_0_5).await;
 }
@@ -1117,12 +1117,12 @@ async fn test_entity_store(api_version: Version) {
     };
 }
 
-#[tokio::test]
+#[graph::test]
 async fn entity_store_v0_0_4() {
     test_entity_store(API_VERSION_0_0_4).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn entity_store_v0_0_5() {
     test_entity_store(API_VERSION_0_0_5).await;
 }
@@ -1150,12 +1150,12 @@ fn test_detect_contract_calls(api_version: Version) {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn detect_contract_calls_v0_0_4() {
     test_detect_contract_calls(API_VERSION_0_0_4);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn detect_contract_calls_v0_0_5() {
     test_detect_contract_calls(API_VERSION_0_0_5);
 }
@@ -1178,7 +1178,7 @@ async fn test_allocate_global(api_version: Version) {
         .unwrap();
 }
 
-#[tokio::test]
+#[graph::test]
 async fn allocate_global_v0_0_5() {
     // Only in apiVersion v0.0.5 because there's no issue in older versions.
     // The problem with the new one is related to the AS stub runtime `offset`
@@ -1202,7 +1202,7 @@ async fn test_null_ptr_read(api_version: Version) -> Result<(), Error> {
     module.invoke_export0_void("nullPtrRead").await
 }
 
-#[tokio::test]
+#[graph::test]
 async fn null_ptr_read_0_0_5() {
     let err = test_null_ptr_read(API_VERSION_0_0_5).await.unwrap_err();
     assert!(
@@ -1226,7 +1226,7 @@ async fn test_safe_null_ptr_read(api_version: Version) -> Result<(), Error> {
     module.invoke_export0_void("safeNullPtrRead").await
 }
 
-#[tokio::test]
+#[graph::test]
 async fn safe_null_ptr_read_0_0_5() {
     let err = test_safe_null_ptr_read(API_VERSION_0_0_5)
         .await
@@ -1239,14 +1239,14 @@ async fn safe_null_ptr_read_0_0_5() {
 }
 
 #[ignore] // Ignored because of long run time in debug build.
-#[tokio::test]
+#[graph::test]
 async fn test_array_blowup() {
     let mut module = test_module_latest("ArrayBlowup", "array_blowup.wasm").await;
     let err = module.invoke_export0_void("arrayBlowup").await.unwrap_err();
     assert!(format!("{err:?}").contains("Gas limit exceeded. Used: 11286295575421"));
 }
 
-#[tokio::test]
+#[graph::test]
 async fn test_boolean() {
     let mut module = test_module_latest("boolean", "boolean.wasm").await;
 
@@ -1285,7 +1285,7 @@ async fn test_boolean() {
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn recursion_limit() {
     let mut module = test_module_latest("RecursionLimit", "recursion_limit.wasm").await;
 
@@ -1411,7 +1411,7 @@ fn err_says<E: std::fmt::Debug + std::fmt::Display>(err: E, exp: &str) {
 
 /// Test the various ways in which `store_set` sets the `id` of entities and
 /// errors when there are issues
-#[tokio::test]
+#[graph::test]
 async fn test_store_set_id() {
     const UID: &str = "u1";
     const USER: &str = "User";
@@ -1517,7 +1517,7 @@ async fn test_store_set_id() {
 
 /// Test setting fields that are not defined in the schema
 /// This should return an error
-#[tokio::test]
+#[graph::test]
 async fn test_store_set_invalid_fields() {
     const UID: &str = "u1";
     const USER: &str = "User";
@@ -1605,7 +1605,7 @@ async fn test_store_set_invalid_fields() {
 }
 
 /// Test generating ids through `store_set`
-#[tokio::test]
+#[graph::test]
 async fn generate_id() {
     const AUTO: &str = "auto";
     const INT8: &str = "Int8";
@@ -1675,7 +1675,7 @@ async fn generate_id() {
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn test_store_intf() {
     const UID: &str = "u1";
     const USER: &str = "User";
@@ -1706,7 +1706,7 @@ async fn test_store_intf() {
         .expect_err("store_get with interface does not work");
 }
 
-#[tokio::test]
+#[graph::test]
 async fn test_store_ts() {
     const DATA: &str = "Data";
     const STATS: &str = "Stats";
@@ -1836,12 +1836,12 @@ async fn test_yaml_parsing(api_version: Version, gas_used: u64) {
     assert_eq!(module.gas_used(), gas_used, "gas used");
 }
 
-#[tokio::test]
+#[graph::test]
 async fn yaml_parsing_v0_0_4() {
     test_yaml_parsing(API_VERSION_0_0_4, 10462217077171).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn yaml_parsing_v0_0_5() {
     test_yaml_parsing(API_VERSION_0_0_5, 10462245390665).await;
 }

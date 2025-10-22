@@ -128,7 +128,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_valid_when_disabled_for_chain() {
         let check = ExtendedBlocksCheck::new(["chain-1".into()]);
         let adapter = TestAdapter::default();
@@ -145,7 +145,7 @@ mod tests {
         assert_eq!(status, ProviderCheckStatus::Valid);
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_valid_when_disabled_for_multiple_chains() {
         let check = ExtendedBlocksCheck::new(["chain-1".into(), "chain-2".into()]);
         let adapter = TestAdapter::default();
@@ -173,7 +173,7 @@ mod tests {
         assert_eq!(status, ProviderCheckStatus::Valid);
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_valid_when_extended_blocks_are_supported() {
         let check = ExtendedBlocksCheck::new([]);
 
@@ -192,7 +192,7 @@ mod tests {
         assert_eq!(status, ProviderCheckStatus::Valid);
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_fails_when_extended_blocks_are_not_supported() {
         let check = ExtendedBlocksCheck::new([]);
 
@@ -211,7 +211,7 @@ mod tests {
         assert!(matches!(status, ProviderCheckStatus::Failed { .. }));
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn check_temporary_failure_when_provider_request_fails() {
         let check = ExtendedBlocksCheck::new([]);
 

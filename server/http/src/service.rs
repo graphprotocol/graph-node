@@ -511,7 +511,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn querying_not_found_routes_responds_correctly() {
         let logger = Logger::root(slog::Discard, o!());
         let graphql_runner = Arc::new(TestGraphQlRunner);
@@ -542,7 +542,7 @@ mod tests {
         assert_eq!(json.unwrap(), serde_json::json!({"message": "Not found"}));
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn posting_invalid_query_yields_error_response() {
         let logger = Logger::root(slog::Discard, o!());
         let subgraph_id = USERS.clone();
@@ -574,7 +574,7 @@ mod tests {
         assert_eq!(message, response.to_string());
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[graph::test]
     async fn posting_valid_queries_yields_result_response() {
         let logger = Logger::root(slog::Discard, o!());
         let subgraph_id = USERS.clone();

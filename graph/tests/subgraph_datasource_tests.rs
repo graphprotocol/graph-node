@@ -100,7 +100,7 @@ impl SourceableStore for MockSourcableStore {
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn test_triggers_adapter_with_entities() {
     let id = DeploymentHash::new("test_deployment").unwrap();
     let schema = InputSchema::parse_latest(

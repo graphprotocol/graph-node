@@ -333,8 +333,6 @@ impl VidRange {
 
 #[cfg(test)]
 mod tests {
-    use tokio;
-
     use super::*;
 
     const S001: Duration = Duration::from_secs(1);
@@ -405,7 +403,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn simple() {
         let bounds = vec![10, 20, 30, 40, 49];
         let mut batcher = Batcher::new(bounds, 5);
@@ -428,7 +426,7 @@ mod tests {
         batcher.at(50, 49, 80);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn non_uniform() {
         // A distribution that is flat in the beginning and then steeper and
         // linear towards the end. The easiest way to see this is to graph
@@ -476,7 +474,7 @@ mod tests {
         assert_eq!(100_000, ogive.end());
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn vid_batcher_handles_large_vid() {
         // An example with very large `vid` values which come from the new
         // schema of setting the `vid` to `block_num << 32 + sequence_num`.

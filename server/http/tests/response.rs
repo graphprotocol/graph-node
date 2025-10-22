@@ -3,7 +3,7 @@ use graph::data::{graphql::object, query::QueryResults};
 use graph::prelude::*;
 use graph_server_http::test_utils;
 
-#[tokio::test]
+#[graph::test]
 async fn generates_200_for_query_results() {
     let data = Object::from_iter([]);
     let query_result = QueryResults::from(data).as_http_response();
@@ -11,7 +11,7 @@ async fn generates_200_for_query_results() {
     test_utils::assert_successful_response(query_result).await;
 }
 
-#[tokio::test]
+#[graph::test]
 async fn generates_valid_json_for_an_empty_result() {
     let data = Object::from_iter([]);
     let query_result = QueryResults::from(data).as_http_response();

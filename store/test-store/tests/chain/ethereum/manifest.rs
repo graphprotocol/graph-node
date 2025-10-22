@@ -20,7 +20,7 @@ use graph::entity;
 use graph::env::ENV_VARS;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{
-    anyhow, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link, SubgraphManifest,
+    anyhow, serde_yaml, BigDecimal, BigInt, DeploymentHash, Link, SubgraphManifest,
     SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphStore,
     UnvalidatedSubgraphManifest,
 };
@@ -169,7 +169,7 @@ async fn resolve_unvalidated(text: &str) -> UnvalidatedSubgraphManifest<Chain> {
 // Some of these manifest tests should be made chain-independent, but for
 // now we just run them for the ethereum `Chain`
 
-#[tokio::test]
+#[graph::test]
 async fn simple_manifest() {
     const YAML: &str = "
 dataSources: []
@@ -185,7 +185,7 @@ specVersion: 0.0.2
     assert!(manifest.graft.is_none());
 }
 
-#[tokio::test]
+#[graph::test]
 async fn ipfs_manifest() {
     let yaml = "
 schema:
@@ -218,7 +218,7 @@ specVersion: 0.0.7
     assert_eq!(data_source.kind, OffchainDataSourceKind::Ipfs);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn subgraph_ds_manifest() {
     let yaml = "
 schema:
@@ -261,7 +261,7 @@ specVersion: 1.3.0
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn subgraph_ds_manifest_aggregations_should_fail() {
     let yaml = "
 schema:
@@ -297,7 +297,7 @@ specVersion: 1.3.0
         .contains("Entity TokenStats is an aggregation and cannot be used as a mapping entity"));
 }
 
-#[tokio::test]
+#[graph::test]
 async fn multiple_subgraph_ds_manifest() {
     let yaml = "
 schema:
@@ -369,7 +369,7 @@ specVersion: 1.3.0
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn graft_manifest() {
     const YAML: &str = "
 dataSources: []
@@ -390,7 +390,7 @@ specVersion: 0.0.2
     assert_eq!(12345, graft.block);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn parse_indexer_hints() {
     const YAML: &str = "
 dataSources: []
@@ -642,7 +642,7 @@ specVersion: 0.0.2
     })
 }
 
-#[tokio::test]
+#[graph::test]
 async fn parse_data_source_context() {
     const YAML: &str = "
 dataSources:
@@ -752,7 +752,7 @@ specVersion: 0.0.8
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn parse_event_handlers_with_topics() {
     const YAML: &str = "
 dataSources:
@@ -823,7 +823,7 @@ specVersion: 1.2.0
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn parse_block_handlers_with_polling_filter() {
     const YAML: &str = "
 dataSources:
@@ -879,7 +879,7 @@ specVersion: 0.0.8
     assert_eq!("Qmmanifest", manifest.id.as_str());
 }
 
-#[tokio::test]
+#[graph::test]
 async fn parse_data_source_with_end_block() {
     const YAML: &str = "
 dataSources:
@@ -916,7 +916,7 @@ specVersion: 0.0.9
     assert_eq!(Some(9562481), end_block);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn parse_block_handlers_with_both_polling_and_once_filter() {
     const YAML: &str = "
 dataSources:
@@ -983,7 +983,7 @@ specVersion: 0.0.8
     assert_eq!("Qmmanifest", manifest.id.as_str());
 }
 
-#[tokio::test]
+#[graph::test]
 async fn should_not_parse_block_handlers_with_both_filtered_and_non_filtered_handlers() {
     const YAML: &str = "
 dataSources:
@@ -1048,7 +1048,7 @@ specVersion: 0.0.8
     assert_eq!("Qmmanifest", manifest.id.as_str());
 }
 
-#[tokio::test]
+#[graph::test]
 async fn parse_block_handlers_with_call_filter() {
     const YAML: &str = "
 dataSources:
@@ -1096,7 +1096,7 @@ specVersion: 0.0.2
     assert_eq!("Qmmanifest", manifest.id.as_str());
 }
 
-#[tokio::test]
+#[graph::test]
 async fn parse_block_handlers_with_once_filter() {
     const YAML: &str = "
 dataSources:
@@ -1144,7 +1144,7 @@ specVersion: 0.0.8
     assert_eq!("Qmmanifest", manifest.id.as_str());
 }
 
-#[tokio::test]
+#[graph::test]
 async fn parse_call_handlers() {
     const YAML: &str = "
 dataSources:
@@ -1720,7 +1720,7 @@ dataSources:
     });
 }
 
-#[tokio::test]
+#[graph::test]
 async fn mixed_subgraph_and_onchain_ds_manifest_should_fail() {
     let yaml = "
 schema:
@@ -1872,7 +1872,7 @@ specVersion: 1.3.0
     })
 }
 
-#[tokio::test]
+#[graph::test]
 async fn subgraph_ds_manifest_mutable_entities_should_fail() {
     let yaml = "
 schema:
@@ -1908,7 +1908,7 @@ specVersion: 1.3.0
         .contains("Entity MutableEntity is not immutable and cannot be used as a mapping entity"));
 }
 
-#[tokio::test]
+#[graph::test]
 async fn subgraph_ds_manifest_immutable_entities_should_succeed() {
     let yaml = "
 schema:

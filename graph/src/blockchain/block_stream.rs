@@ -986,7 +986,7 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[crate::test]
     async fn consume_stream() {
         let initial_block = 100;
         let buffer_size = 5;
