@@ -1,4 +1,7 @@
-//! Event/error handlers for our r2d2 pools
+//! Connection management for Postgres connection pools
+//!
+//! This module provides helpers for collecting metrics for a pool and
+//! tracking availability of the underlying database
 
 use deadpool::managed::Hook;
 use diesel::r2d2;
@@ -24,9 +27,7 @@ use std::time::Duration;
 
 use crate::pool::AsyncPool;
 
-/// Track whether a database is available or not using the event and error
-/// handlers from this module. The pool must be set up with these handlers
-/// when it is created
+/// Track whether a database is available or not
 #[derive(Clone)]
 pub(super) struct StateTracker {
     logger: Logger,
