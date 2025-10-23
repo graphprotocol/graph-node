@@ -8,6 +8,7 @@ use diesel::IntoSql;
 
 use diesel_async::pooled_connection::{PoolError as DieselPoolError, PoolableConnection};
 use diesel_async::{AsyncConnection, RunQueryDsl};
+use graph::env::ENV_VARS;
 use graph::prelude::error;
 use graph::prelude::Counter;
 use graph::prelude::Gauge;
@@ -233,6 +234,37 @@ pub(crate) fn spawn_size_stat_collector(
             count_gauge.set((status.size - status.available) as f64);
             size_gauge.set(status.size as f64);
             tokio::time::sleep(Duration::from_secs(15)).await;
+        }
+    });
+}
+
+/// Reap connections that are too old (older than 30 minutes) or if there
+/// are more than `connection_min_idle` connections in the pool that have
+/// been idle for longer than `idle_timeout`
+pub(crate) fn spawn_connection_reaper(pool: AsyncPool, idle_timeout: Duration) {
+    const MAX_LIFETIME: Duration = Duration::from_secs(30 * 60);
+    let Some(min_idle) = ENV_VARS.store.connection_min_idle else {
+        // If this is None, we will never reap anything
+        return;
+    };
+    // What happens here isn't exactly what we would like to have: we would
+    // like to have at any point `min_idle` unused connections in the pool,
+    // but there is no way to achieve that with deadpool. Instead, we try to
+    // keep `min_idle` connections around if they exist
+    tokio::task::spawn(async move {
+        loop {
+            let mut idle_count = 0;
+            pool.retain(|_, metrics| {
+                if metrics.age() > MAX_LIFETIME {
+                    return false;
+                }
+                if metrics.last_used() > idle_timeout {
+                    idle_count += 1;
+                    return idle_count <= min_idle;
+                }
+                true
+            });
+            tokio::time::sleep(Duration::from_secs(30)).await;
         }
     });
 }
