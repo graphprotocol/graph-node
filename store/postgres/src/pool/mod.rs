@@ -36,7 +36,7 @@ pub use diesel_async::scoped_futures::ScopedFutureExt;
 
 pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
-use manager::{ErrorHandler, StateTracker};
+use manager::StateTracker;
 
 type AsyncPool = deadpool::managed::Pool<ConnectionManager>;
 /// A database connection for asynchronous diesel operations
@@ -429,29 +429,14 @@ impl PoolInner {
 
         let state_tracker = StateTracker::new(logger_pool.cheap_clone());
 
-        // Note: deadpool provides built-in metrics via pool.status()
-        // The r2d2-style ErrorHandler and EventHandler are not needed with deadpool.
-        // Metrics can be obtained from pool.status() and custom hooks can be added
-        // to the pool builder if needed.
-        let error_counter = registry
-            .global_counter(
-                "store_connection_error_count",
-                "The number of Postgres connections errors",
-                const_labels.clone(),
-            )
-            .expect("failed to create `store_connection_error_count` counter");
-        crit!(
-            logger_pool,
-            "Unfinished: not to replicate ErrorHandler with mobc"
-        );
-        let _error_handler = Box::new(ErrorHandler::new(
-            logger_pool.clone(),
-            error_counter,
-            state_tracker.clone(),
-        ));
-
         // Connect to Postgres
-        let conn_manager = ConnectionManager::new(postgres_url.clone());
+        let conn_manager = ConnectionManager::new(
+            logger_pool.clone(),
+            postgres_url.clone(),
+            state_tracker.clone(),
+            &registry,
+            const_labels.clone(),
+        );
 
         // Note: deadpool does not support min_idle configuration
         if let Some(min_idle) = ENV_VARS.store.connection_min_idle {
@@ -471,7 +456,7 @@ impl PoolInner {
         // The post_create and post_recycle hooks are only called when
         // create and recycle succeed; we can therefore mark the pool
         // available
-        let pool = AsyncPool::builder(conn_manager)
+        let pool = AsyncPool::builder(conn_manager.clone())
             .max_size(pool_size as usize)
             .timeouts(timeouts)
             .runtime(Runtime::Tokio1)
@@ -485,7 +470,6 @@ impl PoolInner {
         let wait_meter = WaitMeter::new(&registry, const_labels.clone());
 
         let fdw_pool = fdw_pool_size.map(|pool_size| {
-            let conn_manager = ConnectionManager::new(postgres_url.clone());
             let fdw_timeouts = Timeouts {
                 wait: Some(ENV_VARS.store.connection_timeout),
                 create: None,
