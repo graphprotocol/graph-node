@@ -4,7 +4,7 @@
 //! tracking availability of the underlying database
 
 use deadpool::managed::{Hook, RecycleError, RecycleResult};
-use diesel::{r2d2, IntoSql};
+use diesel::IntoSql;
 
 use diesel_async::pooled_connection::{PoolError as DieselPoolError, PoolableConnection};
 use diesel_async::{AsyncConnection, RunQueryDsl};
@@ -18,7 +18,6 @@ use graph::slog::info;
 use graph::slog::Logger;
 
 use std::collections::HashMap;
-use std::fmt;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -30,13 +29,63 @@ use crate::pool::AsyncPool;
 /// Our own connection manager. It is pretty much the same as
 /// `AsyncDieselConnectionManager` but makes it easier to instrument and
 /// track connection errors
+#[derive(Clone)]
 pub struct ConnectionManager {
+    logger: Logger,
     connection_url: String,
+    state_tracker: StateTracker,
+    error_counter: Counter,
 }
 
 impl ConnectionManager {
-    pub(super) fn new(connection_url: String) -> Self {
-        Self { connection_url }
+    pub(super) fn new(
+        logger: Logger,
+        connection_url: String,
+        state_tracker: StateTracker,
+        registry: &MetricsRegistry,
+        const_labels: HashMap<String, String>,
+    ) -> Self {
+        let error_counter = registry
+            .global_counter(
+                "store_connection_error_count",
+                "The number of Postgres connections errors",
+                const_labels,
+            )
+            .expect("failed to create `store_connection_error_count` counter");
+
+        Self {
+            logger,
+            connection_url,
+            state_tracker,
+            error_counter,
+        }
+    }
+
+    fn handle_error(&self, error: &dyn std::error::Error) {
+        let msg = brief_error_msg(&error);
+
+        // Don't count canceling statements for timeouts etc. as a
+        // connection error. Unfortunately, we only have the textual error
+        // and need to infer whether the error indicates that the database
+        // is down or if something else happened. When querying a replica,
+        // these messages indicate that a query was canceled because it
+        // conflicted with replication, but does not indicate that there is
+        // a problem with the database itself.
+        //
+        // This check will break if users run Postgres (or even graph-node)
+        // in a locale other than English. In that case, their database will
+        // be marked as unavailable even though it is perfectly fine.
+        if msg.contains("canceling statement")
+            || msg.contains("terminating connection due to conflict with recovery")
+        {
+            return;
+        }
+
+        self.error_counter.inc();
+        if self.state_tracker.is_available() {
+            error!(self.logger, "Connection checkout"; "error" => msg);
+        }
+        self.state_tracker.mark_unavailable(Duration::from_secs(0));
     }
 }
 
@@ -46,9 +95,11 @@ impl deadpool::managed::Manager for ConnectionManager {
     type Error = DieselPoolError;
 
     async fn create(&self) -> Result<Self::Type, Self::Error> {
-        diesel_async::AsyncPgConnection::establish(&self.connection_url)
-            .await
-            .map_err(DieselPoolError::ConnectionError)
+        let res = diesel_async::AsyncPgConnection::establish(&self.connection_url).await;
+        if let Err(ref e) = res {
+            self.handle_error(e);
+        }
+        res.map_err(DieselPoolError::ConnectionError)
     }
 
     async fn recycle(
@@ -59,11 +110,14 @@ impl deadpool::managed::Manager for ConnectionManager {
         if std::thread::panicking() || obj.is_broken() {
             return Err(RecycleError::Message("Broken connection".into()));
         }
-        diesel::select(67_i32.into_sql::<diesel::sql_types::Integer>())
+        let res = diesel::select(67_i32.into_sql::<diesel::sql_types::Integer>())
             .execute(obj)
             .await
-            .map(|_| ())
-            .map_err(DieselPoolError::QueryError)?;
+            .map(|_| ());
+        if let Err(ref e) = res {
+            self.handle_error(e);
+        }
+        res.map_err(DieselPoolError::QueryError)?;
         Ok(())
     }
 }
@@ -136,57 +190,6 @@ impl StateTracker {
                 Ok(())
             })
         })
-    }
-}
-
-#[derive(Clone)]
-pub(super) struct ErrorHandler {
-    logger: Logger,
-    counter: Counter,
-    state_tracker: StateTracker,
-}
-
-impl ErrorHandler {
-    pub(super) fn new(logger: Logger, counter: Counter, state_tracker: StateTracker) -> Self {
-        Self {
-            logger,
-            counter,
-            state_tracker,
-        }
-    }
-}
-impl std::fmt::Debug for ErrorHandler {
-    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Result::Ok(())
-    }
-}
-
-impl r2d2::HandleError<r2d2::Error> for ErrorHandler {
-    fn handle_error(&self, error: r2d2::Error) {
-        let msg = brief_error_msg(&error);
-
-        // Don't count canceling statements for timeouts etc. as a
-        // connection error. Unfortunately, we only have the textual error
-        // and need to infer whether the error indicates that the database
-        // is down or if something else happened. When querying a replica,
-        // these messages indicate that a query was canceled because it
-        // conflicted with replication, but does not indicate that there is
-        // a problem with the database itself.
-        //
-        // This check will break if users run Postgres (or even graph-node)
-        // in a locale other than English. In that case, their database will
-        // be marked as unavailable even though it is perfectly fine.
-        if msg.contains("canceling statement")
-            || msg.contains("terminating connection due to conflict with recovery")
-        {
-            return;
-        }
-
-        self.counter.inc();
-        if self.state_tracker.is_available() {
-            error!(self.logger, "Postgres connection error"; "error" => msg);
-        }
-        self.state_tracker.mark_unavailable(Duration::from_secs(0));
     }
 }
 
