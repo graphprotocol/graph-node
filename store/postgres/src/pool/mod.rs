@@ -263,10 +263,9 @@ impl ConnectionPool {
         registry: Arc<MetricsRegistry>,
         coord: Arc<PoolCoordinator>,
     ) -> ConnectionPool {
-        let state_tracker = StateTracker::new();
         let shard =
             Shard::new(shard_name.to_string()).expect("shard_name is a valid name for a shard");
-        let inner = {
+        let (inner, state_tracker) = {
             let pool = PoolInner::create(
                 shard.clone(),
                 pool_name.as_str(),
@@ -275,12 +274,12 @@ impl ConnectionPool {
                 fdw_pool_size,
                 logger,
                 registry,
-                state_tracker.clone(),
             );
+            let state_tracker = pool.state_tracker.clone();
             if pool_name.is_replica() {
-                PoolState::ready(Arc::new(pool))
+                (PoolState::ready(Arc::new(pool)), state_tracker)
             } else {
-                PoolState::created(Arc::new(pool), coord)
+                (PoolState::created(Arc::new(pool), coord), state_tracker)
             }
         };
         ConnectionPool {
@@ -398,6 +397,7 @@ pub struct PoolInner {
     fdw_pool: Option<AsyncPool>,
     postgres_url: String,
     pub(crate) wait_stats: PoolWaitStats,
+    state_tracker: StateTracker,
 
     // Limits the number of graphql queries that may execute concurrently. Since one graphql query
     // may require multiple DB queries, it is useful to organize the queue at the graphql level so
@@ -417,7 +417,6 @@ impl PoolInner {
         fdw_pool_size: Option<u32>,
         logger: &Logger,
         registry: Arc<MetricsRegistry>,
-        state_tracker: StateTracker,
     ) -> PoolInner {
         check_mirrored_tables();
 
@@ -429,6 +428,9 @@ impl PoolInner {
             map.insert("shard".to_string(), shard.to_string());
             map
         };
+
+        let state_tracker = StateTracker::new();
+
         // Note: deadpool provides built-in metrics via pool.status()
         // The r2d2-style ErrorHandler and EventHandler are not needed with deadpool.
         // Metrics can be obtained from pool.status() and custom hooks can be added
@@ -532,6 +534,7 @@ impl PoolInner {
             pool,
             fdw_pool,
             wait_stats,
+            state_tracker,
             semaphore_wait_stats: Arc::new(RwLock::new(MovingStats::default())),
             query_semaphore,
             semaphore_wait_gauge,
