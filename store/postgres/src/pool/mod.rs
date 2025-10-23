@@ -1,4 +1,4 @@
-use deadpool::managed::Timeouts;
+use deadpool::managed::{PoolError, Timeouts};
 use deadpool::Runtime;
 use diesel::sql_query;
 use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
@@ -26,6 +26,7 @@ use std::time::Duration;
 use std::{collections::HashMap, sync::RwLock};
 
 use crate::catalog;
+use crate::pool::state_tracker::WaitMeter;
 use crate::primary::{self, Mirror, Namespace};
 use crate::{Shard, PRIMARY_SHARD};
 
@@ -37,7 +38,7 @@ pub use diesel_async::scoped_futures::ScopedFutureExt;
 
 pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
-use state_tracker::{ErrorHandler, EventHandler, StateTracker};
+use state_tracker::{ErrorHandler, StateTracker};
 
 type AsyncPool = DeadpoolPool<diesel_async::AsyncPgConnection>;
 /// A database connection for asynchronous diesel operations
@@ -365,7 +366,7 @@ impl ConnectionPool {
     }
 
     pub(crate) fn wait_stats(&self) -> PoolWaitStats {
-        self.inner.get_unready().wait_stats.cheap_clone()
+        self.inner.get_unready().wait_meter.wait_stats.cheap_clone()
     }
 
     /// Mirror key tables from the primary into our own schema. We do this
@@ -379,7 +380,6 @@ impl ConnectionPool {
     }
 }
 
-#[derive(Clone)]
 pub struct PoolInner {
     logger: Logger,
     pub shard: Shard,
@@ -396,7 +396,8 @@ pub struct PoolInner {
     // returned to the pool.
     fdw_pool: Option<AsyncPool>,
     postgres_url: String,
-    pub(crate) wait_stats: PoolWaitStats,
+    /// Measures how long we spend getting connections from the main `pool`
+    wait_meter: WaitMeter,
     state_tracker: StateTracker,
 
     // Limits the number of graphql queries that may execute concurrently. Since one graphql query
@@ -429,7 +430,7 @@ impl PoolInner {
             map
         };
 
-        let state_tracker = StateTracker::new();
+        let state_tracker = StateTracker::new(logger_pool.cheap_clone());
 
         // Note: deadpool provides built-in metrics via pool.status()
         // The r2d2-style ErrorHandler and EventHandler are not needed with deadpool.
@@ -449,18 +450,6 @@ impl PoolInner {
         let _error_handler = Box::new(ErrorHandler::new(
             logger_pool.clone(),
             error_counter,
-            state_tracker.clone(),
-        ));
-        let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
-        crit!(
-            logger_pool,
-            "Unfinished: need to replicate EventHandler with mobc"
-        );
-        let _event_handler = Box::new(EventHandler::new(
-            logger_pool.clone(),
-            registry.cheap_clone(),
-            wait_stats.clone(),
-            const_labels.clone(),
             state_tracker.clone(),
         ));
 
@@ -498,6 +487,10 @@ impl PoolInner {
             .build()
             .expect("failed to create connection pool");
 
+        state_tracker::spawn_size_stat_collector(pool.clone(), &registry, const_labels.clone());
+
+        let wait_meter = WaitMeter::new(&registry, const_labels.clone());
+
         let fdw_pool = fdw_pool_size.map(|pool_size| {
             let conn_manager = AsyncDieselConnectionManager::new(postgres_url.clone());
             let fdw_timeouts = Timeouts {
@@ -533,7 +526,7 @@ impl PoolInner {
             postgres_url,
             pool,
             fdw_pool,
-            wait_stats,
+            wait_meter,
             state_tracker,
             semaphore_wait_stats: Arc::new(RwLock::new(MovingStats::default())),
             query_semaphore,
@@ -541,11 +534,51 @@ impl PoolInner {
         }
     }
 
+    /// Helper so that getting a connection from the main pool and the
+    /// fdw_pool collect the same metrics.
+    ///
+    /// If `timeouts` is `None`, the default pool timeouts are used.
+    ///
+    /// On error, returns `StoreError::DatabaseUnavailable` and marks the
+    /// pool as unavailable if we can tell that the error is due to the pool
+    /// being closed. Returns `StoreError::StatementTimeout` if the error is
+    /// due to a timeout.
+    async fn get_from_pool(
+        &self,
+        pool: &AsyncPool,
+        timeouts: Option<Timeouts>,
+    ) -> Result<AsyncPgConnection, StoreError> {
+        let start = Instant::now();
+        let res = match timeouts {
+            Some(timeouts) => pool.timeout_get(&timeouts).await,
+            None => pool.get().await,
+        };
+        let elapsed = start.elapsed();
+        self.wait_meter.add_conn_wait_time(elapsed);
+        match res {
+            Ok(conn) => {
+                self.state_tracker.mark_available();
+                return Ok(conn);
+            }
+            Err(PoolError::Closed) | Err(PoolError::Backend(_)) => {
+                self.state_tracker.mark_unavailable(Duration::from_nanos(0));
+                return Err(StoreError::DatabaseUnavailable);
+            }
+            Err(PoolError::Timeout(_)) => {
+                if !self.state_tracker.timeout_is_ignored() {
+                    self.state_tracker.mark_unavailable(elapsed);
+                }
+                return Err(StoreError::StatementTimeout);
+            }
+            Err(PoolError::NoRuntimeSpecified) | Err(PoolError::PostCreateHook(_)) => {
+                let e = res.err().unwrap();
+                unreachable!("impossible error {e}");
+            }
+        }
+    }
+
     async fn get(&self) -> Result<AsyncPgConnection, StoreError> {
-        self.pool
-            .get()
-            .await
-            .map_err(|_| StoreError::DatabaseUnavailable)
+        self.get_from_pool(&self.pool, None).await
     }
 
     /// Get the pool for fdw connections. It is an error if none is configured
@@ -579,7 +612,7 @@ impl PoolInner {
     {
         let pool = self.fdw_pool(logger)?;
         loop {
-            match pool.get().await {
+            match self.get_from_pool(&pool, None).await {
                 Ok(conn) => return Ok(conn),
                 Err(e) => {
                     if timeout() {
@@ -606,7 +639,7 @@ impl PoolInner {
             create: None,
             recycle: None,
         };
-        let Ok(conn) = fdw_pool.timeout_get(&timeouts).await else {
+        let Ok(conn) = self.get_from_pool(fdw_pool, Some(timeouts)).await else {
             return None;
         };
         Some(conn)
