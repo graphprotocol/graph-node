@@ -3,11 +3,11 @@
 //! This module provides helpers for collecting metrics for a pool and
 //! tracking availability of the underlying database
 
-use deadpool::managed::Hook;
-use diesel::r2d2;
+use deadpool::managed::{Hook, RecycleError, RecycleResult};
+use diesel::{r2d2, IntoSql};
 
-use diesel_async::pooled_connection::AsyncDieselConnectionManager;
-use diesel_async::AsyncPgConnection;
+use diesel_async::pooled_connection::{PoolError as DieselPoolError, PoolableConnection};
+use diesel_async::{AsyncConnection, RunQueryDsl};
 use graph::prelude::error;
 use graph::prelude::Counter;
 use graph::prelude::Gauge;
@@ -26,6 +26,47 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use crate::pool::AsyncPool;
+
+/// Our own connection manager. It is pretty much the same as
+/// `AsyncDieselConnectionManager` but makes it easier to instrument and
+/// track connection errors
+pub struct ConnectionManager {
+    connection_url: String,
+}
+
+impl ConnectionManager {
+    pub(super) fn new(connection_url: String) -> Self {
+        Self { connection_url }
+    }
+}
+
+impl deadpool::managed::Manager for ConnectionManager {
+    type Type = diesel_async::AsyncPgConnection;
+
+    type Error = DieselPoolError;
+
+    async fn create(&self) -> Result<Self::Type, Self::Error> {
+        diesel_async::AsyncPgConnection::establish(&self.connection_url)
+            .await
+            .map_err(DieselPoolError::ConnectionError)
+    }
+
+    async fn recycle(
+        &self,
+        obj: &mut Self::Type,
+        _metrics: &deadpool::managed::Metrics,
+    ) -> RecycleResult<Self::Error> {
+        if std::thread::panicking() || obj.is_broken() {
+            return Err(RecycleError::Message("Broken connection".into()));
+        }
+        diesel::select(67_i32.into_sql::<diesel::sql_types::Integer>())
+            .execute(obj)
+            .await
+            .map(|_| ())
+            .map_err(DieselPoolError::QueryError)?;
+        Ok(())
+    }
+}
 
 /// Track whether a database is available or not
 #[derive(Clone)]
@@ -66,11 +107,11 @@ impl StateTracker {
     }
 
     pub(super) fn is_available(&self) -> bool {
-        self.available.load(Ordering::Relaxed)
+        AtomicBool::load(&self.available, Ordering::Relaxed)
     }
 
     pub(super) fn timeout_is_ignored(&self) -> bool {
-        self.ignore_timeout.load(Ordering::Relaxed)
+        AtomicBool::load(&self.ignore_timeout, Ordering::Relaxed)
     }
 
     /// Run the given async function while ignoring timeouts; if `f` causes
@@ -86,9 +127,7 @@ impl StateTracker {
     }
 
     /// Return a deadpool hook that marks the database as available
-    pub(super) fn mark_available_hook(
-        &self,
-    ) -> Hook<AsyncDieselConnectionManager<AsyncPgConnection>> {
+    pub(super) fn mark_available_hook(&self) -> Hook<ConnectionManager> {
         let state_tracker = self.clone();
         Hook::async_fn(move |_conn, _metrics| {
             let state_tracker = state_tracker.clone();
