@@ -1,11 +1,11 @@
 use anyhow::{anyhow, Error};
-use graph::tokio;
 use std::cmp;
 use std::collections::VecDeque;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::Duration;
+use tokio;
 
 use graph::blockchain::block_stream::{
     BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream,

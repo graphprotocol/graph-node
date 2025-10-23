@@ -458,7 +458,7 @@ impl Blockchain for MockBlockchain {
         todo!()
     }
 
-    fn runtime(
+    async fn runtime(
         &self,
     ) -> anyhow::Result<(std::sync::Arc<dyn RuntimeAdapter<Self>>, Self::DecoderHook)> {
         bail!("mock has no runtime adapter")
@@ -484,7 +484,7 @@ impl ChainHeadStore for MockChainStore {
     async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
-    fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
+    async fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
         unimplemented!()
     }
     async fn set_chain_head(
@@ -512,13 +512,13 @@ impl ChainStore for MockChainStore {
     }
 
     // Implement other required methods with minimal implementations
-    fn genesis_block_ptr(&self) -> Result<BlockPtr, Error> {
+    async fn genesis_block_ptr(&self) -> Result<BlockPtr, Error> {
         unimplemented!()
     }
     async fn upsert_block(&self, _block: Arc<dyn Block>) -> Result<(), Error> {
         unimplemented!()
     }
-    fn upsert_light_blocks(&self, _blocks: &[&dyn Block]) -> Result<(), Error> {
+    async fn upsert_light_blocks(&self, _blocks: &[&dyn Block]) -> Result<(), Error> {
         unimplemented!()
     }
     async fn attempt_chain_head_update(
@@ -538,16 +538,23 @@ impl ChainStore for MockChainStore {
     ) -> Result<Option<(Value, BlockPtr)>, Error> {
         unimplemented!()
     }
-    fn cleanup_cached_blocks(
+    async fn cleanup_cached_blocks(
         &self,
         _ancestor_count: BlockNumber,
     ) -> Result<Option<(BlockNumber, usize)>, Error> {
         unimplemented!()
     }
-    fn block_hashes_by_block_number(&self, _number: BlockNumber) -> Result<Vec<BlockHash>, Error> {
+    async fn block_hashes_by_block_number(
+        &self,
+        _number: BlockNumber,
+    ) -> Result<Vec<BlockHash>, Error> {
         unimplemented!()
     }
-    fn confirm_block_hash(&self, _number: BlockNumber, _hash: &BlockHash) -> Result<usize, Error> {
+    async fn confirm_block_hash(
+        &self,
+        _number: BlockNumber,
+        _hash: &BlockHash,
+    ) -> Result<usize, Error> {
         unimplemented!()
     }
     async fn block_number(
@@ -578,7 +585,7 @@ impl ChainStore for MockChainStore {
     ) -> Result<(), Error> {
         unimplemented!()
     }
-    fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
+    async fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {
         unimplemented!()
     }
     fn as_head_store(self: Arc<Self>) -> Arc<dyn ChainHeadStore> {
@@ -586,11 +593,12 @@ impl ChainStore for MockChainStore {
     }
 }
 
+#[async_trait]
 impl ChainIdStore for MockChainStore {
-    fn chain_identifier(&self, _name: &ChainName) -> Result<ChainIdentifier, Error> {
+    async fn chain_identifier(&self, _name: &ChainName) -> Result<ChainIdentifier, Error> {
         unimplemented!()
     }
-    fn set_chain_identifier(
+    async fn set_chain_identifier(
         &self,
         _name: &ChainName,
         _ident: &ChainIdentifier,

@@ -1,21 +1,18 @@
-use diesel::r2d2::Builder;
-use diesel::{connection::SimpleConnection, pg::PgConnection};
-use diesel::{
-    r2d2::{ConnectionManager, Pool, PooledConnection},
-    Connection,
-};
-use diesel::{sql_query, RunQueryDsl};
-
+use deadpool::managed::{PoolError, Timeouts};
+use deadpool::Runtime;
+use diesel::sql_query;
+use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
+use diesel_async::{AsyncConnection as _, RunQueryDsl, SimpleAsyncConnection};
 use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
+
 use graph::cheap_clone::CheapClone;
 use graph::components::store::QueryPermit;
 use graph::derive::CheapClone;
 use graph::internal_error;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{
-    anyhow::anyhow, crit, debug, error, info, o, tokio::sync::Semaphore, CancelGuard, CancelHandle,
-    CancelToken as _, CancelableError, Gauge, Logger, MovingStats, PoolWaitStats, StoreError,
-    ENV_VARS,
+    anyhow::anyhow, crit, debug, error, info, o, Gauge, Logger, MovingStats, PoolWaitStats,
+    StoreError, ENV_VARS,
 };
 use graph::prelude::{tokio, MetricsRegistry};
 use graph::slog::warn;
@@ -27,16 +24,23 @@ use std::time::Duration;
 use std::{collections::HashMap, sync::RwLock};
 
 use crate::catalog;
+use crate::pool::manager::{ConnectionManager, WaitMeter};
 use crate::primary::{self, Mirror, Namespace};
 use crate::{Shard, PRIMARY_SHARD};
 
 mod coordinator;
 mod foreign_server;
-mod state_tracker;
+mod manager;
+
+pub use diesel_async::scoped_futures::ScopedFutureExt;
 
 pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
-use state_tracker::{ErrorHandler, EventHandler, StateTracker};
+use manager::StateTracker;
+
+type AsyncPool = deadpool::managed::Pool<ConnectionManager>;
+/// A database connection for asynchronous diesel operations
+pub type AsyncPgConnection = deadpool::managed::Object<ConnectionManager>;
 
 /// The namespace under which the `PRIMARY_TABLES` are mapped into each
 /// shard
@@ -178,6 +182,7 @@ impl PoolState {
         // We just tried to set up the pool; if it is still not set up and
         // we didn't have an error, it means the database is not available
         if self.needs_setup() {
+            error!(self.logger, "Database is not available, setup did not work");
             return Err(StoreError::DatabaseUnavailable);
         } else {
             Ok(pool)
@@ -204,6 +209,7 @@ impl PoolState {
         }
     }
 }
+
 #[derive(Clone)]
 pub struct ConnectionPool {
     inner: PoolState,
@@ -255,10 +261,9 @@ impl ConnectionPool {
         registry: Arc<MetricsRegistry>,
         coord: Arc<PoolCoordinator>,
     ) -> ConnectionPool {
-        let state_tracker = StateTracker::new();
         let shard =
             Shard::new(shard_name.to_string()).expect("shard_name is a valid name for a shard");
-        let inner = {
+        let (inner, state_tracker) = {
             let pool = PoolInner::create(
                 shard.clone(),
                 pool_name.as_str(),
@@ -267,12 +272,12 @@ impl ConnectionPool {
                 fdw_pool_size,
                 logger,
                 registry,
-                state_tracker.clone(),
             );
+            let state_tracker = pool.state_tracker.clone();
             if pool_name.is_replica() {
-                PoolState::ready(Arc::new(pool))
+                (PoolState::ready(Arc::new(pool)), state_tracker)
             } else {
-                PoolState::created(Arc::new(pool), coord)
+                (PoolState::created(Arc::new(pool), coord), state_tracker)
             }
         };
         ConnectionPool {
@@ -310,61 +315,8 @@ impl ConnectionPool {
         }
     }
 
-    /// Execute a closure with a connection to the database.
-    ///
-    /// # API
-    ///   The API of using a closure to bound the usage of the connection serves several
-    ///   purposes:
-    ///
-    ///   * Moves blocking database access out of the `Future::poll`. Within
-    ///     `Future::poll` (which includes all `async` methods) it is illegal to
-    ///     perform a blocking operation. This includes all accesses to the
-    ///     database, acquiring of locks, etc. Calling a blocking operation can
-    ///     cause problems with `Future` combinators (including but not limited
-    ///     to select, timeout, and FuturesUnordered) and problems with
-    ///     executors/runtimes. This method moves the database work onto another
-    ///     thread in a way which does not block `Future::poll`.
-    ///
-    ///   * Limit the total number of connections. Because the supplied closure
-    ///     takes a reference, we know the scope of the usage of all entity
-    ///     connections and can limit their use in a non-blocking way.
-    ///
-    /// # Cancellation
-    ///   The normal pattern for futures in Rust is drop to cancel. Once we
-    ///   spawn the database work in a thread though, this expectation no longer
-    ///   holds because the spawned task is the independent of this future. So,
-    ///   this method provides a cancel token which indicates that the `Future`
-    ///   has been dropped. This isn't *quite* as good as drop on cancel,
-    ///   because a drop on cancel can do things like cancel http requests that
-    ///   are in flight, but checking for cancel periodically is a significant
-    ///   improvement.
-    ///
-    ///   The implementation of the supplied closure should check for cancel
-    ///   between every operation that is potentially blocking. This includes
-    ///   any method which may interact with the database. The check can be
-    ///   conveniently written as `token.check_cancel()?;`. It is low overhead
-    ///   to check for cancel, so when in doubt it is better to have too many
-    ///   checks than too few.
-    ///
-    /// # Panics:
-    ///   * This task will panic if the supplied closure panics
-    ///   * This task will panic if the supplied closure returns Err(Cancelled)
-    ///     when the supplied cancel token is not cancelled.
-    pub(crate) async fn with_conn<T: Send + 'static>(
-        &self,
-        f: impl 'static
-            + Send
-            + FnOnce(
-                &mut PooledConnection<ConnectionManager<PgConnection>>,
-                &CancelHandle,
-            ) -> Result<T, CancelableError<StoreError>>,
-    ) -> Result<T, StoreError> {
-        let pool = self.get_ready()?;
-        pool.with_conn(f).await
-    }
-
-    pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.get_ready()?.get()
+    pub async fn get(&self) -> Result<AsyncPgConnection, StoreError> {
+        self.get_ready()?.get().await
     }
 
     /// Get a connection from the pool for foreign data wrapper access;
@@ -374,29 +326,30 @@ impl ConnectionPool {
     /// The `timeout` is called every time we time out waiting for a
     /// connection. If `timeout` returns `true`, `get_fdw` returns with that
     /// error, otherwise we try again to get a connection.
-    pub fn get_fdw<F>(
+    pub async fn get_fdw<F>(
         &self,
         logger: &Logger,
         timeout: F,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError>
+    ) -> Result<AsyncPgConnection, StoreError>
     where
         F: FnMut() -> bool,
     {
-        self.get_ready()?.get_fdw(logger, timeout)
+        self.get_ready()?.get_fdw(logger, timeout).await
     }
 
     /// Get a connection from the pool for foreign data wrapper access if
     /// one is available
-    pub fn try_get_fdw(
+    pub async fn try_get_fdw(
         &self,
         logger: &Logger,
         timeout: Duration,
-    ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
+    ) -> Option<AsyncPgConnection> {
         let Ok(inner) = self.get_ready() else {
             return None;
         };
         self.state_tracker
             .ignore_timeout(|| inner.try_get_fdw(logger, timeout))
+            .await
     }
 
     pub(crate) async fn query_permit(&self) -> QueryPermit {
@@ -410,7 +363,7 @@ impl ConnectionPool {
     }
 
     pub(crate) fn wait_stats(&self) -> PoolWaitStats {
-        self.inner.get_unready().wait_stats.cheap_clone()
+        self.inner.get_unready().wait_meter.wait_stats.cheap_clone()
     }
 
     /// Mirror key tables from the primary into our own schema. We do this
@@ -424,11 +377,10 @@ impl ConnectionPool {
     }
 }
 
-#[derive(Clone)]
 pub struct PoolInner {
     logger: Logger,
     pub shard: Shard,
-    pool: Pool<ConnectionManager<PgConnection>>,
+    pool: AsyncPool,
     // A separate pool for connections that will use foreign data wrappers.
     // Once such a connection accesses a foreign table, Postgres keeps a
     // connection to the foreign server until the connection is closed.
@@ -439,10 +391,11 @@ pub struct PoolInner {
     // this will no longer be needed since it will then be possible to
     // explicitly close connections to foreign servers when a connection is
     // returned to the pool.
-    fdw_pool: Option<Pool<ConnectionManager<PgConnection>>>,
-    limiter: Arc<Semaphore>,
+    fdw_pool: Option<AsyncPool>,
     postgres_url: String,
-    pub(crate) wait_stats: PoolWaitStats,
+    /// Measures how long we spend getting connections from the main `pool`
+    wait_meter: WaitMeter,
+    state_tracker: StateTracker,
 
     // Limits the number of graphql queries that may execute concurrently. Since one graphql query
     // may require multiple DB queries, it is useful to organize the queue at the graphql level so
@@ -462,7 +415,6 @@ impl PoolInner {
         fdw_pool_size: Option<u32>,
         logger: &Logger,
         registry: Arc<MetricsRegistry>,
-        state_tracker: StateTracker,
     ) -> PoolInner {
         check_mirrored_tables();
 
@@ -474,64 +426,62 @@ impl PoolInner {
             map.insert("shard".to_string(), shard.to_string());
             map
         };
-        let error_counter = registry
-            .global_counter(
-                "store_connection_error_count",
-                "The number of Postgres connections errors",
-                const_labels.clone(),
-            )
-            .expect("failed to create `store_connection_error_count` counter");
-        let error_handler = Box::new(ErrorHandler::new(
-            logger_pool.clone(),
-            error_counter,
-            state_tracker.clone(),
-        ));
-        let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
-        let event_handler = Box::new(EventHandler::new(
-            logger_pool.clone(),
-            registry.cheap_clone(),
-            wait_stats.clone(),
-            const_labels.clone(),
-            state_tracker,
-        ));
+
+        let state_tracker = StateTracker::new(logger_pool.cheap_clone());
 
         // Connect to Postgres
-        let conn_manager = ConnectionManager::new(postgres_url.clone());
-        let min_idle = ENV_VARS.store.connection_min_idle.filter(|min_idle| {
-            if *min_idle <= pool_size {
-                true
-            } else {
-                warn!(
-                    logger_pool,
-                    "Configuration error: min idle {} exceeds pool size {}, ignoring min idle",
-                    min_idle,
-                    pool_size
-                );
-                false
-            }
-        });
-        let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
-            .error_handler(error_handler.clone())
-            .event_handler(event_handler.clone())
-            .connection_timeout(ENV_VARS.store.connection_timeout)
-            .max_size(pool_size)
-            .min_idle(min_idle)
-            .idle_timeout(Some(ENV_VARS.store.connection_idle_timeout));
-        let pool = builder.build_unchecked(conn_manager);
+        let conn_manager = ConnectionManager::new(
+            logger_pool.clone(),
+            postgres_url.clone(),
+            state_tracker.clone(),
+            &registry,
+            const_labels.clone(),
+        );
+
+        let timeouts = Timeouts {
+            wait: Some(ENV_VARS.store.connection_timeout),
+            create: Some(ENV_VARS.store.connection_timeout),
+            recycle: Some(ENV_VARS.store.connection_timeout),
+        };
+
+        // The post_create and post_recycle hooks are only called when
+        // create and recycle succeed; we can therefore mark the pool
+        // available
+        let pool = AsyncPool::builder(conn_manager.clone())
+            .max_size(pool_size as usize)
+            .timeouts(timeouts)
+            .runtime(Runtime::Tokio1)
+            .post_create(state_tracker.mark_available_hook())
+            .post_recycle(state_tracker.mark_available_hook())
+            .build()
+            .expect("failed to create connection pool");
+
+        manager::spawn_size_stat_collector(pool.clone(), &registry, const_labels.clone());
+
+        manager::spawn_connection_reaper(pool.clone(), ENV_VARS.store.connection_idle_timeout);
+
+        let wait_meter = WaitMeter::new(&registry, const_labels.clone());
+
         let fdw_pool = fdw_pool_size.map(|pool_size| {
-            let conn_manager = ConnectionManager::new(postgres_url.clone());
-            let builder: Builder<ConnectionManager<PgConnection>> = Pool::builder()
-                .error_handler(error_handler)
-                .event_handler(event_handler)
-                .connection_timeout(ENV_VARS.store.connection_timeout)
-                .max_size(pool_size)
-                .min_idle(Some(1))
-                .idle_timeout(Some(FDW_IDLE_TIMEOUT));
-            builder.build_unchecked(conn_manager)
+            let fdw_timeouts = Timeouts {
+                wait: Some(ENV_VARS.store.connection_timeout),
+                create: None,
+                recycle: Some(FDW_IDLE_TIMEOUT),
+            };
+
+            let fdw_pool = AsyncPool::builder(conn_manager)
+                .max_size(pool_size as usize)
+                .timeouts(fdw_timeouts)
+                .runtime(Runtime::Tokio1)
+                .post_create(state_tracker.mark_available_hook())
+                .post_recycle(state_tracker.mark_available_hook())
+                .build()
+                .expect("failed to create fdw connection pool");
+
+            manager::spawn_connection_reaper(fdw_pool.clone(), FDW_IDLE_TIMEOUT);
+            fdw_pool
         });
 
-        let max_concurrent_queries = pool_size as usize + ENV_VARS.store.extra_query_permits;
-        let limiter = Arc::new(Semaphore::new(max_concurrent_queries));
         info!(logger_store, "Pool successfully connected to Postgres");
 
         let semaphore_wait_gauge = registry
@@ -541,6 +491,7 @@ impl PoolInner {
                 const_labels,
             )
             .expect("failed to create `query_effort_ms` counter");
+        let max_concurrent_queries = pool_size as usize + ENV_VARS.store.extra_query_permits;
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
         PoolInner {
             logger: logger_pool,
@@ -548,111 +499,63 @@ impl PoolInner {
             postgres_url,
             pool,
             fdw_pool,
-            limiter,
-            wait_stats,
+            wait_meter,
+            state_tracker,
             semaphore_wait_stats: Arc::new(RwLock::new(MovingStats::default())),
             query_semaphore,
             semaphore_wait_gauge,
         }
     }
 
-    /// Execute a closure with a connection to the database.
+    /// Helper so that getting a connection from the main pool and the
+    /// fdw_pool collect the same metrics.
     ///
-    /// # API
-    ///   The API of using a closure to bound the usage of the connection serves several
-    ///   purposes:
+    /// If `timeouts` is `None`, the default pool timeouts are used.
     ///
-    ///   * Moves blocking database access out of the `Future::poll`. Within
-    ///     `Future::poll` (which includes all `async` methods) it is illegal to
-    ///     perform a blocking operation. This includes all accesses to the
-    ///     database, acquiring of locks, etc. Calling a blocking operation can
-    ///     cause problems with `Future` combinators (including but not limited
-    ///     to select, timeout, and FuturesUnordered) and problems with
-    ///     executors/runtimes. This method moves the database work onto another
-    ///     thread in a way which does not block `Future::poll`.
-    ///
-    ///   * Limit the total number of connections. Because the supplied closure
-    ///     takes a reference, we know the scope of the usage of all entity
-    ///     connections and can limit their use in a non-blocking way.
-    ///
-    /// # Cancellation
-    ///   The normal pattern for futures in Rust is drop to cancel. Once we
-    ///   spawn the database work in a thread though, this expectation no longer
-    ///   holds because the spawned task is the independent of this future. So,
-    ///   this method provides a cancel token which indicates that the `Future`
-    ///   has been dropped. This isn't *quite* as good as drop on cancel,
-    ///   because a drop on cancel can do things like cancel http requests that
-    ///   are in flight, but checking for cancel periodically is a significant
-    ///   improvement.
-    ///
-    ///   The implementation of the supplied closure should check for cancel
-    ///   between every operation that is potentially blocking. This includes
-    ///   any method which may interact with the database. The check can be
-    ///   conveniently written as `token.check_cancel()?;`. It is low overhead
-    ///   to check for cancel, so when in doubt it is better to have too many
-    ///   checks than too few.
-    ///
-    /// # Panics:
-    ///   * This task will panic if the supplied closure panics
-    ///   * This task will panic if the supplied closure returns Err(Cancelled)
-    ///     when the supplied cancel token is not cancelled.
-    pub(crate) async fn with_conn<T: Send + 'static>(
+    /// On error, returns `StoreError::DatabaseUnavailable` and marks the
+    /// pool as unavailable if we can tell that the error is due to the pool
+    /// being closed. Returns `StoreError::StatementTimeout` if the error is
+    /// due to a timeout.
+    async fn get_from_pool(
         &self,
-        f: impl 'static
-            + Send
-            + FnOnce(
-                &mut PooledConnection<ConnectionManager<PgConnection>>,
-                &CancelHandle,
-            ) -> Result<T, CancelableError<StoreError>>,
-    ) -> Result<T, StoreError> {
-        let _permit = self.limiter.acquire().await;
-        let pool = self.clone();
-
-        let cancel_guard = CancelGuard::new();
-        let cancel_handle = cancel_guard.handle();
-
-        let result = graph::spawn_blocking_allow_panic(move || {
-            // It is possible time has passed between scheduling on the
-            // threadpool and being executed. Time to check for cancel.
-            cancel_handle.check_cancel()?;
-
-            // A failure to establish a connection is propagated as though the
-            // closure failed.
-            let mut conn = pool
-                .get()
-                .map_err(|_| CancelableError::Error(StoreError::DatabaseUnavailable))?;
-
-            // It is possible time has passed while establishing a connection.
-            // Time to check for cancel.
-            cancel_handle.check_cancel()?;
-
-            f(&mut conn, &cancel_handle)
-        })
-        .await
-        .unwrap(); // Propagate panics, though there shouldn't be any.
-
-        drop(cancel_guard);
-
-        // Finding cancel isn't technically unreachable, since there is nothing
-        // stopping the supplied closure from returning Canceled even if the
-        // supplied handle wasn't canceled. That would be very unexpected, the
-        // doc comment for this function says we will panic in this scenario.
-        match result {
-            Ok(t) => Ok(t),
-            Err(CancelableError::Error(e)) => Err(e),
-            Err(CancelableError::Cancel) => panic!("The closure supplied to with_entity_conn must not return Err(Canceled) unless the supplied token was canceled."),
+        pool: &AsyncPool,
+        timeouts: Option<Timeouts>,
+    ) -> Result<AsyncPgConnection, StoreError> {
+        let start = Instant::now();
+        let res = match timeouts {
+            Some(timeouts) => pool.timeout_get(&timeouts).await,
+            None => pool.get().await,
+        };
+        let elapsed = start.elapsed();
+        self.wait_meter.add_conn_wait_time(elapsed);
+        match res {
+            Ok(conn) => {
+                self.state_tracker.mark_available();
+                return Ok(conn);
+            }
+            Err(PoolError::Closed) | Err(PoolError::Backend(_)) => {
+                self.state_tracker.mark_unavailable(Duration::from_nanos(0));
+                return Err(StoreError::DatabaseUnavailable);
+            }
+            Err(PoolError::Timeout(_)) => {
+                if !self.state_tracker.timeout_is_ignored() {
+                    self.state_tracker.mark_unavailable(elapsed);
+                }
+                return Err(StoreError::StatementTimeout);
+            }
+            Err(PoolError::NoRuntimeSpecified) | Err(PoolError::PostCreateHook(_)) => {
+                let e = res.err().unwrap();
+                unreachable!("impossible error {e}");
+            }
         }
     }
 
-    pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError> {
-        self.pool.get().map_err(|_| StoreError::DatabaseUnavailable)
+    async fn get(&self) -> Result<AsyncPgConnection, StoreError> {
+        self.get_from_pool(&self.pool, None).await
     }
 
     /// Get the pool for fdw connections. It is an error if none is configured
-    fn fdw_pool(
-        &self,
-        logger: &Logger,
-    ) -> Result<&Pool<ConnectionManager<PgConnection>>, StoreError> {
+    fn fdw_pool(&self, logger: &Logger) -> Result<&AsyncPool, StoreError> {
         let pool = match &self.fdw_pool {
             Some(pool) => pool,
             None => {
@@ -672,21 +575,21 @@ impl PoolInner {
     /// The `timeout` is called every time we time out waiting for a
     /// connection. If `timeout` returns `true`, `get_fdw` returns with that
     /// error, otherwise we try again to get a connection.
-    pub fn get_fdw<F>(
+    async fn get_fdw<F>(
         &self,
         logger: &Logger,
         mut timeout: F,
-    ) -> Result<PooledConnection<ConnectionManager<PgConnection>>, StoreError>
+    ) -> Result<AsyncPgConnection, StoreError>
     where
         F: FnMut() -> bool,
     {
         let pool = self.fdw_pool(logger)?;
         loop {
-            match pool.get() {
+            match self.get_from_pool(&pool, None).await {
                 Ok(conn) => return Ok(conn),
                 Err(e) => {
                     if timeout() {
-                        return Err(e.into());
+                        return Err(anyhow!("timeout in get_fdw: {e}").into());
                     }
                 }
             }
@@ -696,11 +599,7 @@ impl PoolInner {
     /// Get a connection from the fdw pool if one is available. We wait for
     /// `timeout` for a connection which should be set just big enough to
     /// allow establishing a connection
-    pub fn try_get_fdw(
-        &self,
-        logger: &Logger,
-        timeout: Duration,
-    ) -> Option<PooledConnection<ConnectionManager<PgConnection>>> {
+    async fn try_get_fdw(&self, logger: &Logger, timeout: Duration) -> Option<AsyncPgConnection> {
         // Any error trying to get a connection is treated as "couldn't get
         // a connection in time". If there is a serious error with the
         // database, e.g., because it's not available, the next database
@@ -708,7 +607,12 @@ impl PoolInner {
         let Ok(fdw_pool) = self.fdw_pool(logger) else {
             return None;
         };
-        let Ok(conn) = fdw_pool.get_timeout(timeout) else {
+        let timeouts = Timeouts {
+            wait: Some(timeout),
+            create: None,
+            recycle: None,
+        };
+        let Ok(conn) = self.get_from_pool(fdw_pool, Some(timeouts)).await else {
             return None;
         };
         Some(conn)
@@ -719,22 +623,19 @@ impl PoolInner {
     }
 
     /// Check that we can connect to the database
-    pub fn check(&self) -> bool {
-        self.pool
-            .get()
-            .ok()
-            .map(|mut conn| sql_query("select 1").execute(&mut conn).is_ok())
-            .unwrap_or(false)
+    pub async fn check(&self) -> bool {
+        let Ok(mut conn) = self.get().await else {
+            return false;
+        };
+
+        sql_query("select 1").execute(&mut conn).await.is_ok()
     }
 
-    fn locale_check(
-        &self,
-        logger: &Logger,
-        mut conn: PooledConnection<ConnectionManager<PgConnection>>,
-    ) -> Result<(), StoreError> {
+    async fn locale_check(&self, logger: &Logger) -> Result<(), StoreError> {
+        let mut conn = self.get().await?;
         Ok(
-            if let Err(msg) = catalog::Locale::load(&mut conn)?.suitable() {
-                if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn)? {
+            if let Err(msg) = catalog::Locale::load(&mut conn).await?.suitable() {
+                if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn).await? {
                     const MSG: &str =
                     "Database does not use C locale. \
                     Please check the graph-node documentation for how to set up the database locale";
@@ -758,21 +659,26 @@ impl PoolInner {
         permit.unwrap()
     }
 
-    fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
+    async fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
-        let mut conn = self.get()?;
-        conn.batch_execute("create extension if not exists postgres_fdw")?;
+        let mut conn = self.get().await?;
+        conn.batch_execute("create extension if not exists postgres_fdw")
+            .await?;
         conn.transaction(|conn| {
-            let current_servers: Vec<String> = crate::catalog::current_servers(conn)?;
-            for server in servers.iter().filter(|server| server.shard != self.shard) {
-                if current_servers.contains(&server.name) {
-                    server.update(conn)?;
-                } else {
-                    server.create(conn)?;
+            async {
+                let current_servers: Vec<String> = crate::catalog::current_servers(conn).await?;
+                for server in servers.iter().filter(|server| server.shard != self.shard) {
+                    if current_servers.contains(&server.name) {
+                        server.update(conn).await?;
+                    } else {
+                        server.create(conn).await?;
+                    }
                 }
+                Ok(())
             }
-            Ok(())
+            .scope_boxed()
         })
+        .await
     }
 
     /// Do the part of database setup that only affects this pool. Those
@@ -785,36 +691,48 @@ impl PoolInner {
         self: Arc<Self>,
         servers: &[ForeignServer],
     ) -> Result<MigrationCount, StoreError> {
-        self.configure_fdw(servers)?;
-        let mut conn = self.get()?;
-        let (this, count) = conn.transaction(|conn| -> Result<_, StoreError> {
-            let count = migrate_schema(&self.logger, conn)?;
-            Ok((self, count))
-        })?;
+        self.locale_check(&self.logger).await?;
 
-        this.locale_check(&this.logger, conn)?;
+        self.configure_fdw(servers).await?;
 
-        Ok(count)
+        // We use AsyncConnectionWrapper here since diesel_async doesn't
+        // offer a truly async way to run migrations, and we need to be very
+        // careful that block_on only gets called on a blocking thread to
+        // avoid errors from the tokio runtime
+        let logger = self.logger.cheap_clone();
+        let mut conn = self.get().await.map(AsyncConnectionWrapper::from)?;
+
+        tokio::task::spawn_blocking(move || {
+            diesel::Connection::transaction::<_, StoreError, _>(&mut conn, |conn| {
+                migrate_schema(&logger, conn)
+            })
+        })
+        .await
+        .expect("migration task panicked")
     }
 
     /// If this is the primary shard, drop the namespace `CROSS_SHARD_NSP`
-    fn drop_cross_shard_views(&self) -> Result<(), StoreError> {
+    async fn drop_cross_shard_views(&self) -> Result<(), StoreError> {
         if self.shard != *PRIMARY_SHARD {
             return Ok(());
         }
 
         info!(&self.logger, "Dropping cross-shard views");
-        let mut conn = self.get()?;
+        let mut conn = self.get().await?;
         conn.transaction(|conn| {
-            let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
-            conn.batch_execute(&query)?;
-            Ok(())
+            async {
+                let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
+                conn.batch_execute(&query).await?;
+                Ok(())
+            }
+            .scope_boxed()
         })
+        .await
     }
 
     /// If this is the primary shard, create the namespace `CROSS_SHARD_NSP`
     /// and populate it with tables that union various imported tables
-    fn create_cross_shard_views(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
+    async fn create_cross_shard_views(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         fn shard_nsp_pairs<'a>(
             current: &Shard,
             local_nsp: &str,
@@ -837,9 +755,9 @@ impl PoolInner {
             return Ok(());
         }
 
-        let mut conn = self.get()?;
+        let mut conn = self.get().await?;
         let sharded = Namespace::special(CROSS_SHARD_NSP);
-        if catalog::has_namespace(&mut conn, &sharded)? {
+        if catalog::has_namespace(&mut conn, &sharded).await? {
             // We dropped the namespace before, but another node must have
             // recreated it in the meantime so we don't need to do anything
             return Ok(());
@@ -847,24 +765,29 @@ impl PoolInner {
 
         info!(&self.logger, "Creating cross-shard views");
         conn.transaction(|conn| {
-            let query = format!("create schema {}", CROSS_SHARD_NSP);
-            conn.batch_execute(&query)?;
-            for (src_nsp, src_tables) in SHARDED_TABLES {
-                // Pairs of (shard, nsp) for all servers
-                let nsps = shard_nsp_pairs(&self.shard, src_nsp, servers);
-                for src_table in src_tables {
-                    let create_view = catalog::create_cross_shard_view(
-                        conn,
-                        src_nsp,
-                        src_table,
-                        CROSS_SHARD_NSP,
-                        &nsps,
-                    )?;
-                    conn.batch_execute(&create_view)?;
+            async {
+                let query = format!("create schema {}", CROSS_SHARD_NSP);
+                conn.batch_execute(&query).await?;
+                for (src_nsp, src_tables) in SHARDED_TABLES {
+                    // Pairs of (shard, nsp) for all servers
+                    let nsps = shard_nsp_pairs(&self.shard, src_nsp, servers);
+                    for src_table in src_tables {
+                        let create_view = catalog::create_cross_shard_view(
+                            conn,
+                            src_nsp,
+                            src_table,
+                            CROSS_SHARD_NSP,
+                            &nsps,
+                        )
+                        .await?;
+                        conn.batch_execute(&create_view).await?;
+                    }
                 }
+                Ok(())
             }
-            Ok(())
+            .scope_boxed()
         })
+        .await
     }
 
     /// Copy the data from key tables in the primary into our local schema
@@ -873,22 +796,20 @@ impl PoolInner {
         if self.shard == *PRIMARY_SHARD {
             return Ok(());
         }
-        self.with_conn(|conn, handle| {
-            conn.transaction(|conn| {
-                primary::Mirror::refresh_tables(conn, handle).map_err(CancelableError::from)
-            })
-        })
-        .await
+        let mut conn = self.get().await?;
+        conn.transaction(|conn| primary::Mirror::refresh_tables(conn).scope_boxed())
+            .await
     }
 
     /// The foreign server `server` had schema changes, and we therefore
     /// need to remap anything that we are importing via fdw to make sure we
     /// are using this updated schema
-    pub fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
+    pub async fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
         if &server.shard == &*PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
-            let mut conn = self.get()?;
-            conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard))?;
+            let mut conn = self.get().await?;
+            conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard).scope_boxed())
+                .await?;
         }
         if &server.shard != &self.shard {
             info!(
@@ -896,19 +817,20 @@ impl PoolInner {
                 "Mapping metadata from {}",
                 server.shard.as_str()
             );
-            let mut conn = self.get()?;
-            conn.transaction(|conn| server.map_metadata(conn))?;
+            let mut conn = self.get().await?;
+            conn.transaction(|conn| server.map_metadata(conn).scope_boxed())
+                .await?;
         }
         Ok(())
     }
 
-    pub fn needs_remap(&self, server: &ForeignServer) -> Result<bool, StoreError> {
+    pub async fn needs_remap(&self, server: &ForeignServer) -> Result<bool, StoreError> {
         if &server.shard == &self.shard {
             return Ok(false);
         }
 
-        let mut conn = self.get()?;
-        server.needs_remap(&mut conn)
+        let mut conn = self.get().await?;
+        server.needs_remap(&mut conn).await
     }
 }
 
@@ -926,17 +848,16 @@ impl MigrationCount {
 }
 
 /// Run all schema migrations.
-///
-/// When multiple `graph-node` processes start up at the same time, we ensure
-/// that they do not run migrations in parallel by using `blocking_conn` to
-/// serialize them. The `conn` is used to run the actual migration.
-fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<MigrationCount, StoreError> {
+fn migrate_schema(
+    logger: &Logger,
+    conn: &mut AsyncConnectionWrapper<AsyncPgConnection>,
+) -> Result<MigrationCount, StoreError> {
     use diesel_migrations::MigrationHarness;
 
     // Collect migration logging output
     let mut output = vec![];
 
-    let old_count = catalog::migration_count(conn)?;
+    let old_count = graph::block_on(catalog::migration_count(conn))?;
     let mut harness = HarnessWithOutput::new(conn, &mut output);
 
     info!(logger, "Running migrations");
@@ -961,7 +882,7 @@ fn migrate_schema(logger: &Logger, conn: &mut PgConnection) -> Result<MigrationC
         debug!(logger, "Postgres migration output"; "output" => msg);
     }
 
-    let migrations = catalog::migration_count(conn)?;
+    let migrations = graph::block_on(catalog::migration_count(conn))?;
 
     Ok(MigrationCount {
         new: migrations,

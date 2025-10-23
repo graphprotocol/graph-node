@@ -281,7 +281,7 @@ mod tests {
         (handle, monitor, rx)
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn polling_monitor_shared_svc() {
         let (svc, mut handle) = mock::pair();
         let shared_svc = tower::buffer::Buffer::new(tower::limit::ConcurrencyLimit::new(svc, 1), 1);
@@ -303,7 +303,7 @@ mod tests {
         assert_eq!(rx1.recv().await, Some(("req-0", "res-0")));
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn polling_monitor_simple() {
         let (mut handle, monitor, mut rx) = setup();
 
@@ -313,7 +313,7 @@ mod tests {
         assert_eq!(rx.recv().await, Some(("req-0", "res-0")));
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn polling_monitor_unordered() {
         let (mut handle, monitor, mut rx) = setup();
 
@@ -330,7 +330,7 @@ mod tests {
         assert_eq!(rx.recv().await, Some(("req-1", "res-1")));
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn polling_monitor_failed_push_to_back() {
         let (mut handle, monitor, mut rx) = setup();
 
@@ -354,7 +354,7 @@ mod tests {
         assert_eq!(rx.recv().await, Some(("req-1", "res-1")));
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn polling_monitor_cancelation() {
         // Cancelation on receiver drop, no pending request.
         let (mut handle, _monitor, rx) = setup();

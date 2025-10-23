@@ -26,17 +26,17 @@ pub struct DeploymentStatus {
     pub chain_head_block: Option<BlockPtr>,
 }
 
-pub fn load_deployments(
+pub async fn load_deployments(
     primary_pool: ConnectionPool,
     deployment: &DeploymentSelector,
     version: &DeploymentVersionSelector,
 ) -> Result<Vec<Deployment>, GraphmanError> {
-    let mut primary_conn = primary_pool.get()?;
+    let mut primary_conn = primary_pool.get().await?;
 
-    crate::deployment::load_deployments(&mut primary_conn, &deployment, &version)
+    crate::deployment::load_deployments(&mut primary_conn, &deployment, &version).await
 }
 
-pub fn load_deployment_statuses(
+pub async fn load_deployment_statuses(
     store: Arc<Store>,
     deployments: &[Deployment],
 ) -> Result<HashMap<i32, DeploymentStatus>, GraphmanError> {
@@ -48,7 +48,8 @@ pub fn load_deployment_statuses(
         .collect_vec();
 
     let deployment_statuses = store
-        .status(Filter::DeploymentIds(deployment_ids))?
+        .status(Filter::DeploymentIds(deployment_ids))
+        .await?
         .into_iter()
         .map(|status| {
             let id = status.id.0;

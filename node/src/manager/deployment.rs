@@ -2,8 +2,12 @@ use std::collections::HashSet;
 use std::fmt;
 use std::str::FromStr;
 
-use diesel::{dsl::sql, prelude::*};
-use diesel::{sql_types::Text, PgConnection};
+use diesel::dsl::sql;
+use diesel::sql_types::Text;
+use diesel::{
+    ExpressionMethods, JoinOnDsl, NullableExpressionMethods, PgTextExpressionMethods, QueryDsl,
+};
+use diesel_async::RunQueryDsl;
 
 use graph::components::store::DeploymentId;
 use graph::{
@@ -12,7 +16,7 @@ use graph::{
 };
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::unused;
-use graph_store_postgres::ConnectionPool;
+use graph_store_postgres::{AsyncPgConnection, ConnectionPool};
 
 lazy_static! {
     // `Qm...` optionally follow by `:$shard`
@@ -88,14 +92,14 @@ impl DeploymentSearch {
         }
     }
 
-    pub fn lookup(&self, primary: &ConnectionPool) -> Result<Vec<Deployment>, anyhow::Error> {
-        let mut conn = primary.get()?;
-        self.lookup_with_conn(&mut conn)
+    pub async fn lookup(&self, primary: &ConnectionPool) -> Result<Vec<Deployment>, anyhow::Error> {
+        let mut conn = primary.get().await?;
+        self.lookup_with_conn(&mut conn).await
     }
 
-    pub fn lookup_with_conn(
+    pub async fn lookup_with_conn(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> Result<Vec<Deployment>, anyhow::Error> {
         use store_catalog::deployment_schemas as ds;
         use store_catalog::subgraph as s;
@@ -126,25 +130,25 @@ impl DeploymentSearch {
         let deployments: Vec<Deployment> = match self {
             DeploymentSearch::Name { name } => {
                 let pattern = format!("%{}%", name);
-                query.filter(s::name.ilike(&pattern)).load(conn)?
+                query.filter(s::name.ilike(&pattern)).load(conn).await?
             }
             DeploymentSearch::Hash { hash, shard } => {
                 let query = query.filter(ds::subgraph.eq(&hash));
                 match shard {
-                    Some(shard) => query.filter(ds::shard.eq(shard)).load(conn)?,
-                    None => query.load(conn)?,
+                    Some(shard) => query.filter(ds::shard.eq(shard)).load(conn).await?,
+                    None => query.load(conn).await?,
                 }
             }
             DeploymentSearch::Deployment { namespace } => {
-                query.filter(ds::name.eq(&namespace)).load(conn)?
+                query.filter(ds::name.eq(&namespace)).load(conn).await?
             }
-            DeploymentSearch::All => query.load(conn)?,
+            DeploymentSearch::All => query.load(conn).await?,
         };
         Ok(deployments)
     }
 
     /// Finds all [`Deployment`]s for this [`DeploymentSearch`].
-    pub fn find(
+    pub async fn find(
         &self,
         pool: ConnectionPool,
         current: bool,
@@ -154,7 +158,7 @@ impl DeploymentSearch {
         let current = current || used;
         let pending = pending || used;
 
-        let deployments = self.lookup(&pool)?;
+        let deployments = self.lookup(&pool).await?;
         // Filter by status; if neither `current` or `pending` are set, list
         // all deployments
         let deployments: Vec<_> = deployments
@@ -170,9 +174,10 @@ impl DeploymentSearch {
     }
 
     /// Finds a single deployment locator for the given deployment identifier.
-    pub fn locate_unique(&self, pool: &ConnectionPool) -> anyhow::Result<DeploymentLocator> {
+    pub async fn locate_unique(&self, pool: &ConnectionPool) -> anyhow::Result<DeploymentLocator> {
         let mut locators: Vec<DeploymentLocator> = HashSet::<DeploymentLocator>::from_iter(
-            self.lookup(pool)?
+            self.lookup(pool)
+                .await?
                 .into_iter()
                 .map(|deployment| deployment.locator()),
         )

@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use async_trait::async_trait;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::substreams_block_stream::SubstreamsBlockStream;
@@ -29,7 +30,7 @@ use graph::{
     },
     components::store::DeploymentLocator,
     firehose::{self as firehose, ForkStep},
-    prelude::{async_trait, o, BlockNumber, Error, Logger, LoggerFactory},
+    prelude::{o, BlockNumber, Error, Logger, LoggerFactory},
 };
 use prost::Message;
 use std::collections::BTreeSet;
@@ -292,7 +293,9 @@ impl Blockchain for Chain {
             .await
     }
 
-    fn runtime(&self) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
+    async fn runtime(
+        &self,
+    ) -> anyhow::Result<(Arc<dyn RuntimeAdapterTrait<Self>>, Self::DecoderHook)> {
         Ok((Arc::new(NoopRuntimeAdapter::default()), NoopDecoderHook))
     }
 
@@ -590,7 +593,7 @@ mod test {
     use graph::{
         blockchain::{block_stream::BlockWithTriggers, DataSource as _, TriggersAdapter as _},
         data::subgraph::LATEST_VERSION,
-        prelude::{tokio, Link},
+        prelude::Link,
         semver::Version,
         slog::{self, o, Logger},
     };
@@ -914,7 +917,7 @@ mod test {
         }
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_trigger_filter_empty() {
         let account1: String = "account1".into();
 
@@ -932,7 +935,7 @@ mod test {
         assert_eq!(block_with_triggers.trigger_count(), 0);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_trigger_filter_every_block() {
         let account1: String = "account1".into();
 
@@ -958,7 +961,7 @@ mod test {
         assert_eq!(height, vec![1]);
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn test_trigger_filter_every_receipt() {
         let account1: String = "account1".into();
 

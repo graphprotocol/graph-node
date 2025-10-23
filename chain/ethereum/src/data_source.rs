@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
+use async_trait::async_trait;
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
 use graph::components::link_resolver::LinkResolverContext;
 use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
@@ -33,7 +34,6 @@ use tiny_keccak::{keccak256, Keccak};
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        async_trait,
         ethabi::{Address, Event, Function, LogParam, ParamType, RawLog},
         serde_json, warn,
         web3::types::{Log, Transaction, H256},

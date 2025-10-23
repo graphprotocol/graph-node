@@ -1,17 +1,17 @@
-use diesel::PgConnection;
 use std::{collections::HashMap, thread::sleep, time::Duration};
 
+use diesel::dsl::sql;
 use graph::prelude::anyhow;
-use graph_store_postgres::ConnectionPool;
+use graph_store_postgres::{AsyncPgConnection, ConnectionPool};
 
 use crate::manager::catalog;
 
-pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
-    fn query(conn: &mut PgConnection) -> Result<Vec<(String, i64, i64)>, anyhow::Error> {
+pub async fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
+    async fn query(conn: &mut AsyncPgConnection) -> Result<Vec<(String, i64, i64)>, anyhow::Error> {
         use catalog::pg_catalog::pg_stat_database as d;
-        use diesel::dsl::*;
         use diesel::sql_types::BigInt;
-        use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+        use diesel::{ExpressionMethods, QueryDsl};
+        use diesel_async::RunQueryDsl;
 
         let rows = d::table
             .filter(d::datname.eq_any(vec!["explorer", "graph"]))
@@ -21,7 +21,8 @@ pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
                 sql::<BigInt>("txid_current()::bigint"),
             ))
             //.select((d::datname))
-            .load::<(Option<String>, i64, i64)>(conn)?;
+            .load::<(Option<String>, i64, i64)>(conn)
+            .await?;
         Ok(rows
             .into_iter()
             .map(|(datname, all_txn, write_txn)| {
@@ -31,8 +32,8 @@ pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
     }
 
     let mut speeds = HashMap::new();
-    let mut conn = pool.get()?;
-    for (datname, all_txn, write_txn) in query(&mut conn)? {
+    let mut conn = pool.get().await?;
+    for (datname, all_txn, write_txn) in query(&mut conn).await? {
         speeds.insert(datname, (all_txn, write_txn));
     }
     println!(
@@ -42,7 +43,7 @@ pub fn run(pool: ConnectionPool, delay: u64) -> Result<(), anyhow::Error> {
     sleep(Duration::from_secs(delay));
     println!("Number of transactions/minute");
     println!("{:10} {:>7} write", "database", "all");
-    for (datname, all_txn, write_txn) in query(&mut conn)? {
+    for (datname, all_txn, write_txn) in query(&mut conn).await? {
         let (all_speed, write_speed) = speeds
             .get(&datname)
             .map(|(all_txn_old, write_txn_old)| {

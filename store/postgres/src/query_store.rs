@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::deployment_store::{DeploymentStore, ReplicaId};
+use async_trait::async_trait;
 use graph::components::store::{DeploymentId, QueryPermit, QueryStore as QueryStoreTrait};
 use graph::data::query::Trace;
 use graph::data::store::QueryObject;
@@ -38,7 +39,7 @@ impl QueryStore {
 
 #[async_trait]
 impl QueryStoreTrait for QueryStore {
-    fn find_query_values(
+    async fn find_query_values(
         &self,
         query: EntityQuery,
     ) -> Result<(Vec<QueryObject>, Trace), graph::prelude::QueryExecutionError> {
@@ -47,10 +48,12 @@ impl QueryStoreTrait for QueryStore {
         let mut conn = self
             .store
             .get_replica_conn(self.replica_id)
+            .await
             .map_err(|e| QueryExecutionError::StoreError(e.into()))?;
         let wait = start.elapsed();
         self.store
             .execute_query(&mut conn, self.site.clone(), query)
+            .await
             .map(|(entities, mut trace)| {
                 trace.conn_wait(wait);
                 (entities, trace)
@@ -120,13 +123,13 @@ impl QueryStoreTrait for QueryStore {
         Ok(self.store.deployment_state(self.site.cheap_clone()).await?)
     }
 
-    fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError> {
-        let info = self.store.subgraph_info(self.site.cheap_clone())?;
+    async fn api_schema(&self) -> Result<Arc<ApiSchema>, QueryExecutionError> {
+        let info = self.store.subgraph_info(self.site.cheap_clone()).await?;
         Ok(info.api.get(&self.api_version).unwrap().clone())
     }
 
-    fn input_schema(&self) -> Result<InputSchema, QueryExecutionError> {
-        let layout = self.store.find_layout(self.site.cheap_clone())?;
+    async fn input_schema(&self) -> Result<InputSchema, QueryExecutionError> {
+        let layout = self.store.find_layout(self.site.cheap_clone()).await?;
         Ok(layout.input_schema.cheap_clone())
     }
 

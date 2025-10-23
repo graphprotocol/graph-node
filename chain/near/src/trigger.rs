@@ -1,8 +1,8 @@
+use async_trait::async_trait;
 use graph::blockchain::Block;
 use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
 use graph::derive::CheapClone;
-use graph::prelude::async_trait;
 use graph::prelude::hex;
 use graph::prelude::web3::types::H256;
 use graph::prelude::BlockNumber;
@@ -162,11 +162,10 @@ mod tests {
         data::subgraph::API_VERSION_0_0_5,
         prelude::{hex, BigInt},
         runtime::{gas::GasCounter, DeterministicHostError, HostExportError},
-        tokio,
         util::mem::init_slice,
     };
 
-    #[tokio::test]
+    #[graph::test]
     async fn block_trigger_to_asc_ptr() {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Block(Arc::new(block()));
@@ -177,7 +176,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
+    #[graph::test]
     async fn receipt_trigger_to_asc_ptr() {
         let mut heap = BytesHeap::new(API_VERSION_0_0_5);
         let trigger = NearTrigger::Receipt(Arc::new(ReceiptWithOutcome {

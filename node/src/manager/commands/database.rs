@@ -45,7 +45,7 @@ pub async fn remap(
                 server.shard, pool.shard
             );
             std::io::stdout().flush().ok();
-            if let Err(e) = pool.remap(server) {
+            if let Err(e) = pool.remap(server).await {
                 println!(" FAILED");
                 println!("  error: {e}");
                 if !force {

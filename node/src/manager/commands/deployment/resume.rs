@@ -7,16 +7,16 @@ use graphman::commands::deployment::resume::load_paused_deployment;
 use graphman::commands::deployment::resume::resume_paused_deployment;
 use graphman::deployment::DeploymentSelector;
 
-pub fn run(
+pub async fn run(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
     deployment: DeploymentSelector,
 ) -> Result<()> {
-    let paused_deployment = load_paused_deployment(primary_pool.clone(), &deployment)?;
+    let paused_deployment = load_paused_deployment(primary_pool.clone(), &deployment).await?;
 
     println!("Resuming deployment {} ...", paused_deployment.locator());
 
-    resume_paused_deployment(primary_pool, notification_sender, paused_deployment)?;
+    resume_paused_deployment(primary_pool, notification_sender, paused_deployment).await?;
 
     Ok(())
 }

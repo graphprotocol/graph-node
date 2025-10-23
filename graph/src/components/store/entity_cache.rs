@@ -187,7 +187,7 @@ impl EntityCache {
         self.handler_updates.clear();
     }
 
-    pub fn get(
+    pub async fn get(
         &mut self,
         key: &EntityKey,
         scope: GetScope,
@@ -197,7 +197,7 @@ impl EntityCache {
         let mut entity: Option<Arc<Entity>> = match scope {
             GetScope::Store => {
                 if !self.current.contains_key(key) {
-                    let entity = self.store.get(key)?;
+                    let entity = self.store.get(key).await?;
                     self.current.insert(key.clone(), entity.map(Arc::new));
                 }
                 // Unwrap: we just inserted the entity
@@ -213,7 +213,7 @@ impl EntityCache {
         // always creates it in a new style.
         debug_assert!(match scope {
             GetScope::Store => {
-                entity == self.store.get(key).unwrap().map(Arc::new)
+                entity == self.store.get(key).await.unwrap().map(Arc::new)
             }
             GetScope::InBlock => true,
         });
@@ -233,7 +233,7 @@ impl EntityCache {
         Ok(entity)
     }
 
-    pub fn load_related(
+    pub async fn load_related(
         &mut self,
         eref: &LoadRelatedRequest,
     ) -> Result<Vec<Entity>, anyhow::Error> {
@@ -246,7 +246,7 @@ impl EntityCache {
             causality_region: eref.causality_region,
         };
 
-        let mut entity_map = self.store.get_derived(&query)?;
+        let mut entity_map = self.store.get_derived(&query).await?;
 
         for (key, entity) in entity_map.iter() {
             // Only insert to the cache if it's not already there
@@ -364,7 +364,7 @@ impl EntityCache {
     /// with existing data. The entity will be validated against the
     /// subgraph schema, and any errors will result in an `Err` being
     /// returned.
-    pub fn set(
+    pub async fn set(
         &mut self,
         key: EntityKey,
         entity: Entity,
@@ -407,7 +407,7 @@ impl EntityCache {
         // lookup in the database and check again with an entity that merges
         // the existing entity with the changes
         if !is_valid {
-            let entity = self.get(&key, GetScope::Store)?.ok_or_else(|| {
+            let entity = self.get(&key, GetScope::Store).await?.ok_or_else(|| {
                 anyhow!(
                     "Failed to read entity {}[{}] back from cache",
                     key.entity_type,
@@ -471,7 +471,7 @@ impl EntityCache {
     /// to the current state is actually needed.
     ///
     /// Also returns the updated `LfuCache`.
-    pub fn as_modifications(
+    pub async fn as_modifications(
         mut self,
         block: BlockNumber,
     ) -> Result<ModificationsAndCache, StoreError> {
@@ -493,7 +493,7 @@ impl EntityCache {
         // violation in the database, ensuring correctness
         let missing = missing.filter(|key| !key.entity_type.is_immutable());
 
-        for (entity_key, entity) in self.store.get_many(missing.cloned().collect())? {
+        for (entity_key, entity) in self.store.get_many(missing.cloned().collect()).await? {
             self.current.insert(entity_key, Some(Arc::new(entity)));
         }
 

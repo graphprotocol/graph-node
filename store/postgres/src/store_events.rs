@@ -2,10 +2,10 @@ use graph::futures01::Stream;
 use graph::futures03::compat::Stream01CompatExt;
 use graph::futures03::stream::StreamExt;
 use graph::futures03::TryStreamExt;
-use graph::tokio_stream::wrappers::ReceiverStream;
 use std::sync::{atomic::Ordering, Arc, RwLock};
 use std::{collections::HashMap, sync::atomic::AtomicUsize};
 use tokio::sync::mpsc::{channel, Sender};
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::notification_listener::{NotificationListener, SafeChannelName};
 use graph::components::store::SubscriptionManager as SubscriptionManagerTrait;

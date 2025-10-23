@@ -4,36 +4,35 @@ use std::sync::Arc;
 
 use crate::manager::deployment::DeploymentSearch;
 use crate::manager::fmt;
-use diesel::r2d2::ConnectionManager;
-use diesel::r2d2::PooledConnection;
-use diesel::PgConnection;
 use graph::components::store::DeploymentLocator;
 use graph::components::store::VersionStats;
 use graph::prelude::anyhow;
 use graph::prelude::CheapClone as _;
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::command_support::catalog::Site;
+use graph_store_postgres::AsyncPgConnection;
 use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::Shard;
 use graph_store_postgres::SubgraphStore;
 use graph_store_postgres::PRIMARY_SHARD;
 
-fn site_and_conn(
+async fn site_and_conn(
     pools: HashMap<Shard, ConnectionPool>,
     search: &DeploymentSearch,
-) -> Result<(Arc<Site>, PooledConnection<ConnectionManager<PgConnection>>), anyhow::Error> {
+) -> Result<(Arc<Site>, AsyncPgConnection), anyhow::Error> {
     let primary_pool = pools.get(&*PRIMARY_SHARD).unwrap();
-    let locator = search.locate_unique(primary_pool)?;
+    let locator = search.locate_unique(primary_pool).await?;
 
-    let pconn = primary_pool.get()?;
+    let pconn = primary_pool.get().await?;
     let mut conn = store_catalog::Connection::new(pconn);
 
     let site = conn
-        .locate_site(locator)?
+        .locate_site(locator)
+        .await?
         .ok_or_else(|| anyhow!("deployment `{}` does not exist", search))?;
     let site = Arc::new(site);
 
-    let conn = pools.get(&site.shard).unwrap().get()?;
+    let conn = pools.get(&site.shard).unwrap().get().await?;
 
     Ok((site, conn))
 }
@@ -45,7 +44,7 @@ pub async fn account_like(
     search: &DeploymentSearch,
     table: String,
 ) -> Result<(), anyhow::Error> {
-    let locator = search.locate_unique(&primary_pool)?;
+    let locator = search.locate_unique(&primary_pool).await?;
 
     store.set_account_like(&locator, &table, !clear).await?;
     let clear_text = if clear { "cleared" } else { "set" };
@@ -92,31 +91,32 @@ pub fn show_stats(
     Ok(())
 }
 
-pub fn show(
+pub async fn show(
     pools: HashMap<Shard, ConnectionPool>,
     search: &DeploymentSearch,
 ) -> Result<(), anyhow::Error> {
-    let (site, mut conn) = site_and_conn(pools, search)?;
+    let (site, mut conn) = site_and_conn(pools, search).await?;
 
-    let catalog = store_catalog::Catalog::load(&mut conn, site.cheap_clone(), false, vec![])?;
-    let stats = catalog.stats(&mut conn)?;
+    let catalog =
+        store_catalog::Catalog::load(&mut conn, site.cheap_clone(), false, vec![]).await?;
+    let stats = catalog.stats(&mut conn).await?;
 
-    let account_like = store_catalog::account_like(&mut conn, &site)?;
+    let account_like = store_catalog::account_like(&mut conn, &site).await?;
 
     show_stats(stats.as_slice(), account_like)
 }
 
-pub fn analyze(
+pub async fn analyze(
     store: Arc<SubgraphStore>,
     pool: ConnectionPool,
     search: DeploymentSearch,
     entity_name: Option<&str>,
 ) -> Result<(), anyhow::Error> {
-    let locator = search.locate_unique(&pool)?;
-    analyze_loc(store, &locator, entity_name)
+    let locator = search.locate_unique(&pool).await?;
+    analyze_loc(store, &locator, entity_name).await
 }
 
-fn analyze_loc(
+async fn analyze_loc(
     store: Arc<SubgraphStore>,
     locator: &DeploymentLocator,
     entity_name: Option<&str>,
@@ -125,16 +125,19 @@ fn analyze_loc(
         Some(entity_name) => println!("Analyzing table sgd{}.{entity_name}", locator.id),
         None => println!("Analyzing all tables for sgd{}", locator.id),
     }
-    store.analyze(locator, entity_name).map_err(|e| anyhow!(e))
+    store
+        .analyze(locator, entity_name)
+        .await
+        .map_err(|e| anyhow!(e))
 }
 
-pub fn target(
+pub async fn target(
     store: Arc<SubgraphStore>,
     primary: ConnectionPool,
     search: &DeploymentSearch,
 ) -> Result<(), anyhow::Error> {
-    let locator = search.locate_unique(&primary)?;
-    let (default, targets) = store.stats_targets(&locator)?;
+    let locator = search.locate_unique(&primary).await?;
+    let (default, targets) = store.stats_targets(&locator).await?;
 
     let has_targets = targets
         .values()
@@ -166,7 +169,7 @@ pub fn target(
     Ok(())
 }
 
-pub fn set_target(
+pub async fn set_target(
     store: Arc<SubgraphStore>,
     primary: ConnectionPool,
     search: &DeploymentSearch,
@@ -181,12 +184,14 @@ pub fn set_target(
         columns
     };
 
-    let locator = search.locate_unique(&primary)?;
+    let locator = search.locate_unique(&primary).await?;
 
-    store.set_stats_target(&locator, entity, columns, target)?;
+    store
+        .set_stats_target(&locator, entity, columns, target)
+        .await?;
 
     if !no_analyze {
-        analyze_loc(store, &locator, entity)?;
+        analyze_loc(store, &locator, entity).await?;
     }
     Ok(())
 }

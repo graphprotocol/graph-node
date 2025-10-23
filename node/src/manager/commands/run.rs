@@ -27,8 +27,8 @@ use graph_core::{
     SubgraphRegistrar as IpfsSubgraphRegistrar,
 };
 
-fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
-    let mut locators = store.locators(hash)?;
+async fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
+    let mut locators = store.locators(hash).await?;
     match locators.len() {
         0 => bail!("could not find subgraph {hash} we just created"),
         1 => Ok(locators.pop().unwrap()),
@@ -91,14 +91,14 @@ pub async fn run(
     let link_resolver = Arc::new(IpfsResolver::new(ipfs_client, env_vars.cheap_clone()));
 
     let chain_head_update_listener = store_builder.chain_head_update_listener();
-    let network_store = store_builder.network_store(config.chain_ids());
+    let network_store = store_builder.network_store(config.chain_ids()).await;
     let block_store = network_store.block_store();
 
     let mut provider_checks: Vec<Arc<dyn graph::components::network_provider::ProviderCheck>> =
         Vec::new();
 
     if env_vars.genesis_validation_enabled {
-        let store = chain_id_validator(network_store.block_store());
+        let store = chain_id_validator(Box::new(network_store.block_store()));
         provider_checks.push(Arc::new(
             graph::components::network_provider::GenesisHashCheck::new(store),
         ));
@@ -214,7 +214,7 @@ pub async fn run(
     )
     .await?;
 
-    let locator = locate(subgraph_store.as_ref(), &hash)?;
+    let locator = locate(subgraph_store.as_ref(), &hash).await?;
 
     SubgraphAssignmentProvider::start(subgraph_provider.as_ref(), locator, Some(stop_block)).await;
 
@@ -239,7 +239,10 @@ pub async fn run(
     }
 
     info!(&logger, "Removing subgraph {}", name);
-    subgraph_store.clone().remove_subgraph(subgraph_name)?;
+    subgraph_store
+        .clone()
+        .remove_subgraph(subgraph_name)
+        .await?;
 
     if let Some(host) = metrics_ctx.prometheus_host {
         let mfs = metrics_ctx.prometheus.gather();

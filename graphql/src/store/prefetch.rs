@@ -15,7 +15,7 @@ use graph::schema::Field;
 use graph::slog::warn;
 use graph::util::cache_weight;
 use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Instant;
 
 use graph::data::graphql::TypeExt;
@@ -89,7 +89,7 @@ struct Node {
     /// copies to the point where we need to convert to `q::Value`, and it
     /// would be desirable to base the data structure that GraphQL execution
     /// uses on a DAG rather than a tree, but that's a good amount of work
-    children: BTreeMap<Word, Vec<Rc<Node>>>,
+    children: BTreeMap<Word, Vec<Arc<Node>>>,
 }
 
 impl From<QueryObject> for Node {
@@ -111,11 +111,11 @@ impl CacheWeight for Node {
 
 /// Convert a list of nodes into a `q::Value::List` where each node has also
 /// been converted to a `q::Value`
-fn node_list_as_value(nodes: Vec<Rc<Node>>) -> r::Value {
+fn node_list_as_value(nodes: Vec<Arc<Node>>) -> r::Value {
     r::Value::List(
         nodes
             .into_iter()
-            .map(|node| Rc::try_unwrap(node).unwrap_or_else(|rc| rc.as_ref().clone()))
+            .map(|node| Arc::try_unwrap(node).unwrap_or_else(|arc| arc.as_ref().clone()))
             .map(Into::into)
             .collect(),
     )
@@ -211,9 +211,9 @@ impl Node {
             .expect("__typename must be a string")
     }
 
-    fn set_children(&mut self, response_key: String, nodes: Vec<Rc<Node>>) {
-        fn nodes_weight(nodes: &Vec<Rc<Node>>) -> usize {
-            let vec_weight = nodes.capacity() * std::mem::size_of::<Rc<Node>>();
+    fn set_children(&mut self, response_key: String, nodes: Vec<Arc<Node>>) {
+        fn nodes_weight(nodes: &Vec<Arc<Node>>) -> usize {
+            let vec_weight = nodes.capacity() * std::mem::size_of::<Arc<Node>>();
             let children_weight = nodes.iter().map(|node| node.weight()).sum::<usize>();
             vec_weight + children_weight
         }
@@ -483,7 +483,7 @@ fn add_children(
     children: Vec<Node>,
     response_key: &str,
 ) -> Result<(), QueryExecutionError> {
-    let children: Vec<_> = children.into_iter().map(Rc::new).collect();
+    let children: Vec<_> = children.into_iter().map(Arc::new).collect();
 
     if parents.len() == 1 {
         let parent = parents.first_mut().expect("we just checked");
@@ -495,7 +495,7 @@ fn add_children(
     // children to their parent. This relies on the fact that interfaces
     // make sure that id's are distinct across all implementations of the
     // interface.
-    let mut grouped: HashMap<&Id, Vec<Rc<Node>>> = HashMap::default();
+    let mut grouped: HashMap<&Id, Vec<Arc<Node>>> = HashMap::default();
     for child in children.iter() {
         let parent = child.parent.as_ref().ok_or_else(|| {
             QueryExecutionError::Panic(format!(
@@ -546,7 +546,7 @@ fn add_children(
 /// cases where the store contains data that violates the data model by having
 /// multiple values for what should be a relationship to a single object in
 /// @derivedFrom fields
-pub fn run(
+pub async fn run(
     resolver: &StoreResolver,
     ctx: &ExecutionContext,
     selection_set: &a::SelectionSet,
@@ -557,8 +557,9 @@ pub fn run(
     let trace = Trace::block(resolver.block_number(), ctx.trace);
 
     // Execute the root selection set against the root query type.
-    let (nodes, trace) =
-        loader.execute_selection_set(make_root_node(), trace, selection_set, None)?;
+    let (nodes, trace) = loader
+        .execute_selection_set(make_root_node(), trace, selection_set, None)
+        .await?;
 
     graphql_metrics.observe_query_result_size(nodes.weight());
     let obj = Object::from_iter(nodes.into_iter().flat_map(|node| {
@@ -583,14 +584,14 @@ impl<'a> Loader<'a> {
         Loader { resolver, ctx }
     }
 
-    fn execute_selection_set(
+    async fn execute_selection_set(
         &self,
         mut parents: Vec<Node>,
         mut parent_trace: Trace,
         selection_set: &a::SelectionSet,
         parent_interval: Option<AggregationInterval>,
     ) -> Result<(Vec<Node>, Trace), Vec<QueryExecutionError>> {
-        let input_schema = self.resolver.store.input_schema()?;
+        let input_schema = self.resolver.store.input_schema().await?;
         let mut errors: Vec<QueryExecutionError> = Vec::new();
         let at_root = is_root_node(parents.iter());
 
@@ -651,14 +652,15 @@ impl<'a> Loader<'a> {
                     ))
                 };
 
-                match self.fetch(&parents, &join, field) {
+                match self.fetch(&parents, &join, field).await {
                     Ok((children, trace)) => {
-                        match self.execute_selection_set(
+                        let exec_fut = Box::pin(self.execute_selection_set(
                             children,
                             trace,
                             &field.selection_set,
                             child_interval,
-                        ) {
+                        ));
+                        match exec_fut.await {
                             Ok((children, trace)) => {
                                 add_children(
                                     &input_schema,
@@ -689,13 +691,13 @@ impl<'a> Loader<'a> {
     /// Query child entities for `parents` from the store. The `join` indicates
     /// in which child field to look for the parent's id/join field. When
     /// `is_single` is `true`, there is at most one child per parent.
-    fn fetch(
+    async fn fetch(
         &self,
         parents: &[&mut Node],
         join: &MaybeJoin<'_>,
         field: &a::Field,
     ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
-        let input_schema = self.resolver.store.input_schema()?;
+        let input_schema = self.resolver.store.input_schema().await?;
         let child_type = join.child_type();
         let mut query = build_query(
             child_type,
@@ -743,6 +745,7 @@ impl<'a> Loader<'a> {
         self.resolver
             .store
             .find_query_values(query)
+            .await
             .map(|(values, trace)| (values.into_iter().map(Node::from).collect(), trace))
     }
 

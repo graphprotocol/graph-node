@@ -33,22 +33,24 @@ impl ActiveDeployment {
     }
 }
 
-pub fn load_active_deployment(
+pub async fn load_active_deployment(
     primary_pool: ConnectionPool,
     deployment: &DeploymentSelector,
 ) -> Result<ActiveDeployment, PauseDeploymentError> {
-    let mut primary_conn = primary_pool.get().map_err(GraphmanError::from)?;
+    let mut primary_conn = primary_pool.get().await.map_err(GraphmanError::from)?;
 
     let locator = crate::deployment::load_deployment_locator(
         &mut primary_conn,
         deployment,
         &DeploymentVersionSelector::All,
-    )?;
+    )
+    .await?;
 
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
     let site = catalog_conn
         .locate_site(locator.clone())
+        .await
         .map_err(GraphmanError::from)?
         .ok_or_else(|| {
             GraphmanError::Store(anyhow!("deployment site not found for '{locator}'"))
@@ -56,6 +58,7 @@ pub fn load_active_deployment(
 
     let (_, is_paused) = catalog_conn
         .assignment_status(&site)
+        .await
         .map_err(GraphmanError::from)?
         .ok_or_else(|| {
             GraphmanError::Store(anyhow!("assignment status not found for '{locator}'"))
@@ -68,16 +71,18 @@ pub fn load_active_deployment(
     Ok(ActiveDeployment { locator, site })
 }
 
-pub fn pause_active_deployment(
+pub async fn pause_active_deployment(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
     active_deployment: ActiveDeployment,
 ) -> Result<(), GraphmanError> {
-    let primary_conn = primary_pool.get()?;
+    let primary_conn = primary_pool.get().await?;
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
-    let changes = catalog_conn.pause_subgraph(&active_deployment.site)?;
-    catalog_conn.send_store_event(&notification_sender, &StoreEvent::new(changes))?;
+    let changes = catalog_conn.pause_subgraph(&active_deployment.site).await?;
+    catalog_conn
+        .send_store_event(&notification_sender, &StoreEvent::new(changes))
+        .await?;
 
     Ok(())
 }

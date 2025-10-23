@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::fmt::{Display, Write};
 use std::sync::Arc;
 
+use diesel::sql_query;
 use diesel::sql_types::{Bool, Text};
-use diesel::{sql_query, Connection, PgConnection, RunQueryDsl};
+use diesel_async::RunQueryDsl;
 use graph::components::store::StoreError;
 use graph::itertools::Itertools;
 use graph::prelude::{
@@ -15,11 +16,11 @@ use graph::prelude::{
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
-use crate::catalog;
 use crate::command_support::catalog::Site;
 use crate::deployment_store::DeploymentStore;
 use crate::primary::Namespace;
 use crate::relational::{BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE};
+use crate::{catalog, AsyncPgConnection};
 
 use super::{Layout, Table, VID_COLUMN};
 
@@ -752,19 +753,19 @@ pub struct IndexList {
     pub(crate) indexes: HashMap<String, Vec<CreateIndex>>,
 }
 
-pub fn load_indexes_from_table(
-    conn: &mut PgConnection,
+pub async fn load_indexes_from_table(
+    conn: &mut AsyncPgConnection,
     table: &Arc<Table>,
     schema_name: &str,
 ) -> Result<Vec<CreateIndex>, StoreError> {
     let table_name = table.name.as_str();
-    let indexes = catalog::indexes_for_table(conn, schema_name, table_name)?;
+    let indexes = catalog::indexes_for_table(conn, schema_name, table_name).await?;
     Ok(indexes.into_iter().map(CreateIndex::parse).collect())
 }
 
 impl IndexList {
-    pub fn load(
-        conn: &mut PgConnection,
+    pub async fn load(
+        conn: &mut AsyncPgConnection,
         site: Arc<Site>,
         store: DeploymentStore,
     ) -> Result<Self, StoreError> {
@@ -772,9 +773,9 @@ impl IndexList {
             indexes: HashMap::new(),
         };
         let schema_name = site.namespace.clone();
-        let layout = store.layout(conn, site)?;
+        let layout = store.layout(conn, site).await?;
         for (_, table) in &layout.tables {
-            let indexes = load_indexes_from_table(conn, table, schema_name.as_str())?;
+            let indexes = load_indexes_from_table(conn, table, schema_name.as_str()).await?;
             list.indexes.insert(table.name.to_string(), indexes);
         }
         Ok(list)
@@ -818,9 +819,9 @@ impl IndexList {
         Ok(arr)
     }
 
-    pub fn recreate_invalid_indexes(
+    pub async fn recreate_invalid_indexes(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         layout: &Layout,
     ) -> Result<(), StoreError> {
         #[derive(QueryableByName, Debug)]
@@ -851,7 +852,8 @@ impl IndexList {
                         .bind::<Text, _>(namespace.to_string())
                         .bind::<Text, _>(table_name)
                         .bind::<Text, _>(index_name.clone())
-                        .get_results::<IndexInfo>(conn)?
+                        .get_results::<IndexInfo>(conn)
+                        .await?
                         .into_iter()
                         .map(|ii| ii.into())
                         .collect::<Vec<IndexInfo>>();
@@ -864,9 +866,9 @@ impl IndexList {
                                 namespace.to_string(),
                                 index_name
                             ));
-                            conn.transaction(|conn| drop_query.execute(conn))?;
+                            drop_query.execute(conn).await?;
                         }
-                        sql_query(create_query).execute(conn)?;
+                        sql_query(create_query).execute(conn).await?;
                     }
                 }
             }

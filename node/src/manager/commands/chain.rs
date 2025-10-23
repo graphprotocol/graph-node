@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use diesel::sql_query;
-use diesel::Connection;
-use diesel::RunQueryDsl;
+use diesel_async::AsyncConnection;
+use diesel_async::RunQueryDsl;
 use graph::blockchain::BlockHash;
 use graph::blockchain::BlockPtr;
 use graph::blockchain::ChainIdentifier;
@@ -29,15 +29,16 @@ use graph_store_postgres::BlockStore;
 use graph_store_postgres::ChainStatus;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::PoolCoordinator;
+use graph_store_postgres::ScopedFutureExt;
 use graph_store_postgres::Shard;
 use graph_store_postgres::{command_support::catalog::block_store, ConnectionPool};
 
 use crate::network_setup::Networks;
 
-pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(), Error> {
+pub async fn list(primary: ConnectionPool, store: BlockStore) -> Result<(), Error> {
     let mut chains = {
-        let mut conn = primary.get()?;
-        block_store::load_chains(&mut conn)?
+        let mut conn = primary.get().await?;
+        block_store::load_chains(&mut conn).await?
     };
     chains.sort_by_key(|chain| chain.name.clone());
 
@@ -52,7 +53,7 @@ pub async fn list(primary: ConnectionPool, store: Arc<BlockStore>) -> Result<(),
         );
     }
     for chain in chains {
-        let head_block = match store.chain_store(&chain.name) {
+        let head_block = match store.chain_store(&chain.name).await {
             None => "no chain".to_string(),
             Some(chain_store) => chain_store
                 .chain_head_ptr()
@@ -98,7 +99,7 @@ pub async fn clear_stale_call_cache(
 
 pub async fn info(
     primary: ConnectionPool,
-    store: Arc<BlockStore>,
+    store: BlockStore,
     name: String,
     offset: BlockNumber,
     hashes: bool,
@@ -121,13 +122,15 @@ pub async fn info(
         }
     }
 
-    let mut conn = primary.get()?;
+    let mut conn = primary.get().await?;
 
-    let chain = block_store::find_chain(&mut conn, &name)?
+    let chain = block_store::find_chain(&mut conn, &name)
+        .await?
         .ok_or_else(|| anyhow!("unknown chain: {}", name))?;
 
     let chain_store = store
         .chain_store(&chain.name)
+        .await
         .ok_or_else(|| anyhow!("unknown chain: {}", name))?;
     let head_block = chain_store.cheap_clone().chain_head_ptr().await?;
     let ancestor = match &head_block {
@@ -152,11 +155,11 @@ pub async fn info(
     Ok(())
 }
 
-pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> Result<(), Error> {
+pub async fn remove(primary: ConnectionPool, store: BlockStore, name: String) -> Result<(), Error> {
     let sites = {
         let mut conn =
-            graph_store_postgres::command_support::catalog::Connection::new(primary.get()?);
-        conn.find_sites_for_network(&name)?
+            graph_store_postgres::command_support::catalog::Connection::new(primary.get().await?);
+        conn.find_sites_for_network(&name).await?
     };
 
     if !sites.is_empty() {
@@ -171,7 +174,7 @@ pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> 
         bail!("remove all deployments using chain {} first", name);
     }
 
-    store.drop_chain(&name)?;
+    store.drop_chain(&name).await?;
 
     Ok(())
 }
@@ -179,7 +182,7 @@ pub fn remove(primary: ConnectionPool, store: Arc<BlockStore>, name: String) -> 
 pub async fn update_chain_genesis(
     networks: &Networks,
     coord: Arc<PoolCoordinator>,
-    store: Arc<dyn ChainIdStore>,
+    store: Box<dyn ChainIdStore>,
     logger: &Logger,
     chain_id: ChainName,
     genesis_hash: BlockHash,
@@ -203,13 +206,15 @@ pub async fn update_chain_genesis(
     // Update the local shard's genesis, whether or not it is the primary.
     // The chains table is replicated from the primary and keeps another genesis hash.
     // To keep those in sync we need to update the primary and then refresh the shard tables.
-    store.set_chain_identifier(
-        &chain_id,
-        &ChainIdentifier {
-            net_version: ident.net_version.clone(),
-            genesis_block_hash: genesis_hash,
-        },
-    )?;
+    store
+        .set_chain_identifier(
+            &chain_id,
+            &ChainIdentifier {
+                net_version: ident.net_version.clone(),
+                genesis_block_hash: genesis_hash,
+            },
+        )
+        .await?;
 
     // Refresh the new values
     println!("Refresh mappings");
@@ -218,17 +223,18 @@ pub async fn update_chain_genesis(
     Ok(())
 }
 
-pub fn change_block_cache_shard(
+pub async fn change_block_cache_shard(
     primary_store: ConnectionPool,
-    store: Arc<BlockStore>,
+    store: BlockStore,
     chain_name: String,
     shard: String,
 ) -> Result<(), Error> {
     println!("Changing block cache shard for {} to {}", chain_name, shard);
 
-    let mut conn = primary_store.get()?;
+    let mut conn = primary_store.get().await?;
 
-    let chain = find_chain(&mut conn, &chain_name)?
+    let chain = find_chain(&mut conn, &chain_name)
+        .await?
         .ok_or_else(|| anyhow!("unknown chain: {}", chain_name))?;
     let old_shard = chain.shard;
 
@@ -236,39 +242,41 @@ pub fn change_block_cache_shard(
 
     let chain_store = store
         .chain_store(&chain_name)
+        .await
         .ok_or_else(|| anyhow!("unknown chain: {}", &chain_name))?;
     let new_name = format!("{}-old", &chain_name);
-    let ident = chain_store.chain_identifier()?;
+    let ident = chain_store.chain_identifier().await?;
 
-    conn.transaction(|conn| -> Result<(), StoreError> {
-        let shard = Shard::new(shard.to_string())?;
+    conn.transaction::<(), StoreError, _>(|conn|  {
+        async {
+            let shard = Shard::new(shard.to_string())?;
 
-        let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident)?;
+            let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident).await?;
 
-        store.add_chain_store(&chain,ChainStatus::Ingestible, true)?;
+            graph::block_on(store.add_chain_store(&chain,ChainStatus::Ingestible, true))?;
 
-        // Drop the foreign key constraint on deployment_schemas
-        sql_query(
-            "alter table deployment_schemas drop constraint deployment_schemas_network_fkey;",
-        )
-        .execute(conn)?;
+            // Drop the foreign key constraint on deployment_schemas
+            sql_query(
+                "alter table deployment_schemas drop constraint deployment_schemas_network_fkey;",
+            )
+            .execute(conn).await?;
 
-        // Update the current chain name to chain-old
-        update_chain_name(conn, &chain_name, &new_name)?;
+            // Update the current chain name to chain-old
+            update_chain_name(conn, &chain_name, &new_name).await?;
 
+            // Create a new chain with the name in the destination shard
+            let _ = add_chain(conn, &chain_name, &shard, ident).await?;
 
-        // Create a new chain with the name in the destination shard
-        let _ = add_chain(conn, &chain_name, &shard, ident)?;
+            // Re-add the foreign key constraint
+            sql_query(
+                "alter table deployment_schemas add constraint deployment_schemas_network_fkey foreign key (network) references chains(name);",
+            )
+            .execute(conn).await?;
+            Ok(())
+        }.scope_boxed()
+    }).await?;
 
-        // Re-add the foreign key constraint
-        sql_query(
-            "alter table deployment_schemas add constraint deployment_schemas_network_fkey foreign key (network) references chains(name);",
-        )
-         .execute(conn)?;
-        Ok(())
-    })?;
-
-    chain_store.update_name(&new_name)?;
+    chain_store.update_name(&new_name).await?;
 
     println!(
         "Changed block cache shard for {} from {} to {}",
@@ -296,7 +304,9 @@ pub async fn ingest(
     let block = Arc::new(BlockFinality::Final(Arc::new(block)));
     chain_store.upsert_block(block).await?;
 
-    let rows = chain_store.confirm_block_hash(ptr.number, &ptr.hash)?;
+    let rows = chain_store
+        .confirm_block_hash(ptr.number, &ptr.hash)
+        .await?;
 
     println!("Inserted block {}", ptr);
     if rows > 0 {

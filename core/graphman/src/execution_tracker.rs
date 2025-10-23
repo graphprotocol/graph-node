@@ -41,7 +41,7 @@ where
         let store = self.store.clone();
 
         graph::spawn(async move {
-            store.mark_execution_as_running(id).unwrap();
+            store.mark_execution_as_running(id).await.unwrap();
 
             let stop_heartbeat = heartbeat_stopper.notified();
             tokio::pin!(stop_heartbeat);
@@ -55,7 +55,7 @@ where
                     },
 
                     _ = tokio::time::sleep(DEFAULT_HEARTBEAT_INTERVAL) => {
-                        store.mark_execution_as_running(id).unwrap();
+                        store.mark_execution_as_running(id).await.unwrap();
                     },
                 }
             }
@@ -63,17 +63,19 @@ where
     }
 
     /// Completes the execution with an error.
-    pub fn track_failure(self, error_message: String) -> Result<()> {
+    pub async fn track_failure(self, error_message: String) -> Result<()> {
         self.heartbeat_stopper.notify_one();
 
-        self.store.mark_execution_as_failed(self.id, error_message)
+        self.store
+            .mark_execution_as_failed(self.id, error_message)
+            .await
     }
 
     /// Completes the execution with a success.
-    pub fn track_success(self) -> Result<()> {
+    pub async fn track_success(self) -> Result<()> {
         self.heartbeat_stopper.notify_one();
 
-        self.store.mark_execution_as_succeeded(self.id)
+        self.store.mark_execution_as_succeeded(self.id).await
     }
 }
 

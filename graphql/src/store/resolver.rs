@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use graph::components::graphql::GraphQLMetrics as _;
 use graph::components::store::QueryPermit;
 use graph::data::graphql::load_manager::LoadManager;
@@ -259,12 +260,13 @@ impl Resolver for StoreResolver {
         self.store.query_permit().await
     }
 
-    fn prefetch(
+    async fn prefetch(
         &self,
         ctx: &ExecutionContext<Self>,
         selection_set: &a::SelectionSet,
     ) -> Result<(Option<r::Value>, Trace), Vec<QueryExecutionError>> {
         super::prefetch::run(self, ctx, selection_set, &self.graphql_metrics)
+            .await
             .map(|(value, trace)| (Some(value), trace))
     }
 
