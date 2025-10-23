@@ -2,8 +2,6 @@ use deadpool::managed::{PoolError, Timeouts};
 use deadpool::Runtime;
 use diesel::sql_query;
 use diesel_async::async_connection_wrapper::AsyncConnectionWrapper;
-use diesel_async::pooled_connection::deadpool::Pool as DeadpoolPool;
-use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::{AsyncConnection as _, RunQueryDsl, SimpleAsyncConnection};
 use diesel_migrations::{EmbeddedMigrations, HarnessWithOutput};
 
@@ -26,7 +24,7 @@ use std::time::Duration;
 use std::{collections::HashMap, sync::RwLock};
 
 use crate::catalog;
-use crate::pool::manager::WaitMeter;
+use crate::pool::manager::{ConnectionManager, WaitMeter};
 use crate::primary::{self, Mirror, Namespace};
 use crate::{Shard, PRIMARY_SHARD};
 
@@ -40,10 +38,9 @@ pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
 use manager::{ErrorHandler, StateTracker};
 
-type AsyncPool = DeadpoolPool<diesel_async::AsyncPgConnection>;
+type AsyncPool = deadpool::managed::Pool<ConnectionManager>;
 /// A database connection for asynchronous diesel operations
-pub type AsyncPgConnection =
-    diesel_async::pooled_connection::deadpool::Object<diesel_async::AsyncPgConnection>;
+pub type AsyncPgConnection = deadpool::managed::Object<ConnectionManager>;
 
 /// The namespace under which the `PRIMARY_TABLES` are mapped into each
 /// shard
@@ -454,11 +451,7 @@ impl PoolInner {
         ));
 
         // Connect to Postgres
-        let conn_manager = {
-            let mut config = diesel_async::pooled_connection::ManagerConfig::default();
-            config.recycling_method = diesel_async::pooled_connection::RecyclingMethod::Verified;
-            AsyncDieselConnectionManager::new_with_config(postgres_url.clone(), config)
-        };
+        let conn_manager = ConnectionManager::new(postgres_url.clone());
 
         // Note: deadpool does not support min_idle configuration
         if let Some(min_idle) = ENV_VARS.store.connection_min_idle {
@@ -492,7 +485,7 @@ impl PoolInner {
         let wait_meter = WaitMeter::new(&registry, const_labels.clone());
 
         let fdw_pool = fdw_pool_size.map(|pool_size| {
-            let conn_manager = AsyncDieselConnectionManager::new(postgres_url.clone());
+            let conn_manager = ConnectionManager::new(postgres_url.clone());
             let fdw_timeouts = Timeouts {
                 wait: Some(ENV_VARS.store.connection_timeout),
                 create: None,
