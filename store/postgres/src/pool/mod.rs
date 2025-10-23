@@ -26,19 +26,19 @@ use std::time::Duration;
 use std::{collections::HashMap, sync::RwLock};
 
 use crate::catalog;
-use crate::pool::state_tracker::WaitMeter;
+use crate::pool::manager::WaitMeter;
 use crate::primary::{self, Mirror, Namespace};
 use crate::{Shard, PRIMARY_SHARD};
 
 mod coordinator;
 mod foreign_server;
-mod state_tracker;
+mod manager;
 
 pub use diesel_async::scoped_futures::ScopedFutureExt;
 
 pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
-use state_tracker::{ErrorHandler, StateTracker};
+use manager::{ErrorHandler, StateTracker};
 
 type AsyncPool = DeadpoolPool<diesel_async::AsyncPgConnection>;
 /// A database connection for asynchronous diesel operations
@@ -487,7 +487,7 @@ impl PoolInner {
             .build()
             .expect("failed to create connection pool");
 
-        state_tracker::spawn_size_stat_collector(pool.clone(), &registry, const_labels.clone());
+        manager::spawn_size_stat_collector(pool.clone(), &registry, const_labels.clone());
 
         let wait_meter = WaitMeter::new(&registry, const_labels.clone());
 
