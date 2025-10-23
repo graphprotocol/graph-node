@@ -438,15 +438,6 @@ impl PoolInner {
             const_labels.clone(),
         );
 
-        // Note: deadpool does not support min_idle configuration
-        if let Some(min_idle) = ENV_VARS.store.connection_min_idle {
-            warn!(
-                logger_pool,
-                "min_idle configuration ({}) is not supported by deadpool and will be ignored",
-                min_idle
-            );
-        }
-
         let timeouts = Timeouts {
             wait: Some(ENV_VARS.store.connection_timeout),
             create: Some(ENV_VARS.store.connection_timeout),
@@ -467,6 +458,8 @@ impl PoolInner {
 
         manager::spawn_size_stat_collector(pool.clone(), &registry, const_labels.clone());
 
+        manager::spawn_connection_reaper(pool.clone(), ENV_VARS.store.connection_idle_timeout);
+
         let wait_meter = WaitMeter::new(&registry, const_labels.clone());
 
         let fdw_pool = fdw_pool_size.map(|pool_size| {
@@ -476,14 +469,17 @@ impl PoolInner {
                 recycle: Some(FDW_IDLE_TIMEOUT),
             };
 
-            AsyncPool::builder(conn_manager)
+            let fdw_pool = AsyncPool::builder(conn_manager)
                 .max_size(pool_size as usize)
                 .timeouts(fdw_timeouts)
                 .runtime(Runtime::Tokio1)
                 .post_create(state_tracker.mark_available_hook())
                 .post_recycle(state_tracker.mark_available_hook())
                 .build()
-                .expect("failed to create fdw connection pool")
+                .expect("failed to create fdw connection pool");
+
+            manager::spawn_connection_reaper(fdw_pool.clone(), FDW_IDLE_TIMEOUT);
+            fdw_pool
         });
 
         info!(logger_store, "Pool successfully connected to Postgres");
