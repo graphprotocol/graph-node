@@ -1,9 +1,9 @@
 use graph::prelude::BlockNumber;
 use graph::schema::AggregationInterval;
 use sqlparser::ast::{
-    Expr, FunctionArg, FunctionArgExpr, Ident, LimitClause, ObjectName, ObjectNamePart, Offset,
-    Query, SetExpr, Statement, TableAlias, TableFactor, TableFunctionArgs, Value, ValueWithSpan,
-    VisitMut, VisitorMut,
+    Cte, Expr, FunctionArg, FunctionArgExpr, Ident, LimitClause, ObjectName, ObjectNamePart,
+    Offset, Query, SetExpr, Statement, TableAlias, TableFactor, TableFunctionArgs, Value,
+    ValueWithSpan, VisitMut, VisitorMut,
 };
 use sqlparser::parser::Parser;
 use std::result::Result;
@@ -36,11 +36,56 @@ pub enum Error {
     UnsupportedOffset(u32, u32),
     #[error("Qualified table names are not supported: {0}")]
     NoQualifiedTables(String),
+    #[error("Internal error: {0}")]
+    InternalError(String),
+}
+
+/// Helper to track CTEs introduced by the main query or subqueries. Every
+/// time we enter a query, we need to track a new set of CTEs which must be
+/// discarded once we are done with that query. Otherwise, we might allow
+/// access to forbidden tables with a query like `select *, (with pg_user as
+/// (select 1) select 1) as one from pg_user`
+#[derive(Default)]
+struct CteStack {
+    stack: Vec<HashSet<String>>,
+}
+
+impl CteStack {
+    fn enter_query(&mut self) {
+        self.stack.push(HashSet::new());
+    }
+
+    fn exit_query(&mut self) {
+        self.stack.pop();
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        for entry in self.stack.iter().rev() {
+            if entry.contains(&name.to_lowercase()) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn clear(&mut self) {
+        self.stack.clear();
+    }
+
+    fn add_ctes(&mut self, ctes: &[Cte]) -> ControlFlow<Error> {
+        let Some(entry) = self.stack.last_mut() else {
+            return ControlFlow::Break(Error::InternalError("CTE stack is empty".into()));
+        };
+        for cte in ctes {
+            entry.insert(cte.alias.name.value.to_lowercase());
+        }
+        ControlFlow::Continue(())
+    }
 }
 
 pub struct Validator<'a> {
     layout: &'a Layout,
-    ctes: HashSet<String>,
+    ctes: CteStack,
     block: BlockNumber,
     max_limit: u32,
     max_offset: u32,
@@ -156,12 +201,9 @@ impl VisitorMut for Validator<'_> {
 
     fn pre_visit_query(&mut self, query: &mut Query) -> ControlFlow<Self::Break> {
         // Add common table expressions to the set of known tables
+        self.ctes.enter_query();
         if let Some(ref with) = query.with {
-            self.ctes.extend(
-                with.cte_tables
-                    .iter()
-                    .map(|cte| cte.alias.name.value.to_lowercase()),
-            );
+            self.ctes.add_ctes(&with.cte_tables)?;
         }
 
         match *query.body {
@@ -175,6 +217,11 @@ impl VisitorMut for Validator<'_> {
         }
 
         self.validate_limit_offset(query)
+    }
+
+    fn post_visit_query(&mut self, _query: &mut Query) -> ControlFlow<Self::Break> {
+        self.ctes.exit_query();
+        ControlFlow::Continue(())
     }
 
     /// Invoked for any table function in the AST.

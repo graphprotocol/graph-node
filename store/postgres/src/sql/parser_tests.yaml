@@ -125,3 +125,6 @@
 - name: aggregation tables with alias
   sql: select * from stats('hour') as sh
   ok: SELECT * FROM (SELECT "id", "timestamp", "sum" FROM "sgd0815"."stats_hour" WHERE block$ <= 2147483647) AS sh
+- name: nested query with CTE
+  sql: select *, (with pg_user as (select 1) select 1) as one from pg_user
+  err: Unknown table pg_user  
