@@ -48,7 +48,7 @@
                 from (select "id", "timestamp", "pool", "token_0", "token_1", "sender", "recipient", "origin", "amount_0", "amount_1", "amount_usd", "sqrt_price_x96", "tick", "log_index"
                         from "sgd0815"."swap" where block$ <= 2147483647) as sm,
                      unnest(sm.amounts_out, sm.tokens_out) as smo (amount, token)) as tp
-                  join tokens as t on t.address = tp.token
+                  inner join tokens as t on t.address = tp.token
                group by tp.date, t.symbol, t.decimals
                order by tp.date desc, amount desc
 - name: pg_sleep forbidden

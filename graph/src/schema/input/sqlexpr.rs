@@ -37,7 +37,7 @@ pub trait ExprVisitor {
     fn visit_ident(&mut self, ident: &mut p::Ident) -> Result<(), ()>;
     /// Visit a function name. Must return `Err` if the function is not
     /// allowed
-    fn visit_func_name(&mut self, func: &mut p::Ident) -> Result<(), ()>;
+    fn visit_func_name(&mut self, func: &mut p::ObjectNamePart) -> Result<(), ()>;
     /// Called when we encounter a construct that is not supported like a
     /// subquery
     fn not_supported(&mut self, msg: String);
@@ -112,17 +112,16 @@ impl<'a> VisitExpr<'a> {
             Case {
                 operand,
                 conditions,
-                results,
                 else_result,
+                case_token: _,
+                end_token: _,
             } => {
                 if let Some(operand) = operand {
                     self.visit_expr(operand)?;
                 }
                 for condition in conditions {
-                    self.visit_expr(condition)?;
-                }
-                for result in results {
-                    self.visit_expr(result)?;
+                    self.visit_expr(&mut condition.condition)?;
+                    self.visit_expr(&mut condition.result)?;
                 }
                 if let Some(else_result) = else_result {
                     self.visit_expr(else_result)?;
@@ -152,7 +151,6 @@ impl<'a> VisitExpr<'a> {
             }
             CompoundIdentifier(_) => self.nope("CompoundIdentifier"),
             JsonAccess { .. } => self.nope("JsonAccess"),
-            CompositeAccess { .. } => self.nope("CompositeAccess"),
             IsUnknown(_) => self.nope("IsUnknown"),
             IsNotUnknown(_) => self.nope("IsNotUnknown"),
             InList { .. } => self.nope("InList"),
@@ -175,9 +173,7 @@ impl<'a> VisitExpr<'a> {
             Trim { .. } => self.nope("Trim"),
             Overlay { .. } => self.nope("Overlay"),
             Collate { .. } => self.nope("Collate"),
-            IntroducedString { .. } => self.nope("IntroducedString"),
             TypedString { .. } => self.nope("TypedString"),
-            MapAccess { .. } => self.nope("MapAccess"),
             Exists { .. } => self.nope("Exists"),
             Subquery(_) => self.nope("Subquery"),
             GroupingSets(_) => self.nope("GroupingSets"),
@@ -186,32 +182,41 @@ impl<'a> VisitExpr<'a> {
             Tuple(_) => self.nope("Tuple"),
             Struct { .. } => self.nope("Struct"),
             Named { .. } => self.nope("Named"),
-            ArrayIndex { .. } => self.nope("ArrayIndex"),
             Array(_) => self.nope("Array"),
             Interval(_) => self.nope("Interval"),
             MatchAgainst { .. } => self.nope("MatchAgainst"),
-            Wildcard => self.nope("Wildcard"),
-            QualifiedWildcard(_) => self.nope("QualifiedWildcard"),
+            Wildcard(_) => self.nope("Wildcard"),
+            QualifiedWildcard(_, _) => self.nope("QualifiedWildcard"),
             Dictionary(_) => self.nope("Dictionary"),
             OuterJoin(_) => self.nope("OuterJoin"),
             Prior(_) => self.nope("Prior"),
+            CompoundFieldAccess { .. } => self.nope("CompoundFieldAccess"),
+            IsNormalized { .. } => self.nope("IsNormalized"),
+            Prefixed { .. } => self.nope("Prefixed"),
+            Map(_) => self.nope("Map"),
+            Lambda(_) => self.nope("Lambda"),
+            MemberOf(_) => self.nope("MemberOf"),
         }
     }
 
     fn visit_func(&mut self, func: &mut p::Function) -> Result<(), ()> {
         let p::Function {
             name,
+            parameters,
             args: pargs,
             filter,
             null_treatment,
             over,
             within_group,
+            uses_odbc_syntax,
         } = func;
 
         if filter.is_some()
             || null_treatment.is_some()
             || over.is_some()
             || !within_group.is_empty()
+            || *uses_odbc_syntax
+            || !matches!(parameters, p::FunctionArguments::None)
         {
             return self.illegal_function(format!("call to {name} uses an illegal feature"));
         }
@@ -259,6 +264,15 @@ impl<'a> VisitExpr<'a> {
                                 ));
                             }
                         },
+                        ExprNamed {
+                            name: expr_name,
+                            arg: _,
+                            operator: _,
+                        } => {
+                            return self.illegal_function(format!(
+                                "call to {name} uses illegal ExprNamed {expr_name}"
+                            ));
+                        }
                     };
                 }
             }
@@ -304,7 +318,27 @@ impl<'a> VisitExpr<'a> {
             | AtQuestion
             | Question
             | QuestionAnd
-            | QuestionPipe => self.not_supported(format!("binary operator {op} is not supported")),
+            | QuestionPipe
+            | Match
+            | Regexp
+            | Overlaps
+            | DoubleHash
+            | LtDashGt
+            | AndLt
+            | AndGt
+            | LtLtPipe
+            | PipeGtGt
+            | AndLtPipe
+            | PipeAndGt
+            | LtCaret
+            | GtCaret
+            | QuestionHash
+            | QuestionDash
+            | QuestionDashPipe
+            | QuestionDoublePipe
+            | At
+            | TildeEq
+            | Assignment => self.not_supported(format!("binary operator {op} is not supported")),
         }
     }
 
@@ -313,7 +347,9 @@ impl<'a> VisitExpr<'a> {
         match op {
             Plus | Minus | Not => Ok(()),
             PGBitwiseNot | PGSquareRoot | PGCubeRoot | PGPostfixFactorial | PGPrefixFactorial
-            | PGAbs => self.not_supported(format!("unary operator {op} is not supported")),
+            | PGAbs | BangNot | Hash | AtDashAt | DoubleAt | QuestionDash | QuestionPipe => {
+                self.not_supported(format!("unary operator {op} is not supported"))
+            }
         }
     }
 }
@@ -346,8 +382,19 @@ impl<F: CheckIdentFn> ExprVisitor for Validator<F> {
         }
     }
 
-    fn visit_func_name(&mut self, func: &mut p::Ident) -> Result<(), ()> {
-        let p::Ident { value, quote_style } = &func;
+    fn visit_func_name(&mut self, func: &mut p::ObjectNamePart) -> Result<(), ()> {
+        let func = match func {
+            p::ObjectNamePart::Identifier(ident) => ident,
+            p::ObjectNamePart::Function(p::ObjectNamePartFunction { name, args: _ }) => {
+                self.not_supported(format!("function {name} is an object naming function"));
+                return Err(());
+            }
+        };
+        let p::Ident {
+            value,
+            quote_style,
+            span: _,
+        } = &func;
         let whitelisted = match quote_style {
             Some(_) => FN_WHITELIST.contains(&value.as_str()),
             None => FN_WHITELIST

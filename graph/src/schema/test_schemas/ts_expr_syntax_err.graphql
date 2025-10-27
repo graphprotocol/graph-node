@@ -1,4 +1,4 @@
-# fail: ExprParseError("sql parser error: Expected an expression:, found: EOF")
+# fail: ExprParseError("sql parser error: Expected: an expression, found: EOF"
 type Data @entity(timeseries: true) {
   id: Int8!
   timestamp: Timestamp!

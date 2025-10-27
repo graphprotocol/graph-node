@@ -105,7 +105,7 @@ fn rewrite<'a>(table: &'a Table, expr: &str) -> Result<(String, Vec<&'a str>), S
             }
         }
 
-        fn visit_func_name(&mut self, _func: &mut p::Ident) -> Result<(), ()> {
+        fn visit_func_name(&mut self, _func: &mut p::ObjectNamePart) -> Result<(), ()> {
             Ok(())
         }
 

@@ -3090,8 +3090,10 @@ type Gravatar @entity {
                         } else {
                             let msgs: Vec<_> = errs.iter().map(|err| err.to_string()).collect();
                             panic!(
-                                    "{file_name} failed but not with the expected error `{msg}`: {errs:?} {msgs:?}",
-                                )
+                                "{file_name} failed but not with the expected error `{msg}`: \n\
+                                    actual: {errs:?}\n\
+                                    or {msgs:?}",
+                            )
                         }
                     }
                     (true, Ok(_)) => {

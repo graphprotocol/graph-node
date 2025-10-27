@@ -1,8 +1,9 @@
 use graph::prelude::BlockNumber;
 use graph::schema::AggregationInterval;
 use sqlparser::ast::{
-    Expr, FunctionArg, FunctionArgExpr, Ident, ObjectName, Offset, Query, SetExpr, Statement,
-    TableAlias, TableFactor, Value, VisitMut, VisitorMut,
+    Expr, FunctionArg, FunctionArgExpr, Ident, LimitClause, ObjectName, ObjectNamePart, Offset,
+    Query, SetExpr, Statement, TableAlias, TableFactor, TableFunctionArgs, Value, ValueWithSpan,
+    VisitMut, VisitorMut,
 };
 use sqlparser::parser::Parser;
 use std::result::Result;
@@ -80,11 +81,32 @@ impl<'a> Validator<'a> {
     }
 
     pub fn validate_limit_offset(&mut self, query: &mut Query) -> ControlFlow<Error> {
-        let Query { limit, offset, .. } = query;
+        let Query { limit_clause, .. } = query;
+
+        let (limit, offset) = match limit_clause {
+            None => return ControlFlow::Continue(()),
+            Some(LimitClause::LimitOffset {
+                limit,
+                offset,
+                limit_by,
+            }) => {
+                if !limit_by.is_empty() {
+                    return ControlFlow::Break(Error::UnsupportedLimitOffset);
+                }
+                (limit, offset)
+            }
+            Some(LimitClause::OffsetCommaLimit { .. }) => {
+                // MySQL syntax not supported
+                return ControlFlow::Break(Error::UnsupportedLimitOffset);
+            }
+        };
 
         if let Some(limit) = limit {
             match limit {
-                Expr::Value(Value::Number(s, _)) => match s.parse::<u32>() {
+                Expr::Value(ValueWithSpan {
+                    value: Value::Number(s, _),
+                    span: _,
+                }) => match s.parse::<u32>() {
                     Err(_) => return ControlFlow::Break(Error::UnsupportedLimitOffset),
                     Ok(limit) => {
                         if limit > self.max_limit {
@@ -97,22 +119,25 @@ impl<'a> Validator<'a> {
                 },
                 _ => return ControlFlow::Break(Error::UnsupportedLimitOffset),
             }
-        }
 
-        if let Some(Offset { value, .. }) = offset {
-            match value {
-                Expr::Value(Value::Number(s, _)) => match s.parse::<u32>() {
-                    Err(_) => return ControlFlow::Break(Error::UnsupportedLimitOffset),
-                    Ok(offset) => {
-                        if offset > self.max_offset {
-                            return ControlFlow::Break(Error::UnsupportedOffset(
-                                offset,
-                                self.max_offset,
-                            ));
+            if let Some(Offset { value, .. }) = offset {
+                match value {
+                    Expr::Value(ValueWithSpan {
+                        value: Value::Number(s, _),
+                        span: _,
+                    }) => match s.parse::<u32>() {
+                        Err(_) => return ControlFlow::Break(Error::UnsupportedLimitOffset),
+                        Ok(offset) => {
+                            if offset > self.max_offset {
+                                return ControlFlow::Break(Error::UnsupportedOffset(
+                                    offset,
+                                    self.max_offset,
+                                ));
+                            }
                         }
-                    }
-                },
-                _ => return ControlFlow::Break(Error::UnsupportedLimitOffset),
+                    },
+                    _ => return ControlFlow::Break(Error::UnsupportedLimitOffset),
+                }
             }
         }
         ControlFlow::Continue(())
@@ -144,7 +169,7 @@ impl VisitorMut for Validator<'_> {
             SetExpr::SetOperation { .. } => { /* permitted */ }
             SetExpr::Table(_) => { /* permitted */ }
             SetExpr::Values(_) => { /* permitted */ }
-            SetExpr::Insert(_) | SetExpr::Update(_) => {
+            SetExpr::Insert(_) | SetExpr::Update(_) | SetExpr::Delete(_) | SetExpr::Merge(_) => {
                 return ControlFlow::Break(Error::NotSelectQuery)
             }
         }
@@ -165,9 +190,10 @@ impl VisitorMut for Validator<'_> {
                 return None;
             }
             match &args[0] {
-                FunctionArg::Unnamed(FunctionArgExpr::Expr(Expr::Value(
-                    Value::SingleQuotedString(s),
-                ))) => Some(s.clone()),
+                FunctionArg::Unnamed(FunctionArgExpr::Expr(Expr::Value(ValueWithSpan {
+                    value: Value::SingleQuotedString(s),
+                    span: _,
+                }))) => Some(s.clone()),
                 _ => None,
             }
         }
@@ -180,7 +206,12 @@ impl VisitorMut for Validator<'_> {
                 // We do not support schema qualified table names
                 return ControlFlow::Break(Error::NoQualifiedTables(name.to_string()));
             }
-            let table_name = &name.0[0].value;
+            let table_name = match &name.0[0] {
+                ObjectNamePart::Identifier(ident) => &ident.value,
+                ObjectNamePart::Function(_) => {
+                    return ControlFlow::Break(Error::NoQualifiedTables(name.to_string()));
+                }
+            };
 
             // CTES override subgraph tables
             if self.ctes.contains(&table_name.to_lowercase()) && args.is_none() {
@@ -205,6 +236,13 @@ impl VisitorMut for Validator<'_> {
                         return self.validate_function_name(&name);
                     }
 
+                    let TableFunctionArgs { args, settings } = args;
+                    if settings.is_some() {
+                        // We do not support settings on aggregation tables
+                        return ControlFlow::Break(Error::InvalidAggregationSyntax(
+                            table_name.clone(),
+                        ));
+                    }
                     let Some(intv) = extract_string_arg(args) else {
                         // Looks like an aggregation, but argument is not a single string
                         return ControlFlow::Break(Error::InvalidAggregationSyntax(
