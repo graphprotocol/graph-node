@@ -122,8 +122,8 @@ impl<'a> Validator<'a> {
 impl VisitorMut for Validator<'_> {
     type Break = Error;
 
-    fn pre_visit_statement(&mut self, _statement: &mut Statement) -> ControlFlow<Self::Break> {
-        match _statement {
+    fn pre_visit_statement(&mut self, statement: &mut Statement) -> ControlFlow<Self::Break> {
+        match statement {
             Statement::Query(_) => ControlFlow::Continue(()),
             _ => ControlFlow::Break(Error::NotSelectQuery),
         }
