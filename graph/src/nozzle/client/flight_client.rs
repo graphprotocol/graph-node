@@ -1,25 +1,32 @@
 use std::{
+    collections::HashMap,
     hash::{Hash, Hasher},
+    ops::RangeInclusive,
     time::Duration,
 };
 
 use ahash::AHasher;
-use arrow::{array::RecordBatch, datatypes::Schema, error::ArrowError};
+use alloy::primitives::{BlockHash, BlockNumber};
+use arrow::{datatypes::Schema, error::ArrowError};
 use arrow_flight::{
-    error::FlightError, flight_service_client::FlightServiceClient,
+    decode::DecodedPayload, error::FlightError, flight_service_client::FlightServiceClient,
     sql::client::FlightSqlServiceClient,
 };
 use async_stream::try_stream;
 use bytes::Bytes;
 use futures03::{future::BoxFuture, stream::BoxStream, StreamExt};
+use http::Uri;
 use lazy_regex::regex_is_match;
-use slog::{debug, Logger};
+use serde::{Deserialize, Serialize};
+use slog::{debug, trace, Logger};
 use thiserror::Error;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 
 use crate::{
     nozzle::{
-        client::Client,
+        client::{
+            Client, LatestBlockBeforeReorg, RequestMetadata, ResponseBatch, ResumeStreamingQuery,
+        },
         error,
         log::{one_line, Logger as _},
     },
@@ -34,27 +41,11 @@ pub struct FlightClient {
     channel: Channel,
 }
 
-#[derive(Debug, Error)]
-pub enum Error {
-    // Address excluded to avoid leaking sensitive details in logs
-    #[error("invalid address")]
-    InvalidAddress,
-
-    #[error("service failed: {0:#}")]
-    Service(#[source] ArrowError),
-
-    #[error("stream failed: {0:#}")]
-    Stream(#[source] FlightError),
-}
-
 impl FlightClient {
-    /// Constructs a new Nozzle client connected to the specified Nozzle Flight service address.
-    pub fn new(addr: impl Into<Bytes>) -> Result<Self, Error> {
-        let addr: Bytes = addr.into();
-        let is_https = std::str::from_utf8(&addr).map_or(false, |a| a.starts_with("https://"));
-
-        let mut endpoint = Endpoint::from_shared(addr)
-            .map_err(|_e| Error::InvalidAddress)?
+    /// Creates a new Nozzle client connected to the specified Nozzle Flight service address.
+    pub async fn new(addr: Uri) -> Result<Self, Error> {
+        let is_https = addr.scheme() == Some(&http::uri::Scheme::HTTPS);
+        let mut endpoint = Endpoint::from(addr)
             .tcp_keepalive(Some(Duration::from_secs(30)))
             .keep_alive_while_idle(true)
             .http2_adaptive_window(true)
@@ -70,7 +61,7 @@ impl FlightClient {
         }
 
         Ok(Self {
-            channel: endpoint.connect_lazy(),
+            channel: endpoint.connect().await.map_err(Error::Connection)?,
         })
     }
 
@@ -116,18 +107,40 @@ impl Client for FlightClient {
         &self,
         logger: &Logger,
         query: impl ToString,
-    ) -> BoxStream<'static, Result<RecordBatch, Self::Error>> {
-        let logger = logger.component("nozzle::FlightClient");
-        let mut raw_client = self.raw_client();
+        request_metadata: Option<RequestMetadata>,
+    ) -> BoxStream<'static, Result<ResponseBatch, Self::Error>> {
         let query = query.to_string();
-        let query_id = query_id(&query);
+        let logger = logger
+            .component("nozzle::FlightClient")
+            .new(slog::o!("query_id" => query_id(&query)));
+
+        let mut raw_client = self.raw_client();
+        let mut prev_block_ranges: Vec<BlockRange> = Vec::new();
+
+        if let Some(request_metadata) = request_metadata {
+            let RequestMetadata {
+                resume_streaming_query,
+            } = request_metadata;
+
+            if let Some(resume_streaming_query) = resume_streaming_query {
+                prev_block_ranges = resume_streaming_query
+                    .iter()
+                    .cloned()
+                    .map(Into::into)
+                    .collect();
+
+                raw_client.set_header(
+                    "nozzle-resume",
+                    serialize_resume_streaming_query(resume_streaming_query),
+                );
+            }
+        }
 
         try_stream! {
             const TXN_ID: Option<Bytes> = None;
 
             debug!(logger, "Executing SQL query";
-                "query" => &*one_line(&query),
-                "query_id" => query_id
+                "query" => &*one_line(&query)
             );
 
             let flight_info = raw_client
@@ -135,30 +148,56 @@ impl Client for FlightClient {
                 .await
                 .map_err(Error::Service)?;
 
-            for endpoint in flight_info.endpoint {
+            for (endpoint_index, endpoint) in flight_info.endpoint.into_iter().enumerate() {
                 let Some(ticket) = endpoint.ticket else {
                     continue;
                 };
 
-                let mut stream = raw_client.do_get(ticket).await.map_err(Error::Service)?;
+                let mut stream = raw_client.do_get(ticket).await.map_err(Error::Service)?.into_inner();
                 let mut batch_index = 0u32;
+                let mut prev_block_ranges = prev_block_ranges.clone();
 
                 while let Some(batch_result) = stream.next().await {
-                    debug!(logger, "Received a new record batch";
-                        "query_id" => query_id,
+                    let flight_data = batch_result.map_err(Error::Stream)?;
+                    let app_metadata = flight_data.inner.app_metadata;
+                    let payload = flight_data.payload;
+
+                    let record_batch = match payload {
+                        DecodedPayload::None => {
+                            trace!(logger, "Received empty data";
+                                "endpoint_index" => endpoint_index
+                            );
+                            continue
+                        },
+                        DecodedPayload::Schema(_) => {
+                            trace!(logger, "Received schema only";
+                                "endpoint_index" => endpoint_index
+                            );
+                            continue
+                        }
+                        DecodedPayload::RecordBatch(record_batch) => record_batch,
+                    };
+                    let block_ranges = Metadata::parse(&app_metadata)?.ranges;
+
+                    trace!(logger, "Received a new record batch";
+                        "endpoint_index" => endpoint_index,
                         "batch_index" => batch_index,
-                        "num_rows" => batch_result.as_ref().map_or(0, |b| b.num_rows()),
-                        "memory_size_bytes" => batch_result.as_ref().map_or(0, |b| b.get_array_memory_size())
+                        "num_rows" => record_batch.num_rows(),
+                        "memory_size_bytes" => record_batch.get_array_memory_size(),
+                        "block_ranges" => ?block_ranges
                     );
 
-                    let record_batch = batch_result.map_err(Error::Stream)?;
-                    yield record_batch;
+                    if let Some(reorg) = detect_reorg(&block_ranges, &prev_block_ranges) {
+                        yield ResponseBatch::Reorg(reorg);
+                    }
+
+                    yield ResponseBatch::Batch { data: record_batch};
 
                     batch_index += 1;
+                    prev_block_ranges = block_ranges;
                 }
 
                 debug!(logger, "Query execution completed successfully";
-                    "query_id" => query_id,
                     "batch_count" => batch_index
                 );
             }
@@ -167,17 +206,37 @@ impl Client for FlightClient {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("invalid metadata: {0:#}")]
+    InvalidMetadata(#[source] anyhow::Error),
+
+    #[error("connection failed: {0:#}")]
+    Connection(#[source] tonic::transport::Error),
+
+    #[error("service failed: {0:#}")]
+    Service(#[source] ArrowError),
+
+    #[error("stream failed: {0:#}")]
+    Stream(#[source] FlightError),
+}
+
 impl error::IsDeterministic for Error {
     fn is_deterministic(&self) -> bool {
-        static PATTERNS: &[&str] = &[
+        let msg = match self {
+            Self::InvalidMetadata(_) => return true,
+            Self::Connection(_) => return false,
+            Self::Service(e) => e.to_string(),
+            Self::Stream(_) => return false,
+        };
+
+        static DETERMINISTIC_ERROR_PATTERNS: &[&str] = &[
             r#", message: "SQL parse error:"#,
             r#", message: "error looking up datasets:"#,
             r#", message: "planning error:"#,
         ];
 
-        let msg = self.to_string();
-
-        for &pattern in PATTERNS {
+        for &pattern in DETERMINISTIC_ERROR_PATTERNS {
             if msg.contains(pattern) {
                 return true;
             }
@@ -191,6 +250,63 @@ impl error::IsDeterministic for Error {
     }
 }
 
+/// Metadata received with every record batch.
+#[derive(Debug, Clone, Deserialize)]
+struct Metadata {
+    /// Block ranges processed by the Nozzle server to produce the record batch.
+    ranges: Vec<BlockRange>,
+}
+
+impl Metadata {
+    /// Parses and returns the metadata.
+    fn parse(app_metadata: &[u8]) -> Result<Self, Error> {
+        if app_metadata.is_empty() {
+            return Ok(Self { ranges: Vec::new() });
+        }
+
+        serde_json::from_slice::<Self>(app_metadata).map_err(|e| Error::InvalidMetadata(e.into()))
+    }
+}
+
+/// Block range processed by the Nozzle server to produce a record batch.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct BlockRange {
+    /// Network that contains the source data for the dataset.
+    network: String,
+
+    /// Block numbers processed.
+    numbers: RangeInclusive<BlockNumber>,
+
+    /// Hash of the last block in the block range.
+    hash: BlockHash,
+
+    /// Hash of the parent block of the first block in the block range.
+    prev_hash: Option<BlockHash>,
+}
+
+impl BlockRange {
+    /// Returns the first block number in the range.
+    fn start(&self) -> BlockNumber {
+        *self.numbers.start()
+    }
+
+    /// Returns the last block number in the range.
+    fn end(&self) -> BlockNumber {
+        *self.numbers.end()
+    }
+}
+
+impl From<ResumeStreamingQuery> for BlockRange {
+    fn from(resume: ResumeStreamingQuery) -> Self {
+        Self {
+            network: resume.network,
+            numbers: resume.block_number..=resume.block_number,
+            hash: resume.block_hash,
+            prev_hash: None,
+        }
+    }
+}
+
 /// Generates an ID from a SQL query for log correlation.
 ///
 /// The ID allows connecting related logs without including the full SQL
@@ -199,4 +315,62 @@ fn query_id(query: &str) -> u32 {
     let mut hasher = AHasher::default();
     query.hash(&mut hasher);
     hasher.finish() as u32
+}
+
+/// Serializes the information required to resume a streaming SQL query to JSON.
+fn serialize_resume_streaming_query(resume_streaming_query: Vec<ResumeStreamingQuery>) -> String {
+    #[derive(Serialize)]
+    struct Block {
+        number: BlockNumber,
+        hash: BlockHash,
+    }
+
+    let mapping: HashMap<String, Block> = resume_streaming_query
+        .into_iter()
+        .map(
+            |ResumeStreamingQuery {
+                 network,
+                 block_number: number,
+                 block_hash: hash,
+             }| { (network, Block { number, hash }) },
+        )
+        .collect();
+
+    serde_json::to_string(&mapping).unwrap()
+}
+
+/// Detects whether a reorg occurred during query execution.
+///
+/// Compares current block ranges with block ranges from the previous record batch
+/// to detect non-incremental batches. When a non-incremental batch is detected,
+/// returns the block number and hash of the parent block of the first block
+/// after reorg for every processed network.
+///
+/// Returns `None` when no reorgs are detected.
+fn detect_reorg(
+    block_ranges: &[BlockRange],
+    prev_block_ranges: &[BlockRange],
+) -> Option<Vec<LatestBlockBeforeReorg>> {
+    Some(
+        block_ranges
+            .iter()
+            .filter_map(|block_range| {
+                let prev_block_range = prev_block_ranges
+                    .iter()
+                    .find(|prev_block_range| prev_block_range.network == block_range.network)?;
+
+                if block_range != prev_block_range && block_range.start() <= prev_block_range.end()
+                {
+                    return Some(LatestBlockBeforeReorg {
+                        network: block_range.network.clone(),
+                        block_number: block_range.start().saturating_sub(1),
+                        block_hash: block_range.prev_hash,
+                    });
+                }
+
+                None
+            })
+            .collect::<Vec<_>>(),
+    )
+    .filter(|v| !v.is_empty())
 }
