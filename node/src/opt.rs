@@ -230,6 +230,14 @@ pub struct Opt {
         help = "Port for the graphman GraphQL server"
     )]
     pub graphman_port: u16,
+
+    #[clap(
+        long,
+        value_name = "{HOST:PORT|URL}",
+        env = "GRAPH_NOZZLE_FLIGHT_SERVICE_ADDRESS",
+        help = "The address of the Nozzle Flight gRPC service"
+    )]
+    pub nozzle_flight_service_address: Option<String>,
 }
 
 impl From<Opt> for config::Opt {

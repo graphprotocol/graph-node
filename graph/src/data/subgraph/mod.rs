@@ -12,7 +12,7 @@ pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 use crate::{cheap_clone::CheapClone, components::store::BLOCK_NUMBER_MAX, object};
 use anyhow::{anyhow, Context, Error};
-use futures03::{future::try_join, stream::FuturesOrdered, TryStreamExt as _};
+use futures03::future::try_join_all;
 use itertools::Itertools;
 use semver::Version;
 use serde::{
@@ -47,7 +47,7 @@ use crate::{
         UnresolvedDataSourceTemplate,
     },
     derive::CacheWeight,
-    ensure,
+    ensure, nozzle,
     prelude::{r, Value, ENV_VARS},
     schema::{InputSchema, SchemaValidationError},
 };
@@ -363,6 +363,8 @@ pub enum SubgraphManifestValidationError {
     FeatureValidationError(#[from] SubgraphFeatureValidationError),
     #[error("data source {0} is invalid: {1}")]
     DataSourceValidation(String, Error),
+    #[error("failed to validate Nozzle subgraph: {0:#}")]
+    Nozzle(#[source] Error),
 }
 
 #[derive(Error, Debug)]
@@ -719,7 +721,7 @@ impl<'de> de::Deserialize<'de> for Prune {
 /// SubgraphManifest with IPFS links unresolved
 pub type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
     C,
-    UnresolvedSchema,
+    Option<UnresolvedSchema>,
     UnresolvedDataSource<C>,
     UnresolvedDataSourceTemplate<C>,
 >;
@@ -802,15 +804,24 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
-    pub async fn resolve(
+    pub async fn resolve<NC: nozzle::Client>(
         id: DeploymentHash,
         raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
+        nozzle_client: Option<Arc<NC>>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         Ok(Self(
-            SubgraphManifest::resolve_from_raw(id, raw, resolver, logger, max_spec_version).await?,
+            SubgraphManifest::resolve_from_raw(
+                id,
+                raw,
+                resolver,
+                nozzle_client,
+                logger,
+                max_spec_version,
+            )
+            .await?,
         ))
     }
 
@@ -875,6 +886,8 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             &self.0.spec_version,
         ));
 
+        errors.append(&mut self.validate_nozzle_subgraph());
+
         match errors.is_empty() {
             true => Ok(self.0),
             false => Err(errors),
@@ -884,20 +897,77 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     pub fn spec_version(&self) -> &Version {
         &self.0.spec_version
     }
+
+    fn validate_nozzle_subgraph(&self) -> Vec<SubgraphManifestValidationError> {
+        use api_version::SPEC_VERSION_1_4_0;
+
+        let BaseSubgraphManifest {
+            id: _,
+            spec_version,
+            features,
+            description: _,
+            repository: _,
+            schema: _,
+            data_sources,
+            graft,
+            templates,
+            chain: _,
+            indexer_hints: _,
+        } = &self.0;
+
+        let nozzle_data_sources = data_sources
+            .iter()
+            .filter_map(|data_source| match data_source {
+                DataSource::Nozzle(nozzle_data_source) => Some(nozzle_data_source),
+                _ => None,
+            })
+            .collect_vec();
+
+        if nozzle_data_sources.is_empty() {
+            // Not a Nozzle subgraph
+            return Vec::new();
+        }
+
+        let mut errors = Vec::new();
+        let err = |msg: &str| SubgraphManifestValidationError::Nozzle(anyhow!(msg.to_owned()));
+
+        if data_sources.len() != nozzle_data_sources.len() {
+            errors.push(err("multiple data source kinds are not supported"));
+        }
+
+        if *spec_version < SPEC_VERSION_1_4_0 {
+            errors.push(err("spec version is not supported"));
+        }
+
+        if !features.is_empty() {
+            errors.push(err("manifest features are not supported"));
+        }
+
+        if graft.is_some() {
+            errors.push(err("grafting is not supported"));
+        }
+
+        if !templates.is_empty() {
+            errors.push(err("data source templates are not supported"));
+        }
+
+        errors
+    }
 }
 
 impl<C: Blockchain> SubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
-    pub async fn resolve_from_raw(
+    pub async fn resolve_from_raw<NC: nozzle::Client>(
         id: DeploymentHash,
         raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
+        nozzle_client: Option<Arc<NC>>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         let unresolved = UnresolvedSubgraphManifest::parse(id.cheap_clone(), raw)?;
         let resolved = unresolved
-            .resolve(&id, resolver, logger, max_spec_version)
+            .resolve(&id, resolver, nozzle_client, logger, max_spec_version)
             .await?;
         Ok(resolved)
     }
@@ -1033,10 +1103,11 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         serde_yaml::from_value(raw.into()).map_err(Into::into)
     }
 
-    pub async fn resolve(
+    pub async fn resolve<NC: nozzle::Client>(
         self,
         deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
+        nozzle_client: Option<Arc<NC>>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<SubgraphManifest<C>, SubgraphManifestResolveError> {
@@ -1046,7 +1117,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             features,
             description,
             repository,
-            schema,
+            schema: unresolved_schema,
             data_sources,
             graft,
             templates,
@@ -1064,46 +1135,77 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             ).into());
         }
 
-        let ds_count = data_sources.len();
-        if ds_count as u64 + templates.len() as u64 > u32::MAX as u64 {
+        if data_sources.len() + templates.len() > u32::MAX as usize {
             return Err(
-                anyhow!("Subgraph has too many declared data sources and templates",).into(),
+                anyhow!("subgraph has too many declared data sources and templates").into(),
             );
         }
 
-        let schema = schema
-            .resolve(&id, &spec_version, id.clone(), resolver, logger)
-            .await?;
+        let data_sources = try_join_all(data_sources.into_iter().enumerate().map(|(idx, ds)| {
+            ds.resolve(
+                deployment_hash,
+                resolver,
+                nozzle_client.cheap_clone(),
+                logger,
+                idx as u32,
+                &spec_version,
+            )
+        }))
+        .await?;
 
-        let (data_sources, templates) = try_join(
-            data_sources
-                .into_iter()
-                .enumerate()
-                .map(|(idx, ds)| {
-                    ds.resolve(deployment_hash, resolver, logger, idx as u32, &spec_version)
-                })
-                .collect::<FuturesOrdered<_>>()
-                .try_collect::<Vec<_>>(),
-            templates
-                .into_iter()
-                .enumerate()
-                .map(|(idx, template)| {
-                    template.resolve(
+        let nozzle_data_sources = data_sources
+            .iter()
+            .filter_map(|data_source| match data_source {
+                DataSource::Nozzle(nozzle_data_source) => Some(nozzle_data_source),
+                _ => None,
+            })
+            .collect_vec();
+
+        let schema = match unresolved_schema {
+            Some(unresolved_schema) => {
+                unresolved_schema
+                    .resolve(
                         deployment_hash,
-                        resolver,
-                        &schema,
-                        logger,
-                        ds_count as u32 + idx as u32,
                         &spec_version,
+                        id.cheap_clone(),
+                        resolver,
+                        logger,
                     )
-                })
-                .collect::<FuturesOrdered<_>>()
-                .try_collect::<Vec<_>>(),
-        )
+                    .await?
+            }
+            None if nozzle_data_sources.len() == data_sources.len() => {
+                let table_schemas = nozzle_data_sources
+                    .iter()
+                    .map(|data_source| {
+                        data_source
+                            .transformer
+                            .tables
+                            .iter()
+                            .map(|table| (table.name.cheap_clone(), table.schema.clone()))
+                    })
+                    .flatten();
+
+                nozzle::schema::generate_subgraph_schema(&id, table_schemas)?
+            }
+            None => {
+                return Err(anyhow!("subgraph schema is required").into());
+            }
+        };
+
+        let templates = try_join_all(templates.into_iter().enumerate().map(|(idx, template)| {
+            template.resolve(
+                &id,
+                resolver,
+                &schema,
+                logger,
+                data_sources.len() as u32 + idx as u32,
+                &spec_version,
+            )
+        }))
         .await?;
 
         let is_substreams = data_sources.iter().any(|ds| ds.kind() == SUBSTREAMS_KIND);
-        if is_substreams && ds_count > 1 {
+        if is_substreams && data_sources.len() > 1 {
             return Err(anyhow!(
                 "A Substreams-based subgraph can only contain a single data source."
             )

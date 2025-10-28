@@ -182,6 +182,7 @@ where
                     Ok(Some(host))
                 }
             }
+            DataSource::Nozzle(_) => unreachable!(),
         }
     }
 

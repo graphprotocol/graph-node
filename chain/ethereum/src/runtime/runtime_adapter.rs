@@ -182,6 +182,7 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
                 create_host_fns(abis, archive, call_cache, eth_adapters, eth_call_gas)
             }
             data_source::DataSource::Offchain(_) => vec![],
+            data_source::DataSource::Nozzle(_) => vec![],
         };
 
         Ok(host_fns)
