@@ -14,10 +14,7 @@ use graph::futures03;
 use graph::futures03::future::TryFutureExt;
 use graph::futures03::Stream;
 use graph::futures03::StreamExt;
-use graph::prelude::{
-    CreateSubgraphResult, SubgraphAssignmentProvider as SubgraphAssignmentProviderTrait,
-    SubgraphRegistrar as SubgraphRegistrarTrait, *,
-};
+use graph::prelude::{CreateSubgraphResult, SubgraphRegistrar as SubgraphRegistrarTrait, *};
 use graph::util::futures::retry_strategy;
 use graph::util::futures::RETRY_DEFAULT_LIMIT;
 use tokio_retry::Retry;
@@ -38,7 +35,7 @@ pub struct SubgraphRegistrar<P, S, SM> {
 
 impl<P, S, SM> SubgraphRegistrar<P, S, SM>
 where
-    P: SubgraphAssignmentProviderTrait,
+    P: graph::components::subgraph::SubgraphInstanceManager,
     S: SubgraphStore,
     SM: SubscriptionManager,
 {
@@ -160,11 +157,14 @@ where
 
                         // Start subgraph on this node
                         debug!(logger, "Deployment assignee is this node"; "assigned_to" => assigned, "action" => "add");
-                        self.provider.start(deployment, None).await;
+                        self.provider
+                            .cheap_clone()
+                            .start_subgraph(deployment, None)
+                            .await;
                     } else {
                         // Ensure it is removed from this node
                         debug!(logger, "Deployment assignee is not this node"; "assigned_to" => assigned, "action" => "remove");
-                        self.provider.stop(deployment).await
+                        self.provider.stop_subgraph(deployment).await
                     }
                 } else {
                     // Was added/updated, but is now gone.
@@ -172,10 +172,7 @@ where
                 }
             }
             AssignmentOperation::Removed => {
-                // Send remove event without checking node ID.
-                // If node ID does not match, then this is a no-op when handled in
-                // assignment provider.
-                self.provider.stop(deployment).await;
+                self.provider.stop_subgraph(deployment).await;
             }
         }
     }
@@ -210,7 +207,7 @@ where
             let provider = self.provider.cheap_clone();
 
             graph::spawn(async move {
-                provider.start(id, None).await;
+                provider.start_subgraph(id, None).await;
                 drop(sender)
             });
         }
@@ -225,7 +222,7 @@ where
 #[async_trait]
 impl<P, S, SM> SubgraphRegistrarTrait for SubgraphRegistrar<P, S, SM>
 where
-    P: SubgraphAssignmentProviderTrait,
+    P: graph::components::subgraph::SubgraphInstanceManager,
     S: SubgraphStore,
     SM: SubscriptionManager,
 {

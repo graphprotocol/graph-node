@@ -12,20 +12,16 @@ use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
 use graph::components::network_provider::chain_id_validator;
 use graph::components::store::DeploymentLocator;
-use graph::components::subgraph::Settings;
+use graph::components::subgraph::{Settings, SubgraphInstanceManager as _};
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::prelude::{
     anyhow, tokio, BlockNumber, DeploymentHash, IpfsResolver, LoggerFactory, NodeId,
-    SubgraphAssignmentProvider, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
-    SubgraphStore, SubgraphVersionSwitchingMode, ENV_VARS,
+    SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore,
+    SubgraphVersionSwitchingMode, ENV_VARS,
 };
 use graph::slog::{debug, info, Logger};
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
-use graph_core::{
-    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
-    SubgraphRegistrar as IpfsSubgraphRegistrar,
-};
 
 async fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
     let mut locators = store.locators(hash).await?;
@@ -139,10 +135,8 @@ pub async fn run(
     );
 
     let static_filters = ENV_VARS.experimental_static_filters;
-
     let sg_metrics = Arc::new(SubgraphCountMetric::new(metrics_registry.clone()));
-
-    let subgraph_instance_manager = SubgraphInstanceManager::new(
+    let subgraph_instance_manager = graph_core::subgraph::SubgraphInstanceManager::new(
         &logger_factory,
         env_vars.cheap_clone(),
         subgraph_store.clone(),
@@ -155,19 +149,28 @@ pub async fn run(
         static_filters,
     );
 
-    // Create IPFS-based subgraph provider
-    let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
+    let mut subgraph_instance_managers =
+        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
+
+    subgraph_instance_managers.add(
+        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
+        Arc::new(subgraph_instance_manager),
+    );
+
+    let subgraph_provider = Arc::new(graph_core::subgraph_provider::SubgraphProvider::new(
         &logger_factory,
-        subgraph_instance_manager,
-        sg_metrics,
+        sg_metrics.cheap_clone(),
+        link_resolver.cheap_clone(),
+        tokio_util::sync::CancellationToken::new(),
+        subgraph_instance_managers,
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
 
-    let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
+    let subgraph_registrar = Arc::new(graph_core::subgraph::SubgraphRegistrar::new(
         &logger_factory,
         link_resolver.cheap_clone(),
-        subgraph_provider.clone(),
+        subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
         blockchain_map,
@@ -216,7 +219,9 @@ pub async fn run(
 
     let locator = locate(subgraph_store.as_ref(), &hash).await?;
 
-    SubgraphAssignmentProvider::start(subgraph_provider.as_ref(), locator, Some(stop_block)).await;
+    subgraph_provider
+        .start_subgraph(locator, Some(stop_block))
+        .await;
 
     loop {
         tokio::time::sleep(Duration::from_millis(1000)).await;

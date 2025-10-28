@@ -7,6 +7,7 @@ use std::time::Duration;
 use assert_json_diff::assert_json_eq;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{Block, BlockPtr, Blockchain};
+use graph::components::subgraph::SubgraphInstanceManager as _;
 use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
 use graph::data::value::Word;
@@ -16,7 +17,7 @@ use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
 use graph::object;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::web3::types::Address;
-use graph::prelude::{hex, CheapClone, SubgraphAssignmentProvider, SubgraphName, SubgraphStore};
+use graph::prelude::{hex, CheapClone, SubgraphName, SubgraphStore};
 use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_command, push_test_log,
     push_test_polling_trigger,
@@ -82,7 +83,10 @@ async fn data_source_revert() -> anyhow::Result<()> {
 
     let stop_block = test_ptr(2);
     base_ctx.start_and_sync_to(stop_block).await;
-    base_ctx.provider.stop(base_ctx.deployment.clone()).await;
+    base_ctx
+        .provider
+        .stop_subgraph(base_ctx.deployment.clone())
+        .await;
 
     // Test loading data sources from DB.
     let stop_block = test_ptr(3);

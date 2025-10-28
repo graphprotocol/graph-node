@@ -1,27 +1,22 @@
+use std::{
+    io::{BufRead, BufReader},
+    path::Path,
+    time::Duration,
+};
+
 use anyhow::Result;
-
 use git_testament::{git_testament, render_testament};
-use graph::futures03::future::TryFutureExt;
-
-use crate::config::Config;
-use crate::helpers::watch_subgraph_updates;
-use crate::network_setup::Networks;
-use crate::opt::Opt;
-use crate::store_builder::StoreBuilder;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
+use graph::futures03::future::TryFutureExt;
 use graph::prelude::*;
 use graph::prometheus::Registry;
 use graph::url::Url;
 use graph_core::polling_monitor::{arweave_service, ArweaveService, IpfsService};
-use graph_core::{
-    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
-    SubgraphRegistrar as IpfsSubgraphRegistrar,
-};
 use graph_graphql::prelude::GraphQlRunner;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
@@ -33,10 +28,13 @@ use graph_store_postgres::{
 };
 use graphman_server::GraphmanServer;
 use graphman_server::GraphmanServerConfig;
-use std::io::{BufRead, BufReader};
-use std::path::Path;
-use std::time::Duration;
 use tokio::sync::mpsc;
+
+use crate::config::Config;
+use crate::helpers::watch_subgraph_updates;
+use crate::network_setup::Networks;
+use crate::opt::Opt;
+use crate::store_builder::StoreBuilder;
 
 git_testament!(TESTAMENT);
 
@@ -273,8 +271,8 @@ fn build_subgraph_registrar(
     arweave_service: ArweaveService,
     ipfs_service: IpfsService,
 ) -> Arc<
-    IpfsSubgraphRegistrar<
-        IpfsSubgraphAssignmentProvider<SubgraphInstanceManager<SubgraphStore>>,
+    graph_core::subgraph::SubgraphRegistrar<
+        graph_core::subgraph_provider::SubgraphProvider,
         SubgraphStore,
         SubscriptionManager,
     >,
@@ -282,7 +280,7 @@ fn build_subgraph_registrar(
     let static_filters = ENV_VARS.experimental_static_filters;
     let sg_count = Arc::new(SubgraphCountMetric::new(metrics_registry.cheap_clone()));
 
-    let subgraph_instance_manager = SubgraphInstanceManager::new(
+    let subgraph_instance_manager = graph_core::subgraph::SubgraphInstanceManager::new(
         &logger_factory,
         env_vars.cheap_clone(),
         network_store.subgraph_store(),
@@ -295,15 +293,27 @@ fn build_subgraph_registrar(
         static_filters,
     );
 
-    // Create IPFS-based subgraph provider
-    let subgraph_provider =
-        IpfsSubgraphAssignmentProvider::new(&logger_factory, subgraph_instance_manager, sg_count);
+    let mut subgraph_instance_managers =
+        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
+
+    subgraph_instance_managers.add(
+        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
+        Arc::new(subgraph_instance_manager),
+    );
+
+    let subgraph_provider = graph_core::subgraph_provider::SubgraphProvider::new(
+        &logger_factory,
+        sg_count.cheap_clone(),
+        link_resolver.cheap_clone(),
+        tokio_util::sync::CancellationToken::new(),
+        subgraph_instance_managers,
+    );
 
     // Check version switching mode environment variable
     let version_switching_mode = ENV_VARS.subgraph_version_switching_mode;
 
     // Create named subgraph provider for resolving subgraph name->ID mappings
-    let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
+    let subgraph_registrar = Arc::new(graph_core::subgraph::SubgraphRegistrar::new(
         &logger_factory,
         link_resolver,
         Arc::new(subgraph_provider),

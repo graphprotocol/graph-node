@@ -59,14 +59,6 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
 
 #[async_trait]
 impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<S> {
-    fn can_manage(
-        &self,
-        _deployment: &DeploymentLocator,
-        _raw_manifest: &serde_yaml::Mapping,
-    ) -> bool {
-        true
-    }
-
     async fn start_subgraph(
         self: Arc<Self>,
         loc: DeploymentLocator,
