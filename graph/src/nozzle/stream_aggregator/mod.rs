@@ -12,7 +12,7 @@ use futures03::{stream::BoxStream, Stream, StreamExt, TryStreamExt};
 use slog::{debug, info, Logger};
 
 use self::record_batch::Buffer;
-use crate::nozzle::{error::IsDeterministic, log::Logger as _};
+use crate::nozzle::{client::ResponseBatch, error::IsDeterministic, log::Logger as _};
 
 pub use self::{
     error::Error,
@@ -49,7 +49,7 @@ impl StreamAggregator {
     /// Creates a new stream aggregator from the `streams` with a bounded buffer.
     pub fn new<E>(
         logger: &Logger,
-        streams: impl IntoIterator<Item = BoxStream<'static, Result<RecordBatch, E>>>,
+        streams: impl IntoIterator<Item = BoxStream<'static, Result<ResponseBatch, E>>>,
         max_buffer_size: usize,
     ) -> Self
     where
@@ -63,6 +63,16 @@ impl StreamAggregator {
             .map(|(stream_index, stream)| {
                 stream
                     .map_err(move |e| Error::stream(stream_index, e))
+                    .try_filter_map(move |response_batch| async move {
+                        match response_batch {
+                            ResponseBatch::Batch { data } => Ok(Some(data)),
+                            ResponseBatch::Reorg(_) => Err(Error::Stream {
+                                stream_index,
+                                source: anyhow!("chain reorg"),
+                                is_deterministic: false,
+                            }),
+                        }
+                    })
                     .boxed()
             })
             .collect::<Vec<_>>();
