@@ -475,7 +475,7 @@ struct Inner {
         default = "false"
     )]
     allow_non_deterministic_fulltext_search: EnvVarBoolean,
-    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "1.4.0")]
+    #[envconfig(from = "GRAPH_MAX_SPEC_VERSION", default = "1.5.0")]
     max_spec_version: Version,
     #[envconfig(from = "GRAPH_LOAD_WINDOW_SIZE", default = "300")]
     load_window_size_in_secs: u64,
