@@ -1,16 +1,19 @@
 use alloy::primitives::{BlockHash, BlockNumber};
-use anyhow::{bail, Context, Result};
-use arrow::array::{Array, FixedSizeBinaryArray, RecordBatch, UInt64Array};
+use anyhow::{anyhow, Result};
+use arrow::array::RecordBatch;
 
-use crate::nozzle::common::column_aliases;
+use crate::nozzle::codec::{
+    self,
+    utils::{auto_block_hash_decoder, auto_block_number_decoder},
+};
 
 /// Decodes the data required for stream aggregation.
 pub(super) struct Decoder<'a> {
     /// Block numbers serve as group keys for related record batches.
-    block_number_column: &'a UInt64Array,
+    block_number: Box<dyn codec::Decoder<Option<BlockNumber>> + 'a>,
 
     /// Block hashes ensure data consistency across tables and datasets.
-    block_hash_column: &'a FixedSizeBinaryArray,
+    block_hash: Box<dyn codec::Decoder<Option<BlockHash>> + 'a>,
 }
 
 impl<'a> Decoder<'a> {
@@ -24,8 +27,8 @@ impl<'a> Decoder<'a> {
     /// The returned error is deterministic.
     pub(super) fn new(record_batch: &'a RecordBatch) -> Result<Self> {
         Ok(Self {
-            block_number_column: block_number_column(record_batch)?,
-            block_hash_column: block_hash_column(record_batch)?,
+            block_number: auto_block_number_decoder(record_batch)?,
+            block_hash: auto_block_hash_decoder(record_batch)?,
         })
     }
 
@@ -38,11 +41,9 @@ impl<'a> Decoder<'a> {
     ///
     /// The returned error is deterministic.
     pub(super) fn block_number(&self, row_index: usize) -> Result<BlockNumber> {
-        if self.block_number_column.is_null(row_index) {
-            bail!("block number is null");
-        }
-
-        Ok(self.block_number_column.value(row_index))
+        self.block_number
+            .decode(row_index)?
+            .ok_or_else(|| anyhow!("block number is empty"))
     }
 
     /// Returns the block hash at `row_index`.
@@ -54,41 +55,8 @@ impl<'a> Decoder<'a> {
     ///
     /// The returned error is deterministic.
     pub(super) fn block_hash(&self, row_index: usize) -> Result<BlockHash> {
-        if self.block_hash_column.is_null(row_index) {
-            bail!("block hash is null");
-        }
-
-        BlockHash::try_from(self.block_hash_column.value(row_index))
-            .context("block hash is invalid")
+        self.block_hash
+            .decode(row_index)?
+            .ok_or_else(|| anyhow!("block hash is empty"))
     }
-}
-
-fn block_number_column<'a>(record_batch: &'a RecordBatch) -> Result<&'a UInt64Array> {
-    for &column_name in column_aliases::BLOCK_NUMBER {
-        let Some(column) = record_batch.column_by_name(column_name) else {
-            continue;
-        };
-
-        return column
-            .as_any()
-            .downcast_ref()
-            .context("failed to downcast block number column");
-    }
-
-    bail!("failed to find block number column");
-}
-
-fn block_hash_column<'a>(record_batch: &'a RecordBatch) -> Result<&'a FixedSizeBinaryArray> {
-    for &column_name in column_aliases::BLOCK_HASH {
-        let Some(column) = record_batch.column_by_name(column_name) else {
-            continue;
-        };
-
-        return column
-            .as_any()
-            .downcast_ref()
-            .context("failed to downcast block hash column");
-    }
-
-    bail!("failed to find block hash column");
 }
