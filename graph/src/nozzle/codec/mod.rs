@@ -5,15 +5,14 @@ mod mapping_decoder;
 mod name_cache;
 mod value_decoder;
 
+pub mod utils;
+
 use std::collections::{BTreeMap, HashMap};
 
 use anyhow::{anyhow, bail, Context, Result};
 use arrow::array::{Array, RecordBatch};
 
-use self::{
-    array_decoder::ArrayDecoder, decoder::Decoder, list_decoder::ListDecoder,
-    mapping_decoder::MappingDecoder, name_cache::NameCache,
-};
+use self::{list_decoder::ListDecoder, mapping_decoder::MappingDecoder, name_cache::NameCache};
 use crate::{
     data::{
         graphql::TypeExt,
@@ -23,6 +22,8 @@ use crate::{
     nozzle::common::Ident,
     schema::{EntityKey, EntityType, Field, InputSchema},
 };
+
+pub use self::{array_decoder::ArrayDecoder, decoder::Decoder};
 
 /// Handles decoding of record batches to Subgraph entities.
 pub struct Codec {

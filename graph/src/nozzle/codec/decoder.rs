@@ -5,7 +5,7 @@ use anyhow::Result;
 /// This trait provides a common interface for converting Arrow format data into
 /// custom types. Implementations handle the specifics of extracting data from
 /// Arrow arrays and constructing the target type `T`.
-pub(super) trait Decoder<T> {
+pub trait Decoder<T> {
     /// Decodes and returns the value at the `row_index`.
     ///
     /// # Errors
