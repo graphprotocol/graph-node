@@ -111,6 +111,7 @@ arrow.workspace = true
 heck.workspace = true
 lazy-regex.workspace = true
 sqlparser-latest.workspace = true
+tokio-util.workspace = true
 
 [dev-dependencies]
 clap.workspace = true

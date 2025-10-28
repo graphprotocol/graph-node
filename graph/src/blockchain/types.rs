@@ -611,6 +611,12 @@ impl From<Duration> for BlockTime {
     }
 }
 
+impl From<Timestamp> for BlockTime {
+    fn from(value: Timestamp) -> Self {
+        Self(value)
+    }
+}
+
 impl From<BlockTime> for Value {
     fn from(block_time: BlockTime) -> Self {
         Value::Timestamp(block_time.0)
