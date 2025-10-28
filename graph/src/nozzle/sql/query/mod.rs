@@ -3,7 +3,7 @@ mod resolve_event_signatures;
 mod resolve_source_address;
 mod validate_tables;
 
-use std::fmt;
+use std::{fmt, ops::RangeInclusive, sync::Arc};
 
 use alloy::{
     json_abi::JsonAbi,
@@ -28,7 +28,7 @@ pub struct Query {
     dataset: Ident,
 
     /// The tables that the SQL query requests data from.
-    tables: Vec<Ident>,
+    tables: Arc<[Ident]>,
 }
 
 impl Query {
@@ -58,11 +58,11 @@ impl Query {
         Ok(Self {
             ast: query,
             dataset: dataset.cheap_clone(),
-            tables: tables.to_vec(),
+            tables: tables.into(),
         })
     }
 
-    /// Applies a block range filter to this SQL query.
+    /// Applies a block range filter to this SQL query and returns the updated query.
     ///
     /// Creates temporary ordered result sets for each table in the dataset, limiting
     /// the blocks processed during execution.
@@ -71,14 +71,10 @@ impl Query {
     ///
     /// This ensures deterministic output during query execution and enables resuming
     /// after failures or when new blocks are available.
-    pub fn filter_blocks(&mut self, start_block: BlockNumber, end_block: BlockNumber) {
-        filter_blocks::filter_blocks(
-            &mut self.ast,
-            &self.dataset,
-            &self.tables,
-            start_block,
-            end_block,
-        );
+    pub fn with_block_range_filter(&self, block_range: &RangeInclusive<BlockNumber>) -> Self {
+        let mut query = self.clone();
+        filter_blocks::filter_blocks(&mut query.ast, &query.dataset, &query.tables, &block_range);
+        query
     }
 
     /// Validates the SQL query.
