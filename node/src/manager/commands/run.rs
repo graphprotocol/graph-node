@@ -15,6 +15,7 @@ use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::{Settings, SubgraphInstanceManager as _};
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
+use graph::nozzle;
 use graph::prelude::{
     anyhow, tokio, BlockNumber, DeploymentHash, IpfsResolver, LoggerFactory, NodeId,
     SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore,
@@ -38,6 +39,7 @@ pub async fn run(
     _network_name: String,
     ipfs_url: Vec<String>,
     arweave_url: String,
+    nozzle_flight_service_address: Option<String>,
     config: Config,
     metrics_ctx: MetricsContext,
     node_id: NodeId,
@@ -136,6 +138,22 @@ pub async fn run(
 
     let static_filters = ENV_VARS.experimental_static_filters;
     let sg_metrics = Arc::new(SubgraphCountMetric::new(metrics_registry.clone()));
+
+    let nozzle_client = match nozzle_flight_service_address {
+        Some(nozzle_flight_service_address) => {
+            let addr = nozzle_flight_service_address
+                .parse()
+                .expect("Invalid Nozzle Flight service address");
+
+            let nozzle_client = nozzle::FlightClient::new(addr)
+                .await
+                .expect("Failed to connect to Nozzle Flight service");
+
+            Some(Arc::new(nozzle_client))
+        }
+        None => None,
+    };
+
     let subgraph_instance_manager = graph_core::subgraph::SubgraphInstanceManager::new(
         &logger_factory,
         env_vars.cheap_clone(),
@@ -146,6 +164,7 @@ pub async fn run(
         link_resolver.cheap_clone(),
         ipfs_service,
         arweave_service,
+        nozzle_client.cheap_clone(),
         static_filters,
     );
 
@@ -173,6 +192,7 @@ pub async fn run(
         subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
+        nozzle_client,
         blockchain_map,
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,

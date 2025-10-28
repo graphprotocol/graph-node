@@ -6,7 +6,6 @@ use std::{
 
 use anyhow::Result;
 use git_testament::{git_testament, render_testament};
-use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
@@ -16,6 +15,10 @@ use graph::futures03::future::TryFutureExt;
 use graph::prelude::*;
 use graph::prometheus::Registry;
 use graph::url::Url;
+use graph::{
+    blockchain::{Blockchain, BlockchainKind, BlockchainMap},
+    nozzle,
+};
 use graph_core::polling_monitor::{arweave_service, ArweaveService, IpfsService};
 use graph_graphql::prelude::GraphQlRunner;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
@@ -258,7 +261,7 @@ fn deploy_subgraph_from_flag(
     );
 }
 
-fn build_subgraph_registrar(
+fn build_subgraph_registrar<NC>(
     metrics_registry: Arc<MetricsRegistry>,
     network_store: &Arc<Store>,
     logger_factory: &LoggerFactory,
@@ -270,13 +273,18 @@ fn build_subgraph_registrar(
     subscription_manager: Arc<SubscriptionManager>,
     arweave_service: ArweaveService,
     ipfs_service: IpfsService,
+    nozzle_client: Option<Arc<NC>>,
 ) -> Arc<
     graph_core::subgraph::SubgraphRegistrar<
         graph_core::subgraph_provider::SubgraphProvider,
         SubgraphStore,
         SubscriptionManager,
+        NC,
     >,
-> {
+>
+where
+    NC: nozzle::Client + Send + Sync + 'static,
+{
     let static_filters = ENV_VARS.experimental_static_filters;
     let sg_count = Arc::new(SubgraphCountMetric::new(metrics_registry.cheap_clone()));
 
@@ -290,6 +298,7 @@ fn build_subgraph_registrar(
         link_resolver.clone(),
         ipfs_service,
         arweave_service,
+        nozzle_client.cheap_clone(),
         static_filters,
     );
 
@@ -319,6 +328,7 @@ fn build_subgraph_registrar(
         Arc::new(subgraph_provider),
         network_store.subgraph_store(),
         subscription_manager,
+        nozzle_client,
         blockchain_map,
         node_id.clone(),
         version_switching_mode,
@@ -473,6 +483,21 @@ pub async fn run(
         &logger_factory,
     );
 
+    let nozzle_client = match opt.nozzle_flight_service_address.as_deref() {
+        Some(nozzle_flight_service_address) => {
+            let addr = nozzle_flight_service_address
+                .parse()
+                .expect("Invalid Nozzle Flight service address");
+
+            let nozzle_client = nozzle::FlightClient::new(addr)
+                .await
+                .expect("Failed to connect to Nozzle Flight service");
+
+            Some(Arc::new(nozzle_client))
+        }
+        None => None,
+    };
+
     start_graphman_server(opt.graphman_port, graphman_server_config).await;
 
     let launch_services = |logger: Logger, env_vars: Arc<EnvVars>| async move {
@@ -507,6 +532,7 @@ pub async fn run(
             blockchain_map.clone(),
             network_store.clone(),
             link_resolver.clone(),
+            nozzle_client.cheap_clone(),
         );
 
         if !opt.disable_block_ingestor {
@@ -532,6 +558,7 @@ pub async fn run(
             subscription_manager,
             arweave_service,
             ipfs_service,
+            nozzle_client,
         );
 
         graph::spawn(

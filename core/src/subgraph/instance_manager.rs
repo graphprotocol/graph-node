@@ -21,6 +21,7 @@ use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
 use graph::data::value::Word;
 use graph::data_source::causality_region::CausalityRegionSeq;
 use graph::env::EnvVars;
+use graph::nozzle;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
@@ -32,7 +33,7 @@ use super::SubgraphTriggerProcessor;
 use crate::subgraph::runner::SubgraphRunnerError;
 
 #[derive(Clone)]
-pub struct SubgraphInstanceManager<S: SubgraphStore> {
+pub struct SubgraphInstanceManager<S: SubgraphStore, NC> {
     logger_factory: LoggerFactory,
     subgraph_store: Arc<S>,
     chains: Arc<BlockchainMap>,
@@ -41,6 +42,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
     link_resolver: Arc<dyn LinkResolver>,
     ipfs_service: IpfsService,
     arweave_service: ArweaveService,
+    nozzle_client: Option<Arc<NC>>,
     static_filters: bool,
     env_vars: Arc<EnvVars>,
 
@@ -58,7 +60,10 @@ pub struct SubgraphInstanceManager<S: SubgraphStore> {
 }
 
 #[async_trait]
-impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<S> {
+impl<S: SubgraphStore, NC> SubgraphInstanceManagerTrait for SubgraphInstanceManager<S, NC>
+where
+    NC: nozzle::Client + Send + Sync + 'static,
+{
     async fn start_subgraph(
         self: Arc<Self>,
         loc: DeploymentLocator,
@@ -185,7 +190,7 @@ impl<S: SubgraphStore> SubgraphInstanceManagerTrait for SubgraphInstanceManager<
     }
 }
 
-impl<S: SubgraphStore> SubgraphInstanceManager<S> {
+impl<S: SubgraphStore, NC: nozzle::Client> SubgraphInstanceManager<S, NC> {
     pub fn new(
         logger_factory: &LoggerFactory,
         env_vars: Arc<EnvVars>,
@@ -196,6 +201,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
         link_resolver: Arc<dyn LinkResolver>,
         ipfs_service: IpfsService,
         arweave_service: ArweaveService,
+        nozzle_client: Option<Arc<NC>>,
         static_filters: bool,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
@@ -209,6 +215,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             instances: SubgraphKeepAlive::new(sg_metrics),
             link_resolver,
             ipfs_service,
+            nozzle_client,
             static_filters,
             env_vars,
             arweave_service,
@@ -327,6 +334,7 @@ impl<S: SubgraphStore> SubgraphInstanceManager<S> {
             .resolve(
                 &deployment.hash,
                 &link_resolver,
+                self.nozzle_client.cheap_clone(),
                 &logger,
                 ENV_VARS.max_spec_version.clone(),
             )

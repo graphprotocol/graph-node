@@ -16,6 +16,7 @@ use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::{status, DeploymentFeatures};
 use graph::data::value::Object;
 use graph::futures03::TryFutureExt;
+use graph::nozzle;
 use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
@@ -96,19 +97,25 @@ impl IntoValue for PublicProofOfIndexingResult {
 
 /// Resolver for the index node GraphQL API.
 #[derive(Clone)]
-pub struct IndexNodeResolver<S: Store> {
+pub struct IndexNodeResolver<S: Store, NC> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
     link_resolver: Arc<dyn LinkResolver>,
+    nozzle_client: Option<Arc<NC>>,
     bearer_token: Option<String>,
 }
 
-impl<S: Store> IndexNodeResolver<S> {
+impl<S, NC> IndexNodeResolver<S, NC>
+where
+    S: Store,
+    NC: nozzle::Client + Send + Sync + 'static,
+{
     pub fn new(
         logger: &Logger,
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
+        nozzle_client: Option<Arc<NC>>,
         bearer_token: Option<String>,
         blockchain_map: Arc<BlockchainMap>,
     ) -> Self {
@@ -119,6 +126,7 @@ impl<S: Store> IndexNodeResolver<S> {
             blockchain_map,
             store,
             link_resolver,
+            nozzle_client,
             bearer_token,
         }
     }
@@ -524,6 +532,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
+                        self.nozzle_client.cheap_clone(),
                         &self.logger,
                         max_spec_version,
                     )
@@ -541,6 +550,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
+                        self.nozzle_client.cheap_clone(),
                         &self.logger,
                         max_spec_version,
                     )
@@ -558,6 +568,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
+                        self.nozzle_client.cheap_clone(),
                         &self.logger,
                         max_spec_version,
                     )
@@ -692,7 +703,11 @@ impl<S: Store> IndexNodeResolver<S> {
 }
 
 #[async_trait]
-impl<S: Store> BlockPtrForNumber for IndexNodeResolver<S> {
+impl<S, NC> BlockPtrForNumber for IndexNodeResolver<S, NC>
+where
+    S: Store,
+    NC: nozzle::Client + Send + Sync + 'static,
+{
     async fn block_ptr_for_number(
         &self,
         network: String,
@@ -765,7 +780,11 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
 }
 
 #[async_trait]
-impl<S: Store> Resolver for IndexNodeResolver<S> {
+impl<S, NC> Resolver for IndexNodeResolver<S, NC>
+where
+    S: Store,
+    NC: nozzle::Client + Send + Sync + 'static,
+{
     const CACHEABLE: bool = false;
 
     async fn query_permit(&self) -> QueryPermit {

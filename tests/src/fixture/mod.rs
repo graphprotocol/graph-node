@@ -38,6 +38,7 @@ use graph::http_body_util::Full;
 use graph::hyper::body::Bytes;
 use graph::hyper::Request;
 use graph::ipfs::{IpfsClient, IpfsMetrics};
+use graph::nozzle;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
@@ -159,14 +160,19 @@ pub struct TestContext {
     pub store: Arc<SubgraphStore>,
     pub deployment: DeploymentLocator,
     pub subgraph_name: SubgraphName,
-    pub instance_manager:
-        Arc<graph_core::subgraph::SubgraphInstanceManager<graph_store_postgres::SubgraphStore>>,
+    pub instance_manager: Arc<
+        graph_core::subgraph::SubgraphInstanceManager<
+            graph_store_postgres::SubgraphStore,
+            nozzle::FlightClient,
+        >,
+    >,
     pub link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver>,
     pub arweave_resolver: Arc<dyn ArweaveResolver>,
     pub env_vars: Arc<EnvVars>,
     pub ipfs: Arc<dyn IpfsClient>,
     graphql_runner: Arc<GraphQlRunner>,
-    indexing_status_service: Arc<IndexNodeService<graph_store_postgres::Store>>,
+    indexing_status_service:
+        Arc<IndexNodeService<graph_store_postgres::Store, nozzle::FlightClient>>,
 }
 
 #[derive(Deserialize)]
@@ -569,6 +575,7 @@ pub async fn setup_inner<C: Blockchain>(
         link_resolver.cheap_clone(),
         ipfs_service,
         arweave_service,
+        None,
         static_filters,
     ));
 
@@ -602,6 +609,7 @@ pub async fn setup_inner<C: Blockchain>(
         blockchain_map.cheap_clone(),
         stores.network_store.cheap_clone(),
         link_resolver.cheap_clone(),
+        None,
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
@@ -612,6 +620,7 @@ pub async fn setup_inner<C: Blockchain>(
         subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
+        Option::<Arc<nozzle::FlightClient>>::None,
         blockchain_map.clone(),
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
