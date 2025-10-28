@@ -72,7 +72,9 @@ pub struct LatestBlockBeforeReorg {
     pub network: String,
 
     /// Block number of the parent block of the first block after the reorg.
-    pub block_number: BlockNumber,
+    ///
+    /// It is `None` when the reorg affects every block in the blockchain.
+    pub block_number: Option<BlockNumber>,
 
     /// Block hash of the parent block of the first block after the reorg.
     ///

@@ -16,7 +16,6 @@ use async_stream::try_stream;
 use bytes::Bytes;
 use futures03::{future::BoxFuture, stream::BoxStream, StreamExt};
 use http::Uri;
-use lazy_regex::regex_is_match;
 use serde::{Deserialize, Serialize};
 use slog::{debug, trace, Logger};
 use thiserror::Error;
@@ -191,7 +190,7 @@ impl Client for FlightClient {
                         yield ResponseBatch::Reorg(reorg);
                     }
 
-                    yield ResponseBatch::Batch { data: record_batch};
+                    yield ResponseBatch::Batch { data: record_batch };
 
                     batch_index += 1;
                     prev_block_ranges = block_ranges;
@@ -231,19 +230,19 @@ impl error::IsDeterministic for Error {
         };
 
         static DETERMINISTIC_ERROR_PATTERNS: &[&str] = &[
-            r#", message: "SQL parse error:"#,
-            r#", message: "error looking up datasets:"#,
-            r#", message: "planning error:"#,
+            // Example SQL query: SELECT;
+            r#"code: InvalidArgument, message: ""#,
+            // Example SQL query: SELECT * FROM invalid_dataset;
+            //                    SELECT * FROM valid_dataset.invalid_table;
+            r#"code: Internal, message: "error creating planning context: "#,
+            // Example SQL query: SELECT invalid_column FROM valid_dataset.valid_table;
+            r#"code: Internal, message: "planning error: "#,
         ];
 
         for &pattern in DETERMINISTIC_ERROR_PATTERNS {
             if msg.contains(pattern) {
                 return true;
             }
-        }
-
-        if regex_is_match!(r#", message: "dataset '.*?' not found, full error:"#, &msg) {
-            return true;
         }
 
         false
@@ -363,7 +362,7 @@ fn detect_reorg(
                 {
                     return Some(LatestBlockBeforeReorg {
                         network: block_range.network.clone(),
-                        block_number: block_range.start().saturating_sub(1),
+                        block_number: block_range.start().checked_sub(1),
                         block_hash: block_range.prev_hash,
                     });
                 }
