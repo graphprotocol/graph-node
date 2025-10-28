@@ -14,7 +14,8 @@ use thiserror::Error;
 
 use super::{Abi, DataSource, Source, Table, Transformer};
 use crate::{
-    components::link_resolver::LinkResolver,
+    components::link_resolver::{LinkResolver, LinkResolverContext},
+    data::subgraph::DeploymentHash,
     nozzle::{
         self,
         common::{column_aliases, Ident},
@@ -336,7 +337,10 @@ impl RawAbi {
         }
 
         let file_bytes = link_resolver
-            .cat(logger, &(file.into()))
+            .cat(
+                &LinkResolverContext::new(&DeploymentHash::default(), &logger),
+                &(file.into()),
+            )
             .await
             .map_err(|e| Error::FailedToResolveFile(e.context("invalid `file`")))?;
 
@@ -440,7 +444,10 @@ impl RawTable {
         }
 
         let file_bytes = link_resolver
-            .cat(logger, &(file.into()))
+            .cat(
+                &LinkResolverContext::new(&DeploymentHash::default(), logger),
+                &(file.into()),
+            )
             .await
             .map_err(|e| Error::FailedToResolveFile(e.context("invalid `file`")))?;
 

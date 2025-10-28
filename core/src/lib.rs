@@ -1,8 +1,4 @@
 pub mod polling_monitor;
 
-mod subgraph;
-
-pub use crate::subgraph::{
-    SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar, SubgraphRunner,
-    SubgraphTriggerProcessor,
-};
+pub mod subgraph;
+pub mod subgraph_provider;

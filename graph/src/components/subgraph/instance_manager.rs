@@ -1,4 +1,3 @@
-use crate::prelude::BlockNumber;
 use std::sync::Arc;
 
 use crate::components::store::DeploymentLocator;
@@ -10,17 +9,7 @@ use crate::components::store::DeploymentLocator;
 /// subgraph instance manager stops and removes the corresponding instance.
 #[async_trait::async_trait]
 pub trait SubgraphInstanceManager: Send + Sync + 'static {
-    /// Returns `true` if this manager has the necessary capabilities to manage the subgraph.
-    fn can_manage(
-        &self,
-        deployment: &DeploymentLocator,
-        raw_manifest: &serde_yaml::Mapping,
-    ) -> bool;
+    async fn start_subgraph(self: Arc<Self>, loc: DeploymentLocator, stop_block: Option<i32>);
 
-    async fn start_subgraph(
-        self: Arc<Self>,
-        deployment: DeploymentLocator,
-        stop_block: Option<BlockNumber>,
-    );
-    async fn stop_subgraph(&self, deployment: DeploymentLocator);
+    async fn stop_subgraph(&self, loc: DeploymentLocator);
 }
