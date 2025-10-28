@@ -26,7 +26,7 @@ fn main() {
 async fn main_inner() {
     env_logger::init();
 
-    let _cancel_token = shutdown_token();
+    let cancel_token = shutdown_token();
     let env_vars = Arc::new(EnvVars::from_env().unwrap());
     let opt = opt::Opt::parse();
 
@@ -61,6 +61,7 @@ async fn main_inner() {
         None,
         prometheus_registry,
         metrics_registry,
+        cancel_token,
     )
     .await;
 }

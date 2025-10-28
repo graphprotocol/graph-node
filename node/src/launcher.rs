@@ -32,6 +32,7 @@ use graph_store_postgres::{
 use graphman_server::GraphmanServer;
 use graphman_server::GraphmanServerConfig;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use crate::config::Config;
 use crate::helpers::watch_subgraph_updates;
@@ -274,6 +275,7 @@ fn build_subgraph_registrar<NC>(
     arweave_service: ArweaveService,
     ipfs_service: IpfsService,
     nozzle_client: Option<Arc<NC>>,
+    cancel_token: CancellationToken,
 ) -> Arc<
     graph_core::subgraph::SubgraphRegistrar<
         graph_core::subgraph_provider::SubgraphProvider,
@@ -288,6 +290,26 @@ where
     let static_filters = ENV_VARS.experimental_static_filters;
     let sg_count = Arc::new(SubgraphCountMetric::new(metrics_registry.cheap_clone()));
 
+    let mut subgraph_instance_managers =
+        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
+
+    if let Some(nozzle_client) = nozzle_client.cheap_clone() {
+        let nozzle_instance_manager = graph_core::nozzle_subgraph::Manager::new(
+            &logger_factory,
+            metrics_registry.cheap_clone(),
+            env_vars.cheap_clone(),
+            &cancel_token,
+            network_store.subgraph_store(),
+            link_resolver.cheap_clone(),
+            nozzle_client,
+        );
+
+        subgraph_instance_managers.add(
+            graph_core::subgraph_provider::SubgraphProcessingKind::Amp,
+            Arc::new(nozzle_instance_manager),
+        );
+    }
+
     let subgraph_instance_manager = graph_core::subgraph::SubgraphInstanceManager::new(
         &logger_factory,
         env_vars.cheap_clone(),
@@ -301,9 +323,6 @@ where
         nozzle_client.cheap_clone(),
         static_filters,
     );
-
-    let mut subgraph_instance_managers =
-        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
 
     subgraph_instance_managers.add(
         graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
@@ -383,6 +402,7 @@ pub async fn run(
     dev_updates: Option<mpsc::Receiver<(DeploymentHash, SubgraphName)>>,
     prometheus_registry: Arc<Registry>,
     metrics_registry: Arc<MetricsRegistry>,
+    cancel_token: CancellationToken,
 ) {
     // Log version information
     info!(
@@ -559,6 +579,7 @@ pub async fn run(
             arweave_service,
             ipfs_service,
             nozzle_client,
+            cancel_token,
         );
 
         graph::spawn(

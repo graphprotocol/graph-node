@@ -23,6 +23,7 @@ use graph::prelude::{
 };
 use graph::slog::{debug, info, Logger};
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
+use tokio_util::sync::CancellationToken;
 
 async fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
     let mut locators = store.locators(hash).await?;
@@ -51,6 +52,7 @@ pub async fn run(
         subgraph, stop_block
     );
 
+    let cancel_token = CancellationToken::new();
     let env_vars = Arc::new(EnvVars::from_env().unwrap());
     let metrics_registry = metrics_ctx.registry.clone();
     let logger_factory = LoggerFactory::new(logger.clone(), None, metrics_ctx.registry.clone());
@@ -139,17 +141,37 @@ pub async fn run(
     let static_filters = ENV_VARS.experimental_static_filters;
     let sg_metrics = Arc::new(SubgraphCountMetric::new(metrics_registry.clone()));
 
+    let mut subgraph_instance_managers =
+        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
+
     let nozzle_client = match nozzle_flight_service_address {
         Some(nozzle_flight_service_address) => {
             let addr = nozzle_flight_service_address
                 .parse()
                 .expect("Invalid Nozzle Flight service address");
 
-            let nozzle_client = nozzle::FlightClient::new(addr)
-                .await
-                .expect("Failed to connect to Nozzle Flight service");
+            let nozzle_client = Arc::new(
+                nozzle::FlightClient::new(addr)
+                    .await
+                    .expect("Failed to connect to Nozzle Flight service"),
+            );
 
-            Some(Arc::new(nozzle_client))
+            let nozzle_instance_manager = graph_core::nozzle_subgraph::Manager::new(
+                &logger_factory,
+                metrics_registry.cheap_clone(),
+                env_vars.cheap_clone(),
+                &cancel_token,
+                network_store.subgraph_store(),
+                link_resolver.cheap_clone(),
+                nozzle_client.cheap_clone(),
+            );
+
+            subgraph_instance_managers.add(
+                graph_core::subgraph_provider::SubgraphProcessingKind::Amp,
+                Arc::new(nozzle_instance_manager),
+            );
+
+            Some(nozzle_client)
         }
         None => None,
     };
@@ -168,9 +190,6 @@ pub async fn run(
         static_filters,
     );
 
-    let mut subgraph_instance_managers =
-        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
-
     subgraph_instance_managers.add(
         graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
         Arc::new(subgraph_instance_manager),
@@ -180,7 +199,7 @@ pub async fn run(
         &logger_factory,
         sg_metrics.cheap_clone(),
         link_resolver.cheap_clone(),
-        tokio_util::sync::CancellationToken::new(),
+        cancel_token.clone(),
         subgraph_instance_managers,
     ));
 
