@@ -1,4 +1,7 @@
-use std::{collections::BTreeMap, ops::ControlFlow};
+use std::{
+    collections::BTreeMap,
+    ops::{ControlFlow, RangeInclusive},
+};
 
 use alloy::primitives::BlockNumber;
 use sqlparser_latest::ast::{self, VisitMut, VisitorMut};
@@ -19,8 +22,7 @@ pub(super) fn filter_blocks(
     query: &mut ast::Query,
     dataset: &Ident,
     tables: &[Ident],
-    start_block: BlockNumber,
-    end_block: BlockNumber,
+    block_range: &RangeInclusive<BlockNumber>,
 ) {
     let tables_to_cte_mapping = tables_to_cte_mapping(dataset, tables);
 
@@ -35,8 +37,7 @@ pub(super) fn filter_blocks(
                 &mut with.cte_tables,
                 dataset,
                 &tables_to_cte_mapping,
-                start_block,
-                end_block,
+                block_range,
             );
         }
         None => {
@@ -46,8 +47,7 @@ pub(super) fn filter_blocks(
                 &mut cte_tables,
                 dataset,
                 &tables_to_cte_mapping,
-                start_block,
-                end_block,
+                block_range,
             );
 
             query.with = Some(ast::With {
@@ -81,14 +81,15 @@ fn add_cte_filters(
     ctes: &mut Vec<ast::Cte>,
     dataset: &Ident,
     tables_to_cte_mapping: &BTreeMap<Ident, String>,
-    start_block: BlockNumber,
-    end_block: BlockNumber,
+    block_range: &RangeInclusive<BlockNumber>,
 ) {
     let mut output_ctes = Vec::with_capacity(ctes.len() + tables_to_cte_mapping.len());
 
     for (table, cte_table) in tables_to_cte_mapping {
         let query = parse::query(format!(
-            "SELECT * FROM {dataset}.{table} WHERE _block_num BETWEEN {start_block} AND {end_block} ORDER BY _block_num ASC"
+            "SELECT * FROM {dataset}.{table} WHERE _block_num BETWEEN {} AND {} ORDER BY _block_num ASC",
+            block_range.start(),
+            block_range.end()
         ))
         .unwrap();
 
