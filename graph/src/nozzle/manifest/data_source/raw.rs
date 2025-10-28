@@ -44,6 +44,9 @@ pub struct RawDataSource {
     /// Must be equal to `nozzle`.
     pub kind: String,
 
+    /// The network name of the data source.
+    pub network: String,
+
     /// Contains sources used by this data source.
     pub source: RawSource,
 
@@ -62,6 +65,7 @@ impl RawDataSource {
         let Self {
             name,
             kind,
+            network,
             source,
             transformer,
         } = self;
@@ -80,6 +84,7 @@ impl RawDataSource {
 
         Ok(DataSource {
             name,
+            network,
             source,
             transformer,
         })
@@ -222,13 +227,17 @@ impl RawTransformer {
             abis,
             tables,
         } = self;
-        let _api_version = Self::resolve_api_version(api_version)?;
+        let api_version = Self::resolve_api_version(api_version)?;
         let abis = Self::resolve_abis(logger, link_resolver, abis).await?;
         let tables =
             Self::resolve_tables(logger, link_resolver, nozzle_client, tables, source, &abis)
                 .await?;
 
-        Ok(Transformer { abis, tables })
+        Ok(Transformer {
+            api_version,
+            abis,
+            tables,
+        })
     }
 
     fn resolve_api_version(api_version: Version) -> Result<Version, Error> {
@@ -482,7 +491,10 @@ impl RawTable {
 
         let check_required_column = |c: &[&str], kind: &str| {
             if !c.iter().any(|&c| schema.column_with_name(c).is_some()) {
-                return Err(Error::InvalidQuery(anyhow!("query must return {kind}")));
+                return Err(Error::InvalidQuery(anyhow!(
+                    "query must return {kind}; expected column names are: {}",
+                    c.join(", ")
+                )));
             }
             Ok(())
         };

@@ -5,8 +5,14 @@ use alloy::{
     primitives::{Address, BlockNumber},
 };
 use arrow::datatypes::Schema;
+use semver::Version;
 
-use crate::nozzle::{common::Ident, sql::Query};
+use crate::{
+    data::subgraph::SPEC_VERSION_1_5_0,
+    nozzle::{common::Ident, sql::Query},
+};
+
+pub use self::raw::RawDataSource;
 
 /// Represents a valid data source of a Nozzle Subgraph.
 ///
@@ -18,6 +24,9 @@ pub struct DataSource {
     /// Used for observability to identify progress and errors produced by this data source.
     pub name: Ident,
 
+    /// The network name of the data source.
+    pub network: String,
+
     /// Contains the sources used by this data source.
     pub source: Source,
 
@@ -27,6 +36,7 @@ pub struct DataSource {
 
 impl DataSource {
     pub const KIND: &str = "nozzle";
+    pub const MIN_SPEC_VERSION: Version = SPEC_VERSION_1_5_0;
 }
 
 /// Contains the sources that a data source uses.
@@ -62,6 +72,9 @@ pub struct Source {
 /// Contains the transformations of source tables indexed by the Subgraph.
 #[derive(Debug, Clone)]
 pub struct Transformer {
+    /// The version of this transformer.
+    pub api_version: Version,
+
     /// The ABIs that SQL queries can reference to extract event signatures.
     ///
     /// The `sg_event_signature('CONTRACT_NAME', 'EVENT_NAME')` calls in the
