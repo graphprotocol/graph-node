@@ -10,6 +10,13 @@ use crate::components::store::DeploymentLocator;
 /// subgraph instance manager stops and removes the corresponding instance.
 #[async_trait::async_trait]
 pub trait SubgraphInstanceManager: Send + Sync + 'static {
+    /// Returns `true` if this manager has the necessary capabilities to manage the subgraph.
+    fn can_manage(
+        &self,
+        deployment: &DeploymentLocator,
+        raw_manifest: &serde_yaml::Mapping,
+    ) -> bool;
+
     async fn start_subgraph(
         self: Arc<Self>,
         deployment: DeploymentLocator,
