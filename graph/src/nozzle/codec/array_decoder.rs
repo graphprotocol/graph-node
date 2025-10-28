@@ -19,7 +19,7 @@ use super::decoder::Decoder;
 use crate::data::store::scalar::{BigDecimal, BigInt};
 
 /// Decodes Arrow arrays into Subgraph types.
-pub(super) struct ArrayDecoder<'a, T: 'static>(&'a T);
+pub struct ArrayDecoder<'a, T: 'static>(&'a T);
 
 impl<'a, T> ArrayDecoder<'a, T>
 where
@@ -32,7 +32,7 @@ where
     /// Returns an error if the `array` cannot be downcasted to type `T`.
     ///
     /// The returned error is deterministic.
-    pub(super) fn new(array: &'a dyn Array) -> Result<Self> {
+    pub fn new(array: &'a dyn Array) -> Result<Self> {
         Ok(Self(downcast_ref(array)?))
     }
 }
