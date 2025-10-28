@@ -734,18 +734,19 @@ impl EthereumAdapter {
                 call.gas,
             )
             .await?;
-        let _ = cache
+        if let Err(e) = cache
             .set_call(
                 &logger,
                 req.cheap_clone(),
                 call.block_ptr.cheap_clone(),
                 result.clone(),
             )
-            .map_err(|e| {
-                error!(logger, "EthereumAdapter: call cache set error";
+            .await
+        {
+            error!(logger, "EthereumAdapter: call cache set error";
                         "contract_address" => format!("{:?}", req.address),
-                        "error" => e.to_string())
-            });
+                        "error" => e.to_string());
+        }
 
         Ok(req.response(result, call::Source::Rpc))
     }
