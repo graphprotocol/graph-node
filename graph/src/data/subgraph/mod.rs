@@ -886,7 +886,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             &self.0.spec_version,
         ));
 
-        errors.append(&mut self.validate_nozzle_subgraph());
+        errors.append(&mut Self::validate_nozzle_subgraph(&self.0));
 
         match errors.is_empty() {
             true => Ok(self.0),
@@ -898,7 +898,9 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         &self.0.spec_version
     }
 
-    fn validate_nozzle_subgraph(&self) -> Vec<SubgraphManifestValidationError> {
+    fn validate_nozzle_subgraph(
+        manifest: &SubgraphManifest<C>,
+    ) -> Vec<SubgraphManifestValidationError> {
         use api_version::SPEC_VERSION_1_4_0;
 
         let BaseSubgraphManifest {
@@ -913,7 +915,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             templates,
             chain: _,
             indexer_hints: _,
-        } = &self.0;
+        } = manifest;
 
         let nozzle_data_sources = data_sources
             .iter()
@@ -1276,7 +1278,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             );
         }
 
-        Ok(SubgraphManifest {
+        let manifest = SubgraphManifest {
             id,
             spec_version,
             features,
@@ -1288,7 +1290,16 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             templates,
             chain,
             indexer_hints,
-        })
+        };
+
+        if let Some(e) = UnvalidatedSubgraphManifest::<C>::validate_nozzle_subgraph(&manifest)
+            .into_iter()
+            .next()
+        {
+            return Err(anyhow::Error::from(e).into());
+        }
+
+        Ok(manifest)
     }
 }
 
