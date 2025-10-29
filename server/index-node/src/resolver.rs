@@ -7,6 +7,7 @@ use graph::schema::EntityType;
 use web3::types::Address;
 
 use git_testament::{git_testament, CommitKind};
+use graph::amp;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::link_resolver::LinkResolverContext;
 use graph::components::store::{BlockPtrForNumber, BlockStore, QueryPermit, Store};
@@ -15,7 +16,6 @@ use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::{status, DeploymentFeatures};
 use graph::data::value::Object;
 use graph::futures03::TryFutureExt;
-use graph::nozzle;
 use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
@@ -96,25 +96,25 @@ impl IntoValue for PublicProofOfIndexingResult {
 
 /// Resolver for the index node GraphQL API.
 #[derive(Clone)]
-pub struct IndexNodeResolver<S: Store, NC> {
+pub struct IndexNodeResolver<S: Store, AC> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
     link_resolver: Arc<dyn LinkResolver>,
-    nozzle_client: Option<Arc<NC>>,
+    amp_client: Option<Arc<AC>>,
     bearer_token: Option<String>,
 }
 
-impl<S, NC> IndexNodeResolver<S, NC>
+impl<S, AC> IndexNodeResolver<S, AC>
 where
     S: Store,
-    NC: nozzle::Client + Send + Sync + 'static,
+    AC: amp::Client + Send + Sync + 'static,
 {
     pub fn new(
         logger: &Logger,
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
-        nozzle_client: Option<Arc<NC>>,
+        amp_client: Option<Arc<AC>>,
         bearer_token: Option<String>,
         blockchain_map: Arc<BlockchainMap>,
     ) -> Self {
@@ -125,7 +125,7 @@ where
             blockchain_map,
             store,
             link_resolver,
-            nozzle_client,
+            amp_client,
             bearer_token,
         }
     }
@@ -522,7 +522,7 @@ where
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
-                        self.nozzle_client.cheap_clone(),
+                        self.amp_client.cheap_clone(),
                         &self.logger,
                         max_spec_version,
                     )
@@ -540,7 +540,7 @@ where
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
-                        self.nozzle_client.cheap_clone(),
+                        self.amp_client.cheap_clone(),
                         &self.logger,
                         max_spec_version,
                     )
@@ -558,7 +558,7 @@ where
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
-                        self.nozzle_client.cheap_clone(),
+                        self.amp_client.cheap_clone(),
                         &self.logger,
                         max_spec_version,
                     )
@@ -693,10 +693,10 @@ where
 }
 
 #[async_trait]
-impl<S, NC> BlockPtrForNumber for IndexNodeResolver<S, NC>
+impl<S, AC> BlockPtrForNumber for IndexNodeResolver<S, AC>
 where
     S: Store,
-    NC: nozzle::Client + Send + Sync + 'static,
+    AC: amp::Client + Send + Sync + 'static,
 {
     async fn block_ptr_for_number(
         &self,
@@ -770,10 +770,10 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
 }
 
 #[async_trait]
-impl<S, NC> Resolver for IndexNodeResolver<S, NC>
+impl<S, AC> Resolver for IndexNodeResolver<S, AC>
 where
     S: Store,
-    NC: nozzle::Client + Send + Sync + 'static,
+    AC: amp::Client + Send + Sync + 'static,
 {
     const CACHEABLE: bool = false;
 

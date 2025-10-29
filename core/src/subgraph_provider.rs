@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use graph::{
+    amp,
     cheap_clone::CheapClone as _,
     components::{
         link_resolver::{LinkResolver, LinkResolverContext},
@@ -9,7 +10,6 @@ use graph::{
         subgraph::SubgraphInstanceManager,
     },
     log::factory::LoggerFactory,
-    nozzle,
 };
 use itertools::Itertools as _;
 use parking_lot::RwLock;
@@ -306,7 +306,7 @@ impl SubgraphProcessingKind {
                     .filter_map(Value::as_mapping)
                     .filter_map(|map| map.get("kind"))
                     .filter_map(Value::as_str)
-                    .filter(|kind| *kind == nozzle::manifest::DataSource::KIND)
+                    .filter(|kind| *kind == amp::manifest::DataSource::KIND)
                     .next()
             })
             .is_some();

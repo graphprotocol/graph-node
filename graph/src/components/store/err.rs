@@ -248,7 +248,7 @@ impl From<std::fmt::Error> for StoreError {
     }
 }
 
-impl crate::nozzle::error::IsDeterministic for StoreError {
+impl crate::amp::error::IsDeterministic for StoreError {
     fn is_deterministic(&self) -> bool {
         StoreError::is_deterministic(self)
     }

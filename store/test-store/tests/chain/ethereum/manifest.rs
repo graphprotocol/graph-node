@@ -4,6 +4,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use graph::amp;
 use graph::blockchain::DataSource;
 use graph::components::store::BLOCK_NUMBER_MAX;
 use graph::data::store::scalar::Bytes;
@@ -17,7 +18,6 @@ use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::{DataSourceEnum, DataSourceTemplate};
 use graph::entity;
 use graph::env::ENV_VARS;
-use graph::nozzle;
 use graph::prelude::web3::types::H256;
 use graph::prelude::{
     anyhow, async_trait, serde_yaml, tokio, BigDecimal, BigInt, DeploymentHash, Link,
@@ -143,7 +143,7 @@ async fn try_resolve_manifest(
         id,
         raw,
         &resolver,
-        Option::<Arc<nozzle::FlightClient>>::None,
+        Option::<Arc<amp::FlightClient>>::None,
         &LOGGER,
         max_spec_version,
     )
@@ -173,7 +173,7 @@ async fn resolve_unvalidated(text: &str) -> UnvalidatedSubgraphManifest<Chain> {
         id,
         raw,
         &resolver,
-        Option::<Arc<nozzle::FlightClient>>::None,
+        Option::<Arc<amp::FlightClient>>::None,
         &LOGGER,
         SPEC_VERSION_0_0_4.clone(),
     )
@@ -1329,7 +1329,7 @@ schema:
                 id,
                 raw,
                 &resolver,
-                Option::<Arc<nozzle::FlightClient>>::None,
+                Option::<Arc<amp::FlightClient>>::None,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -1382,7 +1382,7 @@ schema:
                 id,
                 raw,
                 &resolver,
-                Option::<Arc<nozzle::FlightClient>>::None,
+                Option::<Arc<amp::FlightClient>>::None,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -1459,7 +1459,7 @@ dataSources:
                 id,
                 raw,
                 &resolver,
-                Option::<Arc<nozzle::FlightClient>>::None,
+                Option::<Arc<amp::FlightClient>>::None,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -1538,7 +1538,7 @@ dataSources:
                 id,
                 raw,
                 &resolver,
-                Option::<Arc<nozzle::FlightClient>>::None,
+                Option::<Arc<amp::FlightClient>>::None,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -1648,7 +1648,7 @@ dataSources:
                 id,
                 raw,
                 &resolver,
-                Option::<Arc<nozzle::FlightClient>>::None,
+                Option::<Arc<amp::FlightClient>>::None,
                 &LOGGER,
                 SPEC_VERSION_1_2_0.clone(),
             )
@@ -1722,7 +1722,7 @@ dataSources:
                 id,
                 raw,
                 &resolver,
-                Option::<Arc<nozzle::FlightClient>>::None,
+                Option::<Arc<amp::FlightClient>>::None,
                 &LOGGER,
                 SPEC_VERSION_1_3_0.clone(),
             )
@@ -1873,7 +1873,7 @@ specVersion: 1.3.0
                 id,
                 raw,
                 &resolver,
-                Option::<Arc<nozzle::FlightClient>>::None,
+                Option::<Arc<amp::FlightClient>>::None,
                 &LOGGER,
                 SPEC_VERSION_1_3_0.clone(),
             )

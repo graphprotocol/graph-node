@@ -1,6 +1,6 @@
+mod amp;
 mod graphql;
 mod mappings;
-mod nozzle;
 mod store;
 
 use std::{collections::HashSet, env::VarError, fmt, str::FromStr, sync::Arc, time::Duration};
@@ -17,7 +17,7 @@ use crate::{
     runtime::gas::CONST_MAX_GAS_PER_HANDLER,
 };
 
-pub use self::nozzle::NozzleEnv;
+pub use self::amp::AmpEnv;
 
 #[cfg(debug_assertions)]
 use std::sync::Mutex;
@@ -54,7 +54,7 @@ pub struct EnvVars {
     pub graphql: EnvVarsGraphQl,
     pub mappings: EnvVarsMapping,
     pub store: EnvVarsStore,
-    pub nozzle: Arc<NozzleEnv>,
+    pub amp: Arc<AmpEnv>,
 
     /// Enables query throttling when getting database connections goes over this value.
     /// Load management can be disabled by setting this to 0.
@@ -301,7 +301,7 @@ impl EnvVars {
             graphql,
             mappings: mapping_handlers,
             store,
-            nozzle: Arc::new(NozzleEnv::new(&inner)),
+            amp: Arc::new(AmpEnv::new(&inner)),
 
             load_threshold: Duration::from_millis(inner.load_threshold_in_ms),
             load_jail_threshold: inner.load_jail_threshold,
@@ -594,14 +594,14 @@ struct Inner {
     )]
     disable_deployment_hash_validation: EnvVarBoolean,
 
-    #[envconfig(from = "GRAPH_NOZZLE_MAX_BUFFER_SIZE")]
-    nozzle_max_buffer_size: Option<usize>,
-    #[envconfig(from = "GRAPH_NOZZLE_MAX_BLOCK_RANGE")]
-    nozzle_max_block_range: Option<usize>,
-    #[envconfig(from = "GRAPH_NOZZLE_QUERY_RETRY_MIN_DELAY_SECONDS")]
-    nozzle_query_retry_min_delay_seconds: Option<u64>,
-    #[envconfig(from = "GRAPH_NOZZLE_QUERY_RETRY_MAX_DELAY_SECONDS")]
-    nozzle_query_retry_max_delay_seconds: Option<u64>,
+    #[envconfig(from = "GRAPH_AMP_MAX_BUFFER_SIZE")]
+    amp_max_buffer_size: Option<usize>,
+    #[envconfig(from = "GRAPH_AMP_MAX_BLOCK_RANGE")]
+    amp_max_block_range: Option<usize>,
+    #[envconfig(from = "GRAPH_AMP_QUERY_RETRY_MIN_DELAY_SECONDS")]
+    amp_query_retry_min_delay_seconds: Option<u64>,
+    #[envconfig(from = "GRAPH_AMP_QUERY_RETRY_MAX_DELAY_SECONDS")]
+    amp_query_retry_max_delay_seconds: Option<u64>,
 }
 
 #[derive(Clone, Debug)]
