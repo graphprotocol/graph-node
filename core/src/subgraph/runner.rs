@@ -498,6 +498,9 @@ where
         // In this scenario the only entity that is stored/transacted is the PoI,
         // all of the others are discarded.
         if has_errors && self.inputs.errors_are_fatal() {
+            if let Err(e) = self.inputs.store.flush().await {
+                error!(logger, "Failed to flush store after fatal errors"; "error" => format!("{:#}", e));
+            }
             // Only the first error is reported.
             return Err(ProcessingError::Deterministic(Box::new(
                 first_error.unwrap(),
