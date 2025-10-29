@@ -1,29 +1,29 @@
 use graph::{
+    amp,
     blockchain::BlockchainMap,
     cheap_clone::CheapClone,
     components::{
         server::server::{start, ServerHandle},
         store::Store,
     },
-    nozzle,
     prelude::*,
 };
 
 use crate::service::IndexNodeService;
 
 /// A GraphQL server based on Hyper.
-pub struct IndexNodeServer<S, NC> {
+pub struct IndexNodeServer<S, AC> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
     link_resolver: Arc<dyn LinkResolver>,
-    nozzle_client: Option<Arc<NC>>,
+    amp_client: Option<Arc<AC>>,
 }
 
-impl<S, NC> IndexNodeServer<S, NC>
+impl<S, AC> IndexNodeServer<S, AC>
 where
     S: Store,
-    NC: nozzle::Client + Send + Sync + 'static,
+    AC: amp::Client + Send + Sync + 'static,
 {
     /// Creates a new GraphQL server.
     pub fn new(
@@ -31,7 +31,7 @@ where
         blockchain_map: Arc<BlockchainMap>,
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
-        nozzle_client: Option<Arc<NC>>,
+        amp_client: Option<Arc<AC>>,
     ) -> Self {
         let logger = logger_factory.component_logger(
             "IndexNodeServer",
@@ -47,7 +47,7 @@ where
             blockchain_map,
             store,
             link_resolver,
-            nozzle_client,
+            amp_client,
         }
     }
 
@@ -68,7 +68,7 @@ where
             self.blockchain_map.clone(),
             store,
             self.link_resolver.clone(),
-            self.nozzle_client.cheap_clone(),
+            self.amp_client.cheap_clone(),
         ));
 
         start(logger_for_service.clone(), port, move |req| {

@@ -109,10 +109,10 @@ pub struct Opt {
     #[clap(
         long,
         value_name = "{HOST:PORT|URL}",
-        env = "GRAPH_NOZZLE_FLIGHT_SERVICE_ADDRESS",
-        help = "The address of the Nozzle Flight gRPC service"
+        env = "GRAPH_AMP_FLIGHT_SERVICE_ADDRESS",
+        help = "The address of the Amp Flight gRPC service"
     )]
-    pub nozzle_flight_service_address: Option<String>,
+    pub amp_flight_service_address: Option<String>,
 
     #[clap(subcommand)]
     pub cmd: Command,
@@ -1347,7 +1347,7 @@ async fn main() -> anyhow::Result<()> {
                 network_name,
                 ipfs_url,
                 arweave_url,
-                opt.nozzle_flight_service_address.clone(),
+                opt.amp_flight_service_address.clone(),
                 config,
                 metrics_ctx,
                 node_id,

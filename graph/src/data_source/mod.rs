@@ -36,14 +36,14 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::nozzle;
+use crate::amp;
 
 #[derive(Debug)]
 pub enum DataSource<C: Blockchain> {
     Onchain(C::DataSource),
     Offchain(offchain::DataSource),
     Subgraph(subgraph::DataSource),
-    Nozzle(nozzle::manifest::DataSource),
+    Amp(amp::manifest::DataSource),
 }
 
 #[derive(Error, Debug)]
@@ -99,7 +99,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => Some(ds),
             Self::Offchain(_) => None,
             Self::Subgraph(_) => None,
-            Self::Nozzle(_) => None,
+            Self::Amp(_) => None,
         }
     }
 
@@ -108,7 +108,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(_) => None,
             Self::Offchain(_) => None,
             Self::Subgraph(ds) => Some(ds),
-            Self::Nozzle(_) => None,
+            Self::Amp(_) => None,
         }
     }
 
@@ -117,7 +117,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(_) => true,
             Self::Offchain(_) => false,
             Self::Subgraph(_) => true,
-            Self::Nozzle(_) => true,
+            Self::Amp(_) => true,
         }
     }
 
@@ -126,7 +126,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(_) => None,
             Self::Offchain(ds) => Some(ds),
             Self::Subgraph(_) => None,
-            Self::Nozzle(_) => None,
+            Self::Amp(_) => None,
         }
     }
 
@@ -135,7 +135,7 @@ impl<C: Blockchain> DataSource<C> {
             DataSourceEnum::Onchain(ds) => ds.network(),
             DataSourceEnum::Offchain(_) => None,
             DataSourceEnum::Subgraph(ds) => ds.network(),
-            Self::Nozzle(ds) => Some(&ds.network),
+            Self::Amp(ds) => Some(&ds.network),
         }
     }
 
@@ -144,7 +144,7 @@ impl<C: Blockchain> DataSource<C> {
             DataSourceEnum::Onchain(ds) => Some(ds.start_block()),
             DataSourceEnum::Offchain(_) => None,
             DataSourceEnum::Subgraph(ds) => Some(ds.source.start_block),
-            Self::Nozzle(ds) => Some(ds.source.start_block as i32),
+            Self::Amp(ds) => Some(ds.source.start_block as i32),
         }
     }
 
@@ -161,7 +161,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.address().map(ToOwned::to_owned),
             Self::Offchain(ds) => ds.address(),
             Self::Subgraph(ds) => ds.address(),
-            Self::Nozzle(ds) => Some(ds.source.address.to_vec()),
+            Self::Amp(ds) => Some(ds.source.address.to_vec()),
         }
     }
 
@@ -170,7 +170,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.name(),
             Self::Offchain(ds) => &ds.name,
             Self::Subgraph(ds) => &ds.name,
-            Self::Nozzle(ds) => ds.name.as_str(),
+            Self::Amp(ds) => ds.name.as_str(),
         }
     }
 
@@ -179,7 +179,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.kind().to_owned(),
             Self::Offchain(ds) => ds.kind.to_string(),
             Self::Subgraph(ds) => ds.kind.clone(),
-            Self::Nozzle(_) => nozzle::manifest::DataSource::KIND.to_string(),
+            Self::Amp(_) => amp::manifest::DataSource::KIND.to_string(),
         }
     }
 
@@ -188,7 +188,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.min_spec_version(),
             Self::Offchain(ds) => ds.min_spec_version(),
             Self::Subgraph(ds) => ds.min_spec_version(),
-            Self::Nozzle(_) => nozzle::manifest::DataSource::MIN_SPEC_VERSION,
+            Self::Amp(_) => amp::manifest::DataSource::MIN_SPEC_VERSION,
         }
     }
 
@@ -197,7 +197,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.end_block(),
             Self::Offchain(_) => None,
             Self::Subgraph(_) => None,
-            Self::Nozzle(ds) => Some(ds.source.end_block as i32),
+            Self::Amp(ds) => Some(ds.source.end_block as i32),
         }
     }
 
@@ -206,7 +206,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.creation_block(),
             Self::Offchain(ds) => ds.creation_block,
             Self::Subgraph(ds) => ds.creation_block,
-            Self::Nozzle(_) => None,
+            Self::Amp(_) => None,
         }
     }
 
@@ -215,7 +215,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.context(),
             Self::Offchain(ds) => ds.context.clone(),
             Self::Subgraph(ds) => ds.context.clone(),
-            Self::Nozzle(_) => Arc::new(None),
+            Self::Amp(_) => Arc::new(None),
         }
     }
 
@@ -224,7 +224,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.api_version(),
             Self::Offchain(ds) => ds.mapping.api_version.clone(),
             Self::Subgraph(ds) => ds.mapping.api_version.clone(),
-            Self::Nozzle(ds) => ds.transformer.api_version.clone(),
+            Self::Amp(ds) => ds.transformer.api_version.clone(),
         }
     }
 
@@ -233,7 +233,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.runtime(),
             Self::Offchain(ds) => Some(ds.mapping.runtime.cheap_clone()),
             Self::Subgraph(ds) => Some(ds.mapping.runtime.cheap_clone()),
-            Self::Nozzle(_) => None,
+            Self::Amp(_) => None,
         }
     }
 
@@ -244,7 +244,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(_) => EntityTypeAccess::Any,
             Self::Offchain(ds) => EntityTypeAccess::Restriced(ds.mapping.entities.clone()),
             Self::Subgraph(_) => EntityTypeAccess::Any,
-            Self::Nozzle(_) => EntityTypeAccess::Any,
+            Self::Amp(_) => EntityTypeAccess::Any,
         }
     }
 
@@ -253,7 +253,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.handler_kinds(),
             Self::Offchain(ds) => vec![ds.handler_kind()].into_iter().collect(),
             Self::Subgraph(ds) => vec![ds.handler_kind()].into_iter().collect(),
-            Self::Nozzle(_) => HashSet::new(),
+            Self::Amp(_) => HashSet::new(),
         }
     }
 
@@ -262,7 +262,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.has_declared_calls(),
             Self::Offchain(_) => false,
             Self::Subgraph(_) => false,
-            Self::Nozzle(_) => false,
+            Self::Amp(_) => false,
         }
     }
 
@@ -289,7 +289,7 @@ impl<C: Blockchain> DataSource<C> {
             | (Self::Offchain(_), TriggerData::Subgraph(_))
             | (Self::Subgraph(_), TriggerData::Onchain(_))
             | (Self::Subgraph(_), TriggerData::Offchain(_)) => Ok(None),
-            (Self::Nozzle(_), _) => Ok(None),
+            (Self::Amp(_), _) => Ok(None),
         }
     }
 
@@ -306,7 +306,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.as_stored_dynamic_data_source(),
             Self::Offchain(ds) => ds.as_stored_dynamic_data_source(),
             Self::Subgraph(_) => todo!(), // TODO(krishna)
-            Self::Nozzle(_) => unreachable!(),
+            Self::Amp(_) => unreachable!(),
         }
     }
 
@@ -332,7 +332,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.validate(spec_version),
             Self::Offchain(_) => vec![],
             Self::Subgraph(_) => vec![], // TODO(krishna)
-            Self::Nozzle(_) => Vec::new(),
+            Self::Amp(_) => Vec::new(),
         }
     }
 
@@ -341,7 +341,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(_) => CausalityRegion::ONCHAIN,
             Self::Offchain(ds) => ds.causality_region,
             Self::Subgraph(_) => CausalityRegion::ONCHAIN,
-            Self::Nozzle(_) => CausalityRegion::ONCHAIN,
+            Self::Amp(_) => CausalityRegion::ONCHAIN,
         }
     }
 }
@@ -351,15 +351,15 @@ pub enum UnresolvedDataSource<C: Blockchain> {
     Onchain(C::UnresolvedDataSource),
     Offchain(offchain::UnresolvedDataSource),
     Subgraph(subgraph::UnresolvedDataSource),
-    Nozzle(nozzle::manifest::data_source::RawDataSource),
+    Amp(amp::manifest::data_source::RawDataSource),
 }
 
 impl<C: Blockchain> UnresolvedDataSource<C> {
-    pub async fn resolve<NC: nozzle::Client>(
+    pub async fn resolve<AC: amp::Client>(
         self,
         deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
-        nozzle_client: Option<Arc<NC>>,
+        amp_client: Option<Arc<AC>>,
         logger: &Logger,
         manifest_idx: u32,
         spec_version: &semver::Version,
@@ -376,10 +376,10 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
                 .await
                 .map(DataSource::Onchain),
             Self::Subgraph(unresolved) => unresolved
-                .resolve::<C, NC>(
+                .resolve::<C, AC>(
                     deployment_hash,
                     resolver,
-                    nozzle_client,
+                    amp_client,
                     logger,
                     manifest_idx,
                     spec_version,
@@ -392,13 +392,13 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
                      for details see https://github.com/graphprotocol/graph-node/issues/3864"
                 );
             }
-            Self::Nozzle(raw_data_source) => match nozzle_client {
-                Some(nozzle_client) => raw_data_source
-                    .resolve(logger, resolver.as_ref(), nozzle_client.as_ref())
+            Self::Amp(raw_data_source) => match amp_client {
+                Some(amp_client) => raw_data_source
+                    .resolve(logger, resolver.as_ref(), amp_client.as_ref())
                     .await
-                    .map(DataSource::Nozzle)
+                    .map(DataSource::Amp)
                     .map_err(Error::from),
-                None => Err(anyhow!("support for Nozzle data sources is not enabled")),
+                None => Err(anyhow!("support for Amp data sources is not enabled")),
             },
         }
         .with_context(|| format!("failed to resolve data source at index {manifest_idx}"))
@@ -667,7 +667,7 @@ impl<C: Blockchain> Clone for DataSource<C> {
             Self::Onchain(ds) => Self::Onchain(ds.clone()),
             Self::Offchain(ds) => Self::Offchain(ds.clone()),
             Self::Subgraph(ds) => Self::Subgraph(ds.clone()),
-            Self::Nozzle(ds) => Self::Nozzle(ds.clone()),
+            Self::Amp(ds) => Self::Amp(ds.clone()),
         }
     }
 }
@@ -703,9 +703,9 @@ impl<'de, C: Blockchain> Deserialize<'de> for UnresolvedDataSource<C> {
             subgraph::UnresolvedDataSource::deserialize(map.into_deserializer())
                 .map_err(serde::de::Error::custom)
                 .map(UnresolvedDataSource::Subgraph)
-        } else if nozzle::manifest::DataSource::KIND == kind {
-            nozzle::manifest::data_source::RawDataSource::deserialize(map.into_deserializer())
-                .map(UnresolvedDataSource::Nozzle)
+        } else if amp::manifest::DataSource::KIND == kind {
+            amp::manifest::data_source::RawDataSource::deserialize(map.into_deserializer())
+                .map(UnresolvedDataSource::Amp)
                 .map_err(serde::de::Error::custom)
         } else if (&C::KIND.to_string() == kind) || C::ALIASES.contains(&kind) {
             C::UnresolvedDataSource::deserialize(map.into_deserializer())

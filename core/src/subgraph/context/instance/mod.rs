@@ -182,7 +182,7 @@ where
                     Ok(Some(host))
                 }
             }
-            DataSource::Nozzle(_) => unreachable!(),
+            DataSource::Amp(_) => unreachable!(),
         }
     }
 

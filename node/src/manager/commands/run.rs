@@ -7,6 +7,7 @@ use crate::manager::PanicSubscriptionManager;
 use crate::network_setup::Networks;
 use crate::store_builder::StoreBuilder;
 use crate::MetricsContext;
+use graph::amp;
 use graph::anyhow::bail;
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
@@ -15,7 +16,6 @@ use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::{Settings, SubgraphInstanceManager as _};
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
-use graph::nozzle;
 use graph::prelude::{
     anyhow, tokio, BlockNumber, DeploymentHash, IpfsResolver, LoggerFactory, NodeId,
     SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore,
@@ -40,7 +40,7 @@ pub async fn run(
     _network_name: String,
     ipfs_url: Vec<String>,
     arweave_url: String,
-    nozzle_flight_service_address: Option<String>,
+    amp_flight_service_address: Option<String>,
     config: Config,
     metrics_ctx: MetricsContext,
     node_id: NodeId,
@@ -144,34 +144,34 @@ pub async fn run(
     let mut subgraph_instance_managers =
         graph_core::subgraph_provider::SubgraphInstanceManagers::new();
 
-    let nozzle_client = match nozzle_flight_service_address {
-        Some(nozzle_flight_service_address) => {
-            let addr = nozzle_flight_service_address
+    let amp_client = match amp_flight_service_address {
+        Some(amp_flight_service_address) => {
+            let addr = amp_flight_service_address
                 .parse()
-                .expect("Invalid Nozzle Flight service address");
+                .expect("Invalid Amp Flight service address");
 
-            let nozzle_client = Arc::new(
-                nozzle::FlightClient::new(addr)
+            let amp_client = Arc::new(
+                amp::FlightClient::new(addr)
                     .await
-                    .expect("Failed to connect to Nozzle Flight service"),
+                    .expect("Failed to connect to Amp Flight service"),
             );
 
-            let nozzle_instance_manager = graph_core::nozzle_subgraph::Manager::new(
+            let amp_instance_manager = graph_core::amp_subgraph::Manager::new(
                 &logger_factory,
                 metrics_registry.cheap_clone(),
                 env_vars.cheap_clone(),
                 &cancel_token,
                 network_store.subgraph_store(),
                 link_resolver.cheap_clone(),
-                nozzle_client.cheap_clone(),
+                amp_client.cheap_clone(),
             );
 
             subgraph_instance_managers.add(
                 graph_core::subgraph_provider::SubgraphProcessingKind::Amp,
-                Arc::new(nozzle_instance_manager),
+                Arc::new(amp_instance_manager),
             );
 
-            Some(nozzle_client)
+            Some(amp_client)
         }
         None => None,
     };
@@ -186,7 +186,7 @@ pub async fn run(
         link_resolver.cheap_clone(),
         ipfs_service,
         arweave_service,
-        nozzle_client.cheap_clone(),
+        amp_client.cheap_clone(),
         static_filters,
     );
 
@@ -211,7 +211,7 @@ pub async fn run(
         subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
-        nozzle_client,
+        amp_client,
         blockchain_map,
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,

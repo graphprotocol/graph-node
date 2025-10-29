@@ -15,9 +15,9 @@ use graph::hyper::header::{
 };
 use graph::hyper::{body::Body, Method, Request, Response, StatusCode};
 
+use graph::amp;
 use graph::components::{server::query::ServerError, store::Store};
 use graph::data::query::{Query, QueryError, QueryResult, QueryResults};
-use graph::nozzle;
 use graph::prelude::{q, serde_json};
 use graph::slog::{debug, error, Logger};
 use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
@@ -40,26 +40,26 @@ impl GraphQLMetrics for NoopGraphQLMetrics {
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
 #[derive(Debug)]
-pub struct IndexNodeService<S, NC> {
+pub struct IndexNodeService<S, AC> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
     explorer: Arc<Explorer<S>>,
     link_resolver: Arc<dyn LinkResolver>,
-    nozzle_client: Option<Arc<NC>>,
+    amp_client: Option<Arc<AC>>,
 }
 
-impl<S, NC> IndexNodeService<S, NC>
+impl<S, AC> IndexNodeService<S, AC>
 where
     S: Store,
-    NC: nozzle::Client + Send + Sync + 'static,
+    AC: amp::Client + Send + Sync + 'static,
 {
     pub fn new(
         logger: Logger,
         blockchain_map: Arc<BlockchainMap>,
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
-        nozzle_client: Option<Arc<NC>>,
+        amp_client: Option<Arc<AC>>,
     ) -> Self {
         let explorer = Arc::new(Explorer::new(store.clone()));
 
@@ -69,7 +69,7 @@ where
             store,
             explorer,
             link_resolver,
-            nozzle_client,
+            amp_client,
         }
     }
 
@@ -143,7 +143,7 @@ where
                 &logger,
                 store,
                 self.link_resolver.clone(),
-                self.nozzle_client.cheap_clone(),
+                self.amp_client.cheap_clone(),
                 validated.bearer_token,
                 self.blockchain_map.clone(),
             );

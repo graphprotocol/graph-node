@@ -32,7 +32,7 @@ use wasmparser;
 use web3::types::Address;
 
 use crate::{
-    bail,
+    amp, bail,
     blockchain::{BlockPtr, Blockchain},
     components::{
         link_resolver::{LinkResolver, LinkResolverContext},
@@ -47,7 +47,7 @@ use crate::{
         UnresolvedDataSourceTemplate,
     },
     derive::CacheWeight,
-    ensure, nozzle,
+    ensure,
     prelude::{r, Value, ENV_VARS},
     schema::{InputSchema, SchemaValidationError},
 };
@@ -363,8 +363,8 @@ pub enum SubgraphManifestValidationError {
     FeatureValidationError(#[from] SubgraphFeatureValidationError),
     #[error("data source {0} is invalid: {1}")]
     DataSourceValidation(String, Error),
-    #[error("failed to validate Nozzle subgraph: {0:#}")]
-    Nozzle(#[source] Error),
+    #[error("failed to validate Amp subgraph: {0:#}")]
+    Amp(#[source] Error),
 }
 
 #[derive(Error, Debug)]
@@ -804,11 +804,11 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
-    pub async fn resolve<NC: nozzle::Client>(
+    pub async fn resolve<AC: amp::Client>(
         id: DeploymentHash,
         raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
-        nozzle_client: Option<Arc<NC>>,
+        amp_client: Option<Arc<AC>>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
@@ -817,7 +817,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
                 id,
                 raw,
                 resolver,
-                nozzle_client,
+                amp_client,
                 logger,
                 max_spec_version,
             )
@@ -886,7 +886,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             &self.0.spec_version,
         ));
 
-        errors.append(&mut Self::validate_nozzle_subgraph(&self.0));
+        errors.append(&mut Self::validate_amp_subgraph(&self.0));
 
         match errors.is_empty() {
             true => Ok(self.0),
@@ -898,10 +898,10 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         &self.0.spec_version
     }
 
-    fn validate_nozzle_subgraph(
+    fn validate_amp_subgraph(
         manifest: &SubgraphManifest<C>,
     ) -> Vec<SubgraphManifestValidationError> {
-        use api_version::SPEC_VERSION_1_4_0;
+        use api_version::SPEC_VERSION_1_5_0;
 
         let BaseSubgraphManifest {
             id: _,
@@ -917,27 +917,27 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             indexer_hints: _,
         } = manifest;
 
-        let nozzle_data_sources = data_sources
+        let amp_data_sources = data_sources
             .iter()
             .filter_map(|data_source| match data_source {
-                DataSource::Nozzle(nozzle_data_source) => Some(nozzle_data_source),
+                DataSource::Amp(amp_data_source) => Some(amp_data_source),
                 _ => None,
             })
             .collect_vec();
 
-        if nozzle_data_sources.is_empty() {
-            // Not a Nozzle subgraph
+        if amp_data_sources.is_empty() {
+            // Not a Amp subgraph
             return Vec::new();
         }
 
         let mut errors = Vec::new();
-        let err = |msg: &str| SubgraphManifestValidationError::Nozzle(anyhow!(msg.to_owned()));
+        let err = |msg: &str| SubgraphManifestValidationError::Amp(anyhow!(msg.to_owned()));
 
-        if data_sources.len() != nozzle_data_sources.len() {
+        if data_sources.len() != amp_data_sources.len() {
             errors.push(err("multiple data source kinds are not supported"));
         }
 
-        if *spec_version < SPEC_VERSION_1_4_0 {
+        if *spec_version < SPEC_VERSION_1_5_0 {
             errors.push(err("spec version is not supported"));
         }
 
@@ -959,17 +959,17 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
 
 impl<C: Blockchain> SubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
-    pub async fn resolve_from_raw<NC: nozzle::Client>(
+    pub async fn resolve_from_raw<AC: amp::Client>(
         id: DeploymentHash,
         raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
-        nozzle_client: Option<Arc<NC>>,
+        amp_client: Option<Arc<AC>>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         let unresolved = UnresolvedSubgraphManifest::parse(id.cheap_clone(), raw)?;
         let resolved = unresolved
-            .resolve(&id, resolver, nozzle_client, logger, max_spec_version)
+            .resolve(&id, resolver, amp_client, logger, max_spec_version)
             .await?;
         Ok(resolved)
     }
@@ -1105,11 +1105,11 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         serde_yaml::from_value(raw.into()).map_err(Into::into)
     }
 
-    pub async fn resolve<NC: nozzle::Client>(
+    pub async fn resolve<AC: amp::Client>(
         self,
         deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
-        nozzle_client: Option<Arc<NC>>,
+        amp_client: Option<Arc<AC>>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<SubgraphManifest<C>, SubgraphManifestResolveError> {
@@ -1147,7 +1147,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             ds.resolve(
                 deployment_hash,
                 resolver,
-                nozzle_client.cheap_clone(),
+                amp_client.cheap_clone(),
                 logger,
                 idx as u32,
                 &spec_version,
@@ -1155,10 +1155,10 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         }))
         .await?;
 
-        let nozzle_data_sources = data_sources
+        let amp_data_sources = data_sources
             .iter()
             .filter_map(|data_source| match data_source {
-                DataSource::Nozzle(nozzle_data_source) => Some(nozzle_data_source),
+                DataSource::Amp(amp_data_source) => Some(amp_data_source),
                 _ => None,
             })
             .collect_vec();
@@ -1175,8 +1175,8 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                     )
                     .await?
             }
-            None if nozzle_data_sources.len() == data_sources.len() => {
-                let table_schemas = nozzle_data_sources
+            None if amp_data_sources.len() == data_sources.len() => {
+                let table_schemas = amp_data_sources
                     .iter()
                     .map(|data_source| {
                         data_source
@@ -1187,7 +1187,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                     })
                     .flatten();
 
-                nozzle::schema::generate_subgraph_schema(&id, table_schemas)?
+                amp::schema::generate_subgraph_schema(&id, table_schemas)?
             }
             None => {
                 return Err(anyhow!("subgraph schema is required").into());
@@ -1292,7 +1292,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             indexer_hints,
         };
 
-        if let Some(e) = UnvalidatedSubgraphManifest::<C>::validate_nozzle_subgraph(&manifest)
+        if let Some(e) = UnvalidatedSubgraphManifest::<C>::validate_amp_subgraph(&manifest)
             .into_iter()
             .next()
         {

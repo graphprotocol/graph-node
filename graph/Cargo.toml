@@ -93,7 +93,7 @@ serde_plain = "1.0.2"
 csv = "1.4.0"
 object_store = { version = "0.12.4", features = ["gcp"] }
 
-# Dependencies related to Nozzle Subgraphs
+# Dependencies related to Amp subgraphs
 ahash.workspace = true
 alloy.workspace = true
 arrow-flight.workspace = true

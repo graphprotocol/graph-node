@@ -16,8 +16,8 @@ use graph::prelude::*;
 use graph::prometheus::Registry;
 use graph::url::Url;
 use graph::{
+    amp,
     blockchain::{Blockchain, BlockchainKind, BlockchainMap},
-    nozzle,
 };
 use graph_core::polling_monitor::{arweave_service, ArweaveService, IpfsService};
 use graph_graphql::prelude::GraphQlRunner;
@@ -262,7 +262,7 @@ fn deploy_subgraph_from_flag(
     );
 }
 
-fn build_subgraph_registrar<NC>(
+fn build_subgraph_registrar<AC>(
     metrics_registry: Arc<MetricsRegistry>,
     network_store: &Arc<Store>,
     logger_factory: &LoggerFactory,
@@ -274,18 +274,18 @@ fn build_subgraph_registrar<NC>(
     subscription_manager: Arc<SubscriptionManager>,
     arweave_service: ArweaveService,
     ipfs_service: IpfsService,
-    nozzle_client: Option<Arc<NC>>,
+    amp_client: Option<Arc<AC>>,
     cancel_token: CancellationToken,
 ) -> Arc<
     graph_core::subgraph::SubgraphRegistrar<
         graph_core::subgraph_provider::SubgraphProvider,
         SubgraphStore,
         SubscriptionManager,
-        NC,
+        AC,
     >,
 >
 where
-    NC: nozzle::Client + Send + Sync + 'static,
+    AC: amp::Client + Send + Sync + 'static,
 {
     let static_filters = ENV_VARS.experimental_static_filters;
     let sg_count = Arc::new(SubgraphCountMetric::new(metrics_registry.cheap_clone()));
@@ -293,20 +293,20 @@ where
     let mut subgraph_instance_managers =
         graph_core::subgraph_provider::SubgraphInstanceManagers::new();
 
-    if let Some(nozzle_client) = nozzle_client.cheap_clone() {
-        let nozzle_instance_manager = graph_core::nozzle_subgraph::Manager::new(
+    if let Some(amp_client) = amp_client.cheap_clone() {
+        let amp_instance_manager = graph_core::amp_subgraph::Manager::new(
             &logger_factory,
             metrics_registry.cheap_clone(),
             env_vars.cheap_clone(),
             &cancel_token,
             network_store.subgraph_store(),
             link_resolver.cheap_clone(),
-            nozzle_client,
+            amp_client,
         );
 
         subgraph_instance_managers.add(
             graph_core::subgraph_provider::SubgraphProcessingKind::Amp,
-            Arc::new(nozzle_instance_manager),
+            Arc::new(amp_instance_manager),
         );
     }
 
@@ -320,7 +320,7 @@ where
         link_resolver.clone(),
         ipfs_service,
         arweave_service,
-        nozzle_client.cheap_clone(),
+        amp_client.cheap_clone(),
         static_filters,
     );
 
@@ -347,7 +347,7 @@ where
         Arc::new(subgraph_provider),
         network_store.subgraph_store(),
         subscription_manager,
-        nozzle_client,
+        amp_client,
         blockchain_map,
         node_id.clone(),
         version_switching_mode,
@@ -503,17 +503,17 @@ pub async fn run(
         &logger_factory,
     );
 
-    let nozzle_client = match opt.nozzle_flight_service_address.as_deref() {
-        Some(nozzle_flight_service_address) => {
-            let addr = nozzle_flight_service_address
+    let amp_client = match opt.amp_flight_service_address.as_deref() {
+        Some(amp_flight_service_address) => {
+            let addr = amp_flight_service_address
                 .parse()
-                .expect("Invalid Nozzle Flight service address");
+                .expect("Invalid Amp Flight service address");
 
-            let nozzle_client = nozzle::FlightClient::new(addr)
+            let amp_client = amp::FlightClient::new(addr)
                 .await
-                .expect("Failed to connect to Nozzle Flight service");
+                .expect("Failed to connect to Amp Flight service");
 
-            Some(Arc::new(nozzle_client))
+            Some(Arc::new(amp_client))
         }
         None => None,
     };
@@ -552,7 +552,7 @@ pub async fn run(
             blockchain_map.clone(),
             network_store.clone(),
             link_resolver.clone(),
-            nozzle_client.cheap_clone(),
+            amp_client.cheap_clone(),
         );
 
         if !opt.disable_block_ingestor {
@@ -578,7 +578,7 @@ pub async fn run(
             subscription_manager,
             arweave_service,
             ipfs_service,
-            nozzle_client,
+            amp_client,
             cancel_token,
         );
 

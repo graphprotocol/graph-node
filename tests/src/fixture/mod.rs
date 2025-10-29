@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use anyhow::Error;
 use async_stream::stream;
 use async_trait::async_trait;
+use graph::amp;
 use graph::blockchain::block_stream::{
     BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamEvent,
     BlockWithTriggers, FirehoseCursor,
@@ -38,7 +39,6 @@ use graph::http_body_util::Full;
 use graph::hyper::body::Bytes;
 use graph::hyper::Request;
 use graph::ipfs::{IpfsClient, IpfsMetrics};
-use graph::nozzle;
 use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
@@ -163,7 +163,7 @@ pub struct TestContext {
     pub instance_manager: Arc<
         graph_core::subgraph::SubgraphInstanceManager<
             graph_store_postgres::SubgraphStore,
-            nozzle::FlightClient,
+            amp::FlightClient,
         >,
     >,
     pub link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver>,
@@ -171,8 +171,7 @@ pub struct TestContext {
     pub env_vars: Arc<EnvVars>,
     pub ipfs: Arc<dyn IpfsClient>,
     graphql_runner: Arc<GraphQlRunner>,
-    indexing_status_service:
-        Arc<IndexNodeService<graph_store_postgres::Store, nozzle::FlightClient>>,
+    indexing_status_service: Arc<IndexNodeService<graph_store_postgres::Store, amp::FlightClient>>,
 }
 
 #[derive(Deserialize)]
@@ -620,7 +619,7 @@ pub async fn setup_inner<C: Blockchain>(
         subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
-        Option::<Arc<nozzle::FlightClient>>::None,
+        Option::<Arc<amp::FlightClient>>::None,
         blockchain_map.clone(),
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
