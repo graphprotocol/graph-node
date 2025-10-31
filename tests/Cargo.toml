@@ -19,7 +19,7 @@ graph-server-index-node = { path = "../server/index-node" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
-slog = { version = "2.7.0", features = ["release_max_level_trace", "max_level_trace"] }
+slog = { workspace = true }
 tokio = { version = "1.45.1", features = ["rt", "macros", "process"] }
 # Once graph upgrades to web3 0.19, we don't need this anymore. The version
 # here needs to be kept in sync with the web3 version that the graph crate

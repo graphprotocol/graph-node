@@ -52,10 +52,7 @@ serde_json = { workspace = true }
 serde_regex = { workspace = true }
 serde_yaml = { workspace = true }
 sha2 = "0.10.9"
-slog = { version = "2.7.0", features = [
-    "release_max_level_trace",
-    "max_level_trace",
-] }
+slog = { workspace = true }
 sqlparser = { workspace = true }
 # TODO: This should be reverted to the latest version once it's published
 # stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
