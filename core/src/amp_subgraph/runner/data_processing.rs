@@ -217,7 +217,7 @@ fn decode_block_timestamp(record_batches: &[StreamRecordBatch]) -> Result<DateTi
 
     for record_batch in record_batches {
         match auto_block_timestamp_decoder(&record_batch.record_batch) {
-            Ok(decoder) => {
+            Ok((_, decoder)) => {
                 return decoder
                     .decode(0)
                     .map_err(|e| Error::Deterministic(e))?

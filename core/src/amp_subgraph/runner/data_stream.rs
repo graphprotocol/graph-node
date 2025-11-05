@@ -70,7 +70,7 @@ where
             }
 
             for (j, table) in data_source.transformer.tables.iter().enumerate() {
-                let query = table.query.with_block_range_filter(block_range);
+                let query = table.query.build_with_block_range(block_range);
 
                 query_streams.push(cx.client.query(&cx.logger, query, None));
                 query_streams_table_ptr.push((i, j));

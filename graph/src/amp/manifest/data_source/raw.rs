@@ -5,20 +5,23 @@ use alloy::{
     primitives::{Address, BlockNumber},
 };
 use anyhow::anyhow;
-use arrow::datatypes::Schema;
+use arrow::{array::RecordBatch, datatypes::Schema};
 use futures03::future::try_join_all;
 use semver::Version;
 use serde::Deserialize;
-use slog::Logger;
+use slog::{debug, error, Logger};
 use thiserror::Error;
 
 use super::{Abi, DataSource, Source, Table, Transformer};
 use crate::{
     amp::{
         self,
-        common::{column_aliases, Ident},
+        codec::utils::{
+            auto_block_hash_decoder, auto_block_number_decoder, auto_block_timestamp_decoder,
+        },
+        common::Ident,
         error::IsDeterministic,
-        sql::Query,
+        sql::{BlockRangeQueryBuilder, ContextQuery, ValidQuery},
     },
     components::link_resolver::{LinkResolver, LinkResolverContext},
     data::subgraph::DeploymentHash,
@@ -70,6 +73,9 @@ impl RawDataSource {
             transformer,
         } = self;
 
+        let logger = logger.new(slog::o!("data_source" => name.clone()));
+        debug!(logger, "Resolving data source");
+
         let name = Self::resolve_name(name)?;
         Self::resolve_kind(kind)?;
 
@@ -78,7 +84,7 @@ impl RawDataSource {
             .map_err(|e| e.source_context("invalid `source`"))?;
 
         let transformer = transformer
-            .resolve(logger, link_resolver, amp_client, &source)
+            .resolve(&logger, link_resolver, amp_client, &source)
             .await
             .map_err(|e| e.source_context("invalid `transformer`"))?;
 
@@ -142,6 +148,7 @@ impl RawSource {
             start_block,
             end_block,
         } = self;
+
         let dataset = Self::resolve_dataset(dataset)?;
         let tables = Self::resolve_tables(tables)?;
         let address = address.unwrap_or(Address::ZERO);
@@ -265,7 +272,12 @@ impl RawTransformer {
         }
 
         let abi_futs = abis.into_iter().enumerate().map(|(i, abi)| async move {
-            abi.resolve(logger, link_resolver)
+            let logger = logger.new(slog::o!("abi_name" => abi.name.clone()));
+            debug!(logger, "Resolving ABI";
+                "file" => &abi.file,
+            );
+
+            abi.resolve(&logger, link_resolver)
                 .await
                 .map_err(|e| e.source_context(format!("invalid `abis` at index {i}")))
         });
@@ -294,8 +306,13 @@ impl RawTransformer {
         }
 
         let table_futs = tables.into_iter().enumerate().map(|(i, table)| async move {
+            let logger = logger.new(slog::o!("table_name" => table.name.clone()));
+            debug!(logger, "Resolving table";
+                "file" => ?&table.file
+            );
+
             table
-                .resolve(logger, link_resolver, amp_client, source, abis)
+                .resolve(&logger, link_resolver, amp_client, source, abis)
                 .await
                 .map_err(|e| e.source_context(format!("invalid `tables` at index {i}")))
         });
@@ -394,16 +411,27 @@ impl RawTable {
         abis: &[Abi],
     ) -> Result<Table, Error> {
         let Self { name, query, file } = self;
+
         let name = Self::resolve_name(name)?;
         let query = match Self::resolve_query(query, source, abis)? {
             Some(query) => query,
             None => Self::resolve_file(logger, link_resolver, file, source, abis).await?,
         };
+
+        debug!(logger, "Resolving query schema");
         let schema = Self::resolve_schema(logger, amp_client, &query).await?;
+        let block_range_query_builder = Self::resolve_block_range_query_builder(
+            logger,
+            amp_client,
+            source,
+            query,
+            schema.clone(),
+        )
+        .await?;
 
         Ok(Table {
             name,
-            query,
+            query: block_range_query_builder,
             schema,
         })
     }
@@ -416,7 +444,7 @@ impl RawTable {
         query: Option<String>,
         source: &Source,
         abis: &[Abi],
-    ) -> Result<Option<Query>, Error> {
+    ) -> Result<Option<ValidQuery>, Error> {
         let Some(query) = query else {
             return Ok(None);
         };
@@ -425,12 +453,12 @@ impl RawTable {
             return Err(Error::InvalidValue(anyhow!("`query` cannot be empty")));
         }
 
-        Query::new(
-            query,
-            &source.dataset,
-            &source.tables,
+        ValidQuery::new(
+            &query,
+            source.dataset.as_str(),
+            source.tables.iter().map(|table| table.as_str()),
             &source.address,
-            abis.iter().map(|abi| (&abi.name, &abi.contract)),
+            abis.iter().map(|abi| (abi.name.as_str(), &abi.contract)),
         )
         .map(Some)
         .map_err(|e| Error::InvalidValue(e.context("invalid `query`")))
@@ -442,7 +470,9 @@ impl RawTable {
         file: Option<String>,
         source: &Source,
         abis: &[Abi],
-    ) -> Result<Query, Error> {
+    ) -> Result<ValidQuery, Error> {
+        debug!(logger, "Resolving query file");
+
         let Some(file) = file else {
             return Err(Error::InvalidValue(anyhow!("`file` cannot be empty")));
         };
@@ -466,12 +496,12 @@ impl RawTable {
             return Err(Error::InvalidValue(anyhow!("`file` cannot be empty")));
         }
 
-        Query::new(
-            query,
-            &source.dataset,
-            &source.tables,
+        ValidQuery::new(
+            &query,
+            source.dataset.as_str(),
+            source.tables.iter().map(|table| table.as_str()),
             &source.address,
-            abis.iter().map(|abi| (&abi.name, &abi.contract)),
+            abis.iter().map(|abi| (abi.name.as_str(), &abi.contract)),
         )
         .map_err(|e| Error::InvalidValue(e.context("invalid `file`")))
     }
@@ -479,32 +509,112 @@ impl RawTable {
     async fn resolve_schema(
         logger: &Logger,
         amp_client: &impl amp::Client,
-        query: &Query,
+        query: impl ToString,
     ) -> Result<Schema, Error> {
-        let schema =
-            amp_client
-                .schema(logger, &query)
-                .await
-                .map_err(|e| Error::FailedToExecuteQuery {
-                    is_deterministic: e.is_deterministic(),
-                    source: anyhow!(e).context("failed to load schema"),
-                })?;
+        amp_client
+            .schema(logger, query)
+            .await
+            .map_err(|e| Error::FailedToExecuteQuery {
+                is_deterministic: e.is_deterministic(),
+                source: anyhow!(e).context("failed to load schema"),
+            })
+    }
 
-        let check_required_column = |c: &[&str], kind: &str| {
-            if !c.iter().any(|&c| schema.column_with_name(c).is_some()) {
-                return Err(Error::InvalidQuery(anyhow!(
-                    "query must return {kind}; expected column names are: {}",
-                    c.join(", ")
-                )));
+    async fn resolve_block_range_query_builder(
+        logger: &Logger,
+        amp_client: &impl amp::Client,
+        source: &Source,
+        query: ValidQuery,
+        schema: Schema,
+    ) -> Result<BlockRangeQueryBuilder, Error> {
+        debug!(logger, "Resolving block range query builder");
+
+        let record_batch = RecordBatch::new_empty(schema.into());
+        let (block_number_column, _) =
+            auto_block_number_decoder(&record_batch).map_err(|e| Error::InvalidQuery(e))?;
+
+        let has_block_hash_column = auto_block_hash_decoder(&record_batch).is_ok();
+        let has_block_timestamp_column = auto_block_timestamp_decoder(&record_batch).is_ok();
+
+        if has_block_hash_column && has_block_timestamp_column {
+            return Ok(BlockRangeQueryBuilder::new(query, block_number_column));
+        }
+
+        debug!(logger, "Resolving context query");
+        let mut context_query: Option<ContextQuery> = None;
+
+        // TODO: Context is embedded in the original query using INNER JOIN to ensure availability for every output row.
+        //       This requires all source tables to match or exceed the expected query output size.
+        let context_sources_iter = source
+            .tables
+            .iter()
+            .map(|table| (source.dataset.as_str(), table.as_str()))
+            // TODO: Replace hardcoded values with schema metadata sources when available
+            .chain([("eth_firehose", "blocks"), ("eth_rpc", "blocks")]);
+
+        for (dataset, table) in context_sources_iter {
+            let context_logger = logger.new(slog::o!(
+                "context_dataset" => dataset.to_string(),
+                "context_table" => table.to_string()
+            ));
+            debug!(context_logger, "Loading context schema");
+            let schema_query = format!("SELECT * FROM {dataset}.{table}");
+            let schema = match Self::resolve_schema(logger, amp_client, schema_query).await {
+                Ok(schema) => schema,
+                Err(e) => {
+                    error!(context_logger, "Failed to load context schema";
+                        "e" => ?e
+                    );
+                    continue;
+                }
+            };
+
+            let record_batch = RecordBatch::new_empty(schema.clone().into());
+            let mut columns = Vec::new();
+
+            if !has_block_hash_column {
+                let Ok((block_hash_column, _)) = auto_block_hash_decoder(&record_batch) else {
+                    debug!(
+                        context_logger,
+                        "Context schema does not contain block hash column, skipping"
+                    );
+                    continue;
+                };
+
+                columns.push(block_hash_column);
             }
-            Ok(())
-        };
 
-        check_required_column(column_aliases::BLOCK_NUMBER, "block numbers")?;
-        check_required_column(column_aliases::BLOCK_HASH, "block hashes")?;
-        check_required_column(column_aliases::BLOCK_TIMESTAMP, "block timestamps")?;
+            if !has_block_timestamp_column {
+                let Ok((block_timestamp_column, _)) = auto_block_timestamp_decoder(&record_batch)
+                else {
+                    debug!(
+                        context_logger,
+                        "Context schema does not contain block timestamp column, skipping"
+                    );
+                    continue;
+                };
 
-        Ok(schema)
+                columns.push(block_timestamp_column);
+            }
+
+            debug!(context_logger, "Creating context query");
+            context_query = Some(ContextQuery::new(
+                query,
+                block_number_column,
+                dataset,
+                table,
+                columns,
+            ));
+            break;
+        }
+
+        if let Some(context_query) = context_query {
+            return Ok(BlockRangeQueryBuilder::new_with_context(context_query));
+        }
+
+        Err(Error::InvalidQuery(anyhow!(
+            "query is required to output block numbers, block hashes and block timestamps"
+        )))
     }
 }
 
