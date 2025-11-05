@@ -14,7 +14,7 @@ use crate::{
 
 pub use self::raw::RawDataSource;
 
-/// Represents a valid data source of a Amp subgraph.
+/// Represents a valid data source of an Amp subgraph.
 ///
 /// This data source contains parsed, formatted, and resolved data.
 #[derive(Debug, Clone)]
