@@ -1,11 +1,6 @@
-use std::{
-    collections::HashMap,
-    hash::{Hash, Hasher},
-    ops::RangeInclusive,
-    time::Duration,
-};
+use std::{collections::HashMap, ops::RangeInclusive, time::Duration};
 
-use ahash::AHasher;
+use ahash::RandomState;
 use alloy::primitives::{BlockHash, BlockNumber};
 use arrow::{datatypes::Schema, error::ArrowError};
 use arrow_flight::{
@@ -109,9 +104,15 @@ impl Client for FlightClient {
         request_metadata: Option<RequestMetadata>,
     ) -> BoxStream<'static, Result<ResponseBatch, Self::Error>> {
         let query = query.to_string();
+
+        // Generates a hash from the SQL query for log correlation.
+        // The hash allows connecting related logs without including the full SQL query in every log message.
+        // Constant seeds ensure consistent hashes for the same query.
+        let hasher = RandomState::with_seeds(0, 0, 0, 0);
+
         let logger = logger
             .component("AmpFlightClient")
-            .new(slog::o!("query_id" => query_id(&query)));
+            .new(slog::o!("query_hash" => hasher.hash_one(&query)));
 
         let mut raw_client = self.raw_client();
         let mut prev_block_ranges: Vec<BlockRange> = Vec::new();
@@ -304,16 +305,6 @@ impl From<ResumeStreamingQuery> for BlockRange {
             prev_hash: None,
         }
     }
-}
-
-/// Generates an ID from a SQL query for log correlation.
-///
-/// The ID allows connecting related logs without including the full SQL
-/// query in every log message.
-fn query_id(query: &str) -> u32 {
-    let mut hasher = AHasher::default();
-    query.hash(&mut hasher);
-    hasher.finish() as u32
 }
 
 /// Serializes the information required to resume a streaming SQL query to JSON.
