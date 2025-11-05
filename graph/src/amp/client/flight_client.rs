@@ -129,10 +129,13 @@ impl Client for FlightClient {
                     .map(Into::into)
                     .collect();
 
-                raw_client.set_header(
-                    "amp-resume",
-                    serialize_resume_streaming_query(resume_streaming_query),
+                let metadata = serialize_resume_streaming_query(resume_streaming_query);
+                debug!(logger, "Setting request metadata";
+                    "amp-resume" => &metadata
                 );
+
+                // TODO: Update the header name when the Amp server updates to the latest version
+                raw_client.set_header("nozzle-resume", metadata);
             }
         }
 
