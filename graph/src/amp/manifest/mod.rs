@@ -31,7 +31,7 @@ pub struct Manifest {
 
     /// The Amp data sources of the subgraph.
     ///
-    /// A Amp subgraph can only contain Amp data sources.
+    /// An Amp subgraph can only contain Amp data sources.
     pub data_sources: Vec<DataSource>,
 }
 

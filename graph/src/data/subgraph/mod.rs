@@ -926,7 +926,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             .collect_vec();
 
         if amp_data_sources.is_empty() {
-            // Not a Amp subgraph
+            // Not an Amp subgraph
             return Vec::new();
         }
 

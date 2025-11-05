@@ -29,7 +29,7 @@ use crate::{
 
 /// A client for the Amp Flight gRPC service.
 ///
-/// This client connects to a Amp server and executes SQL queries
+/// This client connects to an Amp server and executes SQL queries
 /// using the Apache Arrow Flight protocol.
 pub struct FlightClient {
     channel: Channel,

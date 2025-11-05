@@ -31,7 +31,7 @@ use crate::{
 static API_VERSIONS: LazyLock<HashSet<Version>> =
     LazyLock::new(|| HashSet::from([Version::new(0, 0, 1)]));
 
-/// Represents an unmodified input data source of a Amp subgraph.
+/// Represents an unmodified input data source of an Amp subgraph.
 ///
 /// May contain invalid or partial data.
 #[derive(Debug, Clone, Deserialize)]
