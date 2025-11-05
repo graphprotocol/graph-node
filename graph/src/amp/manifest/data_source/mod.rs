@@ -8,7 +8,7 @@ use arrow::datatypes::Schema;
 use semver::Version;
 
 use crate::{
-    amp::{common::Ident, sql::Query},
+    amp::{common::Ident, sql::BlockRangeQueryBuilder},
     data::subgraph::SPEC_VERSION_1_5_0,
 };
 
@@ -106,7 +106,7 @@ pub struct Table {
     /// The SQL query that executes on the Amp server.
     ///
     /// The data resulting from this SQL query execution transforms into subgraph entities.
-    pub query: Query,
+    pub query: BlockRangeQueryBuilder,
 
     /// The Arrow schema of this transformed table SQL query.
     ///

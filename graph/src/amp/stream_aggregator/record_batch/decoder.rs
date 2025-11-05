@@ -27,8 +27,8 @@ impl<'a> Decoder<'a> {
     /// The returned error is deterministic.
     pub(super) fn new(record_batch: &'a RecordBatch) -> Result<Self> {
         Ok(Self {
-            block_number: auto_block_number_decoder(record_batch)?,
-            block_hash: auto_block_hash_decoder(record_batch)?,
+            block_number: auto_block_number_decoder(record_batch)?.1,
+            block_hash: auto_block_hash_decoder(record_batch)?.1,
         })
     }
 

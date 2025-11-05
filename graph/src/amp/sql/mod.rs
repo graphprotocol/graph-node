@@ -1,3 +1,3 @@
-pub mod query;
+pub mod query_builder;
 
-pub use self::query::Query;
+pub use self::query_builder::{BlockRangeQueryBuilder, ContextQuery, ValidQuery};
