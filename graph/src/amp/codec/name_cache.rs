@@ -1,12 +1,12 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
-use anyhow::Result;
+use inflector::Inflector;
 
-use crate::{amp::common::Ident, cheap_clone::CheapClone};
+use crate::cheap_clone::CheapClone;
 
-/// Caches identifiers that are used to match Arrow columns and subgraph entity fields.
+/// Normalizes and caches identifiers that are used to match Arrow columns and subgraph entity fields.
 pub(super) struct NameCache {
-    cache: HashMap<Box<str>, Ident>,
+    cache: HashMap<Box<str>, Arc<str>>,
 }
 
 impl NameCache {
@@ -17,18 +17,18 @@ impl NameCache {
         }
     }
 
-    /// Returns the identifier for the given name.
+    /// Normalizes and returns the identifier for the given name.
     ///
     /// If the identifier exists in the cache, returns the cached version.
-    /// Otherwise, creates a new identifier, caches it, and returns it.
-    pub(super) fn ident(&mut self, name: &str) -> Result<Ident> {
+    /// Otherwise, creates a new normalized identifier, caches it, and returns it.
+    pub(super) fn ident(&mut self, name: &str) -> Arc<str> {
         if let Some(ident) = self.cache.get(name) {
-            return Ok(ident.cheap_clone());
+            return ident.cheap_clone();
         }
 
-        let ident = Ident::new(name)?;
+        let ident: Arc<str> = name.to_camel_case().into();
         self.cache.insert(name.into(), ident.cheap_clone());
 
-        Ok(ident)
+        ident
     }
 }

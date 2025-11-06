@@ -1,14 +1,10 @@
 mod entity;
 
 use anyhow::{Context, Result};
-use arrow::datatypes::Schema;
 use itertools::Itertools;
 
-use self::entity::Entity;
-use crate::{
-    amp::common::Ident, cheap_clone::CheapClone, data::subgraph::DeploymentHash,
-    schema::InputSchema,
-};
+use self::entity::SchemaEntity;
+use crate::{data::subgraph::DeploymentHash, schema::InputSchema};
 
 /// Generates a subgraph schema from a list of Arrow schemas.
 ///
@@ -23,12 +19,12 @@ use crate::{
 /// The returned error is deterministic.
 pub fn generate_subgraph_schema(
     deployment_hash: &DeploymentHash,
-    queries: impl IntoIterator<Item = (Ident, Schema)>,
+    named_schemas: impl IntoIterator<Item = (String, arrow::datatypes::Schema)>,
 ) -> Result<InputSchema> {
-    let mut queries = merge_related_queries(queries)?;
-    queries.sort_unstable_by_key(|(name, _)| name.cheap_clone());
+    let mut named_schemas = merge_related_schemas(named_schemas)?;
+    named_schemas.sort_unstable_by_key(|(name, _)| name.clone());
 
-    let entities = create_entities(queries)?;
+    let entities = create_entities(named_schemas)?;
     let mut subgraph_schema = String::new();
 
     for entity in entities {
@@ -42,27 +38,27 @@ pub fn generate_subgraph_schema(
     Ok(input_schema)
 }
 
-fn merge_related_queries(
-    queries: impl IntoIterator<Item = (Ident, Schema)>,
-) -> Result<Vec<(Ident, Schema)>> {
-    queries
+fn merge_related_schemas(
+    named_schemas: impl IntoIterator<Item = (String, arrow::datatypes::Schema)>,
+) -> Result<Vec<(String, arrow::datatypes::Schema)>> {
+    named_schemas
         .into_iter()
-        .into_group_map_by(|(name, _)| name.cheap_clone())
+        .into_group_map_by(|(name, _)| name.clone())
         .into_iter()
-        .map(|(name, related_queries)| {
-            let related_schemas = related_queries.into_iter().map(|(_, schema)| schema);
+        .map(|(name, related_schemas)| {
+            let related_schemas = related_schemas.into_iter().map(|(_, schema)| schema);
 
-            Schema::try_merge(related_schemas).map(|schema| (name, schema))
+            arrow::datatypes::Schema::try_merge(related_schemas).map(|schema| (name, schema))
         })
         .collect::<Result<Vec<_>, _>>()
         .context("failed to merge schemas of related SQL queries")
 }
 
-fn create_entities(queries: Vec<(Ident, Schema)>) -> Result<Vec<Entity>> {
+fn create_entities(queries: Vec<(String, arrow::datatypes::Schema)>) -> Result<Vec<SchemaEntity>> {
     queries
         .into_iter()
         .map(|(name, schema)| {
-            Entity::new(name.cheap_clone(), schema)
+            SchemaEntity::new(name.clone(), schema)
                 .with_context(|| format!("failed to create entity '{}'", name))
         })
         .collect::<Result<Vec<_>, _>>()

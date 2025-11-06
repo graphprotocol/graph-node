@@ -7,14 +7,16 @@ mod value_decoder;
 
 pub mod utils;
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use anyhow::{anyhow, bail, Context, Result};
 use arrow::array::{Array, RecordBatch};
 
 use self::{list_decoder::ListDecoder, mapping_decoder::MappingDecoder, name_cache::NameCache};
 use crate::{
-    amp::common::Ident,
     data::{
         graphql::TypeExt,
         store::{Id, IdType, Value},
@@ -163,7 +165,7 @@ impl Codec {
             .fields()
             .into_iter()
             .zip(record_batch.columns())
-            .map(|(field, array)| Ok((self.ident(field.name())?, array.as_ref())))
+            .map(|(field, array)| Ok((self.ident(field.name()), array.as_ref())))
             .collect::<Result<HashMap<_, _>>>()?;
 
         let mut value_decoders = BTreeMap::new();
@@ -194,7 +196,7 @@ impl Codec {
     fn value_decoder<'a>(
         &mut self,
         field: &'a Field,
-        columns: &HashMap<Ident, &'a dyn Array>,
+        columns: &HashMap<Arc<str>, &'a dyn Array>,
     ) -> Result<Option<Box<dyn Decoder<Value> + 'a>>> {
         // VIDs are auto-generated
         if field.name.eq_ignore_ascii_case("vid") {
@@ -206,7 +208,7 @@ impl Codec {
             return Ok(None);
         }
 
-        let normalized_name = self.ident(&field.name)?;
+        let normalized_name = self.ident(&field.name);
         let array = match columns.get(&normalized_name) {
             Some(&array) => array,
             None => {
@@ -230,7 +232,7 @@ impl Codec {
         Ok(Some(decoder))
     }
 
-    fn ident(&mut self, name: impl AsRef<str>) -> Result<Ident> {
+    fn ident(&mut self, name: impl AsRef<str>) -> Arc<str> {
         self.name_cache.ident(name.as_ref())
     }
 }

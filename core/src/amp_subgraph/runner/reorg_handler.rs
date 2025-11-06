@@ -4,7 +4,6 @@ use futures::{future::try_join_all, StreamExt, TryFutureExt};
 use graph::{
     amp::{
         client::{LatestBlockBeforeReorg, RequestMetadata, ResponseBatch, ResumeStreamingQuery},
-        common::Ident,
         Client,
     },
     blockchain::block_stream::FirehoseCursor,
@@ -124,8 +123,8 @@ where
 async fn detect_reorg<AC>(
     cx: &Context<AC>,
     network: &str,
-    dataset: &Ident,
-    table: &Ident,
+    dataset: &str,
+    table: &str,
     latest_synced_block_number: BlockNumber,
     latest_synced_block_hash: BlockHash,
 ) -> Result<Option<LatestBlockBeforeReorg>, Error>
