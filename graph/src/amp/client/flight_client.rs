@@ -134,7 +134,9 @@ impl Client for FlightClient {
                     "amp-resume" => &metadata
                 );
 
-                // TODO: Update the header name when the Amp server updates to the latest version
+                raw_client.set_header("amp-resume", metadata.clone());
+
+                // TODO: Remove when the Amp server updates to the latest version
                 raw_client.set_header("nozzle-resume", metadata);
             }
         }
