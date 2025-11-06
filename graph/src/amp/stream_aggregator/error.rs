@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use thiserror::Error;
 
 use crate::amp::error::IsDeterministic;
@@ -7,29 +9,29 @@ pub enum Error {
     #[error("failed to aggregate record batches: {0:#}")]
     Aggregation(#[source] anyhow::Error),
 
-    #[error("failed to buffer record batches from stream {stream_index}: {source:#}")]
+    #[error("failed to buffer record batches from stream '{stream_name}': {source:#}")]
     Buffer {
-        stream_index: usize,
+        stream_name: Arc<str>,
         source: anyhow::Error,
     },
 
-    #[error("failed to read record batch from stream {stream_index}: {source:#}")]
+    #[error("failed to read record batch from stream '{stream_name}': {source:#}")]
     Stream {
-        stream_index: usize,
+        stream_name: Arc<str>,
         source: anyhow::Error,
         is_deterministic: bool,
     },
 }
 
 impl Error {
-    pub(super) fn stream<E>(stream_index: usize, e: E) -> Self
+    pub(super) fn stream<E>(stream_name: Arc<str>, e: E) -> Self
     where
         E: std::error::Error + IsDeterministic + Send + Sync + 'static,
     {
         let is_deterministic = e.is_deterministic();
 
         Self::Stream {
-            stream_index,
+            stream_name,
             source: anyhow::Error::from(e),
             is_deterministic,
         }

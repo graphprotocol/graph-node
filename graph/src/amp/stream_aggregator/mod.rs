@@ -3,6 +3,7 @@ mod record_batch;
 
 use std::{
     pin::Pin,
+    sync::Arc,
     task::{self, Poll},
 };
 
@@ -12,7 +13,10 @@ use futures03::{stream::BoxStream, Stream, StreamExt, TryStreamExt};
 use slog::{debug, info, Logger};
 
 use self::record_batch::Buffer;
-use crate::amp::{client::ResponseBatch, error::IsDeterministic, log::Logger as _};
+use crate::{
+    amp::{client::ResponseBatch, error::IsDeterministic, log::Logger as _},
+    cheap_clone::CheapClone,
+};
 
 pub use self::{
     error::Error,
@@ -38,10 +42,16 @@ pub use self::{
 /// To ensure data consistency and ordered output, the aggregator waits for slower streams
 /// to catch up with faster streams. The output stream speed matches the slowest input stream.
 pub struct StreamAggregator {
-    streams: Vec<BoxStream<'static, Result<RecordBatch, Error>>>,
+    named_streams: Vec<(Arc<str>, BoxStream<'static, Result<RecordBatch, Error>>)>,
     buffer: Buffer,
     logger: Logger,
+
+    /// Indicates whether all streams are fully consumed.
     is_finalized: bool,
+
+    /// Indicates whether any stream has produced an error.
+    ///
+    /// When `true`, the stream aggregator stops polling all other streams.
     is_failed: bool,
 }
 
@@ -49,7 +59,7 @@ impl StreamAggregator {
     /// Creates a new stream aggregator from the `streams` with a bounded buffer.
     pub fn new<E>(
         logger: &Logger,
-        streams: impl IntoIterator<Item = BoxStream<'static, Result<ResponseBatch, E>>>,
+        named_streams: impl IntoIterator<Item = (String, BoxStream<'static, Result<ResponseBatch, E>>)>,
         max_buffer_size: usize,
     ) -> Self
     where
@@ -57,27 +67,39 @@ impl StreamAggregator {
     {
         let logger = logger.component("AmpStreamAggregator");
 
-        let streams = streams
+        let named_streams = named_streams
             .into_iter()
-            .enumerate()
-            .map(|(stream_index, stream)| {
-                stream
-                    .map_err(move |e| Error::stream(stream_index, e))
-                    .try_filter_map(move |response_batch| async move {
-                        match response_batch {
-                            ResponseBatch::Batch { data } => Ok(Some(data)),
-                            ResponseBatch::Reorg(_) => Err(Error::Stream {
-                                stream_index,
-                                source: anyhow!("chain reorg"),
-                                is_deterministic: false,
-                            }),
-                        }
-                    })
-                    .boxed()
+            .map(|(stream_name, stream)| {
+                let stream_name: Arc<str> = stream_name.into();
+                (
+                    stream_name.cheap_clone(),
+                    stream
+                        .map_err({
+                            let stream_name = stream_name.cheap_clone();
+                            move |e| Error::stream(stream_name.cheap_clone(), e)
+                        })
+                        .try_filter_map({
+                            let stream_name = stream_name.cheap_clone();
+                            move |response_batch| {
+                                let stream_name = stream_name.cheap_clone();
+                                async move {
+                                    match response_batch {
+                                        ResponseBatch::Batch { data } => Ok(Some(data)),
+                                        ResponseBatch::Reorg(_) => Err(Error::Stream {
+                                            stream_name: stream_name.cheap_clone(),
+                                            source: anyhow!("chain reorg"),
+                                            is_deterministic: false,
+                                        }),
+                                    }
+                                }
+                            }
+                        })
+                        .boxed(),
+                )
             })
             .collect::<Vec<_>>();
 
-        let num_streams = streams.len();
+        let num_streams = named_streams.len();
 
         info!(logger, "Initializing stream aggregator";
             "num_streams" => num_streams,
@@ -85,7 +107,7 @@ impl StreamAggregator {
         );
 
         Self {
-            streams,
+            named_streams,
             buffer: Buffer::new(num_streams, max_buffer_size),
             logger,
             is_finalized: false,
@@ -99,7 +121,12 @@ impl StreamAggregator {
     ) -> Poll<Option<Result<RecordBatchGroups, Error>>> {
         let mut made_progress = false;
 
-        for (stream_index, stream) in self.streams.iter_mut().enumerate() {
+        for (stream_index, (stream_name, stream)) in self.named_streams.iter_mut().enumerate() {
+            let logger = self.logger.new(slog::o!(
+                "stream_index" => stream_index,
+                "stream_name" => stream_name.cheap_clone()
+            ));
+
             if self.buffer.is_finalized(stream_index) {
                 continue;
             }
@@ -108,7 +135,7 @@ impl StreamAggregator {
                 self.is_failed = true;
 
                 return Poll::Ready(Some(Err(Error::Buffer {
-                    stream_index,
+                    stream_name: stream_name.cheap_clone(),
                     source: anyhow!("buffer is blocked"),
                 })));
             }
@@ -123,7 +150,7 @@ impl StreamAggregator {
                         self.buffer
                             .extend(stream_index, record_batch)
                             .map_err(|e| Error::Buffer {
-                                stream_index,
+                                stream_name: stream_name.cheap_clone(),
                                 source: e,
                             });
 
@@ -131,8 +158,7 @@ impl StreamAggregator {
                         Ok(()) => {
                             made_progress = true;
 
-                            debug!(self.logger, "Buffered record batch";
-                                "stream_index" => stream_index,
+                            debug!(logger, "Buffered record batch";
                                 "buffer_size" => self.buffer.size(stream_index),
                                 "has_capacity" => self.buffer.has_capacity(stream_index)
                             );
@@ -145,9 +171,7 @@ impl StreamAggregator {
                     }
                 }
                 Poll::Ready(Some(Ok(_empty_record_batch))) => {
-                    debug!(self.logger, "Received an empty record batch";
-                        "stream_index" => stream_index
-                    );
+                    debug!(logger, "Received an empty record batch");
                 }
                 Poll::Ready(Some(Err(e))) => {
                     self.is_failed = true;
@@ -163,8 +187,7 @@ impl StreamAggregator {
 
                     made_progress = true;
 
-                    info!(self.logger, "Stream completed";
-                        "stream_index" => stream_index,
+                    info!(logger, "Stream completed";
                         "buffer_size" => self.buffer.size(stream_index)
                     );
                 }
