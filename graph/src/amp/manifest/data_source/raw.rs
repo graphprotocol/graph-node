@@ -7,6 +7,7 @@ use alloy::{
 use anyhow::anyhow;
 use arrow::{array::RecordBatch, datatypes::Schema};
 use futures03::future::try_join_all;
+use lazy_regex::regex_is_match;
 use semver::Version;
 use serde::Deserialize;
 use slog::{debug, error, Logger};
@@ -19,7 +20,6 @@ use crate::{
         codec::utils::{
             auto_block_hash_decoder, auto_block_number_decoder, auto_block_timestamp_decoder,
         },
-        common::Ident,
         error::IsDeterministic,
         sql::{BlockRangeQueryBuilder, ContextQuery, ValidQuery},
     },
@@ -76,8 +76,8 @@ impl RawDataSource {
         let logger = logger.new(slog::o!("data_source" => name.clone()));
         debug!(logger, "Resolving data source");
 
-        let name = Self::resolve_name(name)?;
-        Self::resolve_kind(kind)?;
+        validate_ident(&name).map_err(|e| e.source_context("invalid `name`"))?;
+        Self::validate_kind(kind)?;
 
         let source = source
             .resolve()
@@ -96,11 +96,7 @@ impl RawDataSource {
         })
     }
 
-    fn resolve_name(name: String) -> Result<Ident, Error> {
-        Ident::new(name).map_err(|e| Error::InvalidValue(e.context("invalid `name`")))
-    }
-
-    fn resolve_kind(kind: String) -> Result<(), Error> {
+    fn validate_kind(kind: String) -> Result<(), Error> {
         if !kind.eq_ignore_ascii_case(DataSource::KIND) {
             return Err(Error::InvalidValue(anyhow!("invalid `kind`")));
         }
@@ -149,8 +145,9 @@ impl RawSource {
             end_block,
         } = self;
 
-        let dataset = Self::resolve_dataset(dataset)?;
-        let tables = Self::resolve_tables(tables)?;
+        validate_ident(&dataset).map_err(|e| e.source_context("invalid `dataset`"))?;
+        Self::validate_tables(&tables)?;
+
         let address = address.unwrap_or(Address::ZERO);
         let start_block = start_block.unwrap_or(BlockNumber::MIN);
         let end_block = end_block.unwrap_or(BlockNumber::MAX);
@@ -170,11 +167,7 @@ impl RawSource {
         })
     }
 
-    fn resolve_dataset(dataset: String) -> Result<Ident, Error> {
-        Ident::new(dataset).map_err(|e| Error::InvalidValue(e.context("invalid `dataset`")))
-    }
-
-    fn resolve_tables(tables: Vec<String>) -> Result<Vec<Ident>, Error> {
+    fn validate_tables(tables: &[String]) -> Result<(), Error> {
         const MAX_TABLES: usize = 100;
 
         if tables.is_empty() {
@@ -187,15 +180,12 @@ impl RawSource {
             )));
         }
 
-        tables
-            .into_iter()
-            .enumerate()
-            .map(|(i, table)| {
-                Ident::new(table).map_err(|e| {
-                    Error::InvalidValue(e.context(format!("invalid `tables` at index {i}")))
-                })
-            })
-            .collect()
+        for (i, table) in tables.iter().enumerate() {
+            validate_ident(table)
+                .map_err(|e| e.source_context(format!("invalid `table` at index {i}")))?;
+        }
+
+        Ok(())
     }
 }
 
@@ -234,7 +224,8 @@ impl RawTransformer {
             abis,
             tables,
         } = self;
-        let api_version = Self::resolve_api_version(api_version)?;
+        Self::validate_api_version(&api_version)?;
+
         let abis = Self::resolve_abis(logger, link_resolver, abis).await?;
         let tables =
             Self::resolve_tables(logger, link_resolver, amp_client, tables, source, &abis).await?;
@@ -246,12 +237,12 @@ impl RawTransformer {
         })
     }
 
-    fn resolve_api_version(api_version: Version) -> Result<Version, Error> {
-        if !API_VERSIONS.contains(&api_version) {
+    fn validate_api_version(api_version: &Version) -> Result<(), Error> {
+        if !API_VERSIONS.contains(api_version) {
             return Err(Error::InvalidValue(anyhow!("invalid `api_version`")));
         }
 
-        Ok(api_version)
+        Ok(())
     }
 
     async fn resolve_abis(
@@ -342,14 +333,11 @@ impl RawAbi {
         link_resolver: &dyn LinkResolver,
     ) -> Result<Abi, Error> {
         let Self { name, file } = self;
-        let name = Self::resolve_name(name)?;
+
+        validate_ident(&name).map_err(|e| e.source_context("invalid `name`"))?;
         let contract = Self::resolve_contract(logger, link_resolver, file).await?;
 
         Ok(Abi { name, contract })
-    }
-
-    fn resolve_name(name: String) -> Result<Ident, Error> {
-        Ident::new(name).map_err(|e| Error::InvalidValue(e.context("invalid `name`")))
     }
 
     async fn resolve_contract(
@@ -412,7 +400,7 @@ impl RawTable {
     ) -> Result<Table, Error> {
         let Self { name, query, file } = self;
 
-        let name = Self::resolve_name(name)?;
+        validate_ident(&name).map_err(|e| e.source_context("invalid `name`"))?;
         let query = match Self::resolve_query(query, source, abis)? {
             Some(query) => query,
             None => Self::resolve_file(logger, link_resolver, file, source, abis).await?,
@@ -434,10 +422,6 @@ impl RawTable {
             query: block_range_query_builder,
             schema,
         })
-    }
-
-    fn resolve_name(name: String) -> Result<Ident, Error> {
-        Ident::new(name).map_err(|e| Error::InvalidValue(e.context("invalid `name`")))
     }
 
     fn resolve_query(
@@ -665,4 +649,13 @@ impl IsDeterministic for Error {
             } => *is_deterministic,
         }
     }
+}
+
+fn validate_ident(s: &str) -> Result<(), Error> {
+    if !regex_is_match!("^[a-zA-Z_][a-zA-Z0-9_-]{0,100}$", s) {
+        return Err(Error::InvalidValue(
+            anyhow!("invalid identifier '{s}': must start with a letter or an underscore, and contain only letters, numbers, hyphens, and underscores")
+        ));
+    }
+    Ok(())
 }

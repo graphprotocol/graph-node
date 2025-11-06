@@ -2,16 +2,12 @@ use alloy::primitives::BlockNumber;
 use anyhow::anyhow;
 use arrow::array::RecordBatch;
 use futures::{future::try_join_all, stream::BoxStream, StreamExt, TryFutureExt};
-use graph::{
-    amp::{
-        client::ResponseBatch,
-        codec::{utils::block_number_decoder, Decoder},
-        common::Ident,
-        error::IsDeterministic,
-        manifest::DataSource,
-        Client,
-    },
-    cheap_clone::CheapClone,
+use graph::amp::{
+    client::ResponseBatch,
+    codec::{utils::block_number_decoder, Decoder},
+    error::IsDeterministic,
+    manifest::DataSource,
+    Client,
 };
 use itertools::Itertools;
 use slog::debug;
@@ -43,7 +39,7 @@ impl LatestBlocks {
                     .map(move |(j, table)| ((i, j), &data_source.source.dataset, table))
             })
             .flatten()
-            .unique_by(|(_, dataset, table)| (dataset.cheap_clone(), table.cheap_clone()))
+            .unique_by(|(_, dataset, table)| (dataset.to_string(), table.to_string()))
             .map(|(table_ptr, dataset, table)| {
                 latest_block(&cx, dataset, table)
                     .map_ok(move |latest_block| (table_ptr, latest_block))
@@ -127,8 +123,8 @@ fn indexing_completed(data_source: &DataSource, latest_synced_block: &Option<Blo
 
 async fn latest_block<AC>(
     cx: &Context<AC>,
-    dataset: &Ident,
-    table: &Ident,
+    dataset: &str,
+    table: &str,
 ) -> Result<BlockNumber, Error>
 where
     AC: Client,
@@ -148,8 +144,8 @@ where
 
 async fn latest_block_changed<AC>(
     cx: &Context<AC>,
-    dataset: &Ident,
-    table: &Ident,
+    dataset: &str,
+    table: &str,
     latest_block: BlockNumber,
 ) -> Result<(), Error>
 where

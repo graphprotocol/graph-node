@@ -1183,7 +1183,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                             .transformer
                             .tables
                             .iter()
-                            .map(|table| (table.name.cheap_clone(), table.schema.clone()))
+                            .map(|table| (table.name.clone(), table.schema.clone()))
                     })
                     .flatten();
 

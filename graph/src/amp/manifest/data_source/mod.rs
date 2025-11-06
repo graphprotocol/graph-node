@@ -7,10 +7,7 @@ use alloy::{
 use arrow::datatypes::Schema;
 use semver::Version;
 
-use crate::{
-    amp::{common::Ident, sql::BlockRangeQueryBuilder},
-    data::subgraph::SPEC_VERSION_1_5_0,
-};
+use crate::{amp::sql::BlockRangeQueryBuilder, data::subgraph::SPEC_VERSION_1_5_0};
 
 pub use self::raw::RawDataSource;
 
@@ -22,7 +19,7 @@ pub struct DataSource {
     /// The name of the data source.
     ///
     /// Used for observability to identify progress and errors produced by this data source.
-    pub name: Ident,
+    pub name: String,
 
     /// The network name of the data source.
     pub network: String,
@@ -43,10 +40,10 @@ impl DataSource {
 #[derive(Debug, Clone)]
 pub struct Source {
     /// The dataset from which SQL queries in the data source can query.
-    pub dataset: Ident,
+    pub dataset: String,
 
     /// The tables from which SQL queries in the data source can query.
-    pub tables: Vec<Ident>,
+    pub tables: Vec<String>,
 
     /// The contract address with which SQL queries in the data source interact.
     ///
@@ -89,7 +86,7 @@ pub struct Transformer {
 #[derive(Debug, Clone)]
 pub struct Abi {
     /// The name of the contract.
-    pub name: Ident,
+    pub name: String,
 
     /// The JSON ABI of the contract.
     pub contract: JsonAbi,
@@ -101,7 +98,7 @@ pub struct Table {
     /// The name of the transformed table.
     ///
     /// Must reference a valid entity name from the subgraph schema.
-    pub name: Ident,
+    pub name: String,
 
     /// The SQL query that executes on the Amp server.
     ///

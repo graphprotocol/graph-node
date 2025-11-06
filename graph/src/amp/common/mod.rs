@@ -1,7 +1,3 @@
-mod ident;
-
-pub use self::ident::Ident;
-
 pub(super) mod column_aliases {
     pub(in crate::amp) static BLOCK_NUMBER: &[&str] = &[
         "_block_num",   // Meta column present in all tables

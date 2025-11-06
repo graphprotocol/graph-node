@@ -1,16 +1,17 @@
 use std::fmt;
 
 use anyhow::{bail, Context, Result};
+use inflector::Inflector;
 
-use crate::{amp::common::Ident, cheap_clone::CheapClone, data::store::ValueType};
+use crate::data::store::ValueType;
 
 /// A minimal representation of a subgraph entity.
-pub(super) struct Entity {
-    name: Ident,
-    fields: Vec<Field>,
+pub(super) struct SchemaEntity {
+    name: String,
+    fields: Vec<SchemaField>,
 }
 
-impl Entity {
+impl SchemaEntity {
     /// Converts the Arrow schema to a subgraph entity.
     ///
     /// # Errors
@@ -18,29 +19,32 @@ impl Entity {
     /// Returns an error if Arrow fields cannot be converted to subgraph entity fields.
     ///
     /// The returned error is deterministic.
-    pub(super) fn new(name: Ident, arrow_schema: arrow::datatypes::Schema) -> Result<Self> {
+    pub(super) fn new(name: String, arrow_schema: arrow::datatypes::Schema) -> Result<Self> {
         let mut fields = arrow_schema
             .fields()
             .iter()
             .map(|field| {
-                Field::new(field)
+                SchemaField::new(field)
                     .with_context(|| format!("failed to create field '{}'", field.name()))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        if !fields.iter().any(|field| field.name.as_str() == "id") {
-            fields.push(Field::id());
+        if !fields
+            .iter()
+            .any(|field| field.name.as_str().eq_ignore_ascii_case("id"))
+        {
+            fields.push(SchemaField::id());
         }
 
-        fields.sort_unstable_by_key(|field| field.name.cheap_clone());
+        fields.sort_unstable_by_key(|field| field.name.clone());
 
         Ok(Self { name, fields })
     }
 }
 
-impl fmt::Display for Entity {
+impl fmt::Display for SchemaEntity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write! {f, "type {} @entity(immutable: true)", self.name.to_upper_camel_case()}?;
+        write! {f, "type {} @entity(immutable: true)", self.name.to_pascal_case()}?;
         write! {f, " {{\n"}?;
         for field in &self.fields {
             write! {f, "\t{field}\n"}?;
@@ -50,14 +54,14 @@ impl fmt::Display for Entity {
 }
 
 /// A minimal representation of a subgraph entity field.
-struct Field {
-    name: Ident,
+struct SchemaField {
+    name: String,
     value_type: ValueType,
     is_list: bool,
     is_required: bool,
 }
 
-impl Field {
+impl SchemaField {
     /// Converts the Arrow field to a subgraph entity field.
     ///
     /// # Errors
@@ -68,7 +72,7 @@ impl Field {
     ///
     /// The returned error is deterministic.
     fn new(arrow_field: &arrow::datatypes::Field) -> Result<Self> {
-        let name = Ident::new(arrow_field.name())?;
+        let name = arrow_field.name().to_string();
         let (value_type, is_list) = arrow_data_type_to_value_type(arrow_field.data_type())?;
         let is_required = !arrow_field.is_nullable();
 
@@ -83,7 +87,7 @@ impl Field {
     /// Creates an `ID` subgraph entity field.
     fn id() -> Self {
         Self {
-            name: Ident::new("id").unwrap(),
+            name: "id".to_string(),
             value_type: ValueType::Bytes,
             is_list: false,
             is_required: true,
@@ -91,9 +95,9 @@ impl Field {
     }
 }
 
-impl fmt::Display for Field {
+impl fmt::Display for SchemaField {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write! {f, "{}: ", self.name.to_lower_camel_case()}?;
+        write! {f, "{}: ", self.name.to_camel_case()}?;
         if self.is_list {
             write! {f, "["}?;
         }
