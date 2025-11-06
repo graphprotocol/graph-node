@@ -408,6 +408,16 @@ impl RawTable {
 
         debug!(logger, "Resolving query schema");
         let schema = Self::resolve_schema(logger, amp_client, &query).await?;
+
+        for field in schema.fields() {
+            validate_ident(field.name()).map_err(|e| {
+                e.source_context(format!(
+                    "invalid query output schema: invalid column '{}'",
+                    field.name()
+                ))
+            })?;
+        }
+
         let block_range_query_builder = Self::resolve_block_range_query_builder(
             logger,
             amp_client,
