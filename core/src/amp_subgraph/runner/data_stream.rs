@@ -71,8 +71,9 @@ where
 
             for (j, table) in data_source.transformer.tables.iter().enumerate() {
                 let query = table.query.build_with_block_range(block_range);
+                let stream_name = format!("{}.{}", data_source.name, table.name);
 
-                query_streams.push(cx.client.query(&cx.logger, query, None));
+                query_streams.push((stream_name, cx.client.query(&cx.logger, query, None)));
                 query_streams_table_ptr.push((i, j));
             }
         }
