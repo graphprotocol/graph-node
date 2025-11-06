@@ -1277,6 +1277,43 @@ impl Inner {
         store.drop_index(site, index_name).await
     }
 
+    pub(crate) async fn identify_and_set_account_like(
+        &self,
+        logger: &Logger,
+        min_records: u64,
+        ratio: f64,
+    ) -> Result<(), StoreError> {
+        for (_shard, store) in &self.stores {
+            let candidates = store
+                .identify_account_like_candidates(min_records, ratio)
+                .await?;
+
+            graph::slog::debug!(
+                logger,
+                "Found {} account-like candidates in shard {}",
+                candidates.len(),
+                _shard
+            );
+
+            for (subgraph, table_name) in candidates {
+                graph::slog::debug!(
+                    logger,
+                    "Setting table {} as account-like for deployment {}",
+                    table_name,
+                    subgraph
+                );
+
+                let hash = DeploymentHash::new(subgraph.clone()).map_err(|_| {
+                    anyhow!("Failed to create deployment hash for subgraph: {subgraph}")
+                })?;
+                let (store, site) = self.store(&hash)?;
+                store.set_account_like(site, &table_name, true).await?;
+            }
+        }
+
+        Ok(())
+    }
+
     pub async fn set_account_like(
         &self,
         deployment: &DeploymentLocator,
