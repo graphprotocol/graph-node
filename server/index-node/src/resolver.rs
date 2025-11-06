@@ -139,7 +139,7 @@ impl<S: Store> IndexNodeResolver<S> {
                     .collect(),
                 _ => unreachable!(),
             })
-            .unwrap();
+            .unwrap_or_else(Vec::new);
 
         let infos = self
             .store
