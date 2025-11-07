@@ -1,5 +1,13 @@
 # NEWS
 
+## v0.41.1
+
+### Bug Fix
+
+**Indexing Status Endpoint**
+
+Fixed a regression in v0.41.0 where the indexing status endpoint would return an empty list when querying all subgraphs without specific deployment filters. Reverted an unnecessary optimization that broke this common use case.
+
 ## v0.41.0
 
 ### New Features
