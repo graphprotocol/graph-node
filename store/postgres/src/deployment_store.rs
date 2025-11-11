@@ -379,7 +379,7 @@ impl DeploymentStore {
             section.end();
 
             let section = stopwatch.start_section("apply_entity_modifications_insert");
-            layout.insert(conn, group, stopwatch).await?;
+            layout.insert(&self.logger, conn, group, stopwatch).await?;
             section.end();
         }
 

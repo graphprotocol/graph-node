@@ -134,7 +134,7 @@ async fn insert_entity(
     let group = row_group_insert(&entity_type, 0, entities);
     let errmsg = format!("Failed to insert entity {}[{}]", entity_type, key.entity_id);
     layout
-        .insert(conn, &group, &MOCK_STOPWATCH)
+        .insert(&LOGGER, conn, &group, &MOCK_STOPWATCH)
         .await
         .expect(&errmsg);
 }

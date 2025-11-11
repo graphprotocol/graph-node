@@ -271,7 +271,7 @@ async fn insert_entity_at(
     );
     let group = row_group_insert(&entity_type, block, entities_with_keys_owned.clone());
     layout
-        .insert(conn, &group, &MOCK_STOPWATCH)
+        .insert(&LOGGER, conn, &group, &MOCK_STOPWATCH)
         .await
         .expect(&errmsg);
     assert_eq!(
