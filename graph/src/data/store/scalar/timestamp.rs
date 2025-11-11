@@ -90,6 +90,12 @@ impl stable_hash_legacy::StableHash for Timestamp {
     }
 }
 
+impl From<DateTime<Utc>> for Timestamp {
+    fn from(value: DateTime<Utc>) -> Self {
+        Self(value)
+    }
+}
+
 impl Display for Timestamp {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         write!(f, "{}", self.as_microseconds_since_epoch())
