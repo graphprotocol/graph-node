@@ -933,6 +933,17 @@ impl<'a> WriteChunk<'a> {
             count: 0,
         }
     }
+
+    pub fn as_vec(&self) -> Vec<Self> {
+        (0..self.len())
+            .into_iter()
+            .map(|position| WriteChunk {
+                group: self.group,
+                chunk_size: 1,
+                position: self.position + position,
+            })
+            .collect()
+    }
 }
 
 impl<'a> IntoIterator for &WriteChunk<'a> {
