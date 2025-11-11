@@ -86,7 +86,17 @@ fn list_value_decoder<'a>(
 
             Ok(mapping_decoder(list_decoder, Value::List))
         }
-        data_type => Err(anyhow!("'{data_type}' is not a supported list type")),
+        _ => {
+            let decoder = single_value_decoder(value_type, array)?;
+
+            Ok(Box::new(MappingDecoder::new(decoder, |value| {
+                if matches!(value, Value::Null) {
+                    return Value::Null;
+                }
+
+                Value::List(vec![value])
+            })))
+        }
     }
 }
 
@@ -119,11 +129,19 @@ fn single_value_decoder<'a>(
             let integer_decoder = integer_decoder::<Option<BigInt>>(array)?;
             mapping_decoder(integer_decoder, Value::BigInt)
         }
+        (ValueType::BigInt, data_type) if is_string(data_type) => {
+            let string_decoder = string_decoder::<Option<BigInt>>(array)?;
+            mapping_decoder(string_decoder, Value::BigInt)
+        }
         (ValueType::BigInt, _) => return incompatible_types_err(),
 
         (ValueType::BigDecimal, data_type) if is_decimal(data_type) => {
             let decimal_decoder = decimal_decoder::<Option<BigDecimal>>(array)?;
             mapping_decoder(decimal_decoder, Value::BigDecimal)
+        }
+        (ValueType::BigDecimal, data_type) if is_string(data_type) => {
+            let string_decoder = string_decoder::<Option<BigDecimal>>(array)?;
+            mapping_decoder(string_decoder, Value::BigDecimal)
         }
         (ValueType::BigDecimal, _) => return incompatible_types_err(),
 
@@ -347,4 +365,509 @@ where
     };
 
     Ok(array_decoder)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::test_fixtures::*;
+    use super::*;
+
+    mod boolean_value_decoder {
+        use super::*;
+
+        fn decoder(column_name: &str, is_list: bool) -> Box<dyn Decoder<Value>> {
+            value_decoder(
+                ValueType::Boolean,
+                is_list,
+                RECORD_BATCH.column_by_name(column_name).unwrap(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn decode_single_values() {
+            let decoder = decoder("boolean", false);
+
+            assert_eq!(decoder.decode(0).unwrap(), Value::Bool(true));
+            assert_eq!(decoder.decode(1).unwrap(), Value::Bool(false));
+            assert_eq!(decoder.decode(2).unwrap(), Value::Bool(true));
+            assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+        }
+
+        #[test]
+        fn decode_single_values_as_lists() {
+            let decoder = decoder("boolean", true);
+
+            assert_eq!(
+                decoder.decode(0).unwrap(),
+                Value::List(vec![Value::Bool(true)])
+            );
+            assert_eq!(
+                decoder.decode(1).unwrap(),
+                Value::List(vec![Value::Bool(false)])
+            );
+            assert_eq!(
+                decoder.decode(2).unwrap(),
+                Value::List(vec![Value::Bool(true)])
+            );
+            assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+        }
+
+        #[test]
+        fn decode_list_values() {
+            let decoder = decoder("boolean_list", true);
+
+            assert_eq!(
+                decoder.decode(0).unwrap(),
+                Value::List(vec![
+                    Value::Bool(true),
+                    Value::Bool(false),
+                    Value::Bool(true),
+                ])
+            );
+            assert_eq!(decoder.decode(1).unwrap(), Value::Null);
+        }
+
+        #[test]
+        fn decode_list_view_values() {
+            let decoder = decoder("boolean_list_view", true);
+
+            assert_eq!(
+                decoder.decode(0).unwrap(),
+                Value::List(vec![
+                    Value::Bool(true),
+                    Value::Bool(false),
+                    Value::Bool(true),
+                ])
+            );
+            assert_eq!(decoder.decode(1).unwrap(), Value::Null);
+        }
+
+        #[test]
+        fn decode_fixed_size_list_values() {
+            let decoder = decoder("boolean_fixed_size_list", true);
+
+            assert_eq!(
+                decoder.decode(0).unwrap(),
+                Value::List(vec![
+                    Value::Bool(true),
+                    Value::Bool(false),
+                    Value::Bool(true),
+                ])
+            );
+        }
+
+        #[test]
+        fn decode_large_list_values() {
+            let decoder = decoder("boolean_large_list", true);
+
+            assert_eq!(
+                decoder.decode(0).unwrap(),
+                Value::List(vec![
+                    Value::Bool(true),
+                    Value::Bool(false),
+                    Value::Bool(true),
+                ])
+            );
+            assert_eq!(decoder.decode(1).unwrap(), Value::Null);
+        }
+
+        #[test]
+        fn decode_large_list_view_values() {
+            let decoder = decoder("boolean_large_list_view", true);
+
+            assert_eq!(
+                decoder.decode(0).unwrap(),
+                Value::List(vec![
+                    Value::Bool(true),
+                    Value::Bool(false),
+                    Value::Bool(true),
+                ])
+            );
+            assert_eq!(decoder.decode(1).unwrap(), Value::Null);
+        }
+
+        #[test]
+        fn fail_to_decode_values_of_other_types() {
+            value_decoder(ValueType::Boolean, false, BINARY_RECORD_BATCH.column(0))
+                .map(|_| ())
+                .unwrap_err();
+        }
+    }
+
+    mod int_value_decoder {
+        use super::*;
+
+        fn decoder(column_name: &str) -> Box<dyn Decoder<Value>> {
+            value_decoder(
+                ValueType::Int,
+                false,
+                RECORD_BATCH.column_by_name(column_name).unwrap(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn decode_values() {
+            for column in [
+                "int8",
+                "int16",
+                "int32",
+                "int64",
+                "uint8",
+                "uint16",
+                "uint32",
+                "uint64",
+                "decimal128",
+                "decimal256",
+            ] {
+                let decoder = decoder(column);
+
+                assert_eq!(decoder.decode(0).unwrap(), Value::Int(10));
+                assert_eq!(decoder.decode(1).unwrap(), Value::Int(20));
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn fail_to_decode_values_of_other_types() {
+            value_decoder(ValueType::Int, false, BOOLEAN_RECORD_BATCH.column(0))
+                .map(|_| ())
+                .unwrap_err();
+        }
+    }
+
+    mod int8_value_decoder {
+        use super::*;
+
+        fn decoder(column_name: &str) -> Box<dyn Decoder<Value>> {
+            value_decoder(
+                ValueType::Int8,
+                false,
+                RECORD_BATCH.column_by_name(column_name).unwrap(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn decode_values() {
+            for column in [
+                "int8",
+                "int16",
+                "int32",
+                "int64",
+                "uint8",
+                "uint16",
+                "uint32",
+                "uint64",
+                "decimal128",
+                "decimal256",
+            ] {
+                let decoder = decoder(column);
+
+                assert_eq!(decoder.decode(0).unwrap(), Value::Int8(10));
+                assert_eq!(decoder.decode(1).unwrap(), Value::Int8(20));
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn fail_to_decode_values_of_other_types() {
+            value_decoder(ValueType::Int8, false, BOOLEAN_RECORD_BATCH.column(0))
+                .map(|_| ())
+                .unwrap_err();
+        }
+    }
+
+    mod big_int_value_decoder {
+        use super::*;
+
+        fn decoder(column_name: &str) -> Box<dyn Decoder<Value>> {
+            value_decoder(
+                ValueType::BigInt,
+                false,
+                RECORD_BATCH.column_by_name(column_name).unwrap(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn decode_values() {
+            for column in [
+                "int8",
+                "int16",
+                "int32",
+                "int64",
+                "uint8",
+                "uint16",
+                "uint32",
+                "uint64",
+                "decimal128",
+                "decimal256",
+            ] {
+                let decoder = decoder(column);
+
+                assert_eq!(decoder.decode(0).unwrap(), Value::BigInt(BigInt::from(10)));
+                assert_eq!(decoder.decode(1).unwrap(), Value::BigInt(BigInt::from(20)));
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn decode_values_from_numerical_strings() {
+            for column in ["utf8", "utf8_view", "large_utf8"] {
+                let decoder = decoder(column);
+
+                assert_eq!(decoder.decode(2).unwrap(), Value::BigInt(BigInt::from(30)));
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn fail_to_decode_values_from_non_numerical_strings() {
+            for column in ["utf8", "utf8_view", "large_utf8"] {
+                let decoder = decoder(column);
+
+                decoder.decode(0).unwrap_err();
+            }
+        }
+
+        #[test]
+        fn fail_to_decode_values_of_other_types() {
+            value_decoder(ValueType::BigInt, false, BOOLEAN_RECORD_BATCH.column(0))
+                .map(|_| ())
+                .unwrap_err();
+        }
+    }
+
+    mod big_decimal_value_decoder {
+        use super::*;
+
+        fn decoder(column_name: &str) -> Box<dyn Decoder<Value>> {
+            value_decoder(
+                ValueType::BigDecimal,
+                false,
+                RECORD_BATCH.column_by_name(column_name).unwrap(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn decode_values() {
+            for column in ["float16", "float32", "float64", "decimal128", "decimal256"] {
+                let decoder = decoder(column);
+
+                assert_eq!(
+                    decoder.decode(0).unwrap(),
+                    Value::BigDecimal(BigDecimal::from(10.0))
+                );
+                assert_eq!(
+                    decoder.decode(1).unwrap(),
+                    Value::BigDecimal(BigDecimal::from(20.0))
+                );
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn decode_values_from_numerical_strings() {
+            for column in ["utf8", "utf8_view", "large_utf8"] {
+                let decoder = decoder(column);
+
+                assert_eq!(
+                    decoder.decode(2).unwrap(),
+                    Value::BigDecimal(BigDecimal::from(30.0))
+                );
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn fail_to_decode_values_from_non_numerical_strings() {
+            for column in ["utf8", "utf8_view", "large_utf8"] {
+                let decoder = decoder(column);
+
+                decoder.decode(0).unwrap_err();
+            }
+        }
+
+        #[test]
+        fn fail_to_decode_values_of_other_types() {
+            value_decoder(ValueType::BigDecimal, false, BOOLEAN_RECORD_BATCH.column(0))
+                .map(|_| ())
+                .unwrap_err();
+        }
+    }
+
+    mod bytes_value_decoder {
+        use super::*;
+
+        fn decoder(column_name: &str) -> Box<dyn Decoder<Value>> {
+            value_decoder(
+                ValueType::Bytes,
+                false,
+                RECORD_BATCH.column_by_name(column_name).unwrap(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn decode_values() {
+            for column in ["binary", "binary_view", "fixed_size_binary", "large_binary"] {
+                let decoder = decoder(column);
+
+                assert_eq!(
+                    decoder.decode(0).unwrap(),
+                    Value::Bytes(b"aa".as_slice().into())
+                );
+                assert_eq!(
+                    decoder.decode(1).unwrap(),
+                    Value::Bytes(b"bb".as_slice().into())
+                );
+                assert_eq!(
+                    decoder.decode(2).unwrap(),
+                    Value::Bytes(b"cc".as_slice().into())
+                );
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn fail_to_decode_values_of_other_types() {
+            value_decoder(ValueType::Bytes, false, BOOLEAN_RECORD_BATCH.column(0))
+                .map(|_| ())
+                .unwrap_err();
+        }
+    }
+
+    mod string_value_decoder {
+        use super::*;
+
+        fn decoder(column_name: &str) -> Box<dyn Decoder<Value>> {
+            value_decoder(
+                ValueType::String,
+                false,
+                RECORD_BATCH.column_by_name(column_name).unwrap(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn decode_values_from_strings() {
+            for column in ["utf8", "utf8_view", "large_utf8"] {
+                let decoder = decoder(column);
+
+                assert_eq!(decoder.decode(0).unwrap(), Value::String("aa".to_string()));
+                assert_eq!(decoder.decode(1).unwrap(), Value::String("bb".to_string()));
+                assert_eq!(decoder.decode(2).unwrap(), Value::String("30".to_string()));
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn decode_values_from_numbers() {
+            for column in [
+                "int8",
+                "int16",
+                "int32",
+                "int64",
+                "uint8",
+                "uint16",
+                "uint32",
+                "uint64",
+                "decimal128",
+                "decimal256",
+            ] {
+                let decoder = decoder(column);
+
+                assert_eq!(decoder.decode(0).unwrap(), Value::String("10".to_string()));
+                assert_eq!(decoder.decode(1).unwrap(), Value::String("20".to_string()));
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn decode_values_from_bytes() {
+            for column in ["binary", "binary_view", "fixed_size_binary", "large_binary"] {
+                let decoder = decoder(column);
+
+                assert_eq!(
+                    decoder.decode(0).unwrap(),
+                    Value::String(format!("0x{}", hex::encode(b"aa")))
+                );
+                assert_eq!(
+                    decoder.decode(1).unwrap(),
+                    Value::String(format!("0x{}", hex::encode(b"bb")))
+                );
+                assert_eq!(
+                    decoder.decode(2).unwrap(),
+                    Value::String(format!("0x{}", hex::encode(b"cc")))
+                );
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn fail_to_decode_values_of_other_types() {
+            value_decoder(ValueType::String, false, BOOLEAN_RECORD_BATCH.column(0))
+                .map(|_| ())
+                .unwrap_err();
+        }
+    }
+
+    mod timestamp_value_decoder {
+        use chrono::{TimeZone, Utc};
+
+        use super::*;
+
+        fn decoder(column_name: &str) -> Box<dyn Decoder<Value>> {
+            value_decoder(
+                ValueType::Timestamp,
+                false,
+                RECORD_BATCH.column_by_name(column_name).unwrap(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn decode_values() {
+            for column in [
+                "timestamp_second",
+                "timestamp_millisecond",
+                "timestamp_microsecond",
+                "timestamp_nanosecond",
+            ] {
+                let decoder = decoder(column);
+
+                assert_eq!(
+                    decoder.decode(0).unwrap(),
+                    Value::Timestamp(Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap().into())
+                );
+                assert_eq!(
+                    decoder.decode(1).unwrap(),
+                    Value::Timestamp(
+                        Utc.with_ymd_and_hms(2020, 10, 10, 10, 10, 10)
+                            .unwrap()
+                            .into()
+                    )
+                );
+                assert_eq!(
+                    decoder.decode(2).unwrap(),
+                    Value::Timestamp(
+                        Utc.with_ymd_and_hms(2020, 12, 31, 23, 59, 59)
+                            .unwrap()
+                            .into()
+                    )
+                );
+                assert_eq!(decoder.decode(3).unwrap(), Value::Null);
+            }
+        }
+
+        #[test]
+        fn fail_to_decode_values_of_other_types() {
+            value_decoder(ValueType::Timestamp, false, BOOLEAN_RECORD_BATCH.column(0))
+                .map(|_| ())
+                .unwrap_err();
+        }
+    }
 }

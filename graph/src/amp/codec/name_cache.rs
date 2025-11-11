@@ -26,7 +26,7 @@ impl NameCache {
             return ident.cheap_clone();
         }
 
-        let ident: Arc<str> = name.to_camel_case().into();
+        let ident: Arc<str> = name.to_camel_case().to_lowercase().into();
         self.cache.insert(name.into(), ident.cheap_clone());
 
         ident

@@ -111,7 +111,7 @@ alloy = { version = "1.0.12", default-features = false, features = ["json-abi", 
 arrow = { version = "=55.0.0" }
 arrow-flight = { version = "=55.0.0", features = ["flight-sql-experimental"] }
 futures = "0.3.31"
-heck = "0.5.0"
+half = "2.7.1"
 lazy-regex = "3.4.1"
 parking_lot = "0.12.4"
 sqlparser-latest = { version = "0.57.0", package = "sqlparser", features = ["visitor"] }

@@ -5,6 +5,9 @@ mod mapping_decoder;
 mod name_cache;
 mod value_decoder;
 
+#[cfg(test)]
+mod test_fixtures;
+
 pub mod utils;
 
 use std::{
@@ -234,5 +237,275 @@ impl Codec {
 
     fn ident(&mut self, name: impl AsRef<str>) -> Arc<str> {
         self.name_cache.ident(name.as_ref())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::LazyLock;
+
+    use arrow::array::{BinaryArray, BooleanArray, Int64Array, Int8Array};
+    use arrow::datatypes::{DataType, Field, Schema};
+
+    use crate::data::subgraph::DeploymentHash;
+
+    use super::*;
+
+    static SCHEMA: LazyLock<InputSchema> = LazyLock::new(|| {
+        InputSchema::parse_latest(
+            r#"
+            type Id @entity {
+                id: Int8!
+            }
+
+            type BlockNumber @entity {
+                id: Int8!
+                blockNumber: BigInt!
+            }
+
+            type OptionalBlockNumber @entity {
+                id: Int8!
+                blockNumber: BigInt
+            }
+
+            type Block @entity {
+                id: Int8!
+                number: Int8!
+                hash: Bytes!
+                value: BigInt
+            }
+            "#,
+            DeploymentHash::default(),
+        )
+        .unwrap()
+    });
+
+    #[inline]
+    fn new_codec() -> Codec {
+        Codec::new(SCHEMA.clone())
+    }
+
+    #[test]
+    fn fail_to_decode_unknown_entity() {
+        let schema = Schema::new(vec![Field::new("some_field", DataType::Boolean, true)]);
+        let record_batch = RecordBatch::new_empty(schema.into());
+
+        let mut codec = new_codec();
+        let e = codec
+            .decode(record_batch, "SomeEntity")
+            .map(|_| ())
+            .unwrap_err();
+
+        assert!(format!("{e:#}").contains("entity not found"))
+    }
+
+    #[test]
+    fn do_not_fail_on_empty_record_batch() {
+        let schema = Schema::new(vec![Field::new("some_field", DataType::Boolean, true)]);
+        let record_batch = RecordBatch::new_empty(schema.into());
+
+        let mut codec = new_codec();
+        let decode_output = codec.decode(record_batch, "Id").unwrap();
+
+        assert!(decode_output.decoded_entities.is_empty());
+    }
+
+    #[test]
+    fn allow_entity_ids_to_be_auto_generated() {
+        let schema = Schema::new(vec![Field::new("some_field", DataType::Boolean, true)]);
+        let record_batch = RecordBatch::try_new(
+            schema.into(),
+            vec![Arc::new(BooleanArray::from(vec![true, false]))],
+        )
+        .unwrap();
+
+        let mut codec = new_codec();
+        let decode_output = codec.decode(record_batch, "Id").unwrap();
+        let decoded_entities = decode_output.decoded_entities;
+
+        assert_eq!(decoded_entities.len(), 2);
+
+        for decoded_entity in decoded_entities {
+            assert!(decoded_entity.key.is_none());
+            assert!(decoded_entity.entity_data.is_empty());
+        }
+    }
+
+    #[test]
+    fn decode_entity_ids() {
+        let schema = Schema::new(vec![Field::new("id", DataType::Int8, true)]);
+        let record_batch = RecordBatch::try_new(
+            schema.into(),
+            vec![Arc::new(Int8Array::from(vec![10, 20, 30]))],
+        )
+        .unwrap();
+
+        let mut codec = new_codec();
+        let decode_output = codec.decode(record_batch, "Id").unwrap();
+        let decoded_entities = decode_output.decoded_entities;
+
+        assert_eq!(decoded_entities.len(), 3);
+
+        assert_eq!(
+            decoded_entities[0].key.as_ref().unwrap().entity_id,
+            Id::Int8(10),
+        );
+        assert_eq!(
+            &decoded_entities[0].entity_data,
+            &[(Word::from("id"), Value::Int8(10))],
+        );
+
+        assert_eq!(
+            decoded_entities[1].key.as_ref().unwrap().entity_id,
+            Id::Int8(20)
+        );
+        assert_eq!(
+            &decoded_entities[1].entity_data,
+            &[(Word::from("id"), Value::Int8(20))],
+        );
+
+        assert_eq!(
+            decoded_entities[2].key.as_ref().unwrap().entity_id,
+            Id::Int8(30)
+        );
+        assert_eq!(
+            &decoded_entities[2].entity_data,
+            &[(Word::from("id"), Value::Int8(30))],
+        );
+    }
+
+    #[test]
+    fn fail_to_decode_entity_when_a_required_field_is_missing() {
+        let schema = Schema::new(vec![Field::new("some_field", DataType::Int8, true)]);
+        let record_batch =
+            RecordBatch::try_new(schema.into(), vec![Arc::new(Int8Array::from(vec![10]))]).unwrap();
+
+        let mut codec = new_codec();
+        let e = codec
+            .decode(record_batch, "BlockNumber")
+            .map(|_| ())
+            .unwrap_err();
+
+        assert!(format!("{e:#}").contains("failed to get column for field 'blockNumber'"));
+    }
+
+    #[test]
+    fn decode_entity_when_an_optional_field_is_missing() {
+        let schema = Schema::new(vec![Field::new("some_field", DataType::Int8, true)]);
+        let record_batch =
+            RecordBatch::try_new(schema.into(), vec![Arc::new(Int8Array::from(vec![10]))]).unwrap();
+
+        let mut codec = new_codec();
+        let decode_output = codec.decode(record_batch, "OptionalBlockNumber").unwrap();
+        let decoded_entitites = decode_output.decoded_entities;
+
+        assert_eq!(decoded_entitites.len(), 1);
+        assert!(decoded_entitites[0].entity_data.is_empty());
+    }
+
+    #[test]
+    fn match_entity_field_name_with_column_name_ignoring_case() {
+        for column_name in [
+            "block_number",
+            "Block_Number",
+            "BLOCK_NUMBER",
+            "blocknumber",
+            "blockNumber",
+            "BlockNumber",
+            "BLOCKNUMBER",
+        ] {
+            let schema = Schema::new(vec![Field::new(column_name, DataType::Int8, true)]);
+            let record_batch = RecordBatch::try_new(
+                schema.into(),
+                vec![Arc::new(Int8Array::from(vec![10, 20, 30]))],
+            )
+            .unwrap();
+
+            let mut codec = new_codec();
+            let decode_output = codec.decode(record_batch, "BlockNumber").unwrap();
+            let decoded_entitites = decode_output.decoded_entities;
+
+            assert_eq!(decoded_entitites.len(), 3);
+
+            assert_eq!(
+                &decoded_entitites[0].entity_data,
+                &[(Word::from("blockNumber"), Value::BigInt(10.into()))]
+            );
+            assert_eq!(
+                &decoded_entitites[1].entity_data,
+                &[(Word::from("blockNumber"), Value::BigInt(20.into()))]
+            );
+            assert_eq!(
+                &decoded_entitites[2].entity_data,
+                &[(Word::from("blockNumber"), Value::BigInt(30.into()))]
+            );
+        }
+    }
+
+    #[test]
+    fn fail_to_decode_entity_when_field_type_and_column_type_are_incompatible() {
+        let schema = Schema::new(vec![Field::new("block_number", DataType::Boolean, true)]);
+        let record_batch = RecordBatch::try_new(
+            schema.into(),
+            vec![Arc::new(BooleanArray::from(vec![true]))],
+        )
+        .unwrap();
+
+        let mut codec = new_codec();
+        let e = codec
+            .decode(record_batch, "BlockNumber")
+            .map(|_| ())
+            .unwrap_err();
+
+        assert!(format!("{e:#}").contains("failed to create decoder for field 'blockNumber'"))
+    }
+
+    #[test]
+    fn decode_entities_with_multiple_fields() {
+        let schema = Schema::new(vec![
+            Field::new("number", DataType::Int8, true),
+            Field::new("hash", DataType::Binary, true),
+            Field::new("value", DataType::Int64, true),
+        ]);
+        let record_batch = RecordBatch::try_new(
+            schema.into(),
+            vec![
+                Arc::new(Int8Array::from(vec![10, 20, 30])),
+                Arc::new(BinaryArray::from(vec![b"aa".as_ref(), b"bb", b"cc"])),
+                Arc::new(Int64Array::from(vec![100, 200, 300])),
+            ],
+        )
+        .unwrap();
+
+        let mut codec = new_codec();
+        let decode_output = codec.decode(record_batch, "Block").unwrap();
+        let decoded_entitites = decode_output.decoded_entities;
+
+        assert_eq!(decoded_entitites.len(), 3);
+
+        assert_eq!(
+            &decoded_entitites[0].entity_data,
+            &[
+                (Word::from("hash"), Value::Bytes(b"aa".as_ref().into())),
+                (Word::from("number"), Value::Int8(10)),
+                (Word::from("value"), Value::BigInt(100.into()))
+            ]
+        );
+        assert_eq!(
+            &decoded_entitites[1].entity_data,
+            &[
+                (Word::from("hash"), Value::Bytes(b"bb".as_ref().into())),
+                (Word::from("number"), Value::Int8(20)),
+                (Word::from("value"), Value::BigInt(200.into()))
+            ]
+        );
+        assert_eq!(
+            &decoded_entitites[2].entity_data,
+            &[
+                (Word::from("hash"), Value::Bytes(b"cc".as_ref().into())),
+                (Word::from("number"), Value::Int8(30)),
+                (Word::from("value"), Value::BigInt(300.into()))
+            ]
+        );
     }
 }
