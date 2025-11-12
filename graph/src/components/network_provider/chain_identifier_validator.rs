@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::blockchain::BlockHash;
@@ -8,12 +9,13 @@ use crate::components::network_provider::ChainName;
 use crate::components::store::ChainIdStore;
 
 /// Additional requirements for stores that are necessary for provider checks.
+#[async_trait]
 pub trait ChainIdentifierValidator: Send + Sync + 'static {
     /// Verifies that the chain identifier returned by the network provider
     /// matches the previously stored value.
     ///
     /// Fails if the identifiers do not match or if something goes wrong.
-    fn validate_identifier(
+    async fn validate_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
@@ -21,7 +23,7 @@ pub trait ChainIdentifierValidator: Send + Sync + 'static {
 
     /// Saves the provided identifier that will be used as the source of truth
     /// for future validations.
-    fn update_identifier(
+    async fn update_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
@@ -51,22 +53,23 @@ pub enum ChainIdentifierValidationError {
     Store(#[source] anyhow::Error),
 }
 
-pub fn chain_id_validator(store: Arc<dyn ChainIdStore>) -> Arc<dyn ChainIdentifierValidator> {
+pub fn chain_id_validator(store: Box<dyn ChainIdStore>) -> Arc<dyn ChainIdentifierValidator> {
     Arc::new(ChainIdentifierStore::new(store))
 }
 
 pub(crate) struct ChainIdentifierStore {
-    store: Arc<dyn ChainIdStore>,
+    store: Box<dyn ChainIdStore>,
 }
 
 impl ChainIdentifierStore {
-    pub fn new(store: Arc<dyn ChainIdStore>) -> Self {
+    pub fn new(store: Box<dyn ChainIdStore>) -> Self {
         Self { store }
     }
 }
 
+#[async_trait]
 impl ChainIdentifierValidator for ChainIdentifierStore {
-    fn validate_identifier(
+    async fn validate_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
@@ -74,6 +77,7 @@ impl ChainIdentifierValidator for ChainIdentifierStore {
         let store_identifier = self
             .store
             .chain_identifier(chain_name)
+            .await
             .map_err(|err| ChainIdentifierValidationError::Store(err))?;
 
         if store_identifier.is_default() {
@@ -108,13 +112,14 @@ impl ChainIdentifierValidator for ChainIdentifierStore {
         Ok(())
     }
 
-    fn update_identifier(
+    async fn update_identifier(
         &self,
         chain_name: &ChainName,
         chain_identifier: &ChainIdentifier,
     ) -> Result<(), ChainIdentifierValidationError> {
         self.store
             .set_chain_identifier(chain_name, chain_identifier)
+            .await
             .map_err(|err| ChainIdentifierValidationError::Store(err))
     }
 }

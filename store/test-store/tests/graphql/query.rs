@@ -192,7 +192,7 @@ pub async fn setup(
         if !STORE_CLEAN.load(Ordering::SeqCst) {
             let chain = CHAIN.iter().collect();
             block_store::set_chain(chain, NETWORK_NAME).await;
-            test_store::remove_subgraphs();
+            test_store::remove_subgraphs().await;
             STORE_CLEAN.store(true, Ordering::SeqCst);
         }
     }
@@ -223,12 +223,12 @@ pub async fn setup(
 
     global_init().await;
     let id = DeploymentHash::new(id).unwrap();
-    let loc = store.subgraph_store().active_locator(&id).unwrap();
+    let loc = store.subgraph_store().active_locator(&id).await.unwrap();
 
     match loc {
         Some(loc) if id_type.deployment_id() == loc.hash.as_str() => loc,
         Some(loc) => {
-            test_store::remove_subgraph(&loc.hash);
+            test_store::remove_subgraph(&loc.hash).await;
             initialize(store, id, features, id_type).await
         }
         None => initialize(store, id, features, id_type).await,
@@ -456,6 +456,7 @@ async fn insert_test_entities(
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
+        .await
         .unwrap();
 
     let s = id_type.songs();

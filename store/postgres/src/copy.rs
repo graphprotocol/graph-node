@@ -23,22 +23,27 @@ use std::{
 };
 
 use diesel::{
-    connection::SimpleConnection as _,
-    dsl::sql,
-    insert_into,
-    r2d2::{ConnectionManager, PooledConnection},
-    select, sql_query, update, Connection as _, ExpressionMethods, OptionalExtension, PgConnection,
-    QueryDsl, RunQueryDsl,
+    dsl::sql, insert_into, select, sql_query, update, ExpressionMethods, OptionalExtension,
+    QueryDsl,
 };
+use diesel_async::{
+    scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
+    AsyncConnection,
+};
+use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
+use tokio;
+
 use graph::{
-    futures03::{future::select_all, FutureExt as _},
+    futures03::{
+        future::{select_all, BoxFuture},
+        FutureExt as _,
+    },
     internal_error,
     prelude::{
         info, lazy_static, o, warn, BlockNumber, BlockPtr, CheapClone, Logger, StoreError, ENV_VARS,
     },
     schema::EntityType,
     slog::error,
-    tokio,
 };
 use itertools::Itertools;
 
@@ -49,7 +54,7 @@ use crate::{
     relational::{index::IndexList, Layout, Table},
     relational_queries as rq,
     vid_batcher::{VidBatcher, VidRange},
-    ConnectionPool,
+    AsyncPgConnection, ConnectionPool,
 };
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
@@ -117,8 +122,8 @@ struct CopyState {
 }
 
 impl CopyState {
-    fn new(
-        conn: &mut PgConnection,
+    async fn new(
+        conn: &mut AsyncPgConnection,
         primary: Primary,
         src: Arc<Layout>,
         dst: Arc<Layout>,
@@ -128,13 +133,14 @@ impl CopyState {
 
         let crosses_shards = dst.site.shard != src.site.shard;
         if crosses_shards {
-            src.import_schema(conn)?;
+            src.import_schema(conn).await?;
         }
 
         let state = match cs::table
             .filter(cs::dst.eq(dst.site.id))
             .select((cs::src, cs::target_block_hash, cs::target_block_number))
             .first::<(DeploymentId, Vec<u8>, BlockNumber)>(conn)
+            .await
             .optional()?
         {
             Some((src_id, hash, number)) => {
@@ -158,22 +164,22 @@ impl CopyState {
                         src.site.id
                     ));
                 }
-                Self::load(conn, primary, src, dst, target_block)
+                Self::load(conn, primary, src, dst, target_block).await
             }
-            None => Self::create(conn, primary.cheap_clone(), src, dst, target_block),
+            None => Self::create(conn, primary.cheap_clone(), src, dst, target_block).await,
         }?;
 
         Ok(state)
     }
 
-    fn load(
-        conn: &mut PgConnection,
+    async fn load(
+        conn: &mut AsyncPgConnection,
         primary: Primary,
         src: Arc<Layout>,
         dst: Arc<Layout>,
         target_block: BlockPtr,
     ) -> Result<CopyState, StoreError> {
-        let tables = TableState::load(conn, primary, src.as_ref(), dst.as_ref())?;
+        let tables = TableState::load(conn, primary, src.as_ref(), dst.as_ref()).await?;
         let (finished, mut unfinished): (Vec<_>, Vec<_>) =
             tables.into_iter().partition(|table| table.finished());
         unfinished.sort_by_key(|table| table.dst.object.to_string());
@@ -186,8 +192,8 @@ impl CopyState {
         })
     }
 
-    fn create(
-        conn: &mut PgConnection,
+    async fn create(
+        conn: &mut AsyncPgConnection,
         primary: Primary,
         src: Arc<Layout>,
         dst: Arc<Layout>,
@@ -203,27 +209,26 @@ impl CopyState {
                 cs::target_block_hash.eq(target_block.hash_slice()),
                 cs::target_block_number.eq(target_block.number),
             ))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
-        let mut unfinished: Vec<_> = dst
-            .tables
-            .values()
-            .filter_map(|dst_table| {
-                src.table_for_entity(&dst_table.object)
-                    .ok()
-                    .map(|src_table| {
-                        TableState::init(
-                            conn,
-                            primary.cheap_clone(),
-                            dst.site.clone(),
-                            &src,
-                            src_table.clone(),
-                            dst_table.clone(),
-                            &target_block,
-                        )
-                    })
-            })
-            .collect::<Result<_, _>>()?;
+        let mut unfinished = Vec::new();
+        for dst_table in dst.tables.values() {
+            if let Some(src_table) = src.table_for_entity(&dst_table.object).ok() {
+                unfinished.push(
+                    TableState::init(
+                        conn,
+                        primary.cheap_clone(),
+                        dst.site.clone(),
+                        &src,
+                        src_table.clone(),
+                        dst_table.clone(),
+                        &target_block,
+                    )
+                    .await?,
+                );
+            }
+        }
         unfinished.sort_by_key(|table| table.dst.object.to_string());
 
         let values = unfinished
@@ -238,7 +243,7 @@ impl CopyState {
                 )
             })
             .collect::<Vec<_>>();
-        insert_into(cts::table).values(values).execute(conn)?;
+        insert_into(cts::table).values(values).execute(conn).await?;
 
         Ok(CopyState {
             src,
@@ -253,12 +258,13 @@ impl CopyState {
         self.dst.site.shard != self.src.site.shard
     }
 
-    fn finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+    async fn finished(&self, conn: &mut AsyncPgConnection) -> Result<(), StoreError> {
         use copy_state as cs;
 
         update(cs::table.filter(cs::dst.eq(self.dst.site.id)))
             .set(cs::finished_at.eq(sql("now()")))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         // If we imported the schema for `src`, and no other in-progress
         // copy is using it, get rid of it again
@@ -268,13 +274,14 @@ impl CopyState {
                     .filter(cs::src.eq(self.src.site.id))
                     .filter(cs::finished_at.is_null()),
             ))
-            .get_result::<bool>(conn)?;
+            .get_result::<bool>(conn)
+            .await?;
             if !has_active_copies {
                 // This is a foreign schema that nobody is using anymore,
                 // get rid of it. As a safety check (on top of the one that
                 // drop_foreign_schema does), see that we do not have
                 // metadata for `src`
-                if crate::deployment::exists(conn, &self.src.site)? {
+                if crate::deployment::exists(conn, &self.src.site).await? {
                     return Err(internal_error!(
                         "we think we are copying {}[{}] across shards from {} to {}, but the \
                         source subgraph is actually in this shard",
@@ -284,7 +291,7 @@ impl CopyState {
                         self.dst.site.shard
                     ));
                 }
-                crate::catalog::drop_foreign_schema(conn, self.src.site.as_ref())?;
+                crate::catalog::drop_foreign_schema(conn, self.src.site.as_ref()).await?;
             }
         }
         Ok(())
@@ -295,8 +302,8 @@ impl CopyState {
     }
 }
 
-pub(crate) fn source(
-    conn: &mut PgConnection,
+pub(crate) async fn source(
+    conn: &mut AsyncPgConnection,
     dst: &Site,
 ) -> Result<Option<DeploymentId>, StoreError> {
     use copy_state as cs;
@@ -305,6 +312,7 @@ pub(crate) fn source(
         .filter(cs::dst.eq(dst.id))
         .select(cs::src)
         .get_result::<DeploymentId>(conn)
+        .await
         .optional()
         .map_err(StoreError::from)
 }
@@ -325,8 +333,8 @@ struct TableState {
 }
 
 impl TableState {
-    fn init(
-        conn: &mut PgConnection,
+    async fn init(
+        conn: &mut AsyncPgConnection,
         primary: Primary,
         dst_site: Arc<Site>,
         src_layout: &Layout,
@@ -334,8 +342,9 @@ impl TableState {
         dst: Arc<Table>,
         target_block: &BlockPtr,
     ) -> Result<Self, StoreError> {
-        let vid_range = VidRange::for_copy(conn, &src, target_block)?;
-        let batcher = VidBatcher::load(conn, &src_layout.site.namespace, src.as_ref(), vid_range)?;
+        let vid_range = VidRange::for_copy(conn, &src, target_block).await?;
+        let batcher =
+            VidBatcher::load(conn, &src_layout.site.namespace, src.as_ref(), vid_range).await?;
         Ok(Self {
             primary,
             src,
@@ -350,8 +359,8 @@ impl TableState {
         self.batcher.finished()
     }
 
-    fn load(
-        conn: &mut PgConnection,
+    async fn load(
+        conn: &mut AsyncPgConnection,
         primary: Primary,
         src_layout: &Layout,
         dst_layout: &Layout,
@@ -380,7 +389,8 @@ impl TableState {
                 .map(|table| table.clone())
         }
 
-        cts::table
+        let mut states = Vec::new();
+        for (id, entity_type, current_vid, target_vid, size, duration_ms) in cts::table
             .filter(cts::dst.eq(dst_layout.site.id))
             .select((
                 cts::id,
@@ -391,50 +401,44 @@ impl TableState {
                 cts::duration_ms,
             ))
             .order_by(cts::entity_type)
-            .load::<(i32, String, i64, i64, i64, i64)>(conn)?
+            .load::<(i32, String, i64, i64, i64, i64)>(conn)
+            .await?
             .into_iter()
-            .map(
-                |(id, entity_type, current_vid, target_vid, size, duration_ms)| {
-                    let entity_type = src_layout.input_schema.entity_type(&entity_type)?;
-                    let src =
-                        resolve_entity(src_layout, "source", &entity_type, dst_layout.site.id, id);
-                    let dst = resolve_entity(
-                        dst_layout,
-                        "destination",
-                        &entity_type,
-                        dst_layout.site.id,
-                        id,
-                    );
-                    match (src, dst) {
-                        (Ok(src), Ok(dst)) => {
-                            let batcher = VidBatcher::load(
-                                conn,
-                                &src_layout.site.namespace,
-                                &src,
-                                VidRange::new(current_vid, target_vid),
-                            )?
-                            .with_batch_size(size as usize);
-
-                            Ok(TableState {
-                                primary: primary.cheap_clone(),
-                                src,
-                                dst,
-                                dst_site: dst_layout.site.clone(),
-                                batcher,
-                                duration_ms,
-                            })
-                        }
-                        (Err(e), _) => Err(e),
-                        (_, Err(e)) => Err(e),
-                    }
-                },
+        {
+            let entity_type = src_layout.input_schema.entity_type(&entity_type)?;
+            let src = resolve_entity(src_layout, "source", &entity_type, dst_layout.site.id, id)?;
+            let dst = resolve_entity(
+                dst_layout,
+                "destination",
+                &entity_type,
+                dst_layout.site.id,
+                id,
+            )?;
+            let batcher = VidBatcher::load(
+                conn,
+                &src_layout.site.namespace,
+                &src,
+                VidRange::new(current_vid, target_vid),
             )
-            .collect()
+            .await?
+            .with_batch_size(size as usize);
+
+            let state = TableState {
+                primary: primary.cheap_clone(),
+                src,
+                dst,
+                dst_site: dst_layout.site.clone(),
+                batcher,
+                duration_ms,
+            };
+            states.push(state);
+        }
+        Ok(states)
     }
 
-    fn record_progress(
+    async fn record_progress(
         &mut self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         elapsed: Duration,
     ) -> Result<(), StoreError> {
         use copy_table_state as cts;
@@ -453,7 +457,8 @@ impl TableState {
                 .filter(cts::duration_ms.eq(0)),
         )
         .set(cts::started_at.eq(sql("now()")))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
         let values = (
             cts::next_vid.eq(self.batcher.next_vid()),
             cts::batch_size.eq(self.batcher.batch_size() as i64),
@@ -465,11 +470,12 @@ impl TableState {
                 .filter(cts::entity_type.eq(self.dst.object.as_str())),
         )
         .set(values)
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
         Ok(())
     }
 
-    fn record_finished(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+    async fn record_finished(&self, conn: &mut AsyncPgConnection) -> Result<(), StoreError> {
         use copy_table_state as cts;
 
         update(
@@ -478,46 +484,57 @@ impl TableState {
                 .filter(cts::entity_type.eq(self.dst.object.as_str())),
         )
         .set(cts::finished_at.eq(sql("now()")))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
         Ok(())
     }
 
-    fn is_cancelled(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
+    async fn is_cancelled(&self, conn: &mut AsyncPgConnection) -> Result<bool, StoreError> {
         let dst = self.dst_site.as_ref();
-        let canceled = self.primary.is_copy_cancelled(dst)?;
+        let canceled = self.primary.is_copy_cancelled(dst).await?;
         if canceled {
             use copy_state as cs;
 
             update(cs::table.filter(cs::dst.eq(dst.id)))
                 .set(cs::cancelled_at.eq(sql("now()")))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
         Ok(canceled)
     }
 
-    fn copy_batch(&mut self, conn: &mut PgConnection) -> Result<Status, StoreError> {
-        let (duration, count) = self.batcher.step(|start, end| {
-            let count = rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
-                .count_current()
-                .get_result::<i64>(conn)
-                .optional()?;
-            Ok(count.unwrap_or(0) as i32)
-        })?;
+    async fn copy_batch(&mut self, conn: &mut AsyncPgConnection) -> Result<Status, StoreError> {
+        let (duration, count) = self
+            .batcher
+            .step(async |start, end| {
+                let count =
+                    rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
+                        .count_current()
+                        .get_result::<i64>(conn)
+                        .await
+                        .optional()?;
+                Ok(count.unwrap_or(0) as i32)
+            })
+            .await?;
 
         let count = count.unwrap_or(0);
 
-        deployment::update_entity_count(conn, &self.dst_site, count)?;
+        deployment::update_entity_count(conn, &self.dst_site, count).await?;
 
-        self.record_progress(conn, duration)?;
+        self.record_progress(conn, duration).await?;
 
         if self.finished() {
-            self.record_finished(conn)?;
+            self.record_finished(conn).await?;
         }
 
         Ok(Status::Finished)
     }
 
-    fn set_batch_size(&mut self, conn: &mut PgConnection, size: usize) -> Result<(), StoreError> {
+    async fn set_batch_size(
+        &mut self,
+        conn: &mut AsyncPgConnection,
+        size: usize,
+    ) -> Result<(), StoreError> {
         use copy_table_state as cts;
 
         self.batcher.set_batch_size(size);
@@ -528,7 +545,8 @@ impl TableState {
                 .filter(cts::entity_type.eq(self.dst.object.as_str())),
         )
         .set(cts::batch_size.eq(self.batcher.batch_size() as i64))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
         Ok(())
     }
@@ -615,7 +633,8 @@ impl CopyProgress {
             last_log
         });
         if last_log.elapsed() > LOG_INTERVAL {
-            let total_current_vid = self.current_vid.load(Ordering::SeqCst) + batcher.next_vid();
+            let total_current_vid =
+                AtomicI64::load(&self.current_vid, Ordering::SeqCst) + batcher.next_vid();
             info!(
                 self.logger,
                 "Copied {:.2}% of `{}` entities ({}/{} entity versions), {:.2}% of overall data",
@@ -646,7 +665,7 @@ impl CopyProgress {
     }
 
     fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
+        AtomicBool::load(&self.cancelled, Ordering::SeqCst)
     }
 }
 
@@ -674,24 +693,16 @@ impl From<Result<CopyTableWorker, StoreError>> for WorkerResult {
 /// This struct helps us with that. It wraps a connection and tracks whether
 /// the connection was used to acquire the copy lock
 struct LockTrackingConnection {
-    inner: PooledConnection<ConnectionManager<PgConnection>>,
+    inner: AsyncPgConnection,
     has_lock: bool,
 }
 
 impl LockTrackingConnection {
-    fn new(inner: PooledConnection<ConnectionManager<PgConnection>>) -> Self {
+    fn new(inner: AsyncPgConnection) -> Self {
         Self {
             inner,
             has_lock: false,
         }
-    }
-
-    fn transaction<T, F>(&mut self, f: F) -> Result<T, StoreError>
-    where
-        F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
-    {
-        let conn = &mut self.inner;
-        conn.transaction(|conn| f(conn))
     }
 
     /// Put `self` into `other` if `self` has the lock.
@@ -701,17 +712,17 @@ impl LockTrackingConnection {
         }
     }
 
-    fn lock(&mut self, logger: &Logger, dst: &Site) -> Result<(), StoreError> {
+    async fn lock(&mut self, logger: &Logger, dst: &Site) -> Result<(), StoreError> {
         if self.has_lock {
             warn!(logger, "already acquired copy lock for {}", dst);
             return Ok(());
         }
-        advisory_lock::lock_copying(&mut self.inner, dst)?;
+        advisory_lock::lock_copying(&mut self.inner, dst).await?;
         self.has_lock = true;
         Ok(())
     }
 
-    fn unlock(&mut self, logger: &Logger, dst: &Site) -> Result<(), StoreError> {
+    async fn unlock(&mut self, logger: &Logger, dst: &Site) -> Result<(), StoreError> {
         if !self.has_lock {
             error!(
                 logger,
@@ -719,7 +730,7 @@ impl LockTrackingConnection {
             );
             return Ok(());
         }
-        advisory_lock::unlock_copying(&mut self.inner, dst)?;
+        advisory_lock::unlock_copying(&mut self.inner, dst).await?;
         self.has_lock = false;
         Ok(())
     }
@@ -746,7 +757,7 @@ impl CopyTableWorker {
     async fn run(mut self, logger: Logger, progress: Arc<CopyProgress>) -> WorkerResult {
         let object = self.table.dst.object.cheap_clone();
         graph::spawn_blocking_allow_panic(move || {
-            self.result = self.run_inner(logger, &progress);
+            self.result = graph::block_on(self.run_inner(logger, &progress));
             self
         })
         .await
@@ -754,7 +765,11 @@ impl CopyTableWorker {
         .into()
     }
 
-    fn run_inner(&mut self, logger: Logger, progress: &CopyProgress) -> Result<Status, StoreError> {
+    async fn run_inner(
+        &mut self,
+        logger: Logger,
+        progress: &CopyProgress,
+    ) -> Result<Status, StoreError> {
         use Status::*;
 
         let conn = &mut self.conn.inner;
@@ -763,14 +778,14 @@ impl CopyTableWorker {
             // It is important that this check happens outside the write
             // transaction so that we do not hold on to locks acquired
             // by the check
-            if self.table.is_cancelled(conn)? || progress.is_cancelled() {
+            if self.table.is_cancelled(conn).await? || progress.is_cancelled() {
                 progress.cancel();
                 return Ok(Cancelled);
             }
 
             // Pause copying if replication is lagging behind to avoid
             // overloading replicas
-            let mut lag = catalog::replication_lag(conn)?;
+            let mut lag = catalog::replication_lag(conn).await?;
             if lag > MAX_REPLICATION_LAG {
                 loop {
                     info!(logger,
@@ -778,7 +793,7 @@ impl CopyTableWorker {
                              REPLICATION_SLEEP.as_secs();
                              "lag_s" => lag.as_secs());
                     std::thread::sleep(REPLICATION_SLEEP);
-                    lag = catalog::replication_lag(conn)?;
+                    lag = catalog::replication_lag(conn).await?;
                     if lag <= ACCEPTABLE_REPLICATION_LAG {
                         break;
                     }
@@ -791,12 +806,18 @@ impl CopyTableWorker {
                         break Cancelled;
                     }
 
-                    match conn.transaction(|conn| {
-                        if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
-                            conn.batch_execute(timeout)?;
-                        }
-                        self.table.copy_batch(conn)
-                    }) {
+                    match conn
+                        .transaction(|conn| {
+                            async {
+                                if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
+                                    conn.batch_execute(timeout).await?;
+                                }
+                                self.table.copy_batch(conn).await
+                            }
+                            .scope_boxed()
+                        })
+                        .await
+                    {
                         Ok(status) => {
                             break status;
                         }
@@ -832,7 +853,8 @@ impl CopyTableWorker {
                     // that is hard to predict. This mechanism ensures
                     // that if our estimation is wrong, the consequences
                     // aren't too severe.
-                    conn.transaction(|conn| self.table.set_batch_size(conn, 1))?;
+                    conn.transaction(|conn| self.table.set_batch_size(conn, 1).scope_boxed())
+                        .await?;
                 }
             };
 
@@ -847,6 +869,8 @@ impl CopyTableWorker {
     }
 }
 
+type WorkerFuture = Pin<Box<dyn Future<Output = WorkerResult> + Send>>;
+
 /// A helper to manage the workers that are copying data. Besides the actual
 /// workers it also keeps a worker that wakes us up periodically to give us
 /// a chance to create more workers if there are database connections
@@ -854,7 +878,7 @@ impl CopyTableWorker {
 struct Workers {
     /// The list of workers that are currently running. This will always
     /// include a future that wakes us up periodically
-    futures: Vec<Pin<Box<dyn Future<Output = WorkerResult>>>>,
+    futures: Vec<WorkerFuture>,
 }
 
 impl Workers {
@@ -864,7 +888,7 @@ impl Workers {
         }
     }
 
-    fn add(&mut self, worker: Pin<Box<dyn Future<Output = WorkerResult>>>) {
+    fn add(&mut self, worker: WorkerFuture) {
         self.futures.push(worker);
     }
 
@@ -887,7 +911,7 @@ impl Workers {
         result
     }
 
-    fn waker() -> Pin<Box<dyn Future<Output = WorkerResult>>> {
+    fn waker() -> WorkerFuture {
         let sleep = tokio::time::sleep(ENV_VARS.store.batch_target_duration);
         Box::pin(sleep.map(|()| WorkerResult::Wake))
     }
@@ -931,7 +955,7 @@ impl Connection {
     /// will block until it was able to get a fdw connection. The overall
     /// effect is that new copy requests will not start until a connection
     /// is available.
-    pub fn new(
+    pub async fn new(
         logger: &Logger,
         primary: Primary,
         pool: ConnectionPool,
@@ -952,13 +976,15 @@ impl Connection {
         }
 
         let mut last_log = Instant::now();
-        let conn = pool.get_fdw(&logger, || {
-            if last_log.elapsed() > LOG_INTERVAL {
-                info!(&logger, "waiting for other copy operations to finish");
-                last_log = Instant::now();
-            }
-            false
-        })?;
+        let conn = pool
+            .get_fdw(&logger, || {
+                if last_log.elapsed() > LOG_INTERVAL {
+                    info!(&logger, "waiting for other copy operations to finish");
+                    last_log = Instant::now();
+                }
+                false
+            })
+            .await?;
         let src_manifest_idx_and_name = Arc::new(src_manifest_idx_and_name);
         let dst_manifest_idx_and_name = Arc::new(dst_manifest_idx_and_name);
         let conn = Some(LockTrackingConnection::new(conn));
@@ -976,34 +1002,53 @@ impl Connection {
         })
     }
 
-    fn transaction<T, F>(&mut self, f: F) -> Result<T, StoreError>
+    /// Run `callback` in a transaction using the connection in `self.conn`.
+    /// This will return an error if `self.conn` is `None`, which happens
+    /// while a background task is copying a table.
+    fn transaction<'a, 'conn, R, F>(
+        &'conn mut self,
+        callback: F,
+    ) -> Result<BoxFuture<'conn, Result<R, StoreError>>, StoreError>
     where
-        F: FnOnce(&mut PgConnection) -> Result<T, StoreError>,
+        F: for<'r> FnOnce(
+                &'r mut AsyncPgConnection,
+            ) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
+            + Send
+            + 'a,
+        R: Send + 'a,
+        'a: 'conn,
     {
         let Some(conn) = self.conn.as_mut() else {
             return Err(internal_error!(
                 "copy connection has been handed to background task but not returned yet (transaction)"
             ));
         };
-        conn.transaction(|conn| f(conn))
+        let conn = &mut conn.inner;
+        Ok(conn.transaction(|conn| callback(conn).scope_boxed()))
     }
 
     /// Copy private data sources if the source uses a schema version that
     /// has a private data sources table. The copying is done in its own
     /// transaction.
-    fn copy_private_data_sources(&mut self, state: &CopyState) -> Result<(), StoreError> {
+    async fn copy_private_data_sources(&mut self, state: &CopyState) -> Result<(), StoreError> {
         let src_manifest_idx_and_name = self.src_manifest_idx_and_name.cheap_clone();
         let dst_manifest_idx_and_name = self.dst_manifest_idx_and_name.cheap_clone();
         if state.src.site.schema_version.private_data_sources() {
             self.transaction(|conn| {
-                DataSourcesTable::new(state.src.site.namespace.clone()).copy_to(
-                    conn,
-                    &DataSourcesTable::new(state.dst.site.namespace.clone()),
-                    state.target_block.number,
-                    &src_manifest_idx_and_name,
-                    &dst_manifest_idx_and_name,
-                )
-            })?;
+                async {
+                    DataSourcesTable::new(state.src.site.namespace.clone())
+                        .copy_to(
+                            conn,
+                            &DataSourcesTable::new(state.dst.site.namespace.clone()),
+                            state.target_block.number,
+                            &src_manifest_idx_and_name,
+                            &dst_manifest_idx_and_name,
+                        )
+                        .await
+                }
+                .scope_boxed()
+            })?
+            .await?;
         }
         Ok(())
     }
@@ -1015,7 +1060,7 @@ impl Connection {
         &mut self,
         state: &mut CopyState,
         progress: &Arc<CopyProgress>,
-    ) -> Option<Pin<Box<dyn Future<Output = WorkerResult>>>> {
+    ) -> Option<WorkerFuture> {
         let Some(conn) = self.conn.take() else {
             return None;
         };
@@ -1033,16 +1078,17 @@ impl Connection {
     /// Opportunistically create an extra worker if we have more tables to
     /// copy and there are idle fdw connections. If there are no more tables
     /// or no idle connections, this will return `None`.
-    fn extra_worker(
+    async fn extra_worker(
         &mut self,
         state: &mut CopyState,
         progress: &Arc<CopyProgress>,
-    ) -> Option<Pin<Box<dyn Future<Output = WorkerResult>>>> {
+    ) -> Option<WorkerFuture> {
         // It's important that we get the connection before the table since
         // we remove the table from the state and could drop it otherwise
         let Some(conn) = self
             .pool
             .try_get_fdw(&self.logger, ENV_VARS.store.batch_worker_wait)
+            .await
         else {
             return None;
         };
@@ -1105,8 +1151,11 @@ impl Connection {
         let dst = self.dst.clone();
         let target_block = self.target_block.clone();
         let primary = self.primary.cheap_clone();
-        let mut state =
-            self.transaction(|conn| CopyState::new(conn, primary, src, dst, target_block))?;
+        let mut state = self
+            .transaction(|conn| {
+                CopyState::new(conn, primary, src, dst, target_block).scope_boxed()
+            })?
+            .await?;
 
         let progress = Arc::new(CopyProgress::new(self.logger.cheap_clone(), &state));
         progress.start();
@@ -1132,7 +1181,7 @@ impl Connection {
                 if workers.len() >= self.workers {
                     break;
                 }
-                let Some(worker) = self.extra_worker(&mut state, &progress) else {
+                let Some(worker) = self.extra_worker(&mut state, &progress).await else {
                     break;
                 };
                 workers.add(worker);
@@ -1203,7 +1252,10 @@ impl Connection {
 
             for (_, sql) in arr {
                 let query = sql_query(format!("{};", sql));
-                self.transaction(|conn| query.execute(conn).map_err(StoreError::from))?;
+                self.transaction(|conn| {
+                    async { query.execute(conn).await.map_err(StoreError::from) }.scope_boxed()
+                })?
+                .await?;
             }
         }
 
@@ -1222,13 +1274,17 @@ impl Connection {
                 .into_iter()
             {
                 let query = sql_query(sql);
-                self.transaction(|conn| query.execute(conn).map_err(StoreError::from))?;
+                self.transaction(|conn| {
+                    async { query.execute(conn).await.map_err(StoreError::from) }.scope_boxed()
+                })?
+                .await?;
             }
         }
 
-        self.copy_private_data_sources(&state)?;
+        self.copy_private_data_sources(&state).await?;
 
-        self.transaction(|conn| state.finished(conn))?;
+        self.transaction(|conn| state.finished(conn).scope_boxed())?
+            .await?;
         progress.finished();
 
         Ok(Status::Finished)
@@ -1268,7 +1324,7 @@ impl Connection {
         let Some(conn) = self.conn.as_mut() else {
             return Err(internal_error!("copy connection went missing (copy_data)"));
         };
-        conn.lock(&self.logger, &dst_site)?;
+        conn.lock(&self.logger, &dst_site).await?;
 
         let res = self.copy_data_internal(index_list).await;
 
@@ -1284,7 +1340,7 @@ impl Connection {
                 );
             }
             Some(conn) => {
-                conn.unlock(&self.logger, &dst_site)?;
+                conn.unlock(&self.logger, &dst_site).await?;
             }
         }
 

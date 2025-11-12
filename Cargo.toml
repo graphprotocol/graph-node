@@ -42,6 +42,7 @@ license = "MIT OR Apache-2.0"
 anyhow = "1.0"
 async-graphql = { version = "7.0.17", features = ["chrono"] }
 async-graphql-axum = "7.0.17"
+async-trait = "0.1.74"
 axum = "0.8.4"
 chrono = "0.4.42"
 bs58 = "0.5.1"
@@ -55,6 +56,7 @@ diesel = { version = "2.2.7", features = [
     "chrono",
     "i-implement-a-third-party-backend-and-opt-into-breaking-changes",
 ] }
+diesel-async = { version = "0.7.3", features = ["deadpool", "async-connection-wrapper", "tokio", "postgres"] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
 diesel-dynamic-schema = { version = "0.2.3", features = ["postgres"] }
 diesel_derives = "2.2.7"
@@ -87,7 +89,11 @@ strum = { version = "0.26", features = ["derive"] }
 syn = { version = "2.0.106", features = ["full"] }
 test-store = { path = "./store/test-store" }
 thiserror = "2.0.16"
+deadpool = { version = "0.12", features = ["rt_tokio_1", "managed"] }
 tokio = { version = "1.45.1", features = ["full"] }
+tokio-stream = { version = "0.1.15", features = ["sync"] }
+tokio-retry = "0.3.0"
+
 tonic = { version = "0.12.3", features = ["tls-roots", "gzip"] }
 tonic-build = { version = "0.12.3", features = ["prost"] }
 tower-http = { version = "0.6.6", features = ["cors"] }

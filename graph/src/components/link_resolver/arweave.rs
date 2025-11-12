@@ -128,7 +128,7 @@ mod test {
     // This test ensures that passing txid/filename works when the txid refers to manifest.
     // the actual data seems to have some binary header and footer so these ranges were found
     // by inspecting the data with hexdump.
-    #[tokio::test]
+    #[crate::test]
     async fn fetch_bundler_url() {
         let url = Base64::from("Rtdn3QWEzM88MPC2dpWyV5waO7Vuz3VwPl_usS2WoHM/DriveManifest.json");
         #[derive(Deserialize, Debug, PartialEq)]

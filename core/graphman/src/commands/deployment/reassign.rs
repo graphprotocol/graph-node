@@ -25,14 +25,15 @@ impl Deployment {
         &self.locator
     }
 
-    pub fn assigned_node(
+    pub async fn assigned_node(
         &self,
         primary_pool: ConnectionPool,
     ) -> Result<Option<NodeId>, GraphmanError> {
-        let primary_conn = primary_pool.get().map_err(GraphmanError::from)?;
+        let primary_conn = primary_pool.get().await.map_err(GraphmanError::from)?;
         let mut catalog_conn = catalog::Connection::new(primary_conn);
         let node = catalog_conn
             .assigned_node(&self.site)
+            .await
             .map_err(GraphmanError::from)?;
         Ok(node)
     }
@@ -53,22 +54,24 @@ pub enum ReassignResult {
     CompletedWithWarnings(Vec<String>),
 }
 
-pub fn load_deployment(
+pub async fn load_deployment(
     primary_pool: ConnectionPool,
     deployment: &DeploymentSelector,
 ) -> Result<Deployment, ReassignDeploymentError> {
-    let mut primary_conn = primary_pool.get().map_err(GraphmanError::from)?;
+    let mut primary_conn = primary_pool.get().await.map_err(GraphmanError::from)?;
 
     let locator = crate::deployment::load_deployment_locator(
         &mut primary_conn,
         deployment,
         &DeploymentVersionSelector::All,
-    )?;
+    )
+    .await?;
 
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
     let site = catalog_conn
         .locate_site(locator.clone())
+        .await
         .map_err(GraphmanError::from)?
         .ok_or_else(|| {
             GraphmanError::Store(anyhow!("deployment site not found for '{locator}'"))
@@ -77,14 +80,14 @@ pub fn load_deployment(
     Ok(Deployment { locator, site })
 }
 
-pub fn reassign_deployment(
+pub async fn reassign_deployment(
     primary_pool: ConnectionPool,
     notification_sender: Arc<NotificationSender>,
     deployment: &Deployment,
     node: &NodeId,
     curr_node: Option<NodeId>,
 ) -> Result<ReassignResult, ReassignDeploymentError> {
-    let primary_conn = primary_pool.get().map_err(GraphmanError::from)?;
+    let primary_conn = primary_pool.get().await.map_err(GraphmanError::from)?;
     let mut catalog_conn = catalog::Connection::new(primary_conn);
     let changes: Vec<AssignmentChange> = match &curr_node {
         Some(curr) => {
@@ -93,11 +96,13 @@ pub fn reassign_deployment(
             } else {
                 catalog_conn
                     .reassign_subgraph(&deployment.site, &node)
+                    .await
                     .map_err(GraphmanError::from)?
             }
         }
         None => catalog_conn
             .assign_subgraph(&deployment.site, &node)
+            .await
             .map_err(GraphmanError::from)?,
     };
 
@@ -110,11 +115,13 @@ pub fn reassign_deployment(
 
     catalog_conn
         .send_store_event(&notification_sender, &StoreEvent::new(changes))
+        .await
         .map_err(GraphmanError::from)?;
 
     let mirror = catalog::Mirror::primary_only(primary_pool);
     let count = mirror
         .assignments(&node)
+        .await
         .map_err(GraphmanError::from)?
         .len();
     if count == 1 {

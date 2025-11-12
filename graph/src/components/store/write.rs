@@ -933,6 +933,18 @@ impl<'a> WriteChunk<'a> {
             count: 0,
         }
     }
+
+    /// Return a vector of `WriteChunk`s each containing a single write
+    pub fn as_single_writes(&self) -> Vec<Self> {
+        (0..self.len())
+            .into_iter()
+            .map(|position| WriteChunk {
+                group: self.group,
+                chunk_size: 1,
+                position: self.position + position,
+            })
+            .collect()
+    }
 }
 
 impl<'a> IntoIterator for &WriteChunk<'a> {

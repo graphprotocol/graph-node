@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockTime;
 use graph::components::store::{
@@ -54,19 +55,20 @@ impl MockStore {
     }
 }
 
+#[async_trait]
 impl ReadStore for MockStore {
-    fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
+    async fn get(&self, key: &EntityKey) -> Result<Option<Entity>, StoreError> {
         Ok(self.get_many_res.get(key).cloned())
     }
 
-    fn get_many(
+    async fn get_many(
         &self,
         _keys: BTreeSet<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         Ok(self.get_many_res.clone())
     }
 
-    fn get_derived(
+    async fn get_derived(
         &self,
         _key: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
@@ -113,7 +115,10 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn unfail_non_deterministic_error(&self, _: &BlockPtr) -> Result<UnfailOutcome, StoreError> {
+    async fn unfail_non_deterministic_error(
+        &self,
+        _: &BlockPtr,
+    ) -> Result<UnfailOutcome, StoreError> {
         unimplemented!()
     }
 
@@ -141,7 +146,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn pause_subgraph(&self) -> Result<(), StoreError> {
+    async fn pause_subgraph(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -152,7 +157,7 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
-    fn deployment_synced(&self, _block_ptr: BlockPtr) -> Result<(), StoreError> {
+    async fn deployment_synced(&self, _block_ptr: BlockPtr) -> Result<(), StoreError> {
         unimplemented!()
     }
 
@@ -186,16 +191,16 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
     mods
 }
 
-#[tokio::test]
+#[graph::test]
 async fn empty_cache_modifications() {
     let store = Arc::new(MockStore::new(BTreeMap::new()));
     let cache = EntityCache::new(store);
-    let result = cache.as_modifications(0);
+    let result = cache.as_modifications(0).await;
     assert_eq!(result.unwrap().modifications, vec![]);
 }
 
-#[test]
-fn insert_modifications() {
+#[graph::test]
+async fn insert_modifications() {
     // Return no entities from the store, forcing the cache to treat any `set`
     // operation as an insert.
     let store = MockStore::new(BTreeMap::new());
@@ -207,18 +212,20 @@ fn insert_modifications() {
     let mogwai_key = make_band_key("mogwai");
     cache
         .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
+        .await
         .unwrap();
 
     let mut sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" };
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone(), 0, None)
+        .await
         .unwrap();
 
     mogwai_data.set_vid(100).unwrap();
     sigurros_data.set_vid(101).unwrap();
 
-    let result = cache.as_modifications(0);
+    let result = cache.as_modifications(0).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -237,8 +244,8 @@ fn entity_version_map(entity_type: &str, entities: Vec<Entity>) -> BTreeMap<Enti
     map
 }
 
-#[test]
-fn overwrite_modifications() {
+#[graph::test]
+async fn overwrite_modifications() {
     // Pre-populate the store with entities so that the cache treats
     // every set operation as an overwrite.
     let store = {
@@ -256,18 +263,20 @@ fn overwrite_modifications() {
     let mogwai_key = make_band_key("mogwai");
     cache
         .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
+        .await
         .unwrap();
 
     let mut sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", founded: 1994};
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone(), 0, None)
+        .await
         .unwrap();
 
     mogwai_data.set_vid(100).unwrap();
     sigurros_data.set_vid(101).unwrap();
 
-    let result = cache.as_modifications(0);
+    let result = cache.as_modifications(0).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -277,8 +286,8 @@ fn overwrite_modifications() {
     );
 }
 
-#[test]
-fn consecutive_modifications() {
+#[graph::test]
+async fn consecutive_modifications() {
     // Pre-populate the store with data so that we can test setting a field to
     // `Value::Null`.
     let store = {
@@ -295,16 +304,19 @@ fn consecutive_modifications() {
     let update_data =
         entity! { SCHEMA => id: "mogwai", founded: 1995, label: "Rock Action Records" };
     let update_key = make_band_key("mogwai");
-    cache.set(update_key, update_data, 0, None).unwrap();
+    cache.set(update_key, update_data, 0, None).await.unwrap();
 
     // Then, just reset the "label".
     let update_data = entity! { SCHEMA => id: "mogwai", label: Value::Null };
     let update_key = make_band_key("mogwai");
-    cache.set(update_key.clone(), update_data, 0, None).unwrap();
+    cache
+        .set(update_key.clone(), update_data, 0, None)
+        .await
+        .unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
-    let result = cache.as_modifications(0);
+    let result = cache.as_modifications(0).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::overwrite(
@@ -315,8 +327,8 @@ fn consecutive_modifications() {
     );
 }
 
-#[test]
-fn check_vid_sequence() {
+#[graph::test]
+async fn check_vid_sequence() {
     let store = MockStore::new(BTreeMap::new());
     let store = Arc::new(store);
     let mut cache = EntityCache::new(store);
@@ -328,10 +340,11 @@ fn check_vid_sequence() {
         let mogwai_data = entity! { SCHEMA => id: id, name: name };
         cache
             .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
+            .await
             .unwrap();
     }
 
-    let result = cache.as_modifications(0);
+    let result = cache.as_modifications(0).await;
     let mods = result.unwrap().modifications;
     for m in mods {
         match m {
@@ -397,12 +410,6 @@ lazy_static! {
     static ref PURSE_TYPE: EntityType = LOAD_RELATED_SUBGRAPH.entity_type(PURSE).unwrap();
 }
 
-fn remove_test_data(store: Arc<DieselSubgraphStore>) {
-    store
-        .delete_all_entities_for_test_use_only()
-        .expect("deleting test entities succeeds");
-}
-
 fn run_store_test<R, F>(test: F)
 where
     F: FnOnce(
@@ -418,7 +425,7 @@ where
     run_test_sequentially(|store| async move {
         let subgraph_store = store.subgraph_store();
         // Reset state before starting
-        remove_test_data(subgraph_store.clone());
+        remove_subgraphs().await;
 
         // Seed database with test data
         let deployment = insert_test_data(subgraph_store.clone()).await;
@@ -469,6 +476,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
             NETWORK_NAME.to_string(),
             SubgraphVersionSwitchingMode::Instant,
         )
+        .await
         .unwrap();
 
     // 1 account 3 wallets
@@ -540,7 +548,7 @@ fn check_for_account_with_multiple_wallets() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_1 = create_wallet_entity("1", &account_id, 67_i32, 1);
         let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
         let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
@@ -560,7 +568,7 @@ fn check_for_account_with_single_wallet() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_1 = create_wallet_entity("4", &account_id, 32_i32, 4);
         let expeted_vec = vec![wallet_1];
 
@@ -578,7 +586,7 @@ fn check_for_account_with_no_wallet() {
             entity_id: account_id,
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let expeted_vec = vec![];
 
         assert_eq!(result, expeted_vec);
@@ -595,7 +603,7 @@ fn check_for_account_that_doesnt_exist() {
             entity_id: account_id,
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let expeted_vec = vec![];
 
         assert_eq!(result, expeted_vec);
@@ -612,7 +620,7 @@ fn check_for_non_existent_field() {
             entity_id: account_id,
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap_err();
+        let result = cache.load_related(&request).await.unwrap_err();
         let expected = format!(
             "Entity {}[{}]: unknown field `{}`",
             request.entity_type, request.entity_id, request.entity_field,
@@ -644,7 +652,7 @@ fn check_for_insert_async_store() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_1 = create_wallet_entity("4", &account_id, 32_i32, 4);
         let wallet_2 = create_wallet_entity("5", &account_id, 79_i32, 12);
         let wallet_3 = create_wallet_entity("6", &account_id, 200_i32, 13);
@@ -676,7 +684,7 @@ fn check_for_insert_async_not_related() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_1 = create_wallet_entity("1", &account_id, 67_i32, 1);
         let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
         let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
@@ -697,7 +705,7 @@ fn check_for_update_async_related() {
             EntityOperation::Set { ref data, .. } => data.clone(),
             _ => unreachable!(),
         };
-        assert_ne!(writable.get(&entity_key).unwrap().unwrap(), new_data);
+        assert_ne!(writable.get(&entity_key).await.unwrap().unwrap(), new_data);
         // insert a new wallet
         transact_entity_operations(
             &store,
@@ -714,7 +722,7 @@ fn check_for_update_async_related() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
         let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
         let expeted_vec = vec![new_data, wallet_2, wallet_3];
@@ -744,7 +752,7 @@ fn check_for_delete_async_related() {
             entity_id: account_id.clone(),
             causality_region: CausalityRegion::ONCHAIN,
         };
-        let result = cache.load_related(&request).unwrap();
+        let result = cache.load_related(&request).await.unwrap();
         let wallet_2 = create_wallet_entity("2", &account_id, 92_i32, 2);
         let wallet_3 = create_wallet_entity("3", &account_id, 192_i32, 3);
         let expeted_vec = vec![wallet_2, wallet_3];
@@ -764,37 +772,43 @@ fn scoped_get() {
         let account5 = ACCOUNT_TYPE.parse_id("5").unwrap();
         let mut wallet5 = create_wallet_entity_no_vid("5", &account5, 100);
         let key5 = WALLET_TYPE.parse_key("5").unwrap();
-        cache.set(key5.clone(), wallet5.clone(), 0, None).unwrap();
+        cache
+            .set(key5.clone(), wallet5.clone(), 0, None)
+            .await
+            .unwrap();
 
         wallet5.set_vid(100).unwrap();
         // For the new entity, we can retrieve it with either scope
-        let act5 = cache.get(&key5, GetScope::InBlock).unwrap();
+        let act5 = cache.get(&key5, GetScope::InBlock).await.unwrap();
         assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
-        let act5 = cache.get(&key5, GetScope::Store).unwrap();
+        let act5 = cache.get(&key5, GetScope::Store).await.unwrap();
         assert_eq!(Some(&wallet5), act5.as_ref().map(|e| e.as_ref()));
 
         let mut wallet1a = wallet1.clone();
         wallet1a.set_vid(1).unwrap();
         // For an entity in the store, we can not get it `InBlock` but with
         // `Store`
-        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        let act1 = cache.get(&key1, GetScope::InBlock).await.unwrap();
         assert_eq!(None, act1);
-        let act1 = cache.get(&key1, GetScope::Store).unwrap();
+        let act1 = cache.get(&key1, GetScope::Store).await.unwrap();
         assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
 
         // Even after reading from the store, the entity is not visible with
         // `InBlock`
-        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        let act1 = cache.get(&key1, GetScope::InBlock).await.unwrap();
         assert_eq!(None, act1);
         // But if it gets updated, it becomes visible with either scope
         let mut wallet1 = wallet1;
         wallet1.set("balance", 70).unwrap();
-        cache.set(key1.clone(), wallet1.clone(), 0, None).unwrap();
+        cache
+            .set(key1.clone(), wallet1.clone(), 0, None)
+            .await
+            .unwrap();
         wallet1a = wallet1;
         wallet1a.set_vid(101).unwrap();
-        let act1 = cache.get(&key1, GetScope::InBlock).unwrap();
+        let act1 = cache.get(&key1, GetScope::InBlock).await.unwrap();
         assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
-        let act1 = cache.get(&key1, GetScope::Store).unwrap();
+        let act1 = cache.get(&key1, GetScope::Store).await.unwrap();
         assert_eq!(Some(&wallet1a), act1.as_ref().map(|e| e.as_ref()));
     })
 }
@@ -814,10 +828,10 @@ fn no_internal_keys() {
         }
         let key = WALLET_TYPE.parse_key("1").unwrap();
 
-        let wallet = writable.get(&key).unwrap().unwrap();
+        let wallet = writable.get(&key).await.unwrap().unwrap();
         check(&key, &wallet);
 
-        let wallet = cache.get(&key, GetScope::Store).unwrap().unwrap();
+        let wallet = cache.get(&key, GetScope::Store).await.unwrap().unwrap();
         check(&key, &wallet);
     });
 }
@@ -829,15 +843,15 @@ fn no_interface_mods() {
 
         // This should probably be an error, but changing that would not be
         // backwards compatible
-        assert_eq!(None, cache.get(&key, GetScope::InBlock).unwrap());
+        assert_eq!(None, cache.get(&key, GetScope::InBlock).await.unwrap());
 
         assert!(matches!(
-            cache.get(&key, GetScope::Store),
+            cache.get(&key, GetScope::Store).await,
             Err(StoreError::UnknownTable(_))
         ));
 
         let entity = entity! { LOAD_RELATED_SUBGRAPH => id: "1", balance: 100 };
 
-        cache.set(key, entity, 0, None).unwrap_err();
+        cache.set(key, entity, 0, None).await.unwrap_err();
     })
 }

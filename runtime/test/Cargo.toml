@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
 semver = "1.0"
 wasmtime.workspace = true
 graph = { path = "../../graph" }

@@ -1,4 +1,3 @@
-use diesel::pg::PgConnection;
 use diesel::select;
 use diesel::sql_types::Text;
 use graph::prelude::tokio::sync::mpsc::error::SendTimeoutError;
@@ -9,13 +8,16 @@ use postgres::Notification;
 use postgres::{fallible_iterator::FallibleIterator, Client};
 use postgres_openssl::MakeTlsConnector;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Barrier, Mutex};
+use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{channel, Receiver};
+use tokio::sync::Mutex;
 
 use graph::prelude::serde_json;
 use graph::prelude::*;
+
+use crate::AsyncPgConnection;
 
 #[cfg(debug_assertions)]
 lazy_static::lazy_static! {
@@ -404,15 +406,15 @@ impl NotificationSender {
     /// connection `conn` must be into the primary database as that's the
     /// only place where listeners connect. The `network` is only used for
     /// metrics gathering and does not affect how the notification is sent
-    pub fn notify(
+    pub async fn notify(
         &self,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
         channel: &str,
         network: Option<&str>,
         data: &serde_json::Value,
     ) -> Result<(), StoreError> {
         use diesel::ExpressionMethods;
-        use diesel::RunQueryDsl;
+        use diesel_async::RunQueryDsl;
         use public::large_notifications::dsl::*;
 
         define_sql_function! {
@@ -422,16 +424,19 @@ impl NotificationSender {
         let msg = data.to_string();
 
         if msg.len() <= LARGE_NOTIFICATION_THRESHOLD {
-            select(pg_notify(channel, &msg)).execute(conn)?;
+            select(pg_notify(channel, &msg)).execute(conn).await?;
         } else {
             // Write the notification payload to the large_notifications table
             let payload_id: i32 = diesel::insert_into(large_notifications)
                 .values(payload.eq(&msg))
                 .returning(id)
-                .get_result(conn)?;
+                .get_result(conn)
+                .await?;
 
             // Use the large_notifications row ID as the payload for NOTIFY
-            select(pg_notify(channel, &payload_id.to_string())).execute(conn)?;
+            select(pg_notify(channel, &payload_id.to_string()))
+                .execute(conn)
+                .await?;
 
             // Prune old large_notifications. We want to keep the size of the
             // table manageable, but there's a lot of latitude in how often
@@ -456,7 +461,8 @@ impl NotificationSender {
                          where created_at < current_timestamp - interval '{}s'",
                         ENV_VARS.store.large_notification_cleanup_interval.as_secs(),
                     ))
-                    .execute(conn)?;
+                    .execute(conn)
+                    .await?;
                     *last_check = Instant::now();
                 }
             }

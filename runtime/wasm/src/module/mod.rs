@@ -3,6 +3,7 @@ use std::mem::MaybeUninit;
 
 use anyhow::anyhow;
 use anyhow::Error;
+use async_trait::async_trait;
 use graph::blockchain::Blockchain;
 use graph::data_source::subgraph;
 use graph::parking_lot::RwLock;

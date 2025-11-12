@@ -1,5 +1,4 @@
-use diesel::{connection::SimpleConnection, pg::PgConnection};
-
+use diesel_async::SimpleAsyncConnection;
 use graph::{
     prelude::{
         anyhow::{self, anyhow, bail},
@@ -12,12 +11,13 @@ use std::fmt::Write;
 
 use postgres::config::{Config, Host};
 
-use crate::catalog;
 use crate::primary::NAMESPACE_PUBLIC;
+use crate::{catalog, AsyncPgConnection};
 use crate::{Shard, PRIMARY_SHARD};
 
 use super::{PRIMARY_PUBLIC, PRIMARY_TABLES, SHARDED_TABLES};
 
+#[derive(Clone)]
 pub struct ForeignServer {
     pub name: String,
     pub shard: Shard,
@@ -106,7 +106,7 @@ impl ForeignServer {
 
     /// Create a new foreign server and user mapping on `conn` for this foreign
     /// server
-    pub(super) fn create(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+    pub(super) async fn create(&self, conn: &mut AsyncPgConnection) -> Result<(), StoreError> {
         let query = format!(
             "\
         create server \"{name}\"
@@ -127,12 +127,12 @@ impl ForeignServer {
             remote_password = self.password,
             fetch_size = ENV_VARS.store.fdw_fetch_size,
         );
-        Ok(conn.batch_execute(&query)?)
+        Ok(conn.batch_execute(&query).await?)
     }
 
     /// Update an existing user mapping with possibly new details
-    pub(super) fn update(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
-        let options = catalog::server_options(conn, &self.name)?;
+    pub(super) async fn update(&self, conn: &mut AsyncPgConnection) -> Result<(), StoreError> {
+        let options = catalog::server_options(conn, &self.name).await?;
         let set_or_add = |option: &str| -> &'static str {
             if options.contains_key(option) {
                 "set"
@@ -161,13 +161,16 @@ impl ForeignServer {
             remote_password = self.password,
             fetch_size = ENV_VARS.store.fdw_fetch_size,
         );
-        Ok(conn.batch_execute(&query)?)
+        Ok(conn.batch_execute(&query).await?)
     }
 
     /// Map key tables from the primary into our local schema. If we are the
     /// primary, set them up as views.
-    pub(super) fn map_primary(conn: &mut PgConnection, shard: &Shard) -> Result<(), StoreError> {
-        catalog::recreate_schema(conn, PRIMARY_PUBLIC)?;
+    pub(super) async fn map_primary(
+        conn: &mut AsyncPgConnection,
+        shard: &Shard,
+    ) -> Result<(), StoreError> {
+        catalog::recreate_schema(conn, PRIMARY_PUBLIC).await?;
 
         let mut query = String::new();
         for table_name in PRIMARY_TABLES {
@@ -184,31 +187,39 @@ impl ForeignServer {
                     table_name,
                     PRIMARY_PUBLIC,
                     Self::name(&PRIMARY_SHARD).as_str(),
-                )?
+                )
+                .await?
             };
             write!(query, "{}", create_stmt)?;
         }
-        conn.batch_execute(&query)?;
+        conn.batch_execute(&query).await?;
         Ok(())
     }
 
     /// Map the `subgraphs` schema from the foreign server `self` into the
     /// database accessible through `conn`
-    pub(super) fn map_metadata(&self, conn: &mut PgConnection) -> Result<(), StoreError> {
+    pub(super) async fn map_metadata(
+        &self,
+        conn: &mut AsyncPgConnection,
+    ) -> Result<(), StoreError> {
         let nsp = Self::metadata_schema(&self.shard);
-        catalog::recreate_schema(conn, &nsp)?;
+        catalog::recreate_schema(conn, &nsp).await?;
         let mut query = String::new();
         for (src_nsp, src_tables) in SHARDED_TABLES {
             for src_table in src_tables {
                 let create_stmt =
-                    catalog::create_foreign_table(conn, src_nsp, src_table, &nsp, &self.name)?;
+                    catalog::create_foreign_table(conn, src_nsp, src_table, &nsp, &self.name)
+                        .await?;
                 write!(query, "{}", create_stmt)?;
             }
         }
-        Ok(conn.batch_execute(&query)?)
+        Ok(conn.batch_execute(&query).await?)
     }
 
-    pub(super) fn needs_remap(&self, conn: &mut PgConnection) -> Result<bool, StoreError> {
+    pub(super) async fn needs_remap(
+        &self,
+        conn: &mut AsyncPgConnection,
+    ) -> Result<bool, StoreError> {
         fn different(mut existing: Vec<String>, mut needed: Vec<String>) -> bool {
             existing.sort();
             needed.sort();
@@ -216,7 +227,7 @@ impl ForeignServer {
         }
 
         if &self.shard == &*PRIMARY_SHARD {
-            let existing = catalog::foreign_tables(conn, PRIMARY_PUBLIC)?;
+            let existing = catalog::foreign_tables(conn, PRIMARY_PUBLIC).await?;
             let needed = PRIMARY_TABLES
                 .into_iter()
                 .map(String::from)
@@ -226,7 +237,7 @@ impl ForeignServer {
             }
         }
 
-        let existing = catalog::foreign_tables(conn, &Self::metadata_schema(&self.shard))?;
+        let existing = catalog::foreign_tables(conn, &Self::metadata_schema(&self.shard)).await?;
         let needed = SHARDED_TABLES
             .iter()
             .flat_map(|(_, tables)| *tables)

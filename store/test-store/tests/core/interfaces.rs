@@ -45,7 +45,7 @@ macro_rules! extract_data {
     };
 }
 
-#[tokio::test]
+#[graph::test]
 async fn one_interface_zero_entities() {
     let subgraph_id = "oneInterfaceZeroEntities";
     let schema = "interface Legged { legs: Int }
@@ -62,7 +62,7 @@ async fn one_interface_zero_entities() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn one_interface_one_entity() {
     let subgraph_id = "oneInterfaceOneEntity";
     let document = "interface Legged { legs: Int }
@@ -90,7 +90,7 @@ async fn one_interface_one_entity() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn one_interface_one_entity_typename() {
     let subgraph_id = "oneInterfaceOneEntityTypename";
     let document = "interface Legged { legs: Int }
@@ -109,7 +109,7 @@ async fn one_interface_one_entity_typename() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn one_interface_multiple_entities() {
     let subgraph_id = "oneInterfaceMultipleEntities";
     let document = "interface Legged { legs: Int }
@@ -140,7 +140,7 @@ async fn one_interface_multiple_entities() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn reference_interface() {
     let subgraph_id = "ReferenceInterface";
     let document = "type Leg @entity { id: ID! }
@@ -162,7 +162,7 @@ async fn reference_interface() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn reference_interface_derived() {
     // Test the different ways in which interface implementations
     // can reference another entity
@@ -230,7 +230,7 @@ async fn reference_interface_derived() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn follow_interface_reference_invalid() {
     let subgraph_id = "FollowInterfaceReferenceInvalid";
     let schema = "interface Legged { legs: Int! }
@@ -263,7 +263,7 @@ async fn follow_interface_reference_invalid() {
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn follow_interface_reference() {
     let subgraph_id = "FollowInterfaceReference";
     let document = "interface Legged { id: ID!, legs: Int! }
@@ -296,7 +296,7 @@ async fn follow_interface_reference() {
     assert_eq!(data, exp)
 }
 
-#[tokio::test]
+#[graph::test]
 async fn conflicting_implementors_id() {
     let subgraph_id = "ConflictingImplementorsId";
     let document = "interface Legged { legs: Int }
@@ -325,7 +325,7 @@ async fn conflicting_implementors_id() {
     assert!(msg == EXPECTED1 || msg == EXPECTED2);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn derived_interface_relationship() {
     let subgraph_id = "DerivedInterfaceRelationship";
     let document = "interface ForestDweller { id: ID!, forest: Forest }
@@ -349,7 +349,7 @@ async fn derived_interface_relationship() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn two_interfaces() {
     let subgraph_id = "TwoInterfaces";
     let document = "interface IFoo { foo: String! }
@@ -381,7 +381,7 @@ async fn two_interfaces() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn interface_non_inline_fragment() {
     let subgraph_id = "interfaceNonInlineFragment";
     let document = "interface Legged { legs: Int }
@@ -412,7 +412,7 @@ async fn interface_non_inline_fragment() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn interface_inline_fragment() {
     let subgraph_id = "interfaceInlineFragment";
     let document = "interface Legged { legs: Int }
@@ -436,7 +436,7 @@ async fn interface_inline_fragment() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn interface_inline_fragment_with_subquery() {
     let subgraph_id = "InterfaceInlineFragmentWithSubquery";
     let document = "
@@ -488,7 +488,7 @@ async fn interface_inline_fragment_with_subquery() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn invalid_fragment() {
     let subgraph_id = "InvalidFragment";
     let schema = "interface Legged { legs: Int! }
@@ -520,7 +520,7 @@ async fn invalid_fragment() {
     }
 }
 
-#[tokio::test]
+#[graph::test]
 async fn alias() {
     let subgraph_id = "Alias";
     let document = "interface Legged { id: ID!, legs: Int! }
@@ -570,7 +570,7 @@ async fn alias() {
     )
 }
 
-#[tokio::test]
+#[graph::test]
 async fn fragments_dont_panic() {
     let subgraph_id = "FragmentsDontPanic";
     let document = "
@@ -641,7 +641,7 @@ async fn fragments_dont_panic() {
 }
 
 // See issue #1816
-#[tokio::test]
+#[graph::test]
 async fn fragments_dont_duplicate_data() {
     let subgraph_id = "FragmentsDupe";
     let document = "
@@ -709,7 +709,7 @@ async fn fragments_dont_duplicate_data() {
 }
 
 // See also: e0d6da3e-60cf-41a5-b83c-b60a7a766d4a
-#[tokio::test]
+#[graph::test]
 async fn redundant_fields() {
     let subgraph_id = "RedundantFields";
     let document = "interface Legged { id: ID!, parent: Legged }
@@ -759,7 +759,7 @@ async fn redundant_fields() {
     )
 }
 
-#[tokio::test]
+#[graph::test]
 async fn fragments_merge_selections() {
     let subgraph_id = "FragmentsMergeSelections";
     let document = "
@@ -820,7 +820,7 @@ async fn fragments_merge_selections() {
     )
 }
 
-#[tokio::test]
+#[graph::test]
 async fn merge_fields_not_in_interface() {
     let subgraph_id = "MergeFieldsNotInInterface";
     let document = "interface Iface { id: ID! }
@@ -881,7 +881,7 @@ async fn merge_fields_not_in_interface() {
     )
 }
 
-#[tokio::test]
+#[graph::test]
 async fn nested_interface_fragments() {
     let subgraph_id = "NestedInterfaceFragments";
     let document = "interface I1face { id: ID!, foo1: Foo! }
@@ -978,7 +978,7 @@ async fn nested_interface_fragments() {
     )
 }
 
-#[tokio::test]
+#[graph::test]
 async fn nested_interface_fragments_overlapping() {
     let subgraph_id = "NestedInterfaceFragmentsOverlapping";
     let document = "interface I1face { id: ID!, foo1: Foo! }
@@ -1071,7 +1071,7 @@ async fn nested_interface_fragments_overlapping() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn enums() {
     use r::Value::Enum;
     let subgraph_id = "enums";
@@ -1124,7 +1124,7 @@ async fn enums() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn enum_list_filters() {
     use r::Value::Enum;
     let subgraph_id = "enum_list_filters";
@@ -1199,7 +1199,7 @@ async fn enum_list_filters() {
     );
 }
 
-#[tokio::test]
+#[graph::test]
 async fn recursive_fragment() {
     // Depending on whether `ENABLE_GRAPHQL_VALIDATIONS` is set or not, we
     // get different error messages
@@ -1273,7 +1273,7 @@ async fn recursive_fragment() {
     assert!(FOO_BAR_ERRORS.contains(&data.as_str()));
 }
 
-#[tokio::test]
+#[graph::test]
 async fn mixed_mutability() {
     let subgraph_id = "MixedMutability";
     let document = "interface Event { id: String! }
@@ -1297,7 +1297,7 @@ async fn mixed_mutability() {
         // this. They rely on the EntityCache filtering out entity changes
         // that are already in the store
         let id = DeploymentHash::new(subgraph_id).unwrap();
-        remove_subgraph(&id);
+        remove_subgraph(&id).await;
     }
     let res = insert_and_query(subgraph_id, document, entities, query)
         .await
@@ -1308,7 +1308,7 @@ async fn mixed_mutability() {
     assert_eq!(data, exp);
 }
 
-#[tokio::test]
+#[graph::test]
 async fn derived_interface_bytes() {
     fn b(s: &str) -> Value {
         Value::Bytes(s.parse().unwrap())

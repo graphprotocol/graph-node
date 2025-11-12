@@ -62,7 +62,9 @@ pub use self::chain_store::{ChainStore, ChainStoreMetrics, Storage};
 pub use self::detail::DeploymentDetail;
 pub use self::jobs::register as register_jobs;
 pub use self::notification_listener::NotificationSender;
-pub use self::pool::{ConnectionPool, ForeignServer, PoolCoordinator, PoolRole};
+pub use self::pool::{
+    AsyncPgConnection, ConnectionPool, ForeignServer, PoolCoordinator, PoolRole, ScopedFutureExt,
+};
 pub use self::primary::{db_version, UnusedDeployment};
 pub use self::store::Store;
 pub use self::store_events::SubscriptionManager;

@@ -123,7 +123,7 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor = "multi_thread")]
+    #[crate::test]
     async fn jobs_run() {
         let count = Arc::new(Mutex::new(0));
         let job = CounterJob {

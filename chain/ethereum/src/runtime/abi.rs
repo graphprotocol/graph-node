@@ -2,9 +2,10 @@ use super::runtime_adapter::UnresolvedContractCall;
 use crate::trigger::{
     EthereumBlockData, EthereumCallData, EthereumEventData, EthereumTransactionData,
 };
+use async_trait::async_trait;
 use graph::{
     prelude::{
-        async_trait, ethabi,
+        ethabi,
         web3::{
             self,
             types::{Log, TransactionReceipt, H256},

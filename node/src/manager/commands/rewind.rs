@@ -14,7 +14,7 @@ use graph_store_postgres::{BlockStore, NotificationSender};
 use graph_store_postgres::{ConnectionPool, Store};
 
 async fn block_ptr(
-    store: Arc<BlockStore>,
+    store: BlockStore,
     locators: &HashSet<(String, DeploymentLocator)>,
     searches: &Vec<DeploymentSearch>,
     hash: &str,
@@ -40,7 +40,7 @@ async fn block_ptr(
 
     let chain = chains.iter().next().unwrap().to_string();
 
-    let chain_store = match store.chain_store(&chain) {
+    let chain_store = match store.chain_store(&chain).await {
         None => bail!("can not find chain store for {}", chain),
         Some(store) => store,
     };
@@ -78,7 +78,7 @@ pub async fn run(
     if !start_block && (block_hash.is_none() || block_number.is_none()) {
         bail!("--block-hash and --block-number must be specified when --start-block is not set");
     }
-    let pconn = primary.get()?;
+    let pconn = primary.get().await?;
     let mut conn = store_catalog::Connection::new(pconn);
 
     let subgraph_store = store.subgraph_store();
@@ -87,7 +87,7 @@ pub async fn run(
     let mut locators = HashSet::new();
 
     for search in &searches {
-        let results = search.lookup(&primary)?;
+        let results = search.lookup(&primary).await?;
 
         let deployment_locators: HashSet<(String, DeploymentLocator)> = results
             .iter()
@@ -127,10 +127,11 @@ pub async fn run(
     println!("Checking if its safe to rewind deployments");
     for (_, locator) in &locators {
         let site = conn
-            .locate_site(locator.clone())?
+            .locate_site(locator.clone())
+            .await?
             .ok_or_else(|| anyhow!("failed to locate site for {locator}"))?;
         let deployment_store = subgraph_store.for_site(&site)?;
-        let deployment_details = deployment_store.deployment_details_for_id(locator)?;
+        let deployment_details = deployment_store.deployment_details_for_id(locator).await?;
         let block_number_to = block_ptr_to.as_ref().map(|b| b.number).unwrap_or(0);
 
         if block_number_to < deployment_details.earliest_block_number + ENV_VARS.reorg_threshold() {
@@ -146,7 +147,7 @@ pub async fn run(
 
     println!("Pausing deployments");
     for (_, locator) in &locators {
-        pause_or_resume(primary.clone(), &sender, &locator, true)?;
+        pause_or_resume(primary.clone(), &sender, &locator, true).await?;
     }
 
     // There's no good way to tell that a subgraph has in fact stopped
@@ -160,22 +161,28 @@ pub async fn run(
     println!("\nRewinding deployments");
     for (chain, loc) in &locators {
         let block_store = store.block_store();
-        let deployment_details = subgraph_store.load_deployment_by_id(loc.clone().into())?;
+        let deployment_details = subgraph_store
+            .load_deployment_by_id(loc.clone().into())
+            .await?;
         let block_ptr_to = block_ptr_to.clone();
 
-        let start_block = deployment_details.start_block.or_else(|| {
-            block_store
-                .chain_store(chain)
-                .and_then(|chain_store| chain_store.genesis_block_ptr().ok())
-        });
+        let start_block = match deployment_details.start_block {
+            Some(ptr) => Some(ptr),
+            None => match block_store.chain_store(chain).await {
+                Some(chain_store) => chain_store.genesis_block_ptr().await.ok(),
+                None => None,
+            },
+        };
 
         match (block_ptr_to, start_block) {
             (Some(block_ptr), _) => {
-                subgraph_store.rewind(loc.hash.clone(), block_ptr)?;
+                subgraph_store.rewind(loc.hash.clone(), block_ptr).await?;
                 println!("  ... rewound {}", loc);
             }
             (None, Some(start_block_ptr)) => {
-                subgraph_store.truncate(loc.hash.clone(), start_block_ptr)?;
+                subgraph_store
+                    .truncate(loc.hash.clone(), start_block_ptr)
+                    .await?;
                 println!("  ... truncated {}", loc);
             }
             (None, None) => {
@@ -186,7 +193,7 @@ pub async fn run(
 
     println!("Resuming deployments");
     for (_, locator) in &locators {
-        pause_or_resume(primary.clone(), &sender, locator, false)?;
+        pause_or_resume(primary.clone(), &sender, locator, false).await?;
     }
     Ok(())
 }

@@ -76,15 +76,15 @@ impl PoolCoordinator {
     /// This tries to take the migration lock and must therefore be run from
     /// code that does _not_ hold the migration lock as it will otherwise
     /// deadlock
-    fn propagate(&self, pool: &PoolInner, count: MigrationCount) -> Result<(), StoreError> {
+    async fn propagate(&self, pool: &PoolInner, count: MigrationCount) -> Result<(), StoreError> {
         // We need to remap all these servers into `pool` if the list of
         // tables that are mapped have changed from the code of the previous
         // version. Since dropping and recreating the foreign table
         // definitions can slow the startup of other nodes down because of
         // locking, we try to only do this when it is actually needed
         for server in self.servers.iter() {
-            if pool.needs_remap(server)? {
-                pool.remap(server)?;
+            if pool.needs_remap(server).await? {
+                pool.remap(server).await?;
             }
         }
 
@@ -95,9 +95,8 @@ impl PoolCoordinator {
         // we can be sure that these mappings use the correct schema
         if count.had_migrations() {
             let server = self.server(&pool.shard)?;
-            for pool in self.pools.lock().unwrap().values() {
-                let pool = pool.get_unready();
-                let remap_res = pool.remap(server);
+            for pool in self.pools() {
+                let remap_res = pool.remap(&server).await;
                 if let Err(e) = remap_res {
                     error!(pool.logger, "Failed to map imports from {}", server.shard; "error" => e.to_string());
                     return Err(e);
@@ -252,7 +251,7 @@ impl PoolCoordinator {
                 .into_iter()
                 .map(|(state, count)| async move {
                     let pool = state.get_unready();
-                    let res = this.propagate(&pool, count);
+                    let res = this.propagate(&pool, count).await;
                     (state.cheap_clone(), res)
                 })
                 .collect::<Vec<_>>();
@@ -266,7 +265,7 @@ impl PoolCoordinator {
 
         let primary = self.primary()?;
 
-        let mut pconn = primary.get().map_err(|_| StoreError::DatabaseUnavailable)?;
+        let mut pconn = primary.get().await?;
 
         let states: Vec<_> = states
             .into_iter()
@@ -294,13 +293,13 @@ impl PoolCoordinator {
                 return Ok(0);
             }
 
-            primary.drop_cross_shard_views()?;
+            primary.drop_cross_shard_views().await?;
 
             let migrated = migrate(&states, self.servers.as_ref()).await?;
 
             let propagated = propagate(&self, migrated).await?;
 
-            primary.create_cross_shard_views(&self.servers)?;
+            primary.create_cross_shard_views(&self.servers).await?;
 
             for state in &propagated {
                 state.set_ready();
