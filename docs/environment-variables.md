@@ -287,3 +287,7 @@ those.
 - `GRAPH_ENABLE_SQL_QUERIES`: Enable the experimental [SQL query
   interface](implementation/sql-interface.md).
   (default: false)
+- `GRAPH_STORE_DISABLE_CALL_CACHE`: Disables the store call cache entirely. Graph node will skip writing and reading from the
+  call cache. The buffered block call cache will still be enabled. This option may be useful
+  for indexers who are running their own RPC nodes. Disabling the store call cache may have
+  significant performance impact. (default: false)
