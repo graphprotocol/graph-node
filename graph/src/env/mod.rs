@@ -29,6 +29,7 @@ lazy_static! {
 lazy_static! {
     pub static ref TEST_WITH_NO_REORG: Mutex<bool> = Mutex::new(false);
     pub static ref TEST_SQL_QUERIES_ENABLED: Mutex<bool> = Mutex::new(false);
+    pub static ref TEST_STORE_CALL_CACHE_DISABLED: Mutex<bool> = Mutex::new(false);
 }
 
 /// Panics if:
@@ -443,6 +444,25 @@ impl EnvVars {
     pub fn enable_sql_queries_for_tests(&self, enable: bool) {
         let mut lock = TEST_SQL_QUERIES_ENABLED.lock().unwrap();
         *lock = enable;
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn store_call_cache_disabled(&self) -> bool {
+        if *TEST_STORE_CALL_CACHE_DISABLED.lock().unwrap() {
+            true
+        } else {
+            self.store.disable_call_cache
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    pub fn store_call_cache_disabled(&self) -> bool {
+        self.store.disable_call_cache
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn set_store_call_cache_disabled_for_tests(&self, value: bool) {
+        *TEST_STORE_CALL_CACHE_DISABLED.lock().unwrap() = value;
     }
 }
 

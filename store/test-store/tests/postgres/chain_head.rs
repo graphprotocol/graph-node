@@ -530,6 +530,36 @@ fn eth_call_cache() {
 }
 
 #[test]
+fn test_disable_call_cache() {
+    let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
+
+    run_test(chain, |store, _| {
+        ENV_VARS.set_store_call_cache_disabled_for_tests(true);
+
+        let logger = LOGGER.cheap_clone();
+        let address = H160([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5]);
+        let call: [u8; 6] = [1, 2, 3, 4, 5, 6];
+        let return_value: [u8; 3] = [7, 8, 9];
+
+        let call = call::Request::new(address, call.to_vec(), 0);
+
+        store
+            .set_call(
+                &logger,
+                call.cheap_clone(),
+                BLOCK_ONE.block_ptr(),
+                call::Retval::Value(Bytes::from(return_value)),
+            )
+            .unwrap();
+
+        let ret = store.get_call(&call, BLOCK_ONE.block_ptr()).unwrap();
+
+        assert!(ret.is_none());
+        Ok(())
+    });
+}
+
+#[test]
 /// Tests mainly query correctness. Requires data in order not to hit early returns when no stale contracts are found.
 fn test_clear_stale_call_cache() {
     let chain = vec![];

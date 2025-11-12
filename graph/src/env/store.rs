@@ -149,7 +149,6 @@ pub struct EnvVarsStore {
     /// The number of rows to fetch from the foreign data wrapper in one go,
     /// this will be set as the option 'fetch_size' on all foreign servers
     pub fdw_fetch_size: usize,
-
     /// Experimental feature to automatically set the account-like flag on eligible tables
     /// Set by the environment variable `GRAPH_STORE_ACCOUNT_LIKE_SCAN_INTERVAL_HOURS`
     /// If not set, the job is disabled.
@@ -161,6 +160,10 @@ pub struct EnvVarsStore {
     /// Set by the environment variable `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`
     /// Defines the maximum share of unique entities (e.g. 0.01 for a 1:100 entity-to-version ratio).
     pub account_like_max_unique_ratio: Option<f64>,
+    /// Disables the store call cache entirely. Graph node will skip writing and reading from the
+    /// call cache. The buffered block call cache will still be enabled.
+    /// Set by `GRAPH_STORE_DISABLE_CALL_CACHE`. Defaults to false.
+    pub disable_call_cache: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -221,6 +224,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             account_like_scan_interval_hours: x.account_like_scan_interval_hours,
             account_like_min_versions_count: x.account_like_min_versions_count,
             account_like_max_unique_ratio: x.account_like_max_unique_ratio.map(|r| r.0),
+            disable_call_cache: x.disable_call_cache,
         };
         if let Some(timeout) = vars.batch_timeout {
             if timeout < 2 * vars.batch_target_duration {
@@ -326,6 +330,8 @@ pub struct InnerStore {
     account_like_min_versions_count: Option<u64>,
     #[envconfig(from = "GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO")]
     account_like_max_unique_ratio: Option<ZeroToOneF64>,
+    #[envconfig(from = "GRAPH_STORE_DISABLE_CALL_CACHE", default = "false")]
+    disable_call_cache: bool,
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -294,3 +294,7 @@ those.
   `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT` and `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`.
 - `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT`: Sets the minimum total number of versions a table must have to be considered for account-like flagging. Expects a positive integer value. No default value.
 - `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`: Sets the maximum unique entities to version ratio (e.g., 0.01 ≈ 1:100 entity-to-version ratio).
+- `GRAPH_STORE_DISABLE_CALL_CACHE`: Disables the store call cache entirely. Graph node will skip writing and reading from the
+  call cache. The buffered block call cache will still be enabled. This option may be useful
+  for indexers who are running their own RPC nodes. Disabling the store call cache may have
+  significant performance impact. (default: false)
