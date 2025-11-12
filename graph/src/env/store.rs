@@ -149,6 +149,10 @@ pub struct EnvVarsStore {
     /// The number of rows to fetch from the foreign data wrapper in one go,
     /// this will be set as the option 'fetch_size' on all foreign servers
     pub fdw_fetch_size: usize,
+    /// Disables the store call cache entirely. Graph node will skip writing and reading from the
+    /// call cache. The buffered block call cache will still be enabled.
+    /// Set by `GRAPH_STORE_DISABLE_CALL_CACHE`. Defaults to false.
+    pub disable_call_cache: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -206,6 +210,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             disable_block_cache_for_lookup: x.disable_block_cache_for_lookup,
             insert_extra_cols: x.insert_extra_cols,
             fdw_fetch_size: x.fdw_fetch_size,
+            disable_call_cache: x.disable_call_cache,
         };
         if let Some(timeout) = vars.batch_timeout {
             if timeout < 2 * vars.batch_target_duration {
@@ -295,6 +300,8 @@ pub struct InnerStore {
     insert_extra_cols: usize,
     #[envconfig(from = "GRAPH_STORE_FDW_FETCH_SIZE", default = "1000")]
     fdw_fetch_size: usize,
+    #[envconfig(from = "GRAPH_STORE_DISABLE_CALL_CACHE", default = "false")]
+    disable_call_cache: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
