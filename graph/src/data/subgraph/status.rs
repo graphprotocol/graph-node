@@ -191,7 +191,8 @@ mod tests {
 
     #[test]
     fn subgraph_error_block_is_null_without_pointer() {
-        let deployment = DeploymentHash::new("QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco").unwrap();
+        let deployment =
+            DeploymentHash::new("QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco").unwrap();
         let value = subgraph_error_to_value(SubgraphError {
             subgraph_id: deployment,
             message: "boom".to_string(),
@@ -210,7 +211,8 @@ mod tests {
 
     #[test]
     fn subgraph_error_block_contains_data_when_present() {
-        let deployment = DeploymentHash::new("QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco").unwrap();
+        let deployment =
+            DeploymentHash::new("QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco").unwrap();
         let ptr = BlockPtr::new(H256::zero().into(), 42);
         let value = subgraph_error_to_value(SubgraphError {
             subgraph_id: deployment,
@@ -221,14 +223,12 @@ mod tests {
         });
 
         match value {
-            r::Value::Object(map) => {
-                match map.get("block").expect("block field present") {
-                    r::Value::Object(block) => {
-                        assert_eq!(block.get("number"), Some(&r::Value::Int(42.into())));
-                    }
-                    other => panic!("unexpected block value {other:?}"),
+            r::Value::Object(map) => match map.get("block").expect("block field present") {
+                r::Value::Object(block) => {
+                    assert_eq!(block.get("number"), Some(&r::Value::Int(42.into())));
                 }
-            }
+                other => panic!("unexpected block value {other:?}"),
+            },
             _ => panic!("expected object"),
         }
     }
