@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use prometheus::IntGauge;
 use prometheus::{labels, Histogram, IntCounterVec};
+use prometheus::{IntCounter, IntGauge};
 use slog::debug;
 
 use crate::components::metrics::{counter_with_labels, gauge_with_labels};
@@ -349,6 +349,23 @@ impl MetricsRegistry {
         Ok(counter)
     }
 
+    pub fn new_int_counter(
+        &self,
+        name: impl AsRef<str>,
+        help: impl AsRef<str>,
+        const_labels: impl IntoIterator<Item = (impl ToString, impl ToString)>,
+    ) -> Result<IntCounter, PrometheusError> {
+        let opts = Opts::new(name.as_ref(), help.as_ref()).const_labels(
+            const_labels
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+                .collect(),
+        );
+        let int_counter = IntCounter::with_opts(opts)?;
+        self.register(name.as_ref(), Box::new(int_counter.clone()));
+        Ok(int_counter)
+    }
+
     pub fn new_counter_with_labels(
         &self,
         name: &str,
@@ -500,12 +517,12 @@ impl MetricsRegistry {
         &self,
         name: impl AsRef<str>,
         help: impl AsRef<str>,
-        const_labels: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+        const_labels: impl IntoIterator<Item = (impl ToString, impl ToString)>,
     ) -> Result<IntGauge, PrometheusError> {
         let opts = Opts::new(name.as_ref(), help.as_ref()).const_labels(
             const_labels
                 .into_iter()
-                .map(|(a, b)| (a.into(), b.into()))
+                .map(|(key, value)| (key.to_string(), value.to_string()))
                 .collect(),
         );
         let gauge = IntGauge::with_opts(opts)?;

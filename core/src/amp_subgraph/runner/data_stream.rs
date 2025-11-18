@@ -71,9 +71,10 @@ where
 
             for (j, table) in data_source.transformer.tables.iter().enumerate() {
                 let query = table.query.build_with_block_range(block_range);
+                let stream = cx.client.query(&cx.logger, query, None);
                 let stream_name = format!("{}.{}", data_source.name, table.name);
 
-                query_streams.push((stream_name, cx.client.query(&cx.logger, query, None)));
+                query_streams.push((stream_name, stream));
                 query_streams_table_ptr.push((i, j));
             }
         }
@@ -81,18 +82,40 @@ where
         let query_streams_table_ptr: Arc<[TablePtr]> = query_streams_table_ptr.into();
         total_queries_to_execute += query_streams.len();
 
+        let mut min_start_block_checked = false;
+        let mut load_first_record_batch_group_section = Some(
+            cx.metrics
+                .stopwatch
+                .start_section("load_first_record_batch_group"),
+        );
+
         data_streams.push(
             StreamAggregator::new(&cx.logger, query_streams, cx.max_buffer_size)
                 .map_ok(move |response| (response, query_streams_table_ptr.cheap_clone()))
                 .map_err(Error::from)
-                .and_then(move |response| async move {
-                    if let Some(((first_block, _), _)) = response.0.first_key_value() {
-                        if *first_block < min_start_block {
-                            return Err(Error::NonDeterministic(anyhow!("chain reorg")));
-                        }
+                .map(move |result| {
+                    if load_first_record_batch_group_section.is_some() {
+                        let _section = load_first_record_batch_group_section.take();
                     }
 
-                    Ok(response)
+                    match result {
+                        Ok(response) => {
+                            if !min_start_block_checked {
+                                if let Some(((first_block, _), _)) = response.0.first_key_value() {
+                                    if *first_block < min_start_block {
+                                        return Err(Error::NonDeterministic(anyhow!(
+                                            "chain reorg"
+                                        )));
+                                    }
+                                }
+
+                                min_start_block_checked = true;
+                            }
+
+                            Ok(response)
+                        }
+                        Err(e) => Err(e),
+                    }
                 })
                 .boxed(),
         );

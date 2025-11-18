@@ -24,6 +24,7 @@ impl LatestBlocks {
         AC: Client,
     {
         debug!(cx.logger, "Loading latest blocks");
+        let _section = cx.metrics.stopwatch.start_section("load_latest_blocks");
 
         let latest_block_futs = cx
             .manifest
@@ -82,6 +83,7 @@ impl LatestBlocks {
         AC: Client,
     {
         debug!(cx.logger, "Waiting for new blocks");
+        let _section = cx.metrics.stopwatch.start_section("latest_blocks_changed");
 
         let min_latest_block = self.min();
         let latest_synced_block = cx.latest_synced_block();

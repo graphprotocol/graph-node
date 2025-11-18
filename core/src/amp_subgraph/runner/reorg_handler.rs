@@ -46,6 +46,8 @@ where
         return Ok(());
     };
 
+    let _section = cx.metrics.stopwatch.start_section("handle_reorg");
+
     debug!(logger, "Handling reorg";
         "latest_synced_block" => latest_synced_block_number,
         "latest_block_before_reorg" => ?latest_block_before_reorg.block_number
