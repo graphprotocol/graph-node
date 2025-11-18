@@ -24,17 +24,24 @@ pub(super) async fn process_record_batch_groups<AC>(
     stream_table_ptr: Arc<[TablePtr]>,
     latest_block: BlockNumber,
 ) -> Result<EntityCache, Error> {
+    if record_batch_groups.is_empty() {
+        debug!(cx.logger, "Received no record batch groups");
+        return Ok(entity_cache);
+    }
+
     let from_block = record_batch_groups
         .first_key_value()
-        .map(|((block, _), _)| *block);
+        .map(|((block, _), _)| *block)
+        .unwrap();
 
     let to_block = record_batch_groups
         .last_key_value()
-        .map(|((block, _), _)| *block);
+        .map(|((block, _), _)| *block)
+        .unwrap();
 
     debug!(cx.logger, "Processing record batch groups";
-        "from_block" => ?from_block,
-        "to_block" => ?to_block
+        "from_block" => from_block,
+        "to_block" => to_block
     );
 
     for ((block_number, block_hash), record_batch_group) in record_batch_groups {
@@ -59,14 +66,17 @@ pub(super) async fn process_record_batch_groups<AC>(
             ))
         })?;
 
+        cx.metrics.deployment_head.update(block_number);
+        cx.metrics.blocks_processed.record_one();
+
         trace!(cx.logger, "Completed processing record batch group";
             "block" => block_number
         );
     }
 
     debug!(cx.logger, "Completed processing record batch groups";
-        "from_block" => ?from_block,
-        "to_block" => ?to_block
+        "from_block" => from_block,
+        "to_block" => to_block
     );
 
     Ok(entity_cache)
@@ -81,6 +91,11 @@ async fn process_record_batch_group<AC>(
     stream_table_ptr: &[TablePtr],
     latest_block: BlockNumber,
 ) -> Result<EntityCache, Error> {
+    let _section = cx
+        .metrics
+        .stopwatch
+        .start_section("process_record_batch_group");
+
     let RecordBatchGroup { record_batches } = record_batch_group;
 
     if record_batches.is_empty() {
@@ -141,6 +156,10 @@ async fn process_record_batch_group<AC>(
         .map_err(Error::from)
         .map_err(|e| e.context("failed to transact block operations"))?;
 
+    if is_close_to_chain_head {
+        cx.metrics.deployment_synced.record(true);
+    }
+
     Ok(EntityCache::with_current(
         cx.store.cheap_clone(),
         entity_lfu_cache,
@@ -154,6 +173,8 @@ async fn process_record_batch<AC>(
     record_batch: RecordBatch,
     (i, j): TablePtr,
 ) -> Result<(), Error> {
+    let _section = cx.metrics.stopwatch.start_section("process_record_batch");
+
     let table = &cx.manifest.data_sources[i].transformer.tables[j];
     let entity_name = &table.name;
 

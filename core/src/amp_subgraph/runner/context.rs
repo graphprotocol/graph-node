@@ -93,4 +93,13 @@ impl<AC> Context<AC> {
             .min()
             .unwrap()
     }
+
+    pub(super) fn max_end_block(&self) -> BlockNumber {
+        self.manifest
+            .data_sources
+            .iter()
+            .map(|data_source| data_source.source.end_block)
+            .max()
+            .unwrap()
+    }
 }
