@@ -84,7 +84,7 @@ pub struct DevOpt {
         allow_negative_numbers = false,
         value_name = "NETWORK_NAME:[CAPABILITIES]:URL",
         env = "ETHEREUM_RPC",
-        help = "Ethereum network name (e.g. 'mainnet'), optional comma-seperated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'"
+        help = "Ethereum network name (e.g. 'mainnet'), optional comma-separated capabilities (eg 'full,archive'), and an Ethereum RPC URL, separated by a ':'"
     )]
     pub ethereum_rpc: Vec<String>,
 
