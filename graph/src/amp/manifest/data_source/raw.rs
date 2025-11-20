@@ -145,7 +145,9 @@ impl RawSource {
             end_block,
         } = self;
 
-        validate_ident(&dataset).map_err(|e| e.source_context("invalid `dataset`"))?;
+        if dataset.is_empty() {
+            return Err(Error::InvalidValue(anyhow!("`dataset` cannot be empty")));
+        }
         Self::validate_tables(&tables)?;
 
         let address = address.unwrap_or(Address::ZERO);
@@ -181,8 +183,11 @@ impl RawSource {
         }
 
         for (i, table) in tables.iter().enumerate() {
-            validate_ident(table)
-                .map_err(|e| e.source_context(format!("invalid `table` at index {i}")))?;
+            if table.is_empty() {
+                return Err(Error::InvalidValue(anyhow!(
+                    "`table` at index {i} cannot be empty"
+                )));
+            }
         }
 
         Ok(())
