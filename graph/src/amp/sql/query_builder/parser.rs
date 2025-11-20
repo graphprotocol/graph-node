@@ -16,7 +16,6 @@ use sqlparser_latest::{
 /// - The SQL query cannot be parsed
 /// - The SQL query contains multiple SQL statements
 /// - The SQL query is not a `SELECT` query
-/// - The SQL query contains CTEs with quoted names
 ///
 /// The returned error is deterministic.
 pub(super) fn parse_query(s: impl AsRef<str>) -> Result<ast::Query> {
@@ -32,10 +31,6 @@ pub(super) fn parse_query(s: impl AsRef<str>) -> Result<ast::Query> {
     };
 
     if let ControlFlow::Break(e) = query.visit(&mut AllowOnlySelectQueries) {
-        return Err(e);
-    }
-
-    if let ControlFlow::Break(e) = query.visit(&mut AllowOnlyUnquotedCtes) {
         return Err(e);
     }
 
@@ -70,41 +65,6 @@ impl Visitor for AllowOnlySelectQueries {
 
     fn pre_visit_query(&mut self, query: &ast::Query) -> ControlFlow<Self::Break> {
         match self.visit_set_expr(&query.body) {
-            Ok(()) => ControlFlow::Continue(()),
-            Err(e) => ControlFlow::Break(e),
-        }
-    }
-}
-
-/// Validates that CTE names in the SQL query AST do not use quotes.
-///
-/// This is a temporary solution that allows proper identification of table references.
-struct AllowOnlyUnquotedCtes;
-
-impl AllowOnlyUnquotedCtes {
-    /// Returns an error if the `query` contains CTEs with quoted names.
-    fn visit_query(&self, query: &ast::Query) -> Result<()> {
-        let Some(with) = &query.with else {
-            return Ok(());
-        };
-
-        for cte_table in &with.cte_tables {
-            let cte_name = &cte_table.alias.name;
-
-            if cte_name.quote_style.is_some() {
-                bail!("invalid CTE {cte_name}: CTE names with quotes are not allowed");
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl Visitor for AllowOnlyUnquotedCtes {
-    type Break = anyhow::Error;
-
-    fn pre_visit_query(&mut self, query: &ast::Query) -> ControlFlow<Self::Break> {
-        match self.visit_query(query) {
             Ok(()) => ControlFlow::Continue(()),
             Err(e) => ControlFlow::Break(e),
         }
@@ -151,9 +111,5 @@ mod tests {
         valid_query: "SELECT a FROM b" => Ok("SELECT a FROM b"),
         valid_query_with_cte: "WITH a AS (SELECT b FROM c) SELECT * FROM a" => Ok("WITH a AS (SELECT b FROM c) SELECT * FROM a"),
         valid_query_with_join: "SELECT a FROM b INNER JOIN c ON c.c = b.b" => Ok("SELECT a FROM b INNER JOIN c ON c.c = b.b"),
-
-        single_quoted_ctes_not_allowed: "WITH 'a' AS (SELECT * FROM b) SELECT * FROM a" => Err("invalid CTE 'a': CTE names with quotes are not allowed"),
-        double_quoted_ctes_not_allowed: r#"WITH "a" AS (SELECT * FROM b) SELECT * FROM a"# => Err(r#"invalid CTE "a": CTE names with quotes are not allowed"#),
-        backticked_ctes_not_allowed: "WITH `a` AS (SELECT * FROM b) SELECT * FROM a" => Err("invalid CTE `a`: CTE names with quotes are not allowed"),
     }
 }
