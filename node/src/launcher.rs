@@ -509,9 +509,13 @@ pub async fn run(
                 .parse()
                 .expect("Invalid Amp Flight service address");
 
-            let amp_client = amp::FlightClient::new(addr)
+            let mut amp_client = amp::FlightClient::new(addr)
                 .await
                 .expect("Failed to connect to Amp Flight service");
+
+            if let Some(auth_token) = &env_vars.amp.flight_service_token {
+                amp_client.set_auth_token(auth_token);
+            }
 
             Some(Arc::new(amp_client))
         }
