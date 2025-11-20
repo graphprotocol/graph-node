@@ -8,7 +8,7 @@ use ahash::RandomState;
 use alloy::primitives::BlockNumber;
 use sqlparser_latest::ast::{self, VisitMut, VisitorMut};
 
-use super::{extract_tables, normalize_table, parse_query};
+use super::{extract_tables, parse_query, TableReference};
 
 /// Limits the query execution to the specified block range.
 ///
@@ -56,7 +56,7 @@ pub(super) fn new_block_range_query<'a>(
 fn new_tables_to_ctes_mapping(
     query: &ast::Query,
     hasher: &mut impl Hasher,
-) -> BTreeMap<String, String> {
+) -> BTreeMap<TableReference, String> {
     extract_tables(query)
         .into_iter()
         .map(|table| {
@@ -69,12 +69,12 @@ fn new_tables_to_ctes_mapping(
 
 /// Visits the SQL query AST and replaces referenced table names with CTE names.
 struct TableReplacer {
-    tables_to_ctes_mapping: BTreeMap<String, String>,
+    tables_to_ctes_mapping: BTreeMap<TableReference, String>,
 }
 
 impl TableReplacer {
     /// Creates a new table replacer.
-    fn new(tables_to_ctes_mapping: BTreeMap<String, String>) -> Self {
+    fn new(tables_to_ctes_mapping: BTreeMap<TableReference, String>) -> Self {
         Self {
             tables_to_ctes_mapping,
         }
@@ -86,7 +86,10 @@ impl TableReplacer {
             return;
         };
 
-        let Some(cte_table) = self.tables_to_ctes_mapping.get(&normalize_table(name)) else {
+        let Some(cte_table) = self
+            .tables_to_ctes_mapping
+            .get(&TableReference::with_object_name(name))
+        else {
             return;
         };
 
@@ -133,20 +136,20 @@ mod tests {
         assert_eq!(
             block_range_query,
             parse_query(
-                "
-                WITH block_range_14621009630487609643 AS (
-                    SELECT * FROM d WHERE _block_num BETWEEN 0 AND 1000000
+                r#"
+                WITH block_range_1164572571450379730 AS (
+                    SELECT * FROM "d" WHERE _block_num BETWEEN 0 AND 1000000
                 ),
-                source_14621009630487609643 AS (
-                    SELECT a, b, c FROM block_range_14621009630487609643 AS d
+                source_1164572571450379730 AS (
+                    SELECT a, b, c FROM block_range_1164572571450379730 AS d
                 )
                 SELECT
-                    source_14621009630487609643.*
+                    source_1164572571450379730.*
                 FROM
-                    source_14621009630487609643
+                    source_1164572571450379730
                 ORDER BY
-                    source_14621009630487609643.b
-                "
+                    source_1164572571450379730.b
+                "#
             )
             .unwrap(),
         )
@@ -162,23 +165,23 @@ mod tests {
         assert_eq!(
             block_range_query,
             parse_query(
-                "
-                WITH block_range_14621009630487609643 AS (
-                    SELECT * FROM d WHERE _block_num BETWEEN 0 AND 1000000
+                r#"
+                WITH block_range_1164572571450379730 AS (
+                    SELECT * FROM "d" WHERE _block_num BETWEEN 0 AND 1000000
                 ),
-                block_range_12377422807768256314 AS (
-                    SELECT * FROM e WHERE _block_num BETWEEN 0 AND 1000000
+                block_range_13063992259633584610 AS (
+                    SELECT * FROM "e" WHERE _block_num BETWEEN 0 AND 1000000
                 ),
-                source_12377422807768256314 AS (
-                    SELECT a, b, c FROM block_range_14621009630487609643 AS d JOIN block_range_12377422807768256314 AS e ON e.e = d.d
+                source_13063992259633584610 AS (
+                    SELECT a, b, c FROM block_range_1164572571450379730 AS d JOIN block_range_13063992259633584610 AS e ON e.e = d.d
                 )
                 SELECT
-                    source_12377422807768256314.*
+                    source_13063992259633584610.*
                 FROM
-                    source_12377422807768256314
+                    source_13063992259633584610
                 ORDER BY
-                    source_12377422807768256314.b
-                "
+                    source_13063992259633584610.b
+                "#
             )
             .unwrap(),
         )
