@@ -33,6 +33,7 @@ use crate::{
 /// using the Apache Arrow Flight protocol.
 pub struct FlightClient {
     channel: Channel,
+    auth_token: Option<String>,
 }
 
 impl FlightClient {
@@ -56,7 +57,13 @@ impl FlightClient {
 
         Ok(Self {
             channel: endpoint.connect().await.map_err(Error::Connection)?,
+            auth_token: None,
         })
+    }
+
+    /// Sets the authentication token for requests to the Amp server.
+    pub fn set_auth_token(&mut self, auth_token: impl Into<String>) {
+        self.auth_token = Some(auth_token.into());
     }
 
     fn raw_client(&self) -> FlightSqlServiceClient<Channel> {
@@ -65,7 +72,12 @@ impl FlightClient {
             .max_encoding_message_size(256 * 1024 * 1024)
             .max_decoding_message_size(256 * 1024 * 1024);
 
-        FlightSqlServiceClient::new_from_inner(client)
+        let mut client = FlightSqlServiceClient::new_from_inner(client);
+        if let Some(auth_token) = &self.auth_token {
+            client.set_token(auth_token.clone());
+        }
+
+        client
     }
 }
 

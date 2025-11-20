@@ -602,6 +602,8 @@ struct Inner {
     amp_query_retry_min_delay_seconds: Option<u64>,
     #[envconfig(from = "GRAPH_AMP_QUERY_RETRY_MAX_DELAY_SECONDS")]
     amp_query_retry_max_delay_seconds: Option<u64>,
+    #[envconfig(from = "GRAPH_AMP_FLIGHT_SERVICE_TOKEN")]
+    amp_flight_service_token: Option<String>,
 }
 
 #[derive(Clone, Debug)]

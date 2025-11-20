@@ -24,6 +24,11 @@ pub struct AmpEnv {
     ///
     /// Defaults to `600` seconds.
     pub query_retry_max_delay: Duration,
+
+    /// Token used to authenticate Amp Flight gRPC service requests.
+    ///
+    /// Defaults to `None`.
+    pub flight_service_token: Option<String>,
 }
 
 impl AmpEnv {
@@ -60,6 +65,12 @@ impl AmpEnv {
                 .amp_query_retry_max_delay_seconds
                 .map(Duration::from_secs)
                 .unwrap_or(Self::DEFAULT_QUERY_RETRY_MAX_DELAY),
+            flight_service_token: raw_env.amp_flight_service_token.as_ref().and_then(|value| {
+                if value.is_empty() {
+                    return None;
+                }
+                Some(value.to_string())
+            }),
         }
     }
 }
