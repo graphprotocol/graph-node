@@ -84,7 +84,7 @@ impl RawDataSource {
             .map_err(|e| e.source_context("invalid `source`"))?;
 
         let transformer = transformer
-            .resolve(&logger, link_resolver, amp_client, &source)
+            .resolve(&logger, link_resolver, amp_client, &network, &source)
             .await
             .map_err(|e| e.source_context("invalid `transformer`"))?;
 
@@ -222,6 +222,7 @@ impl RawTransformer {
         logger: &Logger,
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
+        network: &str,
         source: &Source,
     ) -> Result<Transformer, Error> {
         let Self {
@@ -232,8 +233,16 @@ impl RawTransformer {
         Self::validate_api_version(&api_version)?;
 
         let abis = Self::resolve_abis(logger, link_resolver, abis).await?;
-        let tables =
-            Self::resolve_tables(logger, link_resolver, amp_client, tables, source, &abis).await?;
+        let tables = Self::resolve_tables(
+            logger,
+            link_resolver,
+            amp_client,
+            network,
+            tables,
+            source,
+            &abis,
+        )
+        .await?;
 
         Ok(Transformer {
             api_version,
@@ -285,6 +294,7 @@ impl RawTransformer {
         logger: &Logger,
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
+        network: &str,
         tables: Vec<RawTable>,
         source: &Source,
         abis: &[Abi],
@@ -308,7 +318,7 @@ impl RawTransformer {
             );
 
             table
-                .resolve(&logger, link_resolver, amp_client, source, abis)
+                .resolve(&logger, link_resolver, amp_client, network, source, abis)
                 .await
                 .map_err(|e| e.source_context(format!("invalid `tables` at index {i}")))
         });
@@ -400,6 +410,7 @@ impl RawTable {
         logger: &Logger,
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
+        network: &str,
         source: &Source,
         abis: &[Abi],
     ) -> Result<Table, Error> {
@@ -426,6 +437,7 @@ impl RawTable {
         let block_range_query_builder = Self::resolve_block_range_query_builder(
             logger,
             amp_client,
+            network,
             source,
             query,
             schema.clone(),
@@ -522,6 +534,7 @@ impl RawTable {
     async fn resolve_block_range_query_builder(
         logger: &Logger,
         amp_client: &impl amp::Client,
+        network: &str,
         source: &Source,
         query: ValidQuery,
         schema: Schema,
@@ -549,7 +562,13 @@ impl RawTable {
             .iter()
             .map(|table| (source.dataset.as_str(), table.as_str()))
             // TODO: Replace hardcoded values with schema metadata sources when available
-            .chain([("eth_firehose", "blocks"), ("eth_rpc", "blocks")]);
+            .chain(match network {
+                "ethereum-mainnet" => vec![("edgeandnode/ethereum_mainnet", "blocks")],
+                "base-mainnet" => vec![("edgeandnode/base_mainnet", "blocks")],
+                "base-sepolia" => vec![("edgeandnode/base_sepolia", "blocks")],
+                "arbitrum-one" => vec![("edgeandnode/arbitrum_one", "blocks")],
+                _ => vec![],
+            });
 
         for (dataset, table) in context_sources_iter {
             let context_logger = logger.new(slog::o!(
