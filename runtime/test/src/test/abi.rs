@@ -515,7 +515,7 @@ async fn test_abi_big_int(api_version: Version) {
         .await;
     let new_uint: BigInt = module.asc_get(new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(1_i32));
-    let new_uint = new_uint.to_unsigned_u256();
+    let new_uint = new_uint.to_unsigned_u256().unwrap();
     assert_eq!(new_uint, U256([1, 0, 0, 0]));
 
     // Test passing in -50 and increment it by 1

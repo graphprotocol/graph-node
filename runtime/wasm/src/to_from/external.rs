@@ -243,7 +243,10 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
             EthereumValueKind::Uint => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
                 let n: BigInt = asc_get(heap, ptr, gas, depth)?;
-                Token::Uint(n.to_unsigned_u256())
+                let uint = n
+                    .to_unsigned_u256()
+                    .map_err(DeterministicHostError::Other)?;
+                Token::Uint(uint)
             }
             EthereumValueKind::String => {
                 let ptr: AscPtr<AscString> = AscPtr::from(payload);

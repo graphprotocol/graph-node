@@ -668,7 +668,7 @@ impl CallDecl {
             (ParamType::Int(_), Value::BigInt(i)) => Ok(Token::Int(i.to_signed_u256())),
             (ParamType::Uint(_), Value::Int(i)) if *i >= 0 => Ok(Token::Uint((*i).into())),
             (ParamType::Uint(_), Value::BigInt(i)) if i.sign() == Sign::Plus => {
-                Ok(Token::Uint(i.to_unsigned_u256()))
+                Ok(Token::Uint(i.to_unsigned_u256()?))
             }
             (ParamType::Array(inner_type), Value::List(values)) => {
                 self.process_entity_array_values(values, inner_type.as_ref(), param_name)

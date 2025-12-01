@@ -1,3 +1,4 @@
+use anyhow::bail;
 use num_bigint;
 use serde::{self, Deserialize, Serialize};
 use stable_hash::utils::AsInt;
@@ -207,14 +208,15 @@ impl BigInt {
         }
     }
 
-    pub fn to_unsigned_u256(&self) -> U256 {
+    pub fn to_unsigned_u256(&self) -> Result<U256, anyhow::Error> {
         let (sign, bytes) = self.to_bytes_le();
-        assert!(
-            sign == BigIntSign::NoSign || sign == BigIntSign::Plus,
-            "negative value encountered for U256: {}",
-            self
-        );
-        U256::from_little_endian(&bytes)
+        if sign != BigIntSign::Plus && sign != BigIntSign::NoSign {
+            bail!(
+                "BigInt value is negative, cannot convert to unsigned U256: {}",
+                self
+            );
+        }
+        Ok(U256::from_little_endian(&bytes))
     }
 
     pub fn pow(self, exponent: u8) -> Result<BigInt, anyhow::Error> {
