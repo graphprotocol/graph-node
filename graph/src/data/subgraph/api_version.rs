@@ -66,8 +66,11 @@ pub const SPEC_VERSION_1_3_0: Version = Version::new(1, 3, 0);
 // Enables struct field access in declarative calls
 pub const SPEC_VERSION_1_4_0: Version = Version::new(1, 4, 0);
 
+// Enables support for Amp data sources;
+pub const SPEC_VERSION_1_5_0: Version = Version::new(1, 5, 0);
+
 // The latest spec version available
-pub const LATEST_VERSION: &Version = &SPEC_VERSION_1_4_0;
+pub const LATEST_VERSION: &Version = &SPEC_VERSION_1_5_0;
 
 pub const MIN_SPEC_VERSION: Version = Version::new(0, 0, 2);
 

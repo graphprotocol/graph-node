@@ -106,6 +106,7 @@ cheap_clone_is_clone!(Channel);
 // reqwest::Client uses Arc internally, so it is CheapClone.
 cheap_clone_is_clone!(reqwest::Client);
 cheap_clone_is_clone!(slog::Logger);
+cheap_clone_is_clone!(semver::Version);
 
 cheap_clone_is_copy!(
     (),
@@ -119,3 +120,5 @@ cheap_clone_is_copy!(
     std::time::Duration
 );
 cheap_clone_is_copy!(ethabi::Address);
+
+cheap_clone_is_clone!(tokio_util::sync::CancellationToken);

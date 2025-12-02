@@ -138,9 +138,21 @@ impl From<i64> for BigDecimal {
     }
 }
 
+impl From<i128> for BigDecimal {
+    fn from(n: i128) -> Self {
+        Self::from(OldBigDecimal::new(BigInt::from(n).inner(), 0))
+    }
+}
+
 impl From<u64> for BigDecimal {
     fn from(n: u64) -> Self {
         Self::from(OldBigDecimal::from(n))
+    }
+}
+
+impl From<f32> for BigDecimal {
+    fn from(n: f32) -> Self {
+        Self::from(OldBigDecimal::from_f32(n).unwrap_or_default())
     }
 }
 

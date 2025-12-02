@@ -595,6 +595,7 @@ impl FromStr for BlockchainKind {
             "near" => Ok(BlockchainKind::Near),
             "substreams" => Ok(BlockchainKind::Substreams),
             "subgraph" => Ok(BlockchainKind::Ethereum), // TODO(krishna): We should detect the blockchain kind from the source subgraph
+            "amp" => Ok(BlockchainKind::Ethereum),      // TODO: Maybe get this from the Amp server
             _ => Err(anyhow!("unknown blockchain kind {}", s)),
         }
     }
