@@ -533,7 +533,7 @@ fn eth_call_cache() {
 fn test_disable_call_cache() {
     let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
 
-    run_test(chain, |store, _| {
+    run_test_async(chain, |store, _, _| async move {
         ENV_VARS.set_store_call_cache_disabled_for_tests(true);
 
         let logger = LOGGER.cheap_clone();
@@ -544,18 +544,23 @@ fn test_disable_call_cache() {
         let call = call::Request::new(address, call.to_vec(), 0);
 
         store
+            .cheap_clone()
             .set_call(
                 &logger,
                 call.cheap_clone(),
                 BLOCK_ONE.block_ptr(),
                 call::Retval::Value(Bytes::from(return_value)),
             )
+            .await
             .unwrap();
 
-        let ret = store.get_call(&call, BLOCK_ONE.block_ptr()).unwrap();
+        let ret = store
+            .cheap_clone()
+            .get_call(&call, BLOCK_ONE.block_ptr())
+            .await
+            .unwrap();
 
         assert!(ret.is_none());
-        Ok(())
     });
 }
 
