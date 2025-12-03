@@ -437,7 +437,7 @@ pub(crate) async fn deployment_statuses(
         .collect()
     };
 
-    let mut deployment_sizes = deployment_sizes(conn, sites)?;
+    let mut deployment_sizes = deployment_sizes(conn, sites).await?;
 
     details_with_fatal_error
         .into_iter()
@@ -458,8 +458,8 @@ pub(crate) async fn deployment_statuses(
         .collect()
 }
 
-fn deployment_sizes(
-    conn: &mut PgConnection,
+async fn deployment_sizes(
+    conn: &mut AsyncPgConnection,
     sites: &[Arc<Site>],
 ) -> Result<HashMap<DeploymentId, status::SubgraphSize>, StoreError> {
     #[derive(QueryableByName)]
@@ -493,12 +493,13 @@ fn deployment_sizes(
     );
 
     let result = if sites.is_empty() {
-        diesel::sql_query(query).load::<SubgraphSizeRow>(conn)
+        diesel::sql_query(query).load::<SubgraphSizeRow>(conn).await
     } else {
         query.push_str(" WHERE ds.id = ANY($1)");
         diesel::sql_query(query)
             .bind::<Array<Integer>, _>(sites.iter().map(|site| site.id).collect::<Vec<_>>())
             .load::<SubgraphSizeRow>(conn)
+            .await
     };
 
     let rows = match result {
