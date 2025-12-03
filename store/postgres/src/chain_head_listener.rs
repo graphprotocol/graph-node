@@ -261,7 +261,7 @@ impl ChainHeadUpdateSender {
             "head_block_number": number
         });
 
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         self.sender
             .notify(
                 &mut conn,

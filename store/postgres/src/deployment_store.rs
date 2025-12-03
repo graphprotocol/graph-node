@@ -189,7 +189,7 @@ impl DeploymentStore {
         on_sync: OnSync,
         index_def: Option<IndexList>,
     ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         conn.transaction::<_, StoreError, _>(|conn| {
             async {
                 let exists = deployment::exists(conn, &site).await?;
@@ -259,7 +259,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<SubgraphDeploymentEntity, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = self.layout(&mut conn, site.clone()).await?;
         Ok(
             detail::deployment_entity(&mut conn, &site, &layout.input_schema)
@@ -271,7 +271,7 @@ impl DeploymentStore {
     // Remove the data and metadata for the deployment `site`. This operation
     // is not reversible
     pub(crate) async fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         conn.transaction(|conn| {
             async {
                 crate::deployment::drop_schema(conn, &site.namespace).await?;
@@ -388,16 +388,19 @@ impl DeploymentStore {
     }
 
     /// Panics if `idx` is not a valid index for a read only pool.
-    async fn read_only_conn(&self, idx: usize) -> Result<AsyncPgConnection, Error> {
-        self.read_only_pools[idx].get().await.map_err(Error::from)
+    async fn read_only_conn(&self, idx: usize) -> Result<crate::pool::PermittedConnection, Error> {
+        self.read_only_pools[idx]
+            .get_permitted()
+            .await
+            .map_err(Error::from)
     }
 
     pub(crate) async fn get_replica_conn(
         &self,
         replica: ReplicaId,
-    ) -> Result<AsyncPgConnection, Error> {
+    ) -> Result<crate::pool::PermittedConnection, Error> {
         let conn = match replica {
-            ReplicaId::Main => self.pool.get().await?,
+            ReplicaId::Main => self.pool.get_permitted().await?,
             ReplicaId::ReadOnly(idx) => self.read_only_conn(idx).await?,
         };
         Ok(conn)
@@ -440,7 +443,7 @@ impl DeploymentStore {
             return Ok(layout);
         }
 
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         self.layout(&mut conn, site).await
     }
 
@@ -504,7 +507,7 @@ impl DeploymentStore {
             return Ok(info.clone());
         }
 
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         self.subgraph_info_with_conn(&mut conn, site).await
     }
 
@@ -519,7 +522,7 @@ impl DeploymentStore {
         &self,
         ids: Vec<String>,
     ) -> Result<Vec<DeploymentDetail>, StoreError> {
-        let conn = &mut self.pool.get().await?;
+        let conn = &mut self.pool.get_permitted().await?;
         detail::deployment_details(conn, ids).await
     }
 
@@ -528,7 +531,7 @@ impl DeploymentStore {
         locator: &DeploymentLocator,
     ) -> Result<DeploymentDetail, StoreError> {
         let id = DeploymentId::from(locator.clone());
-        let conn = &mut self.pool.get().await?;
+        let conn = &mut self.pool.get_permitted().await?;
         detail::deployment_details_for_id(conn, &id).await
     }
 
@@ -536,7 +539,7 @@ impl DeploymentStore {
         &self,
         sites: &[Arc<Site>],
     ) -> Result<Vec<status::Info>, StoreError> {
-        let conn = &mut self.pool.get().await?;
+        let conn = &mut self.pool.get_permitted().await?;
         detail::deployment_statuses(conn, sites).await
     }
 
@@ -544,7 +547,7 @@ impl DeploymentStore {
         &self,
         id: &DeploymentHash,
     ) -> Result<bool, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::exists_and_synced(&mut conn, id.as_str()).await
     }
 
@@ -553,14 +556,14 @@ impl DeploymentStore {
         id: &DeploymentHash,
         block_ptr: BlockPtr,
     ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         conn.transaction(|conn| deployment::set_synced(conn, id, block_ptr).scope_boxed())
             .await
     }
 
     /// Look up the on_sync action for this deployment
     pub(crate) async fn on_sync(&self, site: &Site) -> Result<OnSync, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::on_sync(&mut conn, site.id).await
     }
 
@@ -570,7 +573,7 @@ impl DeploymentStore {
         &self,
         site: &Site,
     ) -> Result<Option<DeploymentId>, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         crate::copy::source(&mut conn, site).await
     }
 
@@ -580,7 +583,7 @@ impl DeploymentStore {
         &self,
         namespace: &crate::primary::Namespace,
     ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::drop_schema(&mut conn, namespace).await
     }
 
@@ -602,7 +605,7 @@ impl DeploymentStore {
         delete from active_copies;
     ";
 
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         conn.batch_execute(QUERY).await?;
         conn.batch_execute("delete from deployment_schemas;")
             .await?;
@@ -610,7 +613,7 @@ impl DeploymentStore {
     }
 
     pub(crate) async fn vacuum(&self) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         conn.batch_execute("vacuum (analyze) subgraphs.head, subgraphs.deployment")
             .await?;
         Ok(())
@@ -622,7 +625,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         entity: Option<&str>,
     ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = self.layout(&mut conn, site).await?;
         let tables = entity
             .map(|entity| resolve_table_name(&layout, entity))
@@ -639,7 +642,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<(i32, BTreeMap<SqlName, BTreeMap<SqlName, i32>>), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let default = catalog::default_stats_target(&mut conn).await?;
         let targets = catalog::stats_targets(&mut conn, &site.namespace).await?;
 
@@ -653,7 +656,7 @@ impl DeploymentStore {
         columns: Vec<String>,
         target: i32,
     ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = self.layout(&mut conn, site.clone()).await?;
 
         let tables = entity
@@ -704,7 +707,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let schema_name = site.namespace.clone();
         let layout = store.layout(&mut conn, site).await?;
         let (index_name, sql) =
@@ -735,7 +738,7 @@ impl DeploymentStore {
     ) -> Result<Vec<CreateIndex>, StoreError> {
         let store = self.clone();
         let entity_name = entity_name.to_owned();
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let schema_name = site.namespace.clone();
         let layout = store.layout(&mut conn, site).await?;
         let table = resolve_table_name(&layout, &entity_name)?;
@@ -749,7 +752,7 @@ impl DeploymentStore {
 
     pub(crate) async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
         let store = self.clone();
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         IndexList::load(&mut conn, site, store).await
     }
 
@@ -760,7 +763,7 @@ impl DeploymentStore {
         index_name: &str,
     ) -> Result<(), StoreError> {
         let index_name = String::from(index_name);
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let schema_name = site.namespace.clone();
         catalog::drop_index(&mut conn, schema_name.as_str(), &index_name).await
     }
@@ -773,7 +776,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let store = self.clone();
         let table = table.to_string();
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = store.layout(&mut conn, site.clone()).await?;
         let table = resolve_table_name(&layout, &table)?;
         catalog::set_account_like(&mut conn, &site, &table.name, is_account_like).await
@@ -798,7 +801,7 @@ impl DeploymentStore {
         // will use the updated value
         self.layout_cache.remove(site);
 
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::set_history_blocks(&mut conn, site, history_blocks).await
     }
 
@@ -842,7 +845,7 @@ impl DeploymentStore {
         }
 
         let store = self.clone();
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         // We lock pruning for this deployment to make sure that if the
         // deployment is reassigned to another node, that node won't
         // kick off a pruning run while this node might still be pruning
@@ -859,7 +862,7 @@ impl DeploymentStore {
         self: &Arc<Self>,
         site: Arc<Site>,
     ) -> Result<relational::prune::Viewer, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = self.layout(&mut conn, site.clone()).await?;
 
         Ok(relational::prune::Viewer::new(self.pool.clone(), layout))
@@ -871,14 +874,14 @@ impl DeploymentStore {
     pub(crate) async fn block_ptr(&self, site: Arc<Site>) -> Result<Option<BlockPtr>, StoreError> {
         let site = site.cheap_clone();
 
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         Self::block_ptr_with_conn(&mut conn, site).await
     }
 
     pub(crate) async fn block_cursor(&self, site: Arc<Site>) -> Result<FirehoseCursor, StoreError> {
         let site = site.cheap_clone();
 
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::get_subgraph_firehose_cursor(&mut conn, site)
             .await
             .map(FirehoseCursor::from)
@@ -890,7 +893,7 @@ impl DeploymentStore {
     ) -> Result<Option<BlockTime>, StoreError> {
         let store = self.cheap_clone();
 
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = store.layout(&mut conn, site.cheap_clone()).await?;
         layout.last_rollup(&mut conn).await
     }
@@ -908,7 +911,7 @@ impl DeploymentStore {
         let info = self.subgraph_info(site.cheap_clone()).await?;
         let poi_digest = layout.input_schema.poi_digest();
 
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let entities: Option<(Vec<Entity>, BlockPtr)> = {
             let site = site.clone();
 
@@ -994,7 +997,7 @@ impl DeploymentStore {
         key: &EntityKey,
         block: BlockNumber,
     ) -> Result<Option<Entity>, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = self.layout(&mut conn, site).await?;
         layout.find(&mut conn, key, block).await
     }
@@ -1010,7 +1013,7 @@ impl DeploymentStore {
         if ids_for_type.is_empty() {
             return Ok(BTreeMap::new());
         }
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = self.layout(&mut conn, site).await?;
 
         layout.find_many(&mut conn, ids_for_type, block).await
@@ -1023,7 +1026,7 @@ impl DeploymentStore {
         causality_region: CausalityRegion,
         block_range: Range<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<EntitySourceOperation>>, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = self.layout(&mut conn, site).await?;
         layout
             .find_range(&mut conn, entity_types, causality_region, block_range)
@@ -1037,7 +1040,7 @@ impl DeploymentStore {
         block: BlockNumber,
         excluded_keys: &Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = self.layout(&mut conn, site).await?;
         layout
             .find_derived(&mut conn, derived_query, block, excluded_keys)
@@ -1049,7 +1052,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         block: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let layout = self.layout(&mut conn, site).await?;
         let changes = layout.find_changes(&mut conn, block).await?;
 
@@ -1063,7 +1066,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         query: EntityQuery,
     ) -> Result<Vec<Entity>, QueryExecutionError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         self.execute_query(&mut conn, site, query)
             .await
             .map(|(entities, _)| entities)
@@ -1080,7 +1083,7 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let mut conn = {
             let _section = stopwatch.start_section("transact_blocks_get_conn");
-            self.pool.get().await?
+            self.pool.get_permitted().await?
         };
 
         let (layout, earliest_block) = deployment::with_lock(&mut conn, &site, async |conn| {
@@ -1315,7 +1318,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
     ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
 
         let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone()).await?;
 
@@ -1346,7 +1349,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         block_ptr_to: BlockPtr,
     ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
 
         let block_ptr_from = Self::block_ptr_with_conn(&mut conn, site.cheap_clone()).await?;
 
@@ -1378,7 +1381,7 @@ impl DeploymentStore {
         block_ptr_to: BlockPtr,
         firehose_cursor: &FirehoseCursor,
     ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         // Unwrap: If we are reverting then the block ptr is not `None`.
         let deployment_head = Self::block_ptr_with_conn(&mut conn, site.cheap_clone())
             .await?
@@ -1414,7 +1417,7 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<DeploymentState, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::state(&mut conn, &site).await
     }
 
@@ -1423,7 +1426,7 @@ impl DeploymentStore {
         id: DeploymentHash,
         error: SubgraphError,
     ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         conn.transaction(|conn| deployment::fail(conn, &id, &error).scope_boxed())
             .await
     }
@@ -1449,7 +1452,7 @@ impl DeploymentStore {
         block: BlockNumber,
         manifest_idx_and_name: Vec<(u32, String)>,
     ) -> Result<Vec<StoredDynamicDataSource>, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         crate::dynds::load(&mut conn, &site, block, manifest_idx_and_name).await
     }
 
@@ -1457,12 +1460,12 @@ impl DeploymentStore {
         &self,
         site: Arc<Site>,
     ) -> Result<Option<CausalityRegion>, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         crate::dynds::causality_region_curr_val(&mut conn, &site).await
     }
 
     pub(crate) async fn exists_and_synced(&self, id: DeploymentHash) -> Result<bool, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::exists_and_synced(&mut conn, &id).await
     }
 
@@ -1470,7 +1473,7 @@ impl DeploymentStore {
         &self,
         id: &DeploymentHash,
     ) -> Result<Option<(DeploymentHash, BlockPtr)>, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::graft_pending(&mut conn, id).await
     }
 
@@ -1529,7 +1532,7 @@ impl DeploymentStore {
                 return Err(StoreError::Canceled);
             }
 
-            let mut conn = self.pool.get().await?;
+            let mut conn = self.pool.get_permitted().await?;
             conn.transaction::<(), StoreError, _>(|conn| {
                 async {
                     // Copy shared dynamic data sources and adjust their ID; if
@@ -1603,7 +1606,7 @@ impl DeploymentStore {
             .await?;
         }
 
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         if ENV_VARS.postpone_attribute_index_creation {
             // check if all indexes are valid and recreate them if they aren't
             self.load_indexes(site.clone())
@@ -1638,7 +1641,7 @@ impl DeploymentStore {
         current_ptr: &BlockPtr,
         parent_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| {
@@ -1735,7 +1738,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         current_ptr: &BlockPtr,
     ) -> Result<UnfailOutcome, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         let deployment_id = &site.deployment;
 
         conn.transaction(|conn| async {
@@ -1798,7 +1801,7 @@ impl DeploymentStore {
 
     #[cfg(debug_assertions)]
     pub async fn error_count(&self, id: &DeploymentHash) -> Result<usize, StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::error_count(&mut conn, id).await
     }
 
@@ -1820,7 +1823,7 @@ impl DeploymentStore {
                 "info.subgraph_sizes",
                 "info.chain_sizes",
             ];
-            let mut conn = store.pool.get().await?;
+            let mut conn = store.pool.get_permitted().await?;
             for view in VIEWS {
                 let query = format!("refresh materialized view {}", view);
                 diesel::sql_query(&query).execute(&mut conn).await?;
@@ -1840,7 +1843,7 @@ impl DeploymentStore {
         site: &Site,
     ) -> Result<deployment::SubgraphHealth, StoreError> {
         let id = site.id;
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::health(&mut conn, id).await
     }
 
@@ -1849,7 +1852,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         raw_yaml: String,
     ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get().await?;
+        let mut conn = self.pool.get_permitted().await?;
         deployment::set_manifest_raw_yaml(&mut conn, &site, &raw_yaml).await
     }
 

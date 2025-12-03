@@ -19,6 +19,7 @@ use graph::slog::warn;
 use graph::util::timed_rw_lock::TimedMutex;
 
 use std::fmt::{self};
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::time::Duration;
 use std::{collections::HashMap, sync::RwLock};
@@ -41,6 +42,35 @@ use manager::StateTracker;
 type AsyncPool = deadpool::managed::Pool<ConnectionManager>;
 /// A database connection for asynchronous diesel operations
 pub type AsyncPgConnection = deadpool::managed::Object<ConnectionManager>;
+
+/// A database connection bundled with a semaphore permit.
+/// The permit is held for the lifetime of the connection, providing
+/// backpressure to prevent pool exhaustion during mass operations.
+pub struct PermittedConnection {
+    conn: AsyncPgConnection,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+}
+
+impl PermittedConnection {
+    /// Returns the underlying connection, consuming the permit.
+    /// The permit is released when this method is called.
+    pub fn into_inner(self) -> AsyncPgConnection {
+        self.conn
+    }
+}
+
+impl Deref for PermittedConnection {
+    type Target = AsyncPgConnection;
+    fn deref(&self) -> &Self::Target {
+        &self.conn
+    }
+}
+
+impl DerefMut for PermittedConnection {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.conn
+    }
+}
 
 /// The namespace under which the `PRIMARY_TABLES` are mapped into each
 /// shard
@@ -319,6 +349,14 @@ impl ConnectionPool {
         self.get_ready()?.get().await
     }
 
+    /// Get a connection with backpressure via semaphore permit. Use this
+    /// for indexing operations to prevent pool exhaustion. This method will
+    /// wait indefinitely until a permit, and with that, a connection is
+    /// available.
+    pub async fn get_permitted(&self) -> Result<PermittedConnection, StoreError> {
+        self.get_ready()?.get_permitted().await
+    }
+
     /// Get a connection from the pool for foreign data wrapper access;
     /// since that pool can be very contended, periodically log that we are
     /// still waiting for a connection
@@ -404,6 +442,15 @@ pub struct PoolInner {
     query_semaphore: Arc<tokio::sync::Semaphore>,
     semaphore_wait_stats: Arc<RwLock<MovingStats>>,
     semaphore_wait_gauge: Box<Gauge>,
+
+    // Limits concurrent indexing operations to prevent pool exhaustion
+    // during mass subgraph startup or high write load. Provides
+    // backpressure similar to the old `with_conn` limiter that was removed
+    // during diesel-async migration. It also avoids timeouts because of
+    // pool exhaustion when getting a connection.
+    indexing_semaphore: Arc<tokio::sync::Semaphore>,
+    indexing_semaphore_wait_stats: Arc<RwLock<MovingStats>>,
+    indexing_semaphore_wait_gauge: Box<Gauge>,
 }
 
 impl PoolInner {
@@ -484,15 +531,28 @@ impl PoolInner {
 
         info!(logger_store, "Pool successfully connected to Postgres");
 
+        let max_concurrent_queries = pool_size as usize + ENV_VARS.store.extra_query_permits;
+
+        // Query semaphore for GraphQL queries
         let semaphore_wait_gauge = registry
             .new_gauge(
                 "query_semaphore_wait_ms",
                 "Moving average of time spent on waiting for postgres query semaphore",
-                const_labels,
+                const_labels.clone(),
             )
             .expect("failed to create `query_effort_ms` counter");
-        let max_concurrent_queries = pool_size as usize + ENV_VARS.store.extra_query_permits;
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
+
+        // Indexing semaphore for indexing/write operations
+        let indexing_semaphore_wait_gauge = registry
+            .new_gauge(
+                "indexing_semaphore_wait_ms",
+                "Moving average of time spent waiting for indexing semaphore",
+                const_labels,
+            )
+            .expect("failed to create indexing_semaphore_wait_ms gauge");
+        let indexing_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
+
         PoolInner {
             logger: logger_pool,
             shard,
@@ -504,6 +564,9 @@ impl PoolInner {
             semaphore_wait_stats: Arc::new(RwLock::new(MovingStats::default())),
             query_semaphore,
             semaphore_wait_gauge,
+            indexing_semaphore,
+            indexing_semaphore_wait_stats: Arc::new(RwLock::new(MovingStats::default())),
+            indexing_semaphore_wait_gauge,
         }
     }
 
@@ -657,6 +720,32 @@ impl PoolInner {
             .unwrap()
             .add_and_register(start.elapsed(), &self.semaphore_wait_gauge);
         permit.unwrap()
+    }
+
+    /// Acquire a permit for indexing operations. This provides backpressure
+    /// to prevent connection pool exhaustion during mass subgraph startup
+    /// or high write load.
+    async fn indexing_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+        let start = Instant::now();
+        let permit = self.indexing_semaphore.cheap_clone().acquire_owned().await;
+        self.indexing_semaphore_wait_stats
+            .write()
+            .unwrap()
+            .add_and_register(start.elapsed(), &self.indexing_semaphore_wait_gauge);
+        permit.unwrap()
+    }
+
+    /// Get a connection with backpressure via semaphore permit. Use this
+    /// for indexing operations to prevent pool exhaustion. This method will
+    /// wait indefinitely until a permit, and with that, a connection is
+    /// available.
+    pub(crate) async fn get_permitted(&self) -> Result<PermittedConnection, StoreError> {
+        let permit = self.indexing_permit().await;
+        let conn = self.get().await?;
+        Ok(PermittedConnection {
+            conn,
+            _permit: permit,
+        })
     }
 
     async fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
