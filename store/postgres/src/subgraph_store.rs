@@ -1284,9 +1284,21 @@ impl Inner {
         ratio: f64,
     ) -> Result<(), StoreError> {
         for (_shard, store) in &self.stores {
-            let candidates = store
+            let candidates = match store
                 .identify_account_like_candidates(min_records, ratio)
-                .await?;
+                .await
+            {
+                Ok(candidates) => candidates,
+                Err(e) => {
+                    graph::slog::error!(
+                        logger,
+                        "Failed to identify account-like candidates in shard {}",
+                        _shard;
+                        "error" => e.to_string()
+                    );
+                    continue;
+                }
+            };
 
             graph::slog::debug!(
                 logger,
@@ -1303,11 +1315,24 @@ impl Inner {
                     subgraph
                 );
 
-                let hash = DeploymentHash::new(subgraph.clone()).map_err(|_| {
-                    anyhow!("Failed to create deployment hash for subgraph: {subgraph}")
-                })?;
-                let (store, site) = self.store(&hash)?;
-                store.set_account_like(site, &table_name, true).await?;
+                let res = async {
+                    let hash = DeploymentHash::new(subgraph.clone()).map_err(|_| {
+                        anyhow!("Failed to create deployment hash for subgraph: {subgraph}")
+                    })?;
+                    let (store, site) = self.store(&hash).await?;
+                    store.set_account_like(site, &table_name, true).await
+                }
+                .await;
+
+                if let Err(e) = res {
+                    graph::slog::error!(
+                        logger,
+                        "Failed to set table {} as account-like for deployment {}",
+                        table_name,
+                        subgraph;
+                        "error" => e.to_string()
+                    );
+                }
             }
         }
 

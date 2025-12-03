@@ -782,9 +782,9 @@ impl DeploymentStore {
             #[diesel(sql_type = diesel::sql_types::Text)]
             table_name: String,
         }
-        let result = self
-            .with_conn(move |conn, _| {
-                let query = r#"
+
+        let mut conn = self.pool.get().await?;
+        let query = r#"
                     SELECT
                         stats.subgraph,
                         stats.table_name
@@ -798,13 +798,12 @@ impl DeploymentStore {
                         AND ts.is_account_like IS NOT TRUE
                 "#;
 
-                diesel::sql_query(query)
-                    .bind::<diesel::sql_types::BigInt, _>(min_versions as i64)
-                    .bind::<diesel::sql_types::Double, _>(ratio)
-                    .load::<TableStat>(conn)
-                    .map_err(Into::into)
-            })
-            .await;
+        let result = diesel::sql_query(query)
+            .bind::<diesel::sql_types::BigInt, _>(min_versions as i64)
+            .bind::<diesel::sql_types::Double, _>(ratio)
+            .load::<TableStat>(&mut conn)
+            .await
+            .map_err(Into::into);
 
         result.map(|tables| {
             tables
