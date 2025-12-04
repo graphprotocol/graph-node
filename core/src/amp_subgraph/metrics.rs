@@ -40,7 +40,10 @@ impl Metrics {
             store.shard().to_string(),
         );
 
-        let const_labels = [("deployment", &deployment)];
+        let const_labels = [
+            ("deployment", deployment.to_string()),
+            ("shard", store.shard().to_string()),
+        ];
 
         Self {
             deployment_status: DeploymentStatus::new(&metrics_registry, const_labels.clone()),
@@ -69,7 +72,7 @@ impl DeploymentStatus {
     ) -> Self {
         let int_gauge = metrics_registry
             .new_int_gauge(
-                "amp_deployment_status",
+                "deployment_status",
                 indoc!(
                     "
                     Indicates the current indexing status of a deployment.
@@ -82,7 +85,7 @@ impl DeploymentStatus {
                 ),
                 const_labels,
             )
-            .expect("failed to register `amp_deployment_status` gauge");
+            .expect("failed to register `deployment_status` gauge");
 
         Self(int_gauge)
     }
@@ -118,11 +121,11 @@ impl DeploymentHead {
     ) -> Self {
         let int_gauge = metrics_registry
             .new_int_gauge(
-                "amp_deployment_head",
+                "deployment_head",
                 "Tracks the most recent block number processed by a deployment",
                 const_labels,
             )
-            .expect("failed to register `amp_deployment_head` gauge");
+            .expect("failed to register `deployment_head` gauge");
 
         Self(int_gauge)
     }
@@ -177,7 +180,7 @@ impl DeploymentSynced {
     ) -> Self {
         let int_gauge = metrics_registry
             .new_int_gauge(
-                "amp_deployment_synced",
+                "deployment_synced",
                 indoc!(
                     "
                     Indicates whether a deployment has reached the chain head or the end block since it was deployed.
@@ -188,7 +191,7 @@ impl DeploymentSynced {
                 ),
                 const_labels,
             )
-            .expect("failed to register `amp_deployment_synced` gauge");
+            .expect("failed to register `deployment_synced` gauge");
 
         Self(int_gauge)
     }
@@ -239,11 +242,11 @@ impl BlocksProcessed {
     ) -> Self {
         let int_counter = metrics_registry
             .new_int_counter(
-                "amp_deployment_blocks_processed_count",
+                "deployment_blocks_processed_count",
                 "Tracks the total number of blocks processed by a deployment",
                 const_labels,
             )
-            .expect("failed to register `amp_deployment_blocks_processed_count` counter");
+            .expect("failed to register `deployment_blocks_processed_count` counter");
 
         Self(int_counter)
     }
