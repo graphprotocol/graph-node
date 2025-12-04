@@ -1,3 +1,4 @@
+// TODO: Remove this once there is a better way to get this information from Amp servers.
 pub(super) mod column_aliases {
     pub(in crate::amp) static BLOCK_NUMBER: &[&str] = &[
         "_block_num",   // Meta column present in all tables

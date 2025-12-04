@@ -103,8 +103,14 @@ async fn process_record_batch_group<AC>(
         return Ok(entity_cache);
     }
 
-    let block_timestamp = decode_block_timestamp(&record_batches)
-        .map_err(|e| e.context("failed to decode block timestamp"))?;
+    let block_timestamp = if cx.manifest.schema.has_aggregations() {
+        decode_block_timestamp(&record_batches)
+            .map_err(|e| e.context("failed to decode block timestamp"))?
+    } else {
+        // TODO: Block timestamp is only required for subgraph aggregations.
+        //       Make it optional at the store level.
+        DateTime::<Utc>::MIN_UTC
+    };
 
     for record_batch in record_batches {
         let StreamRecordBatch {
@@ -233,6 +239,14 @@ async fn process_record_batch<AC>(
     Ok(())
 }
 
+/// Decodes the block timestamp from the first matching column in `record_batches`.
+///
+/// Iterates through the provided record batches and returns the timestamp from
+/// the first batch that contains a valid block timestamp column.
+///
+/// # Preconditions
+///
+/// All entries in `record_batches` must belong to the same record batch group.
 fn decode_block_timestamp(record_batches: &[StreamRecordBatch]) -> Result<DateTime<Utc>, Error> {
     let mut last_error: Option<Error> = None;
 

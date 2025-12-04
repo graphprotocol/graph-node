@@ -25,6 +25,7 @@ use crate::{
     },
     components::link_resolver::{LinkResolver, LinkResolverContext},
     data::subgraph::DeploymentHash,
+    schema::InputSchema,
 };
 
 /// Supported API versions for data source transformers.
@@ -64,6 +65,7 @@ impl RawDataSource {
         logger: &Logger,
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
+        input_schema: Option<&InputSchema>,
     ) -> Result<DataSource, Error> {
         let Self {
             name,
@@ -84,7 +86,14 @@ impl RawDataSource {
             .map_err(|e| e.source_context("invalid `source`"))?;
 
         let transformer = transformer
-            .resolve(&logger, link_resolver, amp_client, &network, &source)
+            .resolve(
+                &logger,
+                link_resolver,
+                amp_client,
+                input_schema,
+                &network,
+                &source,
+            )
             .await
             .map_err(|e| e.source_context("invalid `transformer`"))?;
 
@@ -222,6 +231,7 @@ impl RawTransformer {
         logger: &Logger,
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
+        input_schema: Option<&InputSchema>,
         network: &str,
         source: &Source,
     ) -> Result<Transformer, Error> {
@@ -237,6 +247,7 @@ impl RawTransformer {
             logger,
             link_resolver,
             amp_client,
+            input_schema,
             network,
             tables,
             source,
@@ -294,6 +305,7 @@ impl RawTransformer {
         logger: &Logger,
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
+        input_schema: Option<&InputSchema>,
         network: &str,
         tables: Vec<RawTable>,
         source: &Source,
@@ -318,7 +330,15 @@ impl RawTransformer {
             );
 
             table
-                .resolve(&logger, link_resolver, amp_client, network, source, abis)
+                .resolve(
+                    &logger,
+                    link_resolver,
+                    amp_client,
+                    input_schema,
+                    network,
+                    source,
+                    abis,
+                )
                 .await
                 .map_err(|e| e.source_context(format!("invalid `tables` at index {i}")))
         });
@@ -410,6 +430,7 @@ impl RawTable {
         logger: &Logger,
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
+        input_schema: Option<&InputSchema>,
         network: &str,
         source: &Source,
         abis: &[Abi],
@@ -437,6 +458,7 @@ impl RawTable {
         let block_range_query_builder = Self::resolve_block_range_query_builder(
             logger,
             amp_client,
+            input_schema,
             network,
             source,
             query,
@@ -534,6 +556,7 @@ impl RawTable {
     async fn resolve_block_range_query_builder(
         logger: &Logger,
         amp_client: &impl amp::Client,
+        input_schema: Option<&InputSchema>,
         network: &str,
         source: &Source,
         query: ValidQuery,
@@ -545,10 +568,13 @@ impl RawTable {
         let (block_number_column, _) =
             auto_block_number_decoder(&record_batch).map_err(|e| Error::InvalidQuery(e))?;
 
-        let has_block_hash_column = auto_block_hash_decoder(&record_batch).is_ok();
-        let has_block_timestamp_column = auto_block_timestamp_decoder(&record_batch).is_ok();
+        let need_block_hash_column = auto_block_hash_decoder(&record_batch).is_err();
+        let need_block_timestamp_column = input_schema
+            .map(|input_schema| input_schema.has_aggregations())
+            .unwrap_or(false)
+            && auto_block_timestamp_decoder(&record_batch).is_err();
 
-        if has_block_hash_column && has_block_timestamp_column {
+        if !need_block_hash_column && !need_block_timestamp_column {
             return Ok(BlockRangeQueryBuilder::new(query, block_number_column));
         }
 
@@ -590,7 +616,7 @@ impl RawTable {
             let record_batch = RecordBatch::new_empty(schema.clone().into());
             let mut columns = Vec::new();
 
-            if !has_block_hash_column {
+            if need_block_hash_column {
                 let Ok((block_hash_column, _)) = auto_block_hash_decoder(&record_batch) else {
                     debug!(
                         context_logger,
@@ -602,7 +628,7 @@ impl RawTable {
                 columns.push(block_hash_column);
             }
 
-            if !has_block_timestamp_column {
+            if need_block_timestamp_column {
                 let Ok((block_timestamp_column, _)) = auto_block_timestamp_decoder(&record_batch)
                 else {
                     debug!(

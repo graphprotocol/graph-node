@@ -1,3 +1,5 @@
+//! This is a temporary compatibility module until the graph-node is fully migrated to `alloy`.
+
 use alloy::primitives::{BlockHash, BlockNumber};
 use chrono::{DateTime, Utc};
 

@@ -146,7 +146,7 @@ where
                         metrics,
                     );
 
-                    let runner_result = runner::new_runner(runner_context)(cancel_token).await;
+                    let runner_result = runner::new_runner(runner_context, cancel_token).await;
 
                     match manager.subgraph_store.stop_subgraph(&deployment).await {
                         Ok(()) => {

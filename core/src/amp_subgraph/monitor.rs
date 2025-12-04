@@ -2,9 +2,9 @@
 //!
 //! # Terminology used in this module
 //!
-//! `active subgraph` - A subgraph that was started and is still tracked.
+//! `active subgraph` - A subgraph that was started and is still kept in memory in the list of started subgraphs.
 //! `running subgraph` - A subgraph that has an instance that is making progress or stopping.
-//! `subgraph instance` - A background process that executes the subgraph runner future.
+//! `subgraph instance` - A background task that executes the subgraph runner future.
 
 use std::{
     collections::{hash_map::Entry, HashMap},
@@ -65,7 +65,7 @@ pub(super) struct Monitor {
     /// The channel that is used to send subgraph commands.
     ///
     /// Every subgraph start and stop request results in a command that is sent to the
-    /// background process that manages the subgraph instances.
+    /// background task that manages the subgraph instances.
     command_tx: mpsc::UnboundedSender<Command>,
 
     /// When a subgraph starts it is assigned a sequential ID.
@@ -87,10 +87,10 @@ pub(super) struct Monitor {
 impl Monitor {
     /// Creates a new subgraph monitor.
     ///
-    /// Spawns a background process that manages the subgraph start and stop requests.
+    /// Spawns a background task that manages the subgraph start and stop requests.
     ///
     /// A new cancel token is derived from the `cancel_token` and only the derived token is used by the
-    /// subgraph monitor and its background process.
+    /// subgraph monitor and its background task.
     pub(super) fn new(logger_factory: &LoggerFactory, cancel_token: &CancellationToken) -> Self {
         let logger = logger_factory.component_logger("AmpSubgraphMonitor", None);
         let logger_factory = Arc::new(logger_factory.with_parent(logger));
@@ -394,9 +394,9 @@ impl Monitor {
         }
     }
 
-    /// Spawns a background process that executes the subgraph runner future.
+    /// Spawns a background task that executes the subgraph runner future.
     ///
-    /// An additional background process is spawned to handle the graceful shutdown of the subgraph runner,
+    /// An additional background task is spawned to handle the graceful shutdown of the subgraph runner,
     /// and to ensure correct behaviour even if the subgraph runner panics.
     fn start_subgraph(
         logger: Logger,
@@ -502,7 +502,7 @@ impl Drop for Monitor {
     }
 }
 
-/// Represents a background process that executes the subgraph runner future.
+/// Represents a background task that executes the subgraph runner future.
 struct SubgraphInstance {
     id: u32,
     handle: JoinHandle<()>,

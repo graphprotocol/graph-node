@@ -9,7 +9,7 @@ mod reorg_handler;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use futures::{future::BoxFuture, StreamExt};
+use futures::StreamExt;
 use graph::{
     amp::Client, cheap_clone::CheapClone, components::store::EntityCache,
     data::subgraph::schema::SubgraphError,
@@ -24,48 +24,45 @@ use self::{
 
 pub(super) use self::context::Context;
 
-pub(super) fn new_runner<AC>(
+pub(super) async fn new_runner<AC>(
     mut cx: Context<AC>,
-) -> Box<dyn FnOnce(CancellationToken) -> BoxFuture<'static, Result<()>> + Send + 'static>
+    cancel_token: CancellationToken,
+) -> Result<()>
 where
     AC: Client + Send + Sync + 'static,
 {
-    Box::new(move |cancel_token| {
-        Box::pin(async move {
-            let indexing_duration_handle = tokio::spawn({
-                let mut instant = Instant::now();
-                let indexing_duration = cx.metrics.indexing_duration.clone();
+    let indexing_duration_handle = tokio::spawn({
+        let mut instant = Instant::now();
+        let indexing_duration = cx.metrics.indexing_duration.clone();
 
-                async move {
-                    loop {
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+        async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
 
-                        let prev_instant = std::mem::replace(&mut instant, Instant::now());
-                        indexing_duration.record(prev_instant.elapsed());
-                    }
-                }
-            });
-
-            let result = cancel_token
-                .run_until_cancelled(run_indexing_with_retries(&mut cx))
-                .await;
-
-            indexing_duration_handle.abort();
-
-            match result {
-                Some(result) => result?,
-                None => {
-                    debug!(cx.logger, "Processed cancel signal");
-                }
+                let prev_instant = std::mem::replace(&mut instant, Instant::now());
+                indexing_duration.record(prev_instant.elapsed());
             }
+        }
+    });
 
-            cx.metrics.deployment_status.stopped();
+    let result = cancel_token
+        .run_until_cancelled(run_indexing_with_retries(&mut cx))
+        .await;
 
-            debug!(cx.logger, "Waiting for the store to finish processing");
-            cx.store.flush().await?;
-            Ok(())
-        })
-    })
+    indexing_duration_handle.abort();
+
+    match result {
+        Some(result) => result?,
+        None => {
+            debug!(cx.logger, "Processed cancel signal");
+        }
+    }
+
+    cx.metrics.deployment_status.stopped();
+
+    debug!(cx.logger, "Waiting for the store to finish processing");
+    cx.store.flush().await?;
+    Ok(())
 }
 
 async fn run_indexing<AC>(cx: &mut Context<AC>) -> Result<(), Error>

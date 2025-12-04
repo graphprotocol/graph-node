@@ -1143,6 +1143,24 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             );
         }
 
+        let schema = match unresolved_schema {
+            Some(unresolved_schema) => Some(
+                unresolved_schema
+                    .resolve(
+                        deployment_hash,
+                        &spec_version,
+                        id.cheap_clone(),
+                        resolver,
+                        logger,
+                    )
+                    .await?,
+            ),
+            None => {
+                // It is attempted to be auto-generated after data sources are resolved.
+                None
+            }
+        };
+
         let data_sources = try_join_all(data_sources.into_iter().enumerate().map(|(idx, ds)| {
             ds.resolve(
                 deployment_hash,
@@ -1151,6 +1169,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
                 logger,
                 idx as u32,
                 &spec_version,
+                schema.as_ref(),
             )
         }))
         .await?;
@@ -1163,18 +1182,8 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             })
             .collect_vec();
 
-        let schema = match unresolved_schema {
-            Some(unresolved_schema) => {
-                unresolved_schema
-                    .resolve(
-                        deployment_hash,
-                        &spec_version,
-                        id.cheap_clone(),
-                        resolver,
-                        logger,
-                    )
-                    .await?
-            }
+        let schema = match schema {
+            Some(schema) => schema,
             None if amp_data_sources.len() == data_sources.len() => {
                 let table_schemas = amp_data_sources
                     .iter()
