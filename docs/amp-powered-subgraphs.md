@@ -1,7 +1,7 @@
 # Amp-powered subgraphs
 
 > [!NOTE]
-> This features is available starting from spec version `1.4.0`
+> This features is available starting from spec version `1.5.0`
 
 Amp-powered subgraphs are a new kind of subgraphs with SQL data sources that query and index data from the Amp servers.
 They are significantly more efficient than the standard subgraphs, and the indexing time can be reduced from days and weeks,
@@ -19,14 +19,27 @@ Amp-powered subgraphs introduce a new structure for defining Amp subgraph data s
 
 ### Spec version
 
-The minimum spec version for Amp-powered subgraphs is `1.4.0`.
+The minimum spec version for Amp-powered subgraphs is `1.5.0`.
 
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-specVersion: 1.4.0
-# .. other fields ...
+```diff
++ specVersion: 1.5.0
+  dataSources:
+    - kind: amp
+      name: Transfers
+      network: ethereum-mainnet
+      source:
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
+      transformer:
+        apiVersion: 0.0.1
+        tables:
+          - name: Transfer
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
@@ -40,10 +53,22 @@ This is used to assign the subgraph to the appropriate indexing process.
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSources:
-  - kind: amp
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
++   - kind: amp
+      name: Transfers
+      network: ethereum-mainnet
+      source:
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
+      transformer:
+        apiVersion: 0.0.1
+        tables:
+          - name: Transfer
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
@@ -55,10 +80,22 @@ This name is used for observability purposes and to identify progress and potent
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSources:
-  - name: Transfers
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
++     name: Transfers
+      network: ethereum-mainnet
+      source:
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
+      transformer:
+        apiVersion: 0.0.1
+        tables:
+          - name: Transfer
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
@@ -73,10 +110,22 @@ This is used to validate that the SQL queries for this data source produce resul
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSources:
-  - network: ethereum-mainnet
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Transfers
++     network: ethereum-mainnet
+      source:
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
+      transformer:
+        apiVersion: 0.0.1
+        tables:
+          - name: Transfer
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
@@ -92,11 +141,22 @@ This is used to validate that the SQL queries for this data source only query th
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSources:
-  - source:
-      dataset: edgeandnode/ethereum_mainnet
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Transfers
+      network: ethereum-mainnet
++     source:
++       dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
+      transformer:
+        apiVersion: 0.0.1
+        tables:
+          - name: Transfer
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
@@ -108,17 +168,26 @@ This is used to validate that the SQL queries for this data source only query th
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSources:
-  - source:
-      tables:
-        - blocks
-        - transactions
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Transfers
+      network: ethereum-mainnet
++     source:
+        dataset: edgeandnode/ethereum_mainnet
++       tables:
++         - blocks
++         - transactions
+      transformer:
+        apiVersion: 0.0.1
+        tables:
+          - name: Transfer
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
-### `source.address`
+### Optional `source.address`
 
 Contains the contract address with which SQL queries in the data source interact.
 
@@ -128,15 +197,27 @@ SQL queries resolve `sg_source_address()` calls to this contract address.
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSources:
-  - source:
-      address: "0xc944E90C64B2c07662A292be6244BDf05Cda44a7"
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Transfers
+      network: ethereum-mainnet
++     source:
++       address: "0xc944E90C64B2c07662A292be6244BDf05Cda44a7"
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
+      transformer:
+        apiVersion: 0.0.1
+        tables:
+          - name: Transfer
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
-### `source.startBlock`
+### Optional `source.startBlock`
 
 Contains the minimum block number that SQL queries in the data source can query.
 This is used as a starting point for the indexing process.
@@ -146,15 +227,27 @@ _When not provided, defaults to block number `0`._
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSources:
-  - source:
-      startBlock: 11446769
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Transfers
+      network: ethereum-mainnet
++     source:
++       startBlock: 11446769
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
+      transformer:
+        apiVersion: 0.0.1
+        tables:
+          - name: Transfer
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
-### `source.endBlock`
+### Optional `source.endBlock`
 
 Contains the maximum block number that SQL queries in the data source can query.
 Reaching this block number will complete the indexing process.
@@ -164,11 +257,23 @@ _When not provided, defaults to the maximum possible block number._
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSources:
-  - source:
-      endBlock: 23847939
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Transfers
+      network: ethereum-mainnet
++     source:
++       endBlock: 23847939
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
+      transformer:
+        apiVersion: 0.0.1
+        tables:
+          - name: Transfer
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
@@ -186,15 +291,27 @@ Represents the version of this transformer. Each version may contain a different
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSource:
-  - transformer:
-      apiVersion: 0.0.1
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Transfers
+      network: ethereum-mainnet
+      source:
+        endBlock: 23847939
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
++     transformer:
++       apiVersion: 0.0.1
+        tables:
+          - name: Transfers
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
-### `transformer.abis`
+### Optional `transformer.abis`
 
 Contains a list of ABIs that SQL queries can reference to extract event signatures.
 
@@ -206,13 +323,26 @@ _When not provided, defaults to an empty list._
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSource:
-  - transformer:
-      abis:
-        - name: ERC721 # The name of the contract
-          file: <IPFS CID of the JSON ABI file>
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Transfers
+      network: ethereum-mainnet
+      source:
+        endBlock: 23847939
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
++     transformer:
++       abis:
++         - name: ERC721 # The name of the contract
++           file: <IPFS CID of the JSON ABI file>
+        apiVersion: 0.0.1
+        tables:
+          - name: Transfer
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
@@ -238,12 +368,23 @@ type Block @entity(immutable: true) {
 ```
 
 **YAML manifest:**
-```yaml
-dataSource:
-  - transformer:
-      tables:
-        - name: Block
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Blocks
+      network: ethereum-mainnet
+      source:
+        endBlock: 23847939
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
++     transformer:
+        apiVersion: 0.0.1
++       tables:
++         - name: Block
+            file: <IPFS CID of the SQL query file>
 ```
 </details>
 
@@ -260,12 +401,23 @@ _When not provided, the `file` field is used instead._
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSource:
-  - transformer:
-      tables:
-        - query: SELECT * FROM "edgeandnode/ethereum_mainnet".blocks;
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Blocks
+      network: ethereum-mainnet
+      source:
+        endBlock: 23847939
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
++     transformer:
+        apiVersion: 0.0.1
++       tables:
+          - name: Block
++           query: SELECT * FROM "edgeandnode/ethereum_mainnet".blocks;
 ```
 </details>
 
@@ -281,12 +433,23 @@ _When not provided, the `query` field is used instead._
 <details>
 <summary>Example YAML:</summary>
 
-```yaml
-dataSource:
-  - transformer:
-      tables:
-        - file: <IPFS CID of the SQL query file>
-    # .. other fields ...
+```diff
+  specVersion: 1.5.0
++ dataSources:
+    - kind: amp
+      name: Blocks
+      network: ethereum-mainnet
+      source:
+        endBlock: 23847939
+        dataset: edgeandnode/ethereum_mainnet
+        tables:
+          - blocks
+          - transactions
++     transformer:
+        apiVersion: 0.0.1
++       tables:
+          - name: Block
++           file: <IPFS CID of the SQL query file>
 ```
 </details>
 
@@ -324,6 +487,9 @@ Example SQL query: `SELECT hash, /* .. other projections .. */ FROM "edgeandnode
 > If a table does not contain the block hash column, it can be retrieved by joining that table with another that contains the column on the `_block_num` column.
 
 ### Block timestamps
+
+> [!NOTE]
+> Only required for Amp-powered subgraphs that use subgraph aggregations.
 
 Every SQL query in Amp-powered subgraphs is expected to return the block timestamps for every row.
 This is required because subgraphs rely on this information for storing subgraph entities.
@@ -384,24 +550,10 @@ Amp-powered subgraphs feature introduces the following new ENV variables:
 
 ## Metrics
 
-Amp-powered subgraphs feature introduces the following new metrics:
+In addition to reporting updates to the existing `deployment_status`, `deployment_head`, `deployment_synced` and `deployment_blocks_processed_count`
+metrics, Amp-powered subgraphs feature introduces the following new metrics:
 
-- `amp_deployment_status` – Indicates the current indexing status of a deployment.
-
-  **Possible values:**
-  - `1` - graph-node is preparing to start indexing;
-  - `2` - deployment is being indexed;
-  - `3` - indexing is stopped by request;
-  - `4` - indexing failed;
-- `amp_deployment_head` – Tracks the most recent block number processed by a deployment.
 - `amp_deployment_target` – Tracks the target block number of a deployment.
-- `amp_deployment_synced` – Indicates whether a deployment has reached the chain head or the end block since it was deployed.
-
-  **Possible values:**
-  - `0` - deployment is not synced;
-  - `1` - deployment is synced;
 - `amp_deployment_indexing_duration_seconds` – Tracks the total duration in seconds of deployment indexing.
-- `amp_deployment_blocks_processed_count` – Tracks the total number of blocks processed by a deployment.
-
 
 Additionally, the `deployment_sync_secs` is extended with a new `amp-process` stage and new sections specific to the Amp indexing process.

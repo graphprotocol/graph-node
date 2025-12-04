@@ -363,6 +363,7 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
         logger: &Logger,
         manifest_idx: u32,
         spec_version: &semver::Version,
+        input_schema: Option<&InputSchema>,
     ) -> Result<DataSource<C>, anyhow::Error> {
         match self {
             Self::Onchain(unresolved) => unresolved
@@ -394,7 +395,7 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
             }
             Self::Amp(raw_data_source) => match amp_client {
                 Some(amp_client) => raw_data_source
-                    .resolve(logger, resolver.as_ref(), amp_client.as_ref())
+                    .resolve(logger, resolver.as_ref(), amp_client.as_ref(), input_schema)
                     .await
                     .map(DataSource::Amp)
                     .map_err(Error::from),

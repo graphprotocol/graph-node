@@ -138,7 +138,7 @@ impl Client for FlightClient {
                 prev_block_ranges = resume_streaming_query
                     .iter()
                     .cloned()
-                    .map(Into::into)
+                    .map(BlockRange::from)
                     .collect();
 
                 let metadata = serialize_resume_streaming_query(resume_streaming_query);
