@@ -638,6 +638,72 @@ impl BlockTracker {
     }
 }
 
+/// A batch that is queued for writing. The read methods on the `Queue` like
+/// `get` and `get_many` need to be able to read from a batch until the
+/// database changes that the batch contains have been committed. At the
+/// same time, once the background writer starts processing a batch, it must
+/// not be modified. This enum makes it possible to do this without cloning
+/// the batch or holding a lock across an await point.
+///
+/// When a batch is first added to the queue, it can still be appended to
+/// (`Open`). Once the background writer starts processing the batch, it is
+/// closed (`Closed`) and can no longer be modified.
+///
+/// The `processed` flag in the `Request` is a shortcut to determine whether
+/// a batch can still be appended to
+enum QueuedBatch {
+    /// An open batch that can still be appended to
+    Open(Batch),
+    /// A closed batch that can no longer be modified
+    Closed(Arc<Batch>),
+    /// Temporary placeholder during state transitions. Must never be
+    /// observed outside of `QueuedBatch::close`.
+    Invalid,
+}
+
+impl Deref for QueuedBatch {
+    type Target = Batch;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            QueuedBatch::Open(batch) => batch,
+            QueuedBatch::Closed(batch) => batch.as_ref(),
+            QueuedBatch::Invalid => unreachable!("deref is never called on a QueuedBatch::Invalid"),
+        }
+    }
+}
+
+impl QueuedBatch {
+    /// Append another batch to this one. Returns an error if this batch is
+    /// closed
+    fn append(&mut self, other: Batch) -> Result<(), StoreError> {
+        match self {
+            QueuedBatch::Open(batch) => batch.append(other),
+            QueuedBatch::Closed(_) => Err(internal_error!("attempt to append to closed batch")),
+            QueuedBatch::Invalid => {
+                unreachable!("append is never called on a QueuedBatch::Invalid")
+            }
+        }
+    }
+
+    /// Close the current batch, i.e., replace it by a `Closed` batch and
+    /// return a clone of the `Arc<Batch>` that the closed batch now holds
+    fn close(&mut self) -> Arc<Batch> {
+        let old = std::mem::replace(self, QueuedBatch::Invalid);
+        *self = match old {
+            QueuedBatch::Open(batch) => QueuedBatch::Closed(Arc::new(batch)),
+            closed @ QueuedBatch::Closed(_) => closed,
+            QueuedBatch::Invalid => unreachable!("close is never called on a QueuedBatch::Invalid"),
+        };
+        match self {
+            QueuedBatch::Closed(batch) => batch.cheap_clone(),
+            QueuedBatch::Open(_) | QueuedBatch::Invalid => {
+                unreachable!("close must have set self to Closed")
+            }
+        }
+    }
+}
+
 /// A write request received from the `WritableStore` frontend that gets
 /// queued
 ///
@@ -654,7 +720,12 @@ enum Request {
         // will try to read the batch. The batch only becomes truly readonly
         // when we decide to process it at which point we set `processed` to
         // `true`
-        batch: RwLock<Batch>,
+        batch: RwLock<QueuedBatch>,
+        /// True if the background writer has started processing this
+        /// request. It is guaranteed that once the batch is a
+        /// `QueuedBatch::Closed`, this flag is true. This flag serves as a
+        /// shortcut to check that without having to acquire the lock around
+        /// the batch.
         processed: AtomicBool,
     },
     RevertTo {
@@ -699,7 +770,7 @@ impl Request {
             queued: Instant::now(),
             store,
             stopwatch,
-            batch: RwLock::new(batch),
+            batch: RwLock::new(QueuedBatch::Open(batch)),
             processed: AtomicBool::new(false),
         }
     }
@@ -741,7 +812,9 @@ impl Request {
                 processed: _,
             } => {
                 let start = Instant::now();
-                let batch = batch.read().unwrap();
+
+                let batch = batch.write().unwrap().close();
+
                 if let Some(err) = &batch.error {
                     // This can happen when appending to the batch failed
                     // because of an internal error. Returning an `Err` here
@@ -749,7 +822,7 @@ impl Request {
                     return Err(err.clone());
                 }
                 let res = store
-                    .transact_block_operations(batch.deref(), stopwatch)
+                    .transact_block_operations(&batch, stopwatch)
                     .await
                     .map(|()| ExecResult::Continue);
                 info!(store.logger, "Committed write batch";
