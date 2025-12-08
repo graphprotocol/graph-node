@@ -1783,20 +1783,48 @@ impl SubgraphStoreTrait for SubgraphStore {
         Ok(sites.first().map(DeploymentLocator::from))
     }
 
-    async fn set_manifest_raw_yaml(
-        &self,
-        hash: &DeploymentHash,
-        raw_yaml: String,
-    ) -> Result<(), StoreError> {
-        let (store, site) = self.store(hash).await?;
-        store.set_manifest_raw_yaml(site, raw_yaml).await
-    }
-
     async fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
         let store = self.for_site(&site)?;
 
         let info = store.subgraph_info(site).await?;
         Ok(info.instrument)
+    }
+
+    async fn set_raw_manifest_once(
+        &self,
+        hash: &DeploymentHash,
+        raw_manifest: &serde_yaml::Mapping,
+    ) -> Result<(), StoreError> {
+        let (store, site) = self.store(hash).await?;
+
+        store
+            .set_raw_manifest_once(
+                site,
+                serde_yaml::to_string(raw_manifest).map_err(|_e| {
+                    StoreError::InternalError("invalid subgraph manifest".to_string())
+                })?,
+            )
+            .await
+    }
+
+    async fn raw_manifest(
+        &self,
+        hash: &DeploymentHash,
+    ) -> Result<Option<serde_yaml::Mapping>, StoreError> {
+        let (store, site) = self.store(hash).await?;
+
+        store
+            .raw_manifest(site)
+            .await
+            .and_then(|optional_raw_manifest| {
+                optional_raw_manifest
+                    .map(|raw_manifest| {
+                        serde_yaml::from_str(&raw_manifest).map_err(|_e| {
+                            StoreError::InternalError("invalid subgraph manifest".to_string())
+                        })
+                    })
+                    .transpose()
+            })
     }
 }

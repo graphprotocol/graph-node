@@ -222,17 +222,27 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// hash. Returns `None` if there is no deployment with that hash
     async fn active_locator(&self, hash: &str) -> Result<Option<DeploymentLocator>, StoreError>;
 
-    /// This migrates subgraphs that existed before the raw_yaml column was added.
-    async fn set_manifest_raw_yaml(
-        &self,
-        hash: &DeploymentHash,
-        raw_yaml: String,
-    ) -> Result<(), StoreError>;
-
     /// Return `true` if the `instrument` flag for the deployment is set.
     /// When this flag is set, indexing of the deployment should log
     /// additional diagnostic information
     async fn instrument(&self, deployment: &DeploymentLocator) -> Result<bool, StoreError>;
+
+    /// Sets the raw subgraph manifest for the given deployment hash, if not previously set.
+    ///
+    /// Returns `Ok(())` regardless of whether the value was updated.
+    async fn set_raw_manifest_once(
+        &self,
+        hash: &DeploymentHash,
+        raw_manifest: &serde_yaml::Mapping,
+    ) -> Result<(), StoreError>;
+
+    /// Returns the raw subgraph manifest for the given deployment hash, if one exists.
+    ///
+    /// Returns `None` if no manifest is found for the specified deployment hash.
+    async fn raw_manifest(
+        &self,
+        hash: &DeploymentHash,
+    ) -> Result<Option<serde_yaml::Mapping>, StoreError>;
 }
 
 #[async_trait]

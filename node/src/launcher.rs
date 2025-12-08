@@ -332,6 +332,7 @@ where
     let subgraph_provider = graph_core::subgraph_provider::SubgraphProvider::new(
         &logger_factory,
         sg_count.cheap_clone(),
+        network_store.subgraph_store(),
         link_resolver.cheap_clone(),
         tokio_util::sync::CancellationToken::new(),
         subgraph_instance_managers,

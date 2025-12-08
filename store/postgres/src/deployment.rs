@@ -415,21 +415,40 @@ pub async fn set_history_blocks(
         .map_err(StoreError::from)
 }
 
-/// This migrates subgraphs that existed before the raw_yaml column was added.
-pub async fn set_manifest_raw_yaml(
+/// Sets the raw subgraph manifest for the given `site`, if not previously set.
+///
+/// Returns `Ok(())` regardless of whether the value was updated.
+pub async fn set_raw_manifest_once(
     conn: &mut AsyncPgConnection,
     site: &Site,
-    raw_yaml: &str,
+    raw_manifest: &str,
 ) -> Result<(), StoreError> {
     use subgraph_manifest as sm;
 
     update(sm::table.filter(sm::id.eq(site.id)))
         .filter(sm::raw_yaml.is_null())
-        .set(sm::raw_yaml.eq(raw_yaml))
+        .set(sm::raw_yaml.eq(raw_manifest))
         .execute(conn)
         .await
         .map(|_| ())
         .map_err(|e| e.into())
+}
+
+/// Returns the raw subgraph manifest for the given `site`, if one exists.
+///
+/// Returns `None` if no manifest is found for this `site`.
+pub async fn load_raw_manifest(
+    conn: &mut AsyncPgConnection,
+    site: &Site,
+) -> Result<Option<String>, StoreError> {
+    use subgraph_manifest as sm;
+
+    sm::table
+        .select(sm::raw_yaml)
+        .filter(sm::id.eq(site.id))
+        .first(conn)
+        .await
+        .map_err(StoreError::from)
 }
 
 /// Most of the time, this will be a noop; the only time we actually modify

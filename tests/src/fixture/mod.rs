@@ -589,6 +589,7 @@ pub async fn setup_inner<C: Blockchain>(
     let subgraph_provider = Arc::new(graph_core::subgraph_provider::SubgraphProvider::new(
         &logger_factory,
         sg_count.cheap_clone(),
+        subgraph_store.clone(),
         link_resolver.cheap_clone(),
         tokio_util::sync::CancellationToken::new(),
         subgraph_instance_managers,
