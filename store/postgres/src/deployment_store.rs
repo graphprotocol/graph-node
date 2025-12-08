@@ -1878,19 +1878,33 @@ impl DeploymentStore {
             .await
     }
 
-    pub(crate) async fn set_manifest_raw_yaml(
+    fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
+        self.primary.is_source(site)
+    }
+
+    /// Sets the raw subgraph manifest for the given `site`, if not previously set.
+    ///
+    /// Returns `Ok(())` regardless of whether the value was updated.
+    pub(crate) async fn set_raw_manifest_once(
         &self,
         site: Arc<Site>,
-        raw_yaml: String,
+        raw_manifest: String,
     ) -> Result<(), StoreError> {
         self.with_conn(move |conn, _| {
-            deployment::set_manifest_raw_yaml(conn, &site, &raw_yaml).map_err(Into::into)
+            deployment::set_raw_manifest_once(conn, &site, &raw_manifest)
+                .map_err(CancelableError::from)
         })
         .await
     }
 
-    fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
-        self.primary.is_source(site)
+    /// Returns the raw subgraph manifest for the given `site`, if one exists.
+    ///
+    /// Returns `None` if no manifest is found for this `site`.
+    pub(crate) async fn raw_manifest(&self, site: Arc<Site>) -> Result<Option<String>, StoreError> {
+        self.with_conn(move |conn, _| {
+            deployment::load_raw_manifest(conn, &site).map_err(CancelableError::from)
+        })
+        .await
     }
 }
 
