@@ -750,6 +750,8 @@ impl DeploymentStore {
         Ok(indexes.into_iter().map(CreateIndex::parse).collect())
     }
 
+    /// Do not use this while already holding a connection as that can lead
+    /// to deadlocks
     pub(crate) async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
         let store = self.clone();
         let mut conn = self.pool.get_permitted().await?;
@@ -1608,8 +1610,9 @@ impl DeploymentStore {
 
         let mut conn = self.pool.get_permitted().await?;
         if ENV_VARS.postpone_attribute_index_creation {
-            // check if all indexes are valid and recreate them if they aren't
-            self.load_indexes(site.clone())
+            // Check if all indexes are valid and recreate them if they
+            // aren't.
+            IndexList::load(&mut conn, site, self.cheap_clone())
                 .await?
                 .recreate_invalid_indexes(&mut conn, &dst)
                 .await?;
