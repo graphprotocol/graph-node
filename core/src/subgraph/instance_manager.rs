@@ -12,7 +12,6 @@ use crate::subgraph::runner::SubgraphRunner;
 use graph::amp;
 use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper};
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
-use graph::components::link_resolver::LinkResolverContext;
 use graph::components::metrics::gas::GasMetrics;
 use graph::components::metrics::subgraph::DeploymentStatusMetric;
 use graph::components::store::SourceableStore;
@@ -29,7 +28,7 @@ use tokio::task;
 
 use super::context::OffchainMonitor;
 use super::SubgraphTriggerProcessor;
-use crate::subgraph::runner::SubgraphRunnerError;
+use crate::{subgraph::runner::SubgraphRunnerError, subgraph_manifest};
 
 #[derive(Clone)]
 pub struct SubgraphInstanceManager<S: SubgraphStore, AC> {
@@ -83,30 +82,22 @@ where
             let deployment_status_metric = deployment_status_metric.clone();
 
             async move {
-                let link_resolver = self
-                    .link_resolver
-                    .for_manifest(&loc.hash.to_string())
-                    .map_err(SubgraphAssignmentProviderError::ResolveError)?;
+                let raw_manifest = subgraph_manifest::load_raw_subgraph_manifest(
+                    &logger,
+                    &*instance_manager.subgraph_store,
+                    &*instance_manager.link_resolver,
+                    &loc.hash,
+                )
+                .await?;
 
-                let file_bytes = link_resolver
-                    .cat(
-                        &LinkResolverContext::new(&loc.hash, &logger),
-                        &loc.hash.to_ipfs_link(),
-                    )
-                    .await
-                    .map_err(SubgraphAssignmentProviderError::ResolveError)?;
-
-                let manifest: serde_yaml::Mapping = serde_yaml::from_slice(&file_bytes)
-                    .map_err(|e| SubgraphAssignmentProviderError::ResolveError(e.into()))?;
-
-                match BlockchainKind::from_manifest(&manifest)? {
+                match BlockchainKind::from_manifest(&raw_manifest)? {
                     BlockchainKind::Ethereum => {
                         let runner = instance_manager
                             .build_subgraph_runner::<graph_chain_ethereum::Chain>(
                                 logger.clone(),
                                 self.env_vars.cheap_clone(),
                                 loc.clone(),
-                                manifest,
+                                raw_manifest,
                                 stop_block,
                                 Box::new(SubgraphTriggerProcessor {}),
                                 deployment_status_metric,
@@ -121,7 +112,7 @@ where
                                 logger.clone(),
                                 self.env_vars.cheap_clone(),
                                 loc.clone(),
-                                manifest,
+                                raw_manifest,
                                 stop_block,
                                 Box::new(SubgraphTriggerProcessor {}),
                                 deployment_status_metric,
@@ -136,7 +127,7 @@ where
                                 logger.clone(),
                                 self.env_vars.cheap_clone(),
                                 loc.cheap_clone(),
-                                manifest,
+                                raw_manifest,
                                 stop_block,
                                 Box::new(graph_chain_substreams::TriggerProcessor::new(
                                     loc.clone(),
@@ -251,7 +242,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
         logger: Logger,
         env_vars: Arc<EnvVars>,
         deployment: DeploymentLocator,
-        manifest: serde_yaml::Mapping,
+        raw_manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
         tp: Box<dyn TriggerProcessor<C, RuntimeHostBuilder<C>>>,
         deployment_status_metric: DeploymentStatusMetric,
@@ -264,7 +255,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
             logger,
             env_vars,
             deployment,
-            manifest,
+            raw_manifest,
             stop_block,
             tp,
             deployment_status_metric,
@@ -278,7 +269,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
         logger: Logger,
         env_vars: Arc<EnvVars>,
         deployment: DeploymentLocator,
-        manifest: serde_yaml::Mapping,
+        raw_manifest: serde_yaml::Mapping,
         stop_block: Option<BlockNumber>,
         tp: Box<dyn TriggerProcessor<C, RuntimeHostBuilder<C>>>,
         deployment_status_metric: DeploymentStatusMetric,
@@ -291,8 +282,8 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
         let subgraph_store = self.subgraph_store.cheap_clone();
         let registry = self.metrics_registry.cheap_clone();
 
-        let raw_yaml = serde_yaml::to_string(&manifest).unwrap();
-        let manifest = UnresolvedSubgraphManifest::parse(deployment.hash.cheap_clone(), manifest)?;
+        let manifest =
+            UnresolvedSubgraphManifest::parse(deployment.hash.cheap_clone(), raw_manifest)?;
 
         // Allow for infinite retries for subgraph definition files.
         let link_resolver = Arc::from(
@@ -302,24 +293,16 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
                 .with_retries(),
         );
 
-        // Make sure the `raw_yaml` is present on both this subgraph and the graft base.
-        self.subgraph_store
-            .set_manifest_raw_yaml(&deployment.hash, raw_yaml)
-            .await?;
         if let Some(graft) = &manifest.graft {
             if self.subgraph_store.is_deployed(&graft.base)? {
-                let file_bytes = self
-                    .link_resolver
-                    .cat(
-                        &LinkResolverContext::new(&deployment.hash, &logger),
-                        &graft.base.to_ipfs_link(),
-                    )
-                    .await?;
-                let yaml = String::from_utf8(file_bytes)?;
-
-                self.subgraph_store
-                    .set_manifest_raw_yaml(&graft.base, yaml)
-                    .await?;
+                // Makes sure the raw manifest is cached in the subgraph store
+                let _raw_manifest = subgraph_manifest::load_raw_subgraph_manifest(
+                    &logger,
+                    &*self.subgraph_store,
+                    &*self.link_resolver,
+                    &graft.base,
+                )
+                .await?;
             }
         }
 
