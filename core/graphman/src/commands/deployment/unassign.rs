@@ -37,7 +37,10 @@ pub async fn load_assigned_deployment(
     primary_pool: ConnectionPool,
     deployment: &DeploymentSelector,
 ) -> Result<AssignedDeployment, UnassignDeploymentError> {
-    let mut primary_conn = primary_pool.get().await.map_err(GraphmanError::from)?;
+    let mut primary_conn = primary_pool
+        .get_permitted()
+        .await
+        .map_err(GraphmanError::from)?;
 
     let locator = crate::deployment::load_deployment_locator(
         &mut primary_conn,
@@ -73,7 +76,7 @@ pub async fn unassign_deployment(
     notification_sender: Arc<NotificationSender>,
     deployment: AssignedDeployment,
 ) -> Result<(), GraphmanError> {
-    let primary_conn = primary_pool.get().await?;
+    let primary_conn = primary_pool.get_permitted().await?;
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
     let changes = catalog_conn.unassign_subgraph(&deployment.site).await?;

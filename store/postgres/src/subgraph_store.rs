@@ -819,7 +819,7 @@ impl Inner {
     /// of connections in between getting the first one and trying to get the
     /// second one.
     pub(crate) async fn primary_conn(&self) -> Result<primary::Connection, StoreError> {
-        let conn = self.mirror.primary().get().await?;
+        let conn = self.mirror.primary().get_permitted().await?;
         Ok(primary::Connection::new(conn))
     }
 
@@ -1381,7 +1381,7 @@ impl EnsLookup {
     }
 
     async fn is_table_empty(pool: &ConnectionPool) -> Result<bool, StoreError> {
-        let conn = pool.get_permitted().await?.into_inner();
+        let conn = pool.get_permitted().await?;
         primary::Connection::new(conn).is_ens_table_empty().await
     }
 }
@@ -1389,7 +1389,7 @@ impl EnsLookup {
 #[async_trait]
 impl EnsLookupTrait for EnsLookup {
     async fn find_name(&self, hash: &str) -> Result<Option<String>, StoreError> {
-        let conn = self.primary.get_permitted().await?.into_inner();
+        let conn = self.primary.get_permitted().await?;
         primary::Connection::new(conn).find_ens_name(hash).await
     }
 

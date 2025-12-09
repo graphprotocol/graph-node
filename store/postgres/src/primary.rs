@@ -4,7 +4,7 @@
 use crate::{
     block_range::UNVERSIONED_RANGE,
     detail::DeploymentDetail,
-    pool::PRIMARY_PUBLIC,
+    pool::{PermittedConnection, PRIMARY_PUBLIC},
     subgraph_store::{unused, Shard, PRIMARY_SHARD},
     AsyncPgConnection, ConnectionPool, ForeignServer, NotificationSender,
 };
@@ -779,11 +779,11 @@ mod queries {
 /// A wrapper for a database connection that provides access to functionality
 /// that works only on the primary database
 pub struct Connection {
-    conn: AsyncPgConnection,
+    conn: PermittedConnection,
 }
 
 impl Connection {
-    pub fn new(conn: AsyncPgConnection) -> Self {
+    pub fn new(conn: PermittedConnection) -> Self {
         Self { conn }
     }
 
@@ -807,13 +807,13 @@ impl Connection {
         type TM = <AsyncPgConnection as diesel_async::AsyncConnection>::TransactionManager;
 
         async move {
-            TM::begin_transaction(&mut self.conn).await?;
+            TM::begin_transaction(&mut *self.conn).await?;
             match callback(self).await {
                 Ok(value) => {
-                    TM::commit_transaction(&mut self.conn).await?;
+                    TM::commit_transaction(&mut *self.conn).await?;
                     Ok(value)
                 }
-                Err(user_error) => match TM::rollback_transaction(&mut self.conn).await {
+                Err(user_error) => match TM::rollback_transaction(&mut *self.conn).await {
                     Ok(()) => Err(user_error),
                     Err(diesel::result::Error::BrokenTransactionManager) => {
                         // In this case we are probably more interested by the

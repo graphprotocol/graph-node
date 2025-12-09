@@ -13,7 +13,7 @@ pub async fn unassign(
 ) -> Result<(), Error> {
     let locator = search.locate_unique(&primary).await?;
 
-    let pconn = primary.get().await?;
+    let pconn = primary.get_permitted().await?;
     let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
@@ -38,7 +38,7 @@ pub async fn reassign(
     let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
     let locator = search.locate_unique(&primary).await?;
 
-    let pconn = primary.get().await?;
+    let pconn = primary.get_permitted().await?;
     let mut conn = catalog::Connection::new(pconn);
 
     let site = conn
@@ -81,7 +81,7 @@ pub async fn pause_or_resume(
     locator: &DeploymentLocator,
     should_pause: bool,
 ) -> Result<(), Error> {
-    let pconn = primary.get().await?;
+    let pconn = primary.get_permitted().await?;
     let mut conn = catalog::Connection::new(pconn);
 
     let site = conn

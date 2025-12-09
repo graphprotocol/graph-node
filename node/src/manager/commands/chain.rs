@@ -157,8 +157,9 @@ pub async fn info(
 
 pub async fn remove(primary: ConnectionPool, store: BlockStore, name: String) -> Result<(), Error> {
     let sites = {
-        let mut conn =
-            graph_store_postgres::command_support::catalog::Connection::new(primary.get().await?);
+        let mut conn = graph_store_postgres::command_support::catalog::Connection::new(
+            primary.get_permitted().await?,
+        );
         conn.find_sites_for_network(&name).await?
     };
 

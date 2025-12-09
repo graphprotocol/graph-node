@@ -51,14 +51,6 @@ pub struct PermittedConnection {
     _permit: tokio::sync::OwnedSemaphorePermit,
 }
 
-impl PermittedConnection {
-    /// Returns the underlying connection, consuming the permit.
-    /// The permit is released when this method is called.
-    pub fn into_inner(self) -> AsyncPgConnection {
-        self.conn
-    }
-}
-
 impl Deref for PermittedConnection {
     type Target = AsyncPgConnection;
     fn deref(&self) -> &Self::Target {

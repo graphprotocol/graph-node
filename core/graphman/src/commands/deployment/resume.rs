@@ -37,7 +37,10 @@ pub async fn load_paused_deployment(
     primary_pool: ConnectionPool,
     deployment: &DeploymentSelector,
 ) -> Result<PausedDeployment, ResumeDeploymentError> {
-    let mut primary_conn = primary_pool.get().await.map_err(GraphmanError::from)?;
+    let mut primary_conn = primary_pool
+        .get_permitted()
+        .await
+        .map_err(GraphmanError::from)?;
 
     let locator = crate::deployment::load_deployment_locator(
         &mut primary_conn,
@@ -76,7 +79,7 @@ pub async fn resume_paused_deployment(
     notification_sender: Arc<NotificationSender>,
     paused_deployment: PausedDeployment,
 ) -> Result<(), GraphmanError> {
-    let primary_conn = primary_pool.get().await?;
+    let primary_conn = primary_pool.get_permitted().await?;
     let mut catalog_conn = catalog::Connection::new(primary_conn);
 
     let changes = catalog_conn

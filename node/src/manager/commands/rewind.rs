@@ -78,7 +78,7 @@ pub async fn run(
     if !start_block && (block_hash.is_none() || block_number.is_none()) {
         bail!("--block-hash and --block-number must be specified when --start-block is not set");
     }
-    let pconn = primary.get().await?;
+    let pconn = primary.get_permitted().await?;
     let mut conn = store_catalog::Connection::new(pconn);
 
     let subgraph_store = store.subgraph_store();

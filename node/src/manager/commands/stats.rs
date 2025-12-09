@@ -23,7 +23,7 @@ async fn site_and_conn(
     let primary_pool = pools.get(&*PRIMARY_SHARD).unwrap();
     let locator = search.locate_unique(primary_pool).await?;
 
-    let pconn = primary_pool.get().await?;
+    let pconn = primary_pool.get_permitted().await?;
     let mut conn = store_catalog::Connection::new(pconn);
 
     let site = conn
