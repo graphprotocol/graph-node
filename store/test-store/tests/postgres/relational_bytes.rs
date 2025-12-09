@@ -5,6 +5,7 @@ use graph::components::store::write::RowGroup;
 use graph::data::store::scalar;
 use graph::data_source::CausalityRegion;
 use graph::entity;
+use graph::prelude::alloy::primitives::B256;
 use graph::prelude::{BlockNumber, EntityModification, EntityQuery, MetricsRegistry, StoreError};
 use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph_store_postgres::AsyncPgConnection;
@@ -17,9 +18,9 @@ use std::{collections::BTreeMap, sync::Arc};
 use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::data::store::IdList;
 use graph::prelude::{
-    o, slog, web3::types::H256, AttributeNames, ChildMultiplicity, DeploymentHash, Entity,
-    EntityCollection, EntityLink, EntityWindow, Logger, ParentLink, StopwatchMetrics,
-    WindowAttribute, BLOCK_NUMBER_MAX,
+    o, slog, AttributeNames, ChildMultiplicity, DeploymentHash, Entity, EntityCollection,
+    EntityLink, EntityWindow, Logger, ParentLink, StopwatchMetrics, WindowAttribute,
+    BLOCK_NUMBER_MAX,
 };
 use graph_store_postgres::{
     layout_for_tests::make_dummy_site,
@@ -46,13 +47,13 @@ lazy_static! {
     static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17).unwrap();
     static ref LARGE_DECIMAL: BigDecimal =
         BigDecimal::from(1) / BigDecimal::new(LARGE_INT.clone(), 1);
-    static ref BYTES_VALUE: H256 = H256::from(hex!(
+    static ref BYTES_VALUE: B256 = B256::from(hex!(
         "e8b3b02b936c4a4a331ac691ac9a86e197fb7731f14e3108602c87d4dac55160"
     ));
-    static ref BYTES_VALUE2: H256 = H256::from(hex!(
+    static ref BYTES_VALUE2: B256 = B256::from(hex!(
         "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1"
     ));
-    static ref BYTES_VALUE3: H256 = H256::from(hex!(
+    static ref BYTES_VALUE3: B256 = B256::from(hex!(
         "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
     ));
     static ref BEEF_ENTITY: Entity = entity! { THINGS_SCHEMA =>

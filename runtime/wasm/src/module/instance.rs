@@ -2,8 +2,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use anyhow::Error;
+use graph::futures03::future::BoxFuture;
 use graph::futures03::FutureExt as _;
-use graph::prelude::web3::futures::future::BoxFuture;
 use graph::slog::SendSyncRefUnwindSafeKV;
 
 use semver::Version;

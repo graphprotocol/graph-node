@@ -1,17 +1,18 @@
 use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
 use graph::blockchain::{BlockTime, ChainIdentifier};
+use graph::prelude::alloy::consensus::Header as ConsensusHeader;
+use graph::prelude::alloy::primitives::{Bloom, B256, U256};
+use graph::prelude::alloy::rpc::types::{Block, Header};
+use graph::prelude::LightEthereumBlock;
 use lazy_static::lazy_static;
 
 use graph::components::store::BlockStore;
 use graph::{
     blockchain::Block as BlockchainBlock,
-    prelude::{
-        serde_json, web3::types::H256, web3::types::U256, BlockHash, BlockNumber, BlockPtr,
-        EthereumBlock, LightEthereumBlock,
-    },
+    prelude::{serde_json, BlockHash, BlockNumber, BlockPtr, EthereumBlock},
 };
-use graph_chain_ethereum::codec::{Block, BlockHeader};
+use graph_chain_ethereum::codec::{Block as FirehoseBlock, BlockHeader};
 use prost_types::Timestamp;
 
 use crate::{GENESIS_PTR, NETWORK_VERSION};
@@ -103,24 +104,34 @@ impl FakeBlock {
     }
 
     pub fn as_ethereum_block(&self) -> EthereumBlock {
-        let parent_hash = H256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
+        let parent_hash = B256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
+        let block_hash = B256::from_str(self.hash.as_str()).expect("invalid block hash");
 
-        let mut block = LightEthereumBlock::default();
-        block.number = Some(self.number.into());
-        block.parent_hash = parent_hash;
-        block.hash = Some(H256(self.block_hash().as_slice().try_into().unwrap()));
+        let mut consensus_header = ConsensusHeader::default();
+        consensus_header.number = self.number as u64;
+        consensus_header.parent_hash = parent_hash;
+        consensus_header.logs_bloom = Bloom::default(); // Empty bloom filter for test blocks
         if let Some(ts) = self.timestamp {
-            block.timestamp = ts;
+            consensus_header.timestamp = ts.to::<u64>();
         }
 
+        let rpc_header = Header {
+            hash: block_hash,
+            inner: consensus_header,
+            total_difficulty: None,
+            size: None,
+        };
+
+        let block = Block::empty(rpc_header);
+
         EthereumBlock {
-            block: Arc::new(block),
+            block: Arc::new(LightEthereumBlock::new(block.into())),
             transaction_receipts: Vec::new(),
         }
     }
 
-    pub fn as_firehose_block(&self) -> Block {
-        let mut block = Block::default();
+    pub fn as_firehose_block(&self) -> FirehoseBlock {
+        let mut block = FirehoseBlock::default();
         block.hash = self.hash.clone().into_bytes();
         block.number = self.number as u64;
 
