@@ -23,7 +23,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::pool::AsyncPool;
 
@@ -241,8 +241,13 @@ pub(crate) fn spawn_size_stat_collector(
 /// Reap connections that are too old (older than 30 minutes) or if there
 /// are more than `connection_min_idle` connections in the pool that have
 /// been idle for longer than `idle_timeout`
-pub(crate) fn spawn_connection_reaper(pool: AsyncPool, idle_timeout: Duration) {
+pub(crate) fn spawn_connection_reaper(
+    pool: AsyncPool,
+    idle_timeout: Duration,
+    wait_gauge: Option<Gauge>,
+) {
     const MAX_LIFETIME: Duration = Duration::from_secs(30 * 60);
+    const CHECK_INTERVAL: Duration = Duration::from_secs(30);
     let Some(min_idle) = ENV_VARS.store.connection_min_idle else {
         // If this is None, we will never reap anything
         return;
@@ -254,7 +259,9 @@ pub(crate) fn spawn_connection_reaper(pool: AsyncPool, idle_timeout: Duration) {
     tokio::task::spawn(async move {
         loop {
             let mut idle_count = 0;
+            let mut last_used = Instant::now() - 2 * CHECK_INTERVAL;
             pool.retain(|_, metrics| {
+                last_used = last_used.max(metrics.recycled.unwrap_or(metrics.created));
                 if metrics.age() > MAX_LIFETIME {
                     return false;
                 }
@@ -264,13 +271,18 @@ pub(crate) fn spawn_connection_reaper(pool: AsyncPool, idle_timeout: Duration) {
                 }
                 true
             });
-            tokio::time::sleep(Duration::from_secs(30)).await;
+            if last_used.elapsed() > CHECK_INTERVAL {
+                // Reset wait time if there was no activity recently so that
+                // we don't report stale wait times
+                wait_gauge.as_ref().map(|wait_gauge| wait_gauge.set(0.0));
+            }
+            tokio::time::sleep(CHECK_INTERVAL).await;
         }
     });
 }
 
 pub(crate) struct WaitMeter {
-    wait_gauge: Gauge,
+    pub(crate) wait_gauge: Gauge,
     pub(crate) wait_stats: PoolWaitStats,
 }
 

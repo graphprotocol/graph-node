@@ -497,9 +497,13 @@ impl PoolInner {
 
         manager::spawn_size_stat_collector(pool.clone(), &registry, const_labels.clone());
 
-        manager::spawn_connection_reaper(pool.clone(), ENV_VARS.store.connection_idle_timeout);
-
         let wait_meter = WaitMeter::new(&registry, const_labels.clone());
+
+        manager::spawn_connection_reaper(
+            pool.clone(),
+            ENV_VARS.store.connection_idle_timeout,
+            Some(wait_meter.wait_gauge.clone()),
+        );
 
         let fdw_pool = fdw_pool_size.map(|pool_size| {
             let fdw_timeouts = Timeouts {
@@ -517,7 +521,7 @@ impl PoolInner {
                 .build()
                 .expect("failed to create fdw connection pool");
 
-            manager::spawn_connection_reaper(fdw_pool.clone(), FDW_IDLE_TIMEOUT);
+            manager::spawn_connection_reaper(fdw_pool.clone(), FDW_IDLE_TIMEOUT, None);
             fdw_pool
         });
 
