@@ -1036,13 +1036,26 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         offset: BlockNumber,
         root: Option<BlockHash>,
     ) -> Result<Option<BlockFinality>, Error> {
+        let ptr_for_log = ptr.clone();
         let block: Option<EthereumBlock> = self
             .chain_store
             .cheap_clone()
             .ancestor_block(ptr, offset, root)
             .await?
-            .map(|x| x.0)
-            .map(json::from_value)
+            .map(|(json_value, block_ptr)| {
+                json::from_value(json_value.clone()).map_err(|e| {
+                    warn!(
+                        self.logger,
+                        "Failed to deserialize cached ancestor block {} (offset {} from {}): {}. \
+                         This may indicate stale cache data from a previous version.",
+                        block_ptr.hash_hex(),
+                        offset,
+                        ptr_for_log.hash_hex(),
+                        e
+                    );
+                    e
+                })
+            })
             .transpose()?;
         Ok(block.map(|block| {
             BlockFinality::NonFinal(EthereumBlockWithCalls {
@@ -1060,9 +1073,21 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 let chain_store = self.chain_store.cheap_clone();
                 // First try to get the block from the store
                 if let Ok(blocks) = chain_store.blocks(vec![block.hash.clone()]).await {
-                    if let Some(block) = blocks.first() {
-                        if let Ok(block) = json::from_value::<LightEthereumBlock>(block.clone()) {
-                            return Ok(block.parent_ptr());
+                    if let Some(cached_json) = blocks.first() {
+                        match json::from_value::<LightEthereumBlock>(cached_json.clone()) {
+                            Ok(block) => {
+                                return Ok(block.parent_ptr());
+                            }
+                            Err(e) => {
+                                warn!(
+                                    self.logger,
+                                    "Failed to deserialize cached block {}: {}. \
+                                     This may indicate stale cache data from a previous version. \
+                                     Falling back to Firehose.",
+                                    block.hash_hex(),
+                                    e
+                                );
+                            }
                         }
                     }
                 }
