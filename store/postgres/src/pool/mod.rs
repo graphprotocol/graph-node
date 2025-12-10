@@ -539,14 +539,14 @@ impl PoolInner {
             .expect("failed to create `query_effort_ms` counter");
         let query_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
 
-        // Indexing semaphore for indexing/write operations
+        // Semaphore for getting PermittedConnection
         let indexing_semaphore_wait_gauge = registry
             .new_gauge(
-                "indexing_semaphore_wait_ms",
-                "Moving average of time spent waiting for indexing semaphore",
+                "store_semaphore_wait_ms",
+                "Moving average of time spent waiting for connection semaphore",
                 const_labels,
             )
-            .expect("failed to create indexing_semaphore_wait_ms gauge");
+            .expect("failed to create store_semaphore_wait_ms gauge");
         let indexing_semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent_queries));
 
         PoolInner {
