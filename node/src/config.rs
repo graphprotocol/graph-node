@@ -252,7 +252,7 @@ impl Shard {
     fn validate(&mut self, name: &str) -> Result<()> {
         ShardName::new(name.to_string()).map_err(|e| anyhow!(e))?;
 
-        self.connection = shellexpand::env(&self.connection)?.into_owned();
+        self.expand_connection()?;
 
         if matches!(self.pool_size, PoolSize::None) {
             return Err(anyhow!("missing pool size definition for shard `{}`", name));
@@ -300,6 +300,25 @@ impl Shard {
             fdw_pool_size: PoolSize::five(),
             replicas,
         })
+    }
+
+    fn expand_connection(&mut self) -> Result<()> {
+        let mut url = Url::parse(shellexpand::env(&self.connection)?.as_ref())?;
+        // Put the PGAPPNAME into the URL since tokio-postgres ignores this
+        // environment variable
+        if let Some(app_name) = std::env::var("PGAPPNAME").ok() {
+            let query = match url.query() {
+                Some(query) => {
+                    format!("{query}&application_name={app_name}")
+                }
+                None => {
+                    format!("application_name={app_name}")
+                }
+            };
+            url.set_query(Some(&query));
+        }
+        self.connection = url.to_string();
+        Ok(())
     }
 }
 
@@ -1944,6 +1963,10 @@ mod tests {
         let query = NodeId::new("query_node_1").unwrap();
         let other = NodeId::new("other_node_1").unwrap();
 
+        let appname = std::env::var("PGAPPNAME").ok();
+        unsafe {
+            std::env::set_var("PGAPPNAME", "config-test");
+        }
         let shard = {
             let mut shard = toml::from_str::<Shard>(
                 r#"
@@ -1961,10 +1984,15 @@ fdw_pool_size = [
             shard.validate("index_node_1").unwrap();
             shard
         };
+        if let Some(appname) = appname {
+            unsafe {
+                std::env::set_var("PGAPPNAME", appname);
+            }
+        }
 
         assert_eq!(
             shard.connection,
-            "postgresql://postgres:postgres@postgres/graph"
+            "postgresql://postgres:postgres@postgres/graph?application_name=config-test"
         );
 
         assert_eq!(shard.pool_size.size_for(&index, "ashard").unwrap(), 20);
