@@ -17,6 +17,7 @@ use graph::prelude::{
 use graph::prelude::{tokio, MetricsRegistry};
 use graph::slog::warn;
 use graph::util::timed_rw_lock::TimedMutex;
+use tokio::sync::OwnedSemaphorePermit;
 
 use std::fmt::{self};
 use std::ops::{Deref, DerefMut};
@@ -48,7 +49,7 @@ pub type AsyncPgConnection = deadpool::managed::Object<ConnectionManager>;
 /// backpressure to prevent pool exhaustion during mass operations.
 pub struct PermittedConnection {
     conn: AsyncPgConnection,
-    _permit: tokio::sync::OwnedSemaphorePermit,
+    _permit: OwnedSemaphorePermit,
 }
 
 impl Deref for PermittedConnection {
@@ -571,6 +572,10 @@ impl PoolInner {
     ///
     /// If `timeouts` is `None`, the default pool timeouts are used.
     ///
+    /// The `prev_wait` duration is the time already spent waiting for a
+    /// permit to get a connection; that time is added to the total wait
+    /// time recorded.
+    ///
     /// On error, returns `StoreError::DatabaseUnavailable` and marks the
     /// pool as unavailable if we can tell that the error is due to the pool
     /// being closed. Returns `StoreError::StatementTimeout` if the error is
@@ -579,13 +584,14 @@ impl PoolInner {
         &self,
         pool: &AsyncPool,
         timeouts: Option<Timeouts>,
+        prev_wait: Duration,
     ) -> Result<AsyncPgConnection, StoreError> {
         let start = Instant::now();
         let res = match timeouts {
             Some(timeouts) => pool.timeout_get(&timeouts).await,
             None => pool.get().await,
         };
-        let elapsed = start.elapsed();
+        let elapsed = start.elapsed() + prev_wait;
         self.wait_meter.add_conn_wait_time(elapsed);
         match res {
             Ok(conn) => {
@@ -610,7 +616,7 @@ impl PoolInner {
     }
 
     async fn get(&self) -> Result<AsyncPgConnection, StoreError> {
-        self.get_from_pool(&self.pool, None).await
+        self.get_from_pool(&self.pool, None, Duration::ZERO).await
     }
 
     /// Get the pool for fdw connections. It is an error if none is configured
@@ -644,7 +650,7 @@ impl PoolInner {
     {
         let pool = self.fdw_pool(logger)?;
         loop {
-            match self.get_from_pool(&pool, None).await {
+            match self.get_from_pool(&pool, None, Duration::ZERO).await {
                 Ok(conn) => return Ok(conn),
                 Err(e) => {
                     if timeout() {
@@ -671,7 +677,10 @@ impl PoolInner {
             create: None,
             recycle: None,
         };
-        let Ok(conn) = self.get_from_pool(fdw_pool, Some(timeouts)).await else {
+        let Ok(conn) = self
+            .get_from_pool(fdw_pool, Some(timeouts), Duration::ZERO)
+            .await
+        else {
             return None;
         };
         Some(conn)
@@ -708,7 +717,7 @@ impl PoolInner {
         )
     }
 
-    pub(crate) async fn query_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+    pub(crate) async fn query_permit(&self) -> OwnedSemaphorePermit {
         let start = Instant::now();
         let permit = self.query_semaphore.cheap_clone().acquire_owned().await;
         self.semaphore_wait_stats
@@ -721,14 +730,15 @@ impl PoolInner {
     /// Acquire a permit for indexing operations. This provides backpressure
     /// to prevent connection pool exhaustion during mass subgraph startup
     /// or high write load.
-    async fn indexing_permit(&self) -> tokio::sync::OwnedSemaphorePermit {
+    async fn indexing_permit(&self) -> (OwnedSemaphorePermit, Duration) {
         let start = Instant::now();
         let permit = self.indexing_semaphore.cheap_clone().acquire_owned().await;
+        let elapsed = start.elapsed();
         self.indexing_semaphore_wait_stats
             .write()
             .unwrap()
-            .add_and_register(start.elapsed(), &self.indexing_semaphore_wait_gauge);
-        permit.unwrap()
+            .add_and_register(elapsed, &self.indexing_semaphore_wait_gauge);
+        (permit.unwrap(), elapsed)
     }
 
     /// Get a connection with backpressure via semaphore permit. Use this
@@ -736,8 +746,8 @@ impl PoolInner {
     /// wait indefinitely until a permit, and with that, a connection is
     /// available.
     pub(crate) async fn get_permitted(&self) -> Result<PermittedConnection, StoreError> {
-        let permit = self.indexing_permit().await;
-        let conn = self.get().await?;
+        let (permit, permit_wait) = self.indexing_permit().await;
+        let conn = self.get_from_pool(&self.pool, None, permit_wait).await?;
         Ok(PermittedConnection {
             conn,
             _permit: permit,
