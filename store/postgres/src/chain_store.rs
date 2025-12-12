@@ -2645,9 +2645,28 @@ impl ChainStoreTrait for ChainStore {
         }
 
         let mut conn = self.pool.get_permitted().await?;
-        self.storage
+        let result = self
+            .storage
             .ancestor_block(&mut conn, block_ptr, offset, root)
-            .await
+            .await?;
+
+        // Insert into cache if we got a result
+        if let Some((ref data, ref ptr)) = result {
+            // Extract parent_hash from data["block"]["parentHash"] or
+            // data["parentHash"]
+            if let Some(parent_hash) = data
+                .get("block")
+                .unwrap_or(data)
+                .get("parentHash")
+                .and_then(|h| h.as_str())
+                .and_then(|h| h.parse().ok())
+            {
+                let block = JsonBlock::new(ptr.clone(), parent_hash, Some(data.clone()));
+                self.recent_blocks_cache.insert_block(block);
+            }
+        }
+
+        Ok(result)
     }
 
     async fn cleanup_cached_blocks(
