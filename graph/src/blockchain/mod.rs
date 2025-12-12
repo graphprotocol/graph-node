@@ -38,7 +38,7 @@ use async_trait::async_trait;
 use graph_derive::CheapClone;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use slog::{error, Logger};
+use slog::Logger;
 use std::{
     any::Any,
     collections::{HashMap, HashSet},

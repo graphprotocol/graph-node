@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use derivative::Derivative;
 use itertools::Itertools;
-use slog::error;
 use slog::info;
 use slog::warn;
 use slog::Logger;

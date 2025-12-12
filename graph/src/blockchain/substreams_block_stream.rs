@@ -180,13 +180,13 @@ fn stream_blocks<C: Blockchain, F: BlockStreamMapper<C>>(
     // Back off exponentially whenever we encounter a connection error or a stream with bad data
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
 
-    // This attribute is needed because `try_stream!` seems to break detection of `skip_backoff` assignments
-    #[allow(unused_assignments)]
-    let mut skip_backoff = false;
-
     let mut log_data = SubstreamsLogData::new();
 
     try_stream! {
+            // This attribute is needed because `try_stream!` seems to break detection of `skip_backoff` assignments
+            #[allow(unused_assignments)]
+            let mut skip_backoff = false;
+
             if !modules.modules.iter().any(|m| module_name.eq(&m.name)) {
                 Err(BlockStreamError::Fatal(format!(
                     "module `{}` not found",

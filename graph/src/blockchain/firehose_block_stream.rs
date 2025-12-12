@@ -208,11 +208,11 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
     // Back off exponentially whenever we encounter a connection error or a stream with bad data
     let mut backoff = ExponentialBackoff::new(Duration::from_millis(500), Duration::from_secs(45));
 
-    // This attribute is needed because `try_stream!` seems to break detection of `skip_backoff` assignments
-    #[allow(unused_assignments)]
-    let mut skip_backoff = false;
-
     try_stream! {
+        // This attribute is needed because `try_stream!` seems to break detection of `skip_backoff` assignments
+        #[allow(unused_assignments)]
+        let mut skip_backoff = false;
+
         loop {
             let endpoint = client.firehose_endpoint().await?;
             let logger = logger.new(o!("deployment" => deployment.clone(), "provider" => endpoint.provider.to_string()));
