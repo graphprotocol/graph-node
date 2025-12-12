@@ -1972,6 +1972,7 @@ impl ChainStoreMetrics {
 enum BlocksLookupResult {
     ByHash(Arc<Result<Vec<JsonBlock>, StoreError>>),
     ByNumber(Arc<Result<BTreeMap<BlockNumber, Vec<JsonBlock>>, StoreError>>),
+    Ancestor(Arc<Result<Option<(json::Value, BlockPtr)>, StoreError>>),
 }
 
 pub struct ChainStore {
@@ -2587,9 +2588,9 @@ impl ChainStoreTrait for ChainStore {
                 // so ByNumber variant is structurally impossible here.
                 let res = match lookup_herd.cached_query(hash, lookup_fut, &logger).await {
                     (BlocksLookupResult::ByHash(res), _) => res,
-                    (BlocksLookupResult::ByNumber(_), _) => {
+                    (BlocksLookupResult::ByNumber(_) | BlocksLookupResult::Ancestor(_), _) => {
                         Arc::new(Err(StoreError::Unknown(anyhow::anyhow!(
-                            "Unexpected BlocksLookupResult::ByNumber returned from cached block lookup by hash"
+                            "Unexpected BlocksLookupResult variant returned from cached block lookup by hash"
                         ))))
                     }
                 };
@@ -2635,35 +2636,69 @@ impl ChainStoreTrait for ChainStore {
             block_ptr.hash_hex()
         );
 
-        // Check the local cache first.
-        let block_cache = self
-            .recent_blocks_cache
-            .get_ancestor(&block_ptr, offset)
-            .and_then(|x| Some(x.0).zip(x.1));
-        if let Some((ptr, data)) = block_cache {
-            return Ok(Some((data, ptr)));
-        }
+        // Use herd cache to avoid thundering herd when multiple callers
+        // request the same ancestor block simultaneously. The cache check
+        // is inside the future so that only one caller checks and populates
+        // the cache.
+        let hash = crypto_stable_hash(&(&block_ptr, offset, &root));
+        let this = self.cheap_clone();
+        let lookup_fut = async move {
+            let res: Result<Option<(json::Value, BlockPtr)>, StoreError> = async {
+                // Check the local cache first.
+                let block_cache = this
+                    .recent_blocks_cache
+                    .get_ancestor(&block_ptr, offset)
+                    .and_then(|x| Some(x.0).zip(x.1));
+                if let Some((ptr, data)) = block_cache {
+                    return Ok(Some((data, ptr)));
+                }
 
-        let mut conn = self.pool.get_permitted().await?;
-        let result = self
-            .storage
-            .ancestor_block(&mut conn, block_ptr, offset, root)
-            .await?;
+                // Cache miss, query the database
+                let mut conn = this.pool.get_permitted().await?;
+                let result = this
+                    .storage
+                    .ancestor_block(&mut conn, block_ptr, offset, root)
+                    .await
+                    .map_err(StoreError::from)?;
 
-        // Insert into cache if we got a result
-        if let Some((ref data, ref ptr)) = result {
-            // Extract parent_hash from data["block"]["parentHash"] or
-            // data["parentHash"]
-            if let Some(parent_hash) = data
-                .get("block")
-                .unwrap_or(data)
-                .get("parentHash")
-                .and_then(|h| h.as_str())
-                .and_then(|h| h.parse().ok())
-            {
-                let block = JsonBlock::new(ptr.clone(), parent_hash, Some(data.clone()));
-                self.recent_blocks_cache.insert_block(block);
+                // Insert into cache if we got a result
+                if let Some((ref data, ref ptr)) = result {
+                    // Extract parent_hash from data["block"]["parentHash"] or
+                    // data["parentHash"]
+                    if let Some(parent_hash) = data
+                        .get("block")
+                        .unwrap_or(data)
+                        .get("parentHash")
+                        .and_then(|h| h.as_str())
+                        .and_then(|h| h.parse().ok())
+                    {
+                        let block = JsonBlock::new(ptr.clone(), parent_hash, Some(data.clone()));
+                        this.recent_blocks_cache.insert_block(block);
+                    }
+                }
+
+                Ok(result)
             }
+            .await;
+            BlocksLookupResult::Ancestor(Arc::new(res))
+        };
+        let lookup_herd = self.lookup_herd.cheap_clone();
+        let logger = self.logger.cheap_clone();
+        let (res, cached) = match lookup_herd.cached_query(hash, lookup_fut, &logger).await {
+            (BlocksLookupResult::Ancestor(res), cached) => (res, cached),
+            _ => {
+                return Err(anyhow!(
+                "Unexpected BlocksLookupResult variant returned from cached ancestor block lookup"
+            ))
+            }
+        };
+        let result = Arc::try_unwrap(res).unwrap_or_else(|arc| (*arc).clone())?;
+
+        if cached {
+            // If we had a hit in the herd cache, we never ran lookup_fut
+            // but we want to pretend that we actually looked the value up
+            // from the recent blocks cache
+            self.recent_blocks_cache.register_hit();
         }
 
         Ok(result)
@@ -2948,6 +2983,11 @@ mod recent_blocks_cache {
                     capacity,
                 }),
             }
+        }
+
+        pub fn register_hit(&self) {
+            let inner = self.inner.read();
+            inner.metrics.record_cache_hit(&inner.network);
         }
 
         pub fn clear(&self) {
