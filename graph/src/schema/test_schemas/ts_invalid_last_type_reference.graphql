@@ -1,0 +1,14 @@
+# fail: FieldTypeUnknown("Stats", "lastBlockNumber", "BlockNumber")
+
+type Data @entity(timeseries: true) {
+    id: Int8!
+    timestamp: Timestamp!
+    blockNumber: Int8!
+}
+
+type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+    id: Int8!
+    timestamp: Timestamp!
+
+    lastBlockNumber: BlockNumber! @aggregate(fn: "last", arg: "blockNumber")
+}
