@@ -39,6 +39,7 @@ use graph::{
 use graph::{derive::CheapClone, futures03::future::join_all, prelude::alloy::primitives::Address};
 
 use crate::{
+    catalog::Catalog,
     deployment::{OnSync, SubgraphHealth},
     primary::{self, DeploymentId, Mirror as PrimaryMirror, Primary, Site},
     relational::{
@@ -88,7 +89,7 @@ impl Shard {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
         {
             return Err(StoreError::InvalidIdentifier(format!(
-                "shard name `{}` is invalid: shard names must only contain lowercase alphanumeric characters or '_'", name
+                "shard name `{name}` is invalid: shard names must only contain lowercase alphanumeric characters or '_'"
             )));
         }
         Ok(Shard(name))
@@ -351,33 +352,60 @@ impl SubgraphStore {
             //       assignment that we used last time to avoid creating
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id).await?;
-            let mut conn = self.primary_conn().await?;
-            let (site, site_was_created) = conn
-                .allocate_site(shard, schema.id(), network_name, graft_base)
-                .await?;
-            let node_id = conn.assigned_node(&site).await?.unwrap_or(node_id);
-            (site, !site_was_created, node_id)
-        };
-        let site = Arc::new(site);
 
-        // if the deployment already exists, we don't need to perform any copying
-        // so we can set graft_base to None
-        // if it doesn't exist, we need to copy the graft base to the new deployment
-        let graft_base_layout = if !exists {
-            let graft_base = match deployment.graft_base.as_ref() {
+            let mut conn = self.primary_conn().await?;
+            conn.transaction(|conn| {
+                async {
+                    let (site, site_was_created) = conn
+                        .allocate_site(shard, schema.id(), network_name, graft_base)
+                        .await?;
+                    let node_id = conn.assigned_node(&site).await?.unwrap_or(node_id);
+                    let site = Arc::new(site);
+
+                    if let Some(graft_base) = graft_base {
+                        // Ensure that the graft base exists
+                        let base_layout = self.layout(graft_base).await?;
+                        let entities_with_causality_region =
+                            deployment.manifest.entities_with_causality_region.clone();
+                        let catalog = Catalog::for_tests(
+                            site.cheap_clone(),
+                            entities_with_causality_region.into_iter().collect(),
+                        )?;
+                        let layout = Layout::new(site.cheap_clone(), schema, catalog)?;
+
+                        let errors = layout.can_copy_from(&base_layout);
+                        if !errors.is_empty() {
+                            return Err(StoreError::Unknown(anyhow!(
+                                "The subgraph `{}` cannot be used as the graft base \
+                             for `{}` because the schemas are incompatible:\n    - {}",
+                                &base_layout.catalog.site.namespace,
+                                &layout.catalog.site.namespace,
+                                errors.join("\n    - ")
+                            )));
+                        }
+                    }
+
+                    Ok((site, !site_was_created, node_id))
+                }
+                .scope_boxed()
+            })
+            .await?
+        };
+
+        // If the deployment already exists, we don't need to perform any copying
+        // If it doesn't exist, we need to copy the graft base to the new deployment
+        if !exists {
+            let graft_base_layout = match graft_base {
                 Some(base) => Some(self.layout(base).await?),
                 None => None,
             };
 
-            if let Some(graft_base) = &graft_base {
+            if let Some(graft_base_layout) = &graft_base_layout {
                 self.primary_conn()
                     .await?
-                    .record_active_copy(graft_base.site.as_ref(), site.as_ref())
+                    .record_active_copy(graft_base_layout.site.as_ref(), site.as_ref())
                     .await?;
             }
-            graft_base
-        } else {
-            None
         };
 
         // Create the actual databases schema and metadata entries
@@ -386,7 +414,7 @@ impl SubgraphStore {
             .get(&site.shard)
             .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
 
-        let index_def = if let Some(graft) = &graft_base.clone() {
+        let index_def = if let Some(graft) = graft_base {
             if let Some(site) = self.sites.get(graft) {
                 let store = self
                     .stores
@@ -406,7 +434,6 @@ impl SubgraphStore {
                 schema,
                 deployment,
                 site.clone(),
-                graft_base_layout,
                 replace,
                 OnSync::None,
                 index_def,
@@ -731,8 +758,7 @@ impl Inner {
 
         if src.id == dst.id {
             return Err(StoreError::Unknown(anyhow!(
-                "can not copy deployment {} onto itself",
-                src_loc
+                "can not copy deployment {src_loc} onto itself"
             )));
         }
         // The very last thing we do when we set up a copy here is assign it
@@ -740,9 +766,7 @@ impl Inner {
         // should not have been called.
         if let Some(node) = self.mirror.assigned_node(dst.as_ref()).await? {
             return Err(StoreError::Unknown(anyhow!(
-                "can not copy into deployment {} since it is already assigned to node `{}`",
-                dst_loc,
-                node
+                "can not copy into deployment {dst_loc} since it is already assigned to node `{node}`"
             )));
         }
         let deployment = src_store.load_deployment(src.clone()).await?;
@@ -757,8 +781,6 @@ impl Inner {
             debug_fork: deployment.debug_fork,
             history_blocks_override: None,
         };
-
-        let graft_base = self.layout(&src.deployment).await?;
 
         self.primary_conn()
             .await?
@@ -776,7 +798,6 @@ impl Inner {
                 &src_layout.input_schema,
                 deployment,
                 dst.clone(),
-                Some(graft_base),
                 false,
                 on_sync,
                 Some(index_def),
