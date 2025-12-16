@@ -1110,7 +1110,7 @@ pub(crate) async fn histogram_bounds(
     table: &SqlName,
     column: &str,
 ) -> Result<Vec<i64>, StoreError> {
-    const QUERY: &str = "select histogram_bounds::text::int8[] bounds \
+    const QUERY: &str = "select coalesce(histogram_bounds::text::int8[], '{}'::int8[]) as bounds \
                            from pg_stats \
                           where schemaname = $1 \
                             and tablename = $2 \
