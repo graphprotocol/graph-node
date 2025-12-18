@@ -1,4 +1,4 @@
-CREATE MATERIALIZED VIEW info.table_stats AS
+CREATE MATERIALIZED VIEW info.entity_version_stats AS
 WITH table_info AS (
     SELECT
         s.schemaname AS schema_name,

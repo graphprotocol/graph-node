@@ -788,7 +788,7 @@ impl DeploymentStore {
                     SELECT
                         stats.subgraph,
                         stats.table_name
-                    FROM info.table_stats AS stats
+                    FROM info.entity_version_stats AS stats
                     LEFT JOIN subgraphs.table_stats ts
                         ON ts.deployment = stats.deployment
                         AND ts.table_name = stats.table_name
@@ -1868,7 +1868,7 @@ impl DeploymentStore {
                 "info.table_sizes",
                 "info.subgraph_sizes",
                 "info.chain_sizes",
-                "info.table_stats",
+                "info.entity_version_stats",
             ];
             let mut conn = store.pool.get_permitted().await?;
             for view in VIEWS {
