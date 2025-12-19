@@ -770,6 +770,49 @@ impl DeploymentStore {
         catalog::drop_index(&mut conn, schema_name.as_str(), &index_name).await
     }
 
+    pub(crate) async fn identify_account_like_candidates(
+        &self,
+        min_versions: u64,
+        ratio: f64,
+    ) -> Result<Vec<(String, String)>, StoreError> {
+        #[derive(QueryableByName)]
+        struct TableStat {
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            subgraph: String,
+            #[diesel(sql_type = diesel::sql_types::Text)]
+            table_name: String,
+        }
+
+        let mut conn = self.pool.get().await?;
+        let query = r#"
+                    SELECT
+                        stats.subgraph,
+                        stats.table_name
+                    FROM info.entity_version_stats AS stats
+                    LEFT JOIN subgraphs.table_stats ts
+                        ON ts.deployment = stats.deployment
+                        AND ts.table_name = stats.table_name
+                    WHERE
+                        stats.versions > $1
+                        AND stats.ratio < $2
+                        AND ts.is_account_like IS NOT TRUE
+                "#;
+
+        let result = diesel::sql_query(query)
+            .bind::<diesel::sql_types::BigInt, _>(min_versions as i64)
+            .bind::<diesel::sql_types::Double, _>(ratio)
+            .load::<TableStat>(&mut conn)
+            .await
+            .map_err(Into::into);
+
+        result.map(|tables| {
+            tables
+                .into_iter()
+                .map(|table_stat| (table_stat.subgraph, table_stat.table_name))
+                .collect()
+        })
+    }
+
     pub(crate) async fn set_account_like(
         &self,
         site: Arc<Site>,
@@ -1821,10 +1864,11 @@ impl DeploymentStore {
             // We hardcode our materialized views, but could also use
             // pg_matviews to list all of them, though that might inadvertently
             // refresh materialized views that operators created themselves
-            const VIEWS: [&str; 3] = [
+            const VIEWS: [&str; 4] = [
                 "info.table_sizes",
                 "info.subgraph_sizes",
                 "info.chain_sizes",
+                "info.entity_version_stats",
             ];
             let mut conn = store.pool.get_permitted().await?;
             for view in VIEWS {

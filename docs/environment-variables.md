@@ -287,3 +287,10 @@ those.
 - `GRAPH_ENABLE_SQL_QUERIES`: Enable the experimental [SQL query
   interface](implementation/sql-interface.md).
   (default: false)
+- `GRAPH_STORE_ACCOUNT_LIKE_SCAN_INTERVAL_HOURS`: If set, enables an experimental job that
+  periodically scans for entity tables that may benefit from an [account-like optimization](https://thegraph.com/docs/en/indexing/tooling/graph-node/#account-like-optimisation) and marks them with an
+  account-like flag. The value is the interval in hours at which the job
+  should run. The job reads data from the `info.table_stats` materialized view, which refreshes every six hours. Expects an integer value, e.g., 24. Requires also setting
+  `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT` and `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`.
+- `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT`: Sets the minimum total number of versions a table must have to be considered for account-like flagging. Expects a positive integer value. No default value.
+- `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`: Sets the maximum unique entities to version ratio (e.g., 0.01 ≈ 1:100 entity-to-version ratio).

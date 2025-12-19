@@ -48,6 +48,13 @@ pub fn register(
         Arc::new(RefreshMaterializedView::new(store.subgraph_store())),
         6 * ONE_HOUR,
     );
+
+    if let Some(interval) = ENV_VARS.store.account_like_scan_interval_hours {
+        runner.register(
+            Arc::new(AccountLikeJob::new(store.subgraph_store())),
+            interval * ONE_HOUR,
+        );
+    }
 }
 
 /// A job that vacuums `subgraphs.deployment` and `subgraphs.head`. With a
@@ -233,5 +240,39 @@ impl Job for UnusedJob {
                 return;
             }
         }
+    }
+}
+
+struct AccountLikeJob {
+    store: Arc<SubgraphStore>,
+}
+
+impl AccountLikeJob {
+    fn new(store: Arc<SubgraphStore>) -> AccountLikeJob {
+        AccountLikeJob { store }
+    }
+}
+
+#[async_trait]
+impl Job for AccountLikeJob {
+    fn name(&self) -> &str {
+        "Set account-like flag on eligible tables"
+    }
+
+    async fn run(&self, logger: &Logger) {
+        // Safe to unwrap due to a startup validation
+        // which ensures these values are present when account_like_scan_interval_hours is set.
+        let min_versions_count = ENV_VARS.store.account_like_min_versions_count.unwrap();
+        let ratio = ENV_VARS.store.account_like_max_unique_ratio.unwrap();
+
+        self.store
+            .identify_and_set_account_like(logger, min_versions_count, ratio)
+            .await
+            .unwrap_or_else(|e| {
+                error!(
+                    logger,
+                    "Failed to set account-like flag on eligible tables: {}", e
+                )
+            });
     }
 }

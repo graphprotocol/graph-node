@@ -149,6 +149,18 @@ pub struct EnvVarsStore {
     /// The number of rows to fetch from the foreign data wrapper in one go,
     /// this will be set as the option 'fetch_size' on all foreign servers
     pub fdw_fetch_size: usize,
+
+    /// Experimental feature to automatically set the account-like flag on eligible tables
+    /// Set by the environment variable `GRAPH_STORE_ACCOUNT_LIKE_SCAN_INTERVAL_HOURS`
+    /// If not set, the job is disabled.
+    /// Utilizes materialized view stats that refresh every 6 hours to discover heavy-write tables.
+    pub account_like_scan_interval_hours: Option<u32>,
+    /// Set by the environment variable `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT`
+    /// Tables must have at least this many total versions to be considered.
+    pub account_like_min_versions_count: Option<u64>,
+    /// Set by the environment variable `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`
+    /// Defines the maximum share of unique entities (e.g. 0.01 for a 1:100 entity-to-version ratio).
+    pub account_like_max_unique_ratio: Option<f64>,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -206,6 +218,9 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             disable_block_cache_for_lookup: x.disable_block_cache_for_lookup,
             insert_extra_cols: x.insert_extra_cols,
             fdw_fetch_size: x.fdw_fetch_size,
+            account_like_scan_interval_hours: x.account_like_scan_interval_hours,
+            account_like_min_versions_count: x.account_like_min_versions_count,
+            account_like_max_unique_ratio: x.account_like_max_unique_ratio.map(|r| r.0),
         };
         if let Some(timeout) = vars.batch_timeout {
             if timeout < 2 * vars.batch_target_duration {
@@ -216,6 +231,16 @@ impl TryFrom<InnerStore> for EnvVarsStore {
         }
         if vars.batch_workers < 1 {
             bail!("GRAPH_STORE_BATCH_WORKERS must be at least 1");
+        }
+        if vars.account_like_scan_interval_hours.is_some()
+            && (vars.account_like_min_versions_count.is_none()
+                || vars.account_like_max_unique_ratio.is_none())
+        {
+            bail!(
+                "Both GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT and \
+                     GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO must be set when \
+                     GRAPH_STORE_ACCOUNT_LIKE_SCAN_INTERVAL_HOURS is set"
+            );
         }
         Ok(vars)
     }
@@ -295,6 +320,12 @@ pub struct InnerStore {
     insert_extra_cols: usize,
     #[envconfig(from = "GRAPH_STORE_FDW_FETCH_SIZE", default = "1000")]
     fdw_fetch_size: usize,
+    #[envconfig(from = "GRAPH_STORE_ACCOUNT_LIKE_SCAN_INTERVAL_HOURS")]
+    account_like_scan_interval_hours: Option<u32>,
+    #[envconfig(from = "GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT")]
+    account_like_min_versions_count: Option<u64>,
+    #[envconfig(from = "GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO")]
+    account_like_max_unique_ratio: Option<ZeroToOneF64>,
 }
 
 #[derive(Clone, Copy, Debug)]
