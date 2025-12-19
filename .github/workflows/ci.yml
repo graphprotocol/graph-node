@@ -18,6 +18,7 @@ env:
   RUST_BACKTRACE: full
   RUSTFLAGS: "-C link-arg=-fuse-ld=lld -D warnings"
   THEGRAPH_STORE_POSTGRES_DIESEL_URL: "postgresql://graph:graph@localhost:5432/graph-test"
+  GRAPH_STORE_CONNECTION_TIMEOUT: "30000"
 
 jobs:
   unit-tests:
