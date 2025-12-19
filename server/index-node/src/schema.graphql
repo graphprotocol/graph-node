@@ -77,6 +77,9 @@ type SubgraphIndexingStatus {
   paused: Boolean
 
   historyBlocks: Int!
+
+  "Total size of all tables a deployment's namespace in bytes."
+  subgraphSize: SubgraphSize!
 }
 
 interface ChainIndexingStatus {
@@ -205,4 +208,12 @@ type ApiVersion {
   Version number in SemVer format
   """
   version: String!
+}
+
+type SubgraphSize {
+  rowEstimate: BigInt!
+  tableSize: BigInt!
+  indexSize: BigInt!
+  toastSize: BigInt!
+  totalSize: BigInt!
 }

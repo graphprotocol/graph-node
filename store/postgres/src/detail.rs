@@ -7,6 +7,7 @@ use diesel::prelude::{
     ExpressionMethods, JoinOnDsl, NullableExpressionMethods, OptionalExtension, QueryDsl,
     SelectableHelper as _,
 };
+use diesel::sql_types::{Array, BigInt, Integer};
 use diesel_async::RunQueryDsl;
 use diesel_derives::Associations;
 use git_testament::{git_testament, git_testament_macros};
@@ -242,6 +243,7 @@ pub(crate) fn info_from_details(
     non_fatal: Vec<ErrorDetail>,
     sites: &[Arc<Site>],
     subgraph_history_blocks: i32,
+    subgraph_size: status::SubgraphSize,
 ) -> Result<status::Info, StoreError> {
     let DeploymentDetail {
         id,
@@ -304,6 +306,7 @@ pub(crate) fn info_from_details(
         entity_count,
         node: None,
         history_blocks: subgraph_history_blocks,
+        subgraph_size,
     })
 }
 
@@ -434,15 +437,92 @@ pub(crate) async fn deployment_statuses(
         .collect()
     };
 
+    let mut deployment_sizes = deployment_sizes(conn, sites).await?;
+
     details_with_fatal_error
         .into_iter()
         .map(|(deployment, head, fatal)| {
             let detail = DeploymentDetail::from((deployment, head));
             let non_fatal = non_fatal_errors.remove(&detail.id).unwrap_or_default();
             let subgraph_history_blocks = history_blocks_map.remove(&detail.id).unwrap_or_default();
-            info_from_details(detail, fatal, non_fatal, sites, subgraph_history_blocks)
+            let table_sizes = deployment_sizes.remove(&detail.id).unwrap_or_default();
+            info_from_details(
+                detail,
+                fatal,
+                non_fatal,
+                sites,
+                subgraph_history_blocks,
+                table_sizes,
+            )
         })
         .collect()
+}
+
+async fn deployment_sizes(
+    conn: &mut AsyncPgConnection,
+    sites: &[Arc<Site>],
+) -> Result<HashMap<DeploymentId, status::SubgraphSize>, StoreError> {
+    #[derive(QueryableByName)]
+    struct SubgraphSizeRow {
+        #[diesel(sql_type = Integer)]
+        id: DeploymentId,
+        #[diesel(sql_type = BigInt)]
+        row_estimate: i64,
+        #[diesel(sql_type = BigInt)]
+        table_bytes: i64,
+        #[diesel(sql_type = BigInt)]
+        index_bytes: i64,
+        #[diesel(sql_type = BigInt)]
+        toast_bytes: i64,
+        #[diesel(sql_type = BigInt)]
+        total_bytes: i64,
+    }
+
+    let mut query = String::from(
+        r#"
+        SELECT
+            ds.id,
+            ss.row_estimate::bigint,
+            ss.table_bytes::bigint,
+            ss.index_bytes::bigint,
+            ss.toast_bytes::bigint,
+            ss.total_bytes::bigint
+        FROM deployment_schemas ds
+        JOIN info.subgraph_sizes as ss on ss.name = ds.name
+    "#,
+    );
+
+    let result = if sites.is_empty() {
+        diesel::sql_query(query).load::<SubgraphSizeRow>(conn).await
+    } else {
+        query.push_str(" WHERE ds.id = ANY($1)");
+        diesel::sql_query(query)
+            .bind::<Array<Integer>, _>(sites.iter().map(|site| site.id).collect::<Vec<_>>())
+            .load::<SubgraphSizeRow>(conn)
+            .await
+    };
+
+    let rows = match result {
+        Ok(rows) => rows,
+        Err(e) if e.to_string().contains("has not been populated") => Vec::new(),
+        Err(e) => return Err(e.into()),
+    };
+
+    let mut sizes: HashMap<DeploymentId, status::SubgraphSize> = HashMap::new();
+    for row in rows {
+        sizes.insert(
+            row.id,
+            status::SubgraphSize {
+                row_estimate: row.row_estimate,
+                table_bytes: row.table_bytes,
+                index_bytes: row.index_bytes,
+                toast_bytes: row.toast_bytes,
+                total_bytes: row.total_bytes,
+            },
+        );
+    }
+
+    Ok(sizes)
 }
 
 #[derive(Queryable, Selectable, Identifiable, Associations)]

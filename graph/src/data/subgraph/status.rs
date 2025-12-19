@@ -91,6 +91,35 @@ impl IntoValue for ChainInfo {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct SubgraphSize {
+    pub row_estimate: i64,
+    pub table_bytes: i64,
+    pub index_bytes: i64,
+    pub toast_bytes: i64,
+    pub total_bytes: i64,
+}
+
+impl IntoValue for SubgraphSize {
+    fn into_value(self) -> r::Value {
+        let SubgraphSize {
+            row_estimate,
+            table_bytes,
+            index_bytes,
+            toast_bytes,
+            total_bytes,
+        } = self;
+        object! {
+            __typename: "SubgraphSize",
+            rowEstimate: format!("{}", row_estimate),
+            tableSize: format!("{}", table_bytes),
+            indexSize: format!("{}", index_bytes),
+            toastSize: format!("{}", toast_bytes),
+            totalSize: format!("{}", total_bytes),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Info {
     pub id: DeploymentId,
@@ -114,6 +143,9 @@ pub struct Info {
     pub node: Option<String>,
 
     pub history_blocks: i32,
+
+    /// The size of all entity tables in a deployment's namespace in bytes.
+    pub subgraph_size: SubgraphSize,
 }
 
 impl IntoValue for Info {
@@ -130,6 +162,7 @@ impl IntoValue for Info {
             non_fatal_errors,
             synced,
             history_blocks,
+            subgraph_size,
         } = self;
 
         fn subgraph_error_to_value(subgraph_error: SubgraphError) -> r::Value {
@@ -173,6 +206,7 @@ impl IntoValue for Info {
             entityCount: format!("{}", entity_count),
             node: node,
             historyBlocks: history_blocks,
+            subgraphSize: subgraph_size.into_value(),
         }
     }
 }
