@@ -42,7 +42,7 @@ impl Default for ArweaveClient {
 
         Self {
             base_url: "https://arweave.net".parse().unwrap(),
-            client: Client::default(),
+            client: Client::builder().gzip(false).build().unwrap(),
             logger: Logger::root(slog::Discard, o!()),
         }
     }
@@ -53,7 +53,7 @@ impl ArweaveClient {
         Self {
             base_url,
             logger,
-            client: Client::default(),
+            client: Client::builder().gzip(false).build().unwrap(),
         }
     }
 }

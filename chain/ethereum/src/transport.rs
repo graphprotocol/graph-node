@@ -1,5 +1,5 @@
 use graph::components::network_provider::ProviderName;
-use graph::endpoint::{EndpointMetrics, RequestLabels};
+use graph::endpoint::{Compression, EndpointMetrics, RequestLabels};
 use jsonrpc_core::types::Call;
 use jsonrpc_core::Value;
 
@@ -54,12 +54,25 @@ impl Transport {
         headers: graph::http::HeaderMap,
         metrics: Arc<EndpointMetrics>,
         provider: impl AsRef<str>,
+        compression: Compression,
     ) -> Self {
         // Unwrap: This only fails if something is wrong with the system's TLS config.
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .unwrap();
+        let mut client_builder = reqwest::Client::builder().default_headers(headers);
+
+        match compression {
+            Compression::Gzip => {
+                // Enable gzip compression/decompression for requests and responses
+                client_builder = client_builder.gzip(true);
+            }
+            Compression::None => {
+                // No compression
+            } // Future compression methods can be handled here:
+              // Compression::Brotli => {
+              //     client_builder = client_builder.brotli(true);
+              // }
+        }
+
+        let client = client_builder.build().unwrap();
 
         Transport::RPC {
             client: http::Http::with_client(client, rpc),
