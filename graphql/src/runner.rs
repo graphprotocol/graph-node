@@ -26,6 +26,7 @@ pub struct GraphQlRunner<S> {
     store: Arc<S>,
     load_manager: Arc<LoadManager>,
     graphql_metrics: Arc<GraphQLMetrics>,
+    log_store: Arc<dyn graph::components::log_store::LogStore>,
 }
 
 #[cfg(debug_assertions)]
@@ -44,6 +45,7 @@ where
         store: Arc<S>,
         load_manager: Arc<LoadManager>,
         registry: Arc<MetricsRegistry>,
+        log_store: Arc<dyn graph::components::log_store::LogStore>,
     ) -> Self {
         let logger = logger.new(o!("component" => "GraphQlRunner"));
         let graphql_metrics = Arc::new(GraphQLMetrics::new(registry));
@@ -52,6 +54,7 @@ where
             store,
             load_manager,
             graphql_metrics,
+            log_store,
         }
     }
 
@@ -186,6 +189,7 @@ where
                     max_first: max_first.unwrap_or(ENV_VARS.graphql.max_first),
                     max_skip: max_skip.unwrap_or(ENV_VARS.graphql.max_skip),
                     trace: do_trace,
+                    log_store: self.log_store.cheap_clone(),
                 },
             ));
         }

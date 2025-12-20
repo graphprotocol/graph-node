@@ -50,6 +50,9 @@ pub mod server;
 /// Components dealing with storing entities.
 pub mod store;
 
+/// Components dealing with log storage.
+pub mod log_store;
+
 pub mod link_resolver;
 
 pub mod trigger_processor;

@@ -125,6 +125,7 @@ async fn introspection_query(schema: Arc<ApiSchema>, query: &str) -> QueryResult
         max_first: std::u32::MAX,
         max_skip: std::u32::MAX,
         trace: false,
+        log_store: Arc::new(graph::components::log_store::NoOpLogStore),
     };
 
     let result =

@@ -557,7 +557,7 @@ async fn execute_subgraph_query_internal(
                 error_policy,
                 query.schema.id().clone(),
                 graphql_metrics(),
-                LOAD_MANAGER.clone()
+                LOAD_MANAGER.clone(),
             )
             .await
         );
@@ -571,6 +571,7 @@ async fn execute_subgraph_query_internal(
                 max_first: std::u32::MAX,
                 max_skip: std::u32::MAX,
                 trace,
+                log_store: std::sync::Arc::new(graph::components::log_store::NoOpLogStore),
             },
         )
         .await;

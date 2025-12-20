@@ -325,6 +325,7 @@ fn build_graphql_server(
     metrics_registry: Arc<MetricsRegistry>,
     network_store: &Arc<Store>,
     logger_factory: &LoggerFactory,
+    log_store: Arc<dyn graph::components::log_store::LogStore>,
 ) -> GraphQLQueryServer<GraphQlRunner<Store>> {
     let shards: Vec<_> = config.stores.keys().cloned().collect();
     let load_manager = Arc::new(LoadManager::new(
@@ -338,6 +339,7 @@ fn build_graphql_server(
         network_store.clone(),
         load_manager,
         metrics_registry,
+        log_store,
     ));
     let graphql_server = GraphQLQueryServer::new(&logger_factory, graphql_runner.clone());
 
@@ -411,6 +413,21 @@ pub async fn run(
             password: opt.elasticsearch_password.clone(),
             client: reqwest::Client::new(),
         });
+
+    // Create log store for querying logs
+    let log_store: Arc<dyn graph::components::log_store::LogStore> =
+        if let Some(ref elastic_config) = elastic_config {
+            let index = std::env::var("GRAPH_ELASTIC_SEARCH_INDEX")
+                .unwrap_or_else(|_| "subgraph".to_string());
+            Arc::new(
+                graph::components::log_store::elasticsearch::ElasticsearchLogStore::new(
+                    elastic_config.clone(),
+                    index,
+                ),
+            )
+        } else {
+            Arc::new(graph::components::log_store::NoOpLogStore)
+        };
 
     // Create a component and subgraph logger factory
     let logger_factory =
@@ -490,6 +507,7 @@ pub async fn run(
             metrics_registry.clone(),
             &network_store,
             &logger_factory,
+            log_store.clone(),
         );
 
         let index_node_server = IndexNodeServer::new(
