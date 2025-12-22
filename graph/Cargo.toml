@@ -101,6 +101,7 @@ clap.workspace = true
 maplit = "1.0.2"
 hex-literal = "1.0"
 wiremock = "0.6.5"
+tempfile = "3.8"
 
 [build-dependencies]
 tonic-build = { workspace = true }
