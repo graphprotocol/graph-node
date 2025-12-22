@@ -202,7 +202,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8725874ecfbf399e071150b8619c4071d7b2b7a2f117e173dddef53c6bdb6bb1"
 dependencies = [
  "async-graphql",
- "axum 0.8.6",
+ "axum 0.8.8",
  "bytes",
  "futures-util",
  "serde_json",
@@ -355,9 +355,9 @@ dependencies = [
 
 [[package]]
 name = "axum"
-version = "0.8.6"
+version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a18ed336352031311f4e0b4dd2ff392d4fbb370777c9d18d7fc9d7359f73871"
+checksum = "8b52af3cb4058c895d37317bb27508dccc8e5f2d39454016b297bf4a400597b8"
 dependencies = [
  "axum-core 0.5.5",
  "base64 0.22.1",
@@ -2399,7 +2399,7 @@ dependencies = [
  "anyhow",
  "async-graphql",
  "async-graphql-axum",
- "axum 0.8.6",
+ "axum 0.8.8",
  "chrono",
  "diesel",
  "diesel-async",
