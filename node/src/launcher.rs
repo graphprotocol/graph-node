@@ -415,23 +415,101 @@ pub async fn run(
         });
 
     // Create log store for querying logs
+    // Priority: GRAPH_LOG_STORE env var, then Elasticsearch config from CLI, then disabled
     let log_store: Arc<dyn graph::components::log_store::LogStore> =
-        if let Some(ref elastic_config) = elastic_config {
-            let index = std::env::var("GRAPH_ELASTIC_SEARCH_INDEX")
-                .unwrap_or_else(|_| "subgraph".to_string());
-            Arc::new(
-                graph::components::log_store::elasticsearch::ElasticsearchLogStore::new(
-                    elastic_config.clone(),
-                    index,
-                ),
-            )
-        } else {
-            Arc::new(graph::components::log_store::NoOpLogStore)
+        match graph::components::log_store::LogStoreFactory::from_env() {
+            Ok(config) => {
+                match graph::components::log_store::LogStoreFactory::from_config(config) {
+                    Ok(store) => {
+                        info!(
+                            logger,
+                            "Log store initialized from GRAPH_LOG_STORE environment variable"
+                        );
+                        store
+                    }
+                    Err(e) => {
+                        warn!(logger, "Failed to initialize log store from GRAPH_LOG_STORE: {}, falling back to Elasticsearch config", e);
+                        // Fall back to Elasticsearch if env config fails
+                        if let Some(ref elastic_config) = elastic_config {
+                            let config =
+                                graph::components::log_store::LogStoreConfig::Elasticsearch {
+                                    endpoint: elastic_config.endpoint.clone(),
+                                    username: elastic_config.username.clone(),
+                                    password: elastic_config.password.clone(),
+                                    index: std::env::var("GRAPH_ELASTIC_SEARCH_INDEX")
+                                        .unwrap_or_else(|_| "subgraph".to_string()),
+                                };
+                            graph::components::log_store::LogStoreFactory::from_config(config)
+                                .unwrap_or_else(|_| {
+                                    Arc::new(graph::components::log_store::NoOpLogStore)
+                                })
+                        } else {
+                            Arc::new(graph::components::log_store::NoOpLogStore)
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                // No GRAPH_LOG_STORE env var, fall back to Elasticsearch from CLI args
+                if let Some(ref elastic_config) = elastic_config {
+                    let config = graph::components::log_store::LogStoreConfig::Elasticsearch {
+                        endpoint: elastic_config.endpoint.clone(),
+                        username: elastic_config.username.clone(),
+                        password: elastic_config.password.clone(),
+                        index: std::env::var("GRAPH_ELASTIC_SEARCH_INDEX")
+                            .unwrap_or_else(|_| "subgraph".to_string()),
+                    };
+                    match graph::components::log_store::LogStoreFactory::from_config(config) {
+                        Ok(store) => {
+                            info!(
+                                logger,
+                                "Log store initialized from Elasticsearch CLI configuration"
+                            );
+                            store
+                        }
+                        Err(e) => {
+                            warn!(
+                                logger,
+                                "Failed to initialize Elasticsearch log store: {}, using NoOp", e
+                            );
+                            Arc::new(graph::components::log_store::NoOpLogStore)
+                        }
+                    }
+                } else {
+                    info!(
+                        logger,
+                        "No log store configured, queries will return empty results"
+                    );
+                    Arc::new(graph::components::log_store::NoOpLogStore)
+                }
+            }
         };
+
+    // Parse log store config for drain selection
+    // Priority: GRAPH_LOG_STORE env var, then Elasticsearch CLI config, then disabled
+    let log_store_config = graph::components::log_store::LogStoreFactory::from_env()
+        .ok()
+        .or_else(|| {
+            // Fallback to Elasticsearch if configured via CLI
+            elastic_config.as_ref().map(|ec| {
+                graph::components::log_store::LogStoreConfig::Elasticsearch {
+                    endpoint: ec.endpoint.clone(),
+                    username: ec.username.clone(),
+                    password: ec.password.clone(),
+                    index: std::env::var("GRAPH_ELASTIC_SEARCH_INDEX")
+                        .unwrap_or_else(|_| "subgraph".to_string()),
+                }
+            })
+        });
+
+    // Log which backend is being used for log drains
+    if let Some(ref config) = log_store_config {
+        info!(logger, "Log drain initialized"; "backend" => format!("{:?}", config));
+    }
 
     // Create a component and subgraph logger factory
     let logger_factory =
-        LoggerFactory::new(logger.clone(), elastic_config, metrics_registry.clone());
+        LoggerFactory::new(logger.clone(), log_store_config, metrics_registry.clone());
 
     let arweave_resolver = Arc::new(ArweaveClient::new(
         logger.cheap_clone(),

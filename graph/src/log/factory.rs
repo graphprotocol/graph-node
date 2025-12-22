@@ -1,11 +1,15 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use prometheus::Counter;
 use slog::*;
 
+use crate::components::log_store::LogStoreConfig;
 use crate::components::metrics::MetricsRegistry;
 use crate::components::store::DeploymentLocator;
 use crate::log::elastic::*;
+use crate::log::file::{file_logger, FileDrainConfig};
+use crate::log::loki::{loki_logger, LokiDrainConfig};
 use crate::log::split::*;
 use crate::prelude::ENV_VARS;
 
@@ -23,20 +27,20 @@ pub struct ComponentLoggerConfig {
 #[derive(Clone)]
 pub struct LoggerFactory {
     parent: Logger,
-    elastic_config: Option<ElasticLoggingConfig>,
+    log_store_config: Option<LogStoreConfig>,
     metrics_registry: Arc<MetricsRegistry>,
 }
 
 impl LoggerFactory {
-    /// Creates a new factory using a parent logger and optional Elasticsearch configuration.
+    /// Creates a new factory using a parent logger and optional log store configuration.
     pub fn new(
         logger: Logger,
-        elastic_config: Option<ElasticLoggingConfig>,
+        log_store_config: Option<LogStoreConfig>,
         metrics_registry: Arc<MetricsRegistry>,
     ) -> Self {
         Self {
             parent: logger,
-            elastic_config,
+            log_store_config,
             metrics_registry,
         }
     }
@@ -45,7 +49,7 @@ impl LoggerFactory {
     pub fn with_parent(&self, parent: Logger) -> Self {
         Self {
             parent,
-            elastic_config: self.elastic_config.clone(),
+            log_store_config: self.log_store_config.clone(),
             metrics_registry: self.metrics_registry.clone(),
         }
     }
@@ -62,56 +66,126 @@ impl LoggerFactory {
             None => term_logger,
             Some(config) => match config.elastic {
                 None => term_logger,
-                Some(config) => self
-                    .elastic_config
-                    .clone()
-                    .map(|elastic_config| {
-                        split_logger(
-                            term_logger.clone(),
-                            elastic_logger(
-                                ElasticDrainConfig {
-                                    general: elastic_config,
-                                    index: config.index,
-                                    custom_id_key: String::from("componentId"),
-                                    custom_id_value: component.to_string(),
-                                    flush_interval: ENV_VARS.elastic_search_flush_interval,
-                                    max_retries: ENV_VARS.elastic_search_max_retries,
-                                },
+                Some(elastic_component_config) => {
+                    // Check if we have Elasticsearch configured in log_store_config
+                    match &self.log_store_config {
+                        Some(LogStoreConfig::Elasticsearch {
+                            endpoint,
+                            username,
+                            password,
+                            ..
+                        }) => {
+                            // Build ElasticLoggingConfig on-demand
+                            let elastic_config = ElasticLoggingConfig {
+                                endpoint: endpoint.clone(),
+                                username: username.clone(),
+                                password: password.clone(),
+                                client: reqwest::Client::new(),
+                            };
+
+                            split_logger(
                                 term_logger.clone(),
-                                self.logs_sent_counter(None),
-                            ),
-                        )
-                    })
-                    .unwrap_or(term_logger),
+                                elastic_logger(
+                                    ElasticDrainConfig {
+                                        general: elastic_config,
+                                        index: elastic_component_config.index,
+                                        custom_id_key: String::from("componentId"),
+                                        custom_id_value: component.to_string(),
+                                        flush_interval: ENV_VARS.elastic_search_flush_interval,
+                                        max_retries: ENV_VARS.elastic_search_max_retries,
+                                    },
+                                    term_logger.clone(),
+                                    self.logs_sent_counter(None),
+                                ),
+                            )
+                        }
+                        _ => {
+                            // No Elasticsearch configured, just use terminal logger
+                            term_logger
+                        }
+                    }
+                }
             },
         }
     }
 
-    /// Creates a subgraph logger with Elasticsearch support.
+    /// Creates a subgraph logger with multi-backend support.
     pub fn subgraph_logger(&self, loc: &DeploymentLocator) -> Logger {
         let term_logger = self
             .parent
             .new(o!("subgraph_id" => loc.hash.to_string(), "sgd" => loc.id.to_string()));
 
-        self.elastic_config
-            .clone()
-            .map(|elastic_config| {
-                split_logger(
+        // Determine which drain to use based on log_store_config
+        let drain = match &self.log_store_config {
+            Some(LogStoreConfig::Elasticsearch {
+                endpoint,
+                username,
+                password,
+                index,
+            }) => {
+                // Build ElasticLoggingConfig on-demand
+                let elastic_config = ElasticLoggingConfig {
+                    endpoint: endpoint.clone(),
+                    username: username.clone(),
+                    password: password.clone(),
+                    client: reqwest::Client::new(),
+                };
+
+                Some(elastic_logger(
+                    ElasticDrainConfig {
+                        general: elastic_config,
+                        index: index.clone(),
+                        custom_id_key: String::from("subgraphId"),
+                        custom_id_value: loc.hash.to_string(),
+                        flush_interval: ENV_VARS.elastic_search_flush_interval,
+                        max_retries: ENV_VARS.elastic_search_max_retries,
+                    },
                     term_logger.clone(),
-                    elastic_logger(
-                        ElasticDrainConfig {
-                            general: elastic_config,
-                            index: ENV_VARS.elastic_search_index.clone(),
-                            custom_id_key: String::from("subgraphId"),
-                            custom_id_value: loc.hash.to_string(),
-                            flush_interval: ENV_VARS.elastic_search_flush_interval,
-                            max_retries: ENV_VARS.elastic_search_max_retries,
-                        },
-                        term_logger.clone(),
-                        self.logs_sent_counter(Some(loc.hash.as_str())),
-                    ),
-                )
-            })
+                    self.logs_sent_counter(Some(loc.hash.as_str())),
+                ))
+            }
+
+            None => None,
+
+            Some(LogStoreConfig::Loki {
+                endpoint,
+                tenant_id,
+            }) => {
+                // Use Loki
+                Some(loki_logger(
+                    LokiDrainConfig {
+                        endpoint: endpoint.clone(),
+                        tenant_id: tenant_id.clone(),
+                        flush_interval: Duration::from_secs(5),
+                        subgraph_id: loc.hash.to_string(),
+                    },
+                    term_logger.clone(),
+                ))
+            }
+
+            Some(LogStoreConfig::File {
+                directory,
+                max_file_size,
+                retention_days,
+            }) => {
+                // Use File
+                Some(file_logger(
+                    FileDrainConfig {
+                        directory: directory.clone(),
+                        subgraph_id: loc.hash.to_string(),
+                        max_file_size: *max_file_size,
+                        retention_days: *retention_days,
+                    },
+                    term_logger.clone(),
+                ))
+            }
+
+            Some(LogStoreConfig::Disabled) => None,
+        };
+
+        // Combine terminal and storage drain
+        drain
+            .map(|storage_drain| split_logger(term_logger.clone(), storage_drain))
             .unwrap_or(term_logger)
     }
 
