@@ -382,6 +382,7 @@ impl VisitorMut for Validator<'_> {
                 Some(TableAlias {
                     name: Ident::new(table.name.as_str()),
                     columns: vec![],
+                    explicit: true,
                 })
             });
             *table_factor = TableFactor::Derived {

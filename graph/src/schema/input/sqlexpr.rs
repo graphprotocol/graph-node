@@ -346,7 +346,7 @@ impl<'a> VisitExpr<'a> {
         use p::UnaryOperator::*;
         match op {
             Plus | Minus | Not => Ok(()),
-            PGBitwiseNot | PGSquareRoot | PGCubeRoot | PGPostfixFactorial | PGPrefixFactorial
+            BitwiseNot | PGSquareRoot | PGCubeRoot | PGPostfixFactorial | PGPrefixFactorial
             | PGAbs | BangNot | Hash | AtDashAt | DoubleAt | QuestionDash | QuestionPipe => {
                 self.not_supported(format!("unary operator {op} is not supported"))
             }
