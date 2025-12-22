@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-envconfig = "0.11.0"
+envconfig = { workspace = true }
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 serde = { workspace = true }

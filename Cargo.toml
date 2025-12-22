@@ -61,6 +61,7 @@ diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
 diesel-dynamic-schema = { version = "0.2.3", features = ["postgres"] }
 diesel_derives = "2.3.6"
 diesel_migrations = "2.1.0"
+envconfig = "0.11.1"
 graph = { path = "./graph" }
 graph-core = { path = "./core" }
 graph-store-postgres = { path = "./store/postgres" }

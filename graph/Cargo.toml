@@ -23,7 +23,7 @@ graph_derive = { path = "./derive" }
 diesel = { workspace = true }
 diesel_derives = { workspace = true }
 chrono = "0.4.42"
-envconfig = "0.11.0"
+envconfig = { workspace = true }
 Inflector = "0.11.3"
 atty = "0.2"
 reqwest = { version = "0.12.23", features = ["json", "stream", "multipart"] }
