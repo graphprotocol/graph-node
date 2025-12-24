@@ -10,7 +10,7 @@ use graph::blockchain::{
 use graph::components::network_provider::ChainName;
 use graph::components::store::{DeploymentCursorTracker, SourceableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::{FirehoseEndpoint, ForkStep};
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, ForkStep};
 use graph::futures03::TryStreamExt;
 use graph::prelude::{
     retry, BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
@@ -1037,32 +1037,62 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         root: Option<BlockHash>,
     ) -> Result<Option<BlockFinality>, Error> {
         let ptr_for_log = ptr.clone();
-        let block: Option<EthereumBlock> = self
+        let cached = self
             .chain_store
             .cheap_clone()
             .ancestor_block(ptr, offset, root)
-            .await?
-            .map(|(json_value, block_ptr)| {
-                json::from_value(json_value.clone()).map_err(|e| {
-                    warn!(
-                        self.logger,
-                        "Failed to deserialize cached ancestor block {} (offset {} from {}): {}. \
-                         This may indicate stale cache data from a previous version.",
-                        block_ptr.hash_hex(),
-                        offset,
-                        ptr_for_log.hash_hex(),
-                        e
-                    );
-                    e
-                })
-            })
-            .transpose()?;
-        Ok(block.map(|block| {
-            BlockFinality::NonFinal(EthereumBlockWithCalls {
+            .await?;
+
+        let Some((json_value, block_ptr)) = cached else {
+            return Ok(None);
+        };
+
+        match json::from_value::<EthereumBlock>(json_value.clone()) {
+            Ok(block) => Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
                 ethereum_block: block,
                 calls: None,
-            })
-        }))
+            }))),
+            Err(e) => {
+                warn!(
+                    self.logger,
+                    "Failed to deserialize cached ancestor block {} (offset {} from {}): {}. \
+                     This may indicate stale cache data from a previous version. \
+                     Falling back to Firehose/RPC.",
+                    block_ptr.hash_hex(),
+                    offset,
+                    ptr_for_log.hash_hex(),
+                    e
+                );
+
+                match self.chain_client.as_ref() {
+                    ChainClient::Firehose(endpoints) => {
+                        let block = self
+                            .fetch_block_with_firehose(endpoints, &block_ptr)
+                            .await?;
+                        let ethereum_block: EthereumBlockWithCalls = (&block).try_into()?;
+                        Ok(Some(BlockFinality::NonFinal(ethereum_block)))
+                    }
+                    ChainClient::Rpc(adapters) => {
+                        match self
+                            .fetch_light_block_with_rpc(adapters, &block_ptr)
+                            .await?
+                        {
+                            Some(light_block) => {
+                                let ethereum_block = EthereumBlock {
+                                    block: light_block,
+                                    transaction_receipts: vec![],
+                                };
+                                Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
+                                    ethereum_block,
+                                    calls: None,
+                                })))
+                            }
+                            None => Ok(None),
+                        }
+                    }
+                }
+            }
+        }
     }
 
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
@@ -1093,49 +1123,67 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 }
 
                 // If not in store, fetch from Firehose
-                let endpoint = endpoints.endpoint().await?;
-                let logger = self.logger.clone();
-                let retry_log_message =
-                    format!("get_block_by_ptr for block {} with firehose", block);
-                let block = block.clone();
-
-                retry(retry_log_message, &logger)
-                    .limit(ENV_VARS.request_retries)
-                    .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
-                    .run(move || {
-                        let endpoint = endpoint.cheap_clone();
-                        let logger = logger.cheap_clone();
-                        let block = block.clone();
-                        async move {
-                            endpoint
-                                .get_block_by_ptr::<codec::Block>(&block, &logger)
-                                .await
-                                .context(format!(
-                                    "Failed to fetch block by ptr {} from firehose",
-                                    block
-                                ))
-                        }
-                    })
+                self.fetch_block_with_firehose(endpoints, block)
                     .await?
                     .parent_ptr()
             }
-            ChainClient::Rpc(adapters) => {
-                let blocks = adapters
-                    .cheapest_with(&self.capabilities)
-                    .await?
-                    .load_blocks(
-                        self.logger.cheap_clone(),
-                        self.chain_store.cheap_clone(),
-                        HashSet::from_iter(Some(block.hash.as_b256())),
-                    )
-                    .await?;
-                assert_eq!(blocks.len(), 1);
-
-                blocks[0].parent_ptr()
-            }
+            ChainClient::Rpc(adapters) => self
+                .fetch_light_block_with_rpc(adapters, block)
+                .await?
+                .expect("block must exist for parent_ptr")
+                .parent_ptr(),
         };
 
         Ok(block)
+    }
+}
+
+impl TriggersAdapter {
+    async fn fetch_block_with_firehose(
+        &self,
+        endpoints: &FirehoseEndpoints,
+        block_ptr: &BlockPtr,
+    ) -> Result<codec::Block, Error> {
+        let endpoint = endpoints.endpoint().await?;
+        let logger = self.logger.clone();
+        let retry_log_message = format!("fetch_block_with_firehose {}", block_ptr);
+        let block_ptr = block_ptr.clone();
+
+        let block = retry(retry_log_message, &logger)
+            .limit(ENV_VARS.request_retries)
+            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .run(move || {
+                let endpoint = endpoint.cheap_clone();
+                let logger = logger.cheap_clone();
+                let block_ptr = block_ptr.clone();
+                async move {
+                    endpoint
+                        .get_block_by_ptr::<codec::Block>(&block_ptr, &logger)
+                        .await
+                        .context(format!("Failed to fetch block {} from firehose", block_ptr))
+                }
+            })
+            .await?;
+
+        Ok(block)
+    }
+
+    async fn fetch_light_block_with_rpc(
+        &self,
+        adapters: &EthereumNetworkAdapters,
+        block_ptr: &BlockPtr,
+    ) -> Result<Option<Arc<LightEthereumBlock>>, Error> {
+        let blocks = adapters
+            .cheapest_with(&self.capabilities)
+            .await?
+            .load_blocks(
+                self.logger.cheap_clone(),
+                self.chain_store.cheap_clone(),
+                HashSet::from_iter(Some(block_ptr.hash.as_b256())),
+            )
+            .await?;
+
+        Ok(blocks.into_iter().next())
     }
 }
 
