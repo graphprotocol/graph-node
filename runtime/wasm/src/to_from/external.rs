@@ -1,42 +1,24 @@
 use async_trait::async_trait;
-use ethabi;
-
+use graph::abi::DynSolValueExt;
+use graph::abi::{self};
 use graph::data::store::scalar::Timestamp;
 use graph::data::value::Word;
+use graph::prelude::alloy::primitives::{Address, B256};
 use graph::prelude::{BigDecimal, BigInt};
 use graph::runtime::gas::GasCounter;
+use graph::runtime::AscHeap;
 use graph::runtime::{
     asc_get, asc_new, AscIndexId, AscPtr, AscType, AscValue, HostExportError, ToAscObj,
 };
 use graph::{data::store, runtime::DeterministicHostError};
-use graph::{prelude::serde_json, runtime::FromAscObj};
-use graph::{prelude::web3::types as web3, runtime::AscHeap};
+use graph::{
+    prelude::{alloy::primitives::U256, serde_json},
+    runtime::FromAscObj,
+};
 
 use crate::asc_abi::class::*;
 
-#[async_trait]
-impl ToAscObj<Uint8Array> for web3::H160 {
-    async fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<Uint8Array, HostExportError> {
-        self.0.to_asc_obj(heap, gas).await
-    }
-}
-
-#[async_trait]
-impl ToAscObj<Uint8Array> for web3::Bytes {
-    async fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<Uint8Array, HostExportError> {
-        self.0.to_asc_obj(heap, gas).await
-    }
-}
-
-impl FromAscObj<Uint8Array> for web3::H160 {
+impl FromAscObj<Uint8Array> for Address {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: Uint8Array,
         heap: &H,
@@ -44,11 +26,33 @@ impl FromAscObj<Uint8Array> for web3::H160 {
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         let data = <[u8; 20]>::from_asc_obj(typed_array, heap, gas, depth)?;
-        Ok(Self(data))
+        Ok(Self::from(data))
     }
 }
 
-impl FromAscObj<Uint8Array> for web3::H256 {
+#[async_trait]
+impl ToAscObj<Uint8Array> for Address {
+    async fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<Uint8Array, HostExportError> {
+        self.as_slice().to_asc_obj(heap, gas).await
+    }
+}
+
+#[async_trait]
+impl ToAscObj<Uint8Array> for B256 {
+    async fn to_asc_obj<H: AscHeap + ?Sized>(
+        &self,
+        heap: &mut H,
+        gas: &GasCounter,
+    ) -> Result<Uint8Array, HostExportError> {
+        self.as_slice().to_asc_obj(heap, gas).await
+    }
+}
+
+impl FromAscObj<Uint8Array> for B256 {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         typed_array: Uint8Array,
         heap: &H,
@@ -57,30 +61,6 @@ impl FromAscObj<Uint8Array> for web3::H256 {
     ) -> Result<Self, DeterministicHostError> {
         let data = <[u8; 32]>::from_asc_obj(typed_array, heap, gas, depth)?;
         Ok(Self(data))
-    }
-}
-
-#[async_trait]
-impl ToAscObj<Uint8Array> for web3::H256 {
-    async fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<Uint8Array, HostExportError> {
-        self.0.to_asc_obj(heap, gas).await
-    }
-}
-
-#[async_trait]
-impl ToAscObj<AscBigInt> for web3::U128 {
-    async fn to_asc_obj<H: AscHeap + ?Sized>(
-        &self,
-        heap: &mut H,
-        gas: &GasCounter,
-    ) -> Result<AscBigInt, HostExportError> {
-        let mut bytes: [u8; 16] = [0; 16];
-        self.to_little_endian(&mut bytes);
-        bytes.to_asc_obj(heap, gas).await
     }
 }
 
@@ -173,34 +153,47 @@ impl ToAscObj<Array<AscPtr<AscString>>> for Vec<String> {
 }
 
 #[async_trait]
-impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
+impl ToAscObj<AscEnum<EthereumValueKind>> for abi::DynSolValue {
     async fn to_asc_obj<H: AscHeap + ?Sized>(
         &self,
         heap: &mut H,
         gas: &GasCounter,
     ) -> Result<AscEnum<EthereumValueKind>, HostExportError> {
-        use ethabi::Token::*;
-
         let kind = EthereumValueKind::get_kind(self);
+
         let payload = match self {
-            Address(address) => asc_new::<AscAddress, _, _>(heap, address, gas)
-                .await?
-                .to_payload(),
-            FixedBytes(bytes) | Bytes(bytes) => asc_new::<Uint8Array, _, _>(heap, &**bytes, gas)
-                .await?
-                .to_payload(),
-            Int(uint) => {
-                let n = BigInt::from_signed_u256(uint);
+            Self::Bool(val) => *val as u64,
+            Self::Int(val, _) => {
+                let bytes = val.to_le_bytes::<32>();
+                let n = BigInt::from_signed_bytes_le(&bytes)?;
+
                 asc_new(heap, &n, gas).await?.to_payload()
             }
-            Uint(uint) => {
-                let n = BigInt::from_unsigned_u256(uint);
+            Self::Uint(val, _) => {
+                let bytes = val.to_le_bytes::<32>();
+                let n = BigInt::from_unsigned_bytes_le(&bytes)?;
+
                 asc_new(heap, &n, gas).await?.to_payload()
             }
-            Bool(b) => *b as u64,
-            String(string) => asc_new(heap, &**string, gas).await?.to_payload(),
-            FixedArray(tokens) | Array(tokens) => asc_new(heap, &**tokens, gas).await?.to_payload(),
-            Tuple(tokens) => asc_new(heap, &**tokens, gas).await?.to_payload(),
+            Self::FixedBytes(val, size) => {
+                // FixedBytes stores the value in a 32-byte word, but we only want the first `size` bytes
+                asc_new::<Uint8Array, _, _>(heap, &val.as_slice()[..*size], gas)
+                    .await?
+                    .to_payload()
+            }
+            Self::Address(val) => asc_new::<AscAddress, _, _>(heap, val.as_slice(), gas)
+                .await?
+                .to_payload(),
+            Self::Function(val) => asc_new::<Uint8Array, _, _>(heap, val.as_slice(), gas)
+                .await?
+                .to_payload(),
+            Self::Bytes(val) => asc_new::<Uint8Array, _, _>(heap, &**val, gas)
+                .await?
+                .to_payload(),
+            Self::String(val) => asc_new(heap, &**val, gas).await?.to_payload(),
+            Self::Array(values) => asc_new(heap, &**values, gas).await?.to_payload(),
+            Self::FixedArray(values) => asc_new(heap, &**values, gas).await?.to_payload(),
+            Self::Tuple(values) => asc_new(heap, &**values, gas).await?.to_payload(),
         };
 
         Ok(AscEnum {
@@ -211,34 +204,41 @@ impl ToAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
     }
 }
 
-impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
+impl FromAscObj<AscEnum<EthereumValueKind>> for abi::DynSolValue {
     fn from_asc_obj<H: AscHeap + ?Sized>(
         asc_enum: AscEnum<EthereumValueKind>,
         heap: &H,
         gas: &GasCounter,
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
-        use ethabi::Token;
-
         let payload = asc_enum.payload;
-        Ok(match asc_enum.kind {
-            EthereumValueKind::Bool => Token::Bool(bool::from(payload)),
+
+        let value = match asc_enum.kind {
             EthereumValueKind::Address => {
                 let ptr: AscPtr<AscAddress> = AscPtr::from(payload);
-                Token::Address(asc_get(heap, ptr, gas, depth)?)
+                let bytes: [u8; 20] = asc_get(heap, ptr, gas, depth)?;
+
+                Self::Address(bytes.into())
             }
             EthereumValueKind::FixedBytes => {
                 let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
-                Token::FixedBytes(asc_get(heap, ptr, gas, depth)?)
+                let bytes: Vec<u8> = asc_get(heap, ptr, gas, depth)?;
+
+                Self::fixed_bytes_from_slice(&bytes)?
             }
             EthereumValueKind::Bytes => {
                 let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
-                Token::Bytes(asc_get(heap, ptr, gas, depth)?)
+                let bytes: Vec<u8> = asc_get(heap, ptr, gas, depth)?;
+
+                Self::Bytes(bytes)
             }
             EthereumValueKind::Int => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
                 let n: BigInt = asc_get(heap, ptr, gas, depth)?;
-                Token::Int(n.to_signed_u256())
+                let x =
+                    abi::I256::from_le_bytes(n.to_signed_u256().to_le_bytes::<{ U256::BYTES }>());
+
+                Self::Int(x, x.bits() as usize)
             }
             EthereumValueKind::Uint => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
@@ -246,25 +246,38 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for ethabi::Token {
                 let uint = n
                     .to_unsigned_u256()
                     .map_err(DeterministicHostError::Other)?;
-                Token::Uint(uint)
+                Self::Uint(uint, uint.bit_len())
             }
+            EthereumValueKind::Bool => Self::Bool(bool::from(payload)),
             EthereumValueKind::String => {
                 let ptr: AscPtr<AscString> = AscPtr::from(payload);
-                Token::String(asc_get(heap, ptr, gas, depth)?)
+
+                Self::String(asc_get(heap, ptr, gas, depth)?)
             }
             EthereumValueKind::FixedArray => {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::FixedArray(asc_get(heap, ptr, gas, depth)?)
+
+                Self::FixedArray(asc_get(heap, ptr, gas, depth)?)
             }
             EthereumValueKind::Array => {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::Array(asc_get(heap, ptr, gas, depth)?)
+
+                Self::Array(asc_get(heap, ptr, gas, depth)?)
             }
             EthereumValueKind::Tuple => {
                 let ptr: AscEnumArray<EthereumValueKind> = AscPtr::from(payload);
-                Token::Tuple(asc_get(heap, ptr, gas, depth)?)
+
+                Self::Tuple(asc_get(heap, ptr, gas, depth)?)
             }
-        })
+            EthereumValueKind::Function => {
+                let ptr: AscPtr<Uint8Array> = AscPtr::from(payload);
+                let bytes: [u8; 24] = asc_get(heap, ptr, gas, depth)?;
+
+                Self::Function(bytes.into())
+            }
+        };
+
+        Ok(value)
     }
 }
 

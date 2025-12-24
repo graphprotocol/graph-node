@@ -17,13 +17,13 @@ use anyhow::{anyhow, bail, Context, Result};
 use graph::futures03::StreamExt;
 use graph::itertools::Itertools;
 use graph::prelude::serde_json::{json, Value};
-use graph::prelude::web3::types::U256;
 use graph_tests::contract::Contract;
 use graph_tests::subgraph::Subgraph;
 use graph_tests::{error, status, CONFIG};
 use tokio::process::Child;
 use tokio::task::JoinError;
 use tokio::time::sleep;
+use web3::types::U256;
 
 const SUBGRAPH_LAST_GRAFTING_BLOCK: i32 = 3;
 

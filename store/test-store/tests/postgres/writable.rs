@@ -2,6 +2,7 @@ use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
+use graph::prelude::alloy::primitives::B256;
 use graph::schema::{EntityKey, EntityType, InputSchema};
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, BTreeSet};
@@ -18,7 +19,6 @@ use graph::semver::Version;
 use graph::{entity, prelude::*};
 use graph_store_postgres::layout_for_tests::writable;
 use graph_store_postgres::{Store as DieselStore, SubgraphStore as DieselSubgraphStore};
-use web3::types::H256;
 
 const SCHEMA_GQL: &str = "
     type Counter @entity {
@@ -145,7 +145,7 @@ where
 }
 
 fn block_pointer(number: u8) -> BlockPtr {
-    let hash = H256::from([number; 32]);
+    let hash = B256::from([number; 32]);
     BlockPtr::from((hash, number as BlockNumber))
 }
 

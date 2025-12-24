@@ -12,8 +12,8 @@ use graph::{
     data::subgraph::status,
     internal_error,
     prelude::{
-        web3::types::Address, BlockNumber, BlockPtr, CheapClone, DeploymentHash, PartialBlockPtr,
-        QueryExecutionError, StoreError,
+        alloy::primitives::Address, BlockNumber, BlockPtr, CheapClone, DeploymentHash,
+        PartialBlockPtr, QueryExecutionError, StoreError,
     },
 };
 
