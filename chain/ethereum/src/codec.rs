@@ -268,19 +268,21 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
             .trace
             .access_list
             .iter()
-            .map(|access_tuple| {
-                let address = Address::from_slice(&access_tuple.address);
+            .map(|access_tuple| -> Result<_, Error> {
+                let address = access_tuple
+                    .address
+                    .try_decode_proto("access tuple address")?;
                 let storage_keys = access_tuple
                     .storage_keys
                     .iter()
-                    .map(|key| B256::from_slice(key))
-                    .collect();
-                AccessListItem {
+                    .map(|key| key.try_decode_proto("storage key"))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(AccessListItem {
                     address,
                     storage_keys,
-                }
+                })
             })
-            .collect::<Vec<_>>()
+            .collect::<Result<Vec<_>, Error>>()?
             .into();
 
         // Extract actual signature components from trace
@@ -359,8 +361,8 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
                     .trace
                     .blob_hashes
                     .iter()
-                    .map(|hash| B256::from_slice(hash))
-                    .collect();
+                    .map(|hash| hash.try_decode_proto("blob hash"))
+                    .collect::<Result<Vec<_>, _>>()?;
 
                 let max_fee_per_blob_gas_u128 =
                     self.trace.blob_gas_fee_cap.as_ref().map_or(0u128, |x| {
@@ -401,10 +403,10 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
                     .trace
                     .set_code_authorizations
                     .iter()
-                    .map(|auth| {
+                    .map(|auth| -> Result<_, Error> {
                         let inner = alloy::eips::eip7702::Authorization {
                             chain_id: U256::from_be_slice(&auth.chain_id),
-                            address: Address::from_slice(&auth.address),
+                            address: auth.address.try_decode_proto("authorization address")?,
                             nonce: auth.nonce,
                         };
 
@@ -412,11 +414,11 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
                         let s = U256::from_be_slice(&auth.s);
                         let y_parity = auth.v as u8;
 
-                        alloy::eips::eip7702::SignedAuthorization::new_unchecked(
+                        Ok(alloy::eips::eip7702::SignedAuthorization::new_unchecked(
                             inner, y_parity, r, s,
-                        )
+                        ))
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, Error>>()?;
 
                 let tx = TxEip7702 {
                     // Firehose protobuf doesn't provide chain_id for transactions.
