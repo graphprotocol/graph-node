@@ -3,6 +3,7 @@
 //! for the primary shard.
 use crate::{
     block_range::UNVERSIONED_RANGE,
+    catalog,
     detail::DeploymentDetail,
     pool::{PermittedConnection, PRIMARY_PUBLIC},
     subgraph_store::{unused, Shard, PRIMARY_SHARD},
@@ -2022,6 +2023,10 @@ impl Primary {
 pub async fn is_empty(conn: &mut AsyncPgConnection) -> Result<bool, StoreError> {
     use deployment_schemas as ds;
     use subgraph as s;
+
+    if catalog::migration_count(conn).await? == 0 {
+        return Ok(true);
+    }
 
     let empty = ds::table.count().get_result::<i64>(conn).await? == 0
         && s::table.count().get_result::<i64>(conn).await? == 0;
