@@ -28,7 +28,10 @@ fn normalize_abi_json(json_bytes: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
     let mut value: serde_json::Value = serde_json::from_slice(json_bytes)?;
 
     if let Some(array) = value.as_array_mut() {
-        for item in array {
+        let mut found_constructor = false;
+        let mut indices_to_remove = Vec::new();
+
+        for (index, item) in array.iter_mut().enumerate() {
             if let Some(obj) = item.as_object_mut() {
                 if let Some(state_mutability) = obj.get_mut("stateMutability") {
                     if let Some(s) = state_mutability.as_str() {
@@ -37,7 +40,21 @@ fn normalize_abi_json(json_bytes: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
                         }
                     }
                 }
+
+                if let Some(item_type) = obj.get("type") {
+                    if item_type == "constructor" {
+                        if found_constructor {
+                            indices_to_remove.push(index);
+                        } else {
+                            found_constructor = true;
+                        }
+                    }
+                }
             }
+        }
+
+        for index in indices_to_remove.iter().rev() {
+            array.remove(*index);
         }
     }
 
@@ -2151,6 +2168,44 @@ mod tests {
         if let Some(array) = result.as_array() {
             assert_eq!(array[0]["stateMutability"], "nonpayable");
             assert_eq!(array[1]["stateMutability"], "view");
+        } else {
+            panic!("Expected JSON array");
+        }
+
+        let json_abi: abi::JsonAbi = serde_json::from_slice(&normalized).unwrap();
+        assert_eq!(json_abi.len(), 2);
+    }
+
+    #[test]
+    fn test_normalize_abi_json_with_duplicate_constructors() {
+        let abi_with_duplicate_constructors = r#"[
+            {
+                "type": "constructor",
+                "inputs": [{"name": "param1", "type": "address"}],
+                "stateMutability": "nonpayable"
+            },
+            {
+                "type": "function",
+                "name": "someFunction",
+                "inputs": [],
+                "outputs": [],
+                "stateMutability": "view"
+            },
+            {
+                "type": "constructor",
+                "inputs": [{"name": "param2", "type": "uint256"}],
+                "stateMutability": "nonpayable"
+            }
+        ]"#;
+
+        let normalized = normalize_abi_json(abi_with_duplicate_constructors.as_bytes()).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&normalized).unwrap();
+
+        if let Some(array) = result.as_array() {
+            assert_eq!(array.len(), 2);
+            assert_eq!(array[0]["type"], "constructor");
+            assert_eq!(array[0]["inputs"][0]["name"], "param1");
+            assert_eq!(array[1]["type"], "function");
         } else {
             panic!("Expected JSON array");
         }
