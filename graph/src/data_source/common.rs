@@ -24,6 +24,26 @@ use slog::Logger;
 use std::collections::HashMap;
 use std::{str::FromStr, sync::Arc};
 
+fn normalize_abi_json(json_bytes: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
+    let mut value: serde_json::Value = serde_json::from_slice(json_bytes)?;
+
+    if let Some(array) = value.as_array_mut() {
+        for item in array {
+            if let Some(obj) = item.as_object_mut() {
+                if let Some(state_mutability) = obj.get_mut("stateMutability") {
+                    if let Some(s) = state_mutability.as_str() {
+                        if s == "undefined" {
+                            *state_mutability = serde_json::Value::String("nonpayable".to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::to_vec(&value)?)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MappingABI {
     pub name: String,
@@ -364,11 +384,14 @@ impl UnresolvedMappingABI {
                     self.name, self.file.link
                 )
             })?;
-        let contract = serde_json::from_slice(&*contract_bytes)
+        let normalized_bytes = normalize_abi_json(&contract_bytes)
+            .with_context(|| format!("failed to normalize ABI JSON for {}", self.name))?;
+
+        let contract = serde_json::from_slice(&normalized_bytes)
             .with_context(|| format!("failed to load ABI {}", self.name))?;
 
         // Parse ABI JSON for on-demand struct field extraction
-        let abi_json = AbiJson::new(&contract_bytes)
+        let abi_json = AbiJson::new(&normalized_bytes)
             .with_context(|| format!("Failed to parse ABI JSON for {}", self.name))?;
 
         Ok((
@@ -2101,6 +2124,39 @@ mod tests {
         let error_msg = parser
             .err("Contract[event.address].test(event.params.complexAsset.metadata.something)");
         assert!(error_msg.contains("is not a struct"));
+    }
+
+    #[test]
+    fn test_normalize_abi_json_with_undefined_state_mutability() {
+        let abi_with_undefined = r#"[
+            {
+                "type": "function",
+                "name": "testFunction",
+                "inputs": [],
+                "outputs": [],
+                "stateMutability": "undefined"
+            },
+            {
+                "type": "function",
+                "name": "normalFunction",
+                "inputs": [],
+                "outputs": [],
+                "stateMutability": "view"
+            }
+        ]"#;
+
+        let normalized = normalize_abi_json(abi_with_undefined.as_bytes()).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&normalized).unwrap();
+
+        if let Some(array) = result.as_array() {
+            assert_eq!(array[0]["stateMutability"], "nonpayable");
+            assert_eq!(array[1]["stateMutability"], "view");
+        } else {
+            panic!("Expected JSON array");
+        }
+
+        let json_abi: abi::JsonAbi = serde_json::from_slice(&normalized).unwrap();
+        assert_eq!(json_abi.len(), 2);
     }
 
     // Helper function to create consistent test ABI
