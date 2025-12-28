@@ -6,6 +6,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use graph::abi;
 use graph::prelude::alloy;
+use graph::prelude::alloy::consensus::TxReceipt;
 use graph::prelude::alloy::network::ReceiptResponse;
 use graph::prelude::alloy::rpc::types::{Log, TransactionReceipt};
 use graph::prelude::alloy::serde::WithOtherFields;
@@ -697,6 +698,10 @@ impl ToAscObj<AscEthereumTransactionReceipt>
             .ok_or(HostExportError::Unknown(anyhow!(
                 "Transaction index is missing"
             )))?;
+        let status = match self.inner.status_or_post_state().as_eip658() {
+            Some(success) => asc_new(heap, &BigInt::from(success as u64), gas).await?,
+            None => AscPtr::null(), // Pre-EIP-658 (pre-Byzantium) receipt
+        };
         Ok(AscEthereumTransactionReceipt {
             transaction_hash: asc_new(heap, &self.transaction_hash, gas).await?,
             transaction_index: asc_new(heap, &BigInt::from(transaction_index), gas).await?,
@@ -707,7 +712,7 @@ impl ToAscObj<AscEthereumTransactionReceipt>
             gas_used: asc_new(heap, &BigInt::from(self.gas_used), gas).await?,
             contract_address: asc_new_or_null(heap, &self.contract_address, gas).await?,
             logs: asc_new(heap, &self.logs(), gas).await?,
-            status: asc_new(heap, &BigInt::from(self.status() as u64), gas).await?,
+            status,
             root: asc_new_or_null(heap, &self.state_root(), gas).await?,
             logs_bloom: asc_new(heap, self.inner.bloom().as_slice(), gas).await?,
         })

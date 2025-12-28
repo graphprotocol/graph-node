@@ -45,18 +45,11 @@ impl TryFrom<RawTransactionReceipt> for LightTransactionReceipt {
         let block_number = block_number.map(u64::from_be_bytes);
         let gas_used = gas_used.map(u64::from_be_bytes).unwrap_or(0);
 
-        // Handle both old U64 format and new boolean format
+        // Status is non-zero for success, zero for failure. Works for any byte length.
+        // Defaults to true for pre-Byzantium receipts (no status field), consistent with alloy.
         let status = status
-            .map(|bytes| {
-                match bytes.len() {
-                    1 => bytes[0] != 0, // New format: single byte
-                    8 => {
-                        u64::from_be_bytes(drain_vector::<8>(bytes.to_vec()).unwrap_or([0; 8])) != 0
-                    } // Old format: U64
-                    _ => false,         // Fallback
-                }
-            })
-            .unwrap_or(false);
+            .map(|bytes| bytes.iter().any(|&b| b != 0))
+            .unwrap_or(true);
 
         Ok(LightTransactionReceipt {
             transaction_hash: transaction_hash.into(),
