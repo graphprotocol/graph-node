@@ -508,10 +508,7 @@ impl<'a> ToAscObj<AscEthereumTransaction_0_0_1> for EthereumTransactionData<'a> 
             hash: asc_new(heap, &self.hash(), gas).await?,
             index: asc_new(heap, &BigInt::from(self.index()), gas).await?,
             from: asc_new(heap, &self.from(), gas).await?,
-            to: match self.to() {
-                Some(to) => asc_new(heap, &to, gas).await?,
-                None => AscPtr::null(),
-            },
+            to: asc_new_or_null(heap, &self.to(), gas).await?,
             value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value()), gas).await?,
             gas_limit: asc_new(heap, &BigInt::from(self.gas_limit()), gas).await?,
             gas_price: asc_new(heap, &BigInt::from(self.gas_price()), gas).await?,
@@ -530,10 +527,7 @@ impl<'a> ToAscObj<AscEthereumTransaction_0_0_2> for EthereumTransactionData<'a> 
             hash: asc_new(heap, &self.hash(), gas).await?,
             index: asc_new(heap, &BigInt::from(self.index()), gas).await?,
             from: asc_new(heap, &self.from(), gas).await?,
-            to: match self.to() {
-                Some(to) => asc_new(heap, &to, gas).await?,
-                None => AscPtr::null(),
-            },
+            to: asc_new_or_null(heap, &self.to(), gas).await?,
             value: asc_new(heap, &BigInt::from_unsigned_u256(&self.value()), gas).await?,
             gas_limit: asc_new(heap, &BigInt::from(self.gas_limit()), gas).await?,
             gas_price: asc_new(heap, &BigInt::from(self.gas_price()), gas).await?,
@@ -675,8 +669,8 @@ impl ToAscObj<AscEthereumLog> for Log {
             transaction_hash: asc_new_or_null(heap, &self.transaction_hash, gas).await?,
             transaction_index: asc_new_or_null_u64(heap, &self.transaction_index, gas).await?,
             log_index: asc_new_or_null_u64(heap, &self.log_index, gas).await?,
-            transaction_log_index: AscPtr::null(), // TODO(alloy): figure out how to get transaction log index
-            log_type: AscPtr::null(),              // TODO(alloy): figure out how to get log type
+            transaction_log_index: AscPtr::null(), // Non-standard field, not available in alloy
+            log_type: AscPtr::null(),              // Non-standard field, not available in alloy
             removed: asc_new(
                 heap,
                 &AscWrapped {
@@ -708,7 +702,8 @@ impl ToAscObj<AscEthereumTransactionReceipt>
             transaction_index: asc_new(heap, &BigInt::from(transaction_index), gas).await?,
             block_hash: asc_new_or_null(heap, &self.block_hash, gas).await?,
             block_number: asc_new_or_null_u64(heap, &self.block_number, gas).await?,
-            cumulative_gas_used: asc_new(heap, &BigInt::from(self.gas_used), gas).await?,
+            cumulative_gas_used: asc_new(heap, &BigInt::from(self.cumulative_gas_used()), gas)
+                .await?,
             gas_used: asc_new(heap, &BigInt::from(self.gas_used), gas).await?,
             contract_address: asc_new_or_null(heap, &self.contract_address, gas).await?,
             logs: asc_new(heap, &self.logs(), gas).await?,
