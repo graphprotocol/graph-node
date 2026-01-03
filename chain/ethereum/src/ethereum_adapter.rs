@@ -142,6 +142,15 @@ impl EthereumAdapter {
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
+                debug!(
+                    logger,
+                    "CALL_FILTER_DEBUG: trace_filter RPC request";
+                    "from_block" => from,
+                    "to_block" => to,
+                    "address_count" => addresses.len(),
+                    "addresses" => format!("{:?}", addresses),
+                );
+
                 let trace_filter: TraceFilter = match addresses.len() {
                     0 => TraceFilterBuilder::default()
                         .from_block(from.into())
@@ -157,6 +166,7 @@ impl EthereumAdapter {
                 let eth = eth.cheap_clone();
                 let logger_for_triggers = logger.clone();
                 let logger_for_error = logger.clone();
+                let logger_for_debug = logger.clone();
                 let start = Instant::now();
                 let subgraph_metrics = subgraph_metrics.clone();
                 let provider_metrics = eth.metrics.clone();
@@ -186,6 +196,44 @@ impl EthereumAdapter {
                                         to
                                     );
                                 }
+
+                                let unique_blocks: std::collections::HashSet<_> =
+                                    traces.iter().map(|t| t.block_number).collect();
+                                debug!(
+                                    logger_for_debug,
+                                    "CALL_FILTER_DEBUG: trace_filter RPC response";
+                                    "from_block" => from,
+                                    "to_block" => to,
+                                    "trace_count" => traces.len(),
+                                    "unique_blocks" => unique_blocks.len(),
+                                    "block_numbers" => format!("{:?}", unique_blocks),
+                                );
+
+                                for trace in &traces {
+                                    use graph::prelude::web3::types::Action;
+                                    match &trace.action {
+                                        Action::Call(call) => {
+                                            debug!(
+                                                logger_for_debug,
+                                                "CALL_FILTER_DEBUG: Call trace found";
+                                                "block_number" => trace.block_number,
+                                                "transaction_hash" => format!("{:?}", trace.transaction_hash),
+                                                "to_address" => format!("{:?}", call.to),
+                                                "from_address" => format!("{:?}", call.from),
+                                            );
+                                        }
+                                        Action::Create(create) => {
+                                            debug!(
+                                                logger_for_debug,
+                                                "CALL_FILTER_DEBUG: Create trace found";
+                                                "block_number" => trace.block_number,
+                                                "transaction_hash" => format!("{:?}", trace.transaction_hash),
+                                                "from_address" => format!("{:?}", create.from),
+                                            );
+                                        }
+                                        _ => {}
+                                    }
+                                }
                             }
                             traces
                         })
@@ -200,6 +248,13 @@ impl EthereumAdapter {
                         debug!(
                             logger_for_error,
                             "Error querying traces error = {:#} from = {} to = {}", e, from, to
+                        );
+                        debug!(
+                            logger_for_error,
+                            "CALL_FILTER_DEBUG: trace_filter RPC failed";
+                            "from_block" => from,
+                            "to_block" => to,
+                            "error" => format!("{:#}", e),
                         );
                     }
                     result
@@ -1830,11 +1885,30 @@ pub(crate) async fn blocks_with_triggers(
     }
 
     if !filter.block.contract_addresses.is_empty() {
+        debug!(
+            logger,
+            "CALL_FILTER_DEBUG: Scanning for block handler with call filter";
+            "from_block" => from,
+            "to_block" => to,
+            "contract_addresses" => format!("{:?}", &filter.block.contract_addresses),
+        );
+
         // To determine which blocks include a call to addresses
         // in the block filter, transform the `block_filter` into
         // a `call_filter` and run `blocks_with_calls`
+        let logger_clone = logger.clone();
         let block_future = eth
             .calls_in_block_range(&logger, subgraph_metrics.clone(), from, to, &call_filter)
+            .inspect(move |call| {
+                debug!(
+                    logger_clone,
+                    "CALL_FILTER_DEBUG: Creating block trigger from call";
+                    "block_number" => call.block_number,
+                    "to_address" => format!("{:?}", call.to),
+                    "from_address" => format!("{:?}", call.from),
+                    "transaction_hash" => format!("{:?}", call.transaction_hash),
+                );
+            })
             .map(|call| {
                 EthereumTrigger::Block(
                     BlockPtr::from(&call),
@@ -2033,6 +2107,8 @@ pub(crate) fn parse_block_triggers(
     block_filter: &EthereumBlockFilter,
     block: &EthereumBlockWithCalls,
 ) -> Vec<EthereumTrigger> {
+    use graph::log::logger;
+
     if block_filter.is_empty() {
         return vec![];
     }
@@ -2045,17 +2121,54 @@ pub(crate) fn parse_block_triggers(
     let block_number = block_ptr.number;
 
     let mut triggers = match &block.calls {
-        Some(calls) => calls
-            .iter()
-            .filter(move |call| call_filter.matches(call))
-            .map(move |call| {
-                EthereumTrigger::Block(
-                    block_ptr2.clone(),
-                    EthereumBlockTriggerType::WithCallTo(call.to),
-                )
-            })
-            .collect::<Vec<EthereumTrigger>>(),
-        None => vec![],
+        Some(calls) => {
+            let call_count = calls.len();
+            let filtered_calls: Vec<_> = calls
+                .iter()
+                .filter(move |call| call_filter.matches(call))
+                .collect();
+
+            let logger = logger(false);
+            debug!(
+                logger,
+                "CALL_FILTER_DEBUG: parse_block_triggers matching calls";
+                "block_number" => block_number,
+                "total_calls_in_block" => call_count,
+                "filtered_calls_count" => filtered_calls.len(),
+                "contract_addresses_in_filter" => format!("{:?}", &block_filter.contract_addresses),
+            );
+
+            for call in &filtered_calls {
+                debug!(
+                    logger,
+                    "CALL_FILTER_DEBUG: Call matched for block trigger";
+                    "block_number" => call.block_number,
+                    "to_address" => format!("{:?}", call.to),
+                    "from_address" => format!("{:?}", call.from),
+                    "transaction_hash" => format!("{:?}", call.transaction_hash),
+                );
+            }
+
+            filtered_calls
+                .into_iter()
+                .map(move |call| {
+                    EthereumTrigger::Block(
+                        block_ptr2.clone(),
+                        EthereumBlockTriggerType::WithCallTo(call.to),
+                    )
+                })
+                .collect::<Vec<EthereumTrigger>>()
+        }
+        None => {
+            let logger = logger(false);
+            debug!(
+                logger,
+                "CALL_FILTER_DEBUG: parse_block_triggers has NO calls";
+                "block_number" => block_number,
+                "contract_addresses_in_filter" => format!("{:?}", &block_filter.contract_addresses),
+            );
+            vec![]
+        }
     };
     if trigger_every_block {
         triggers.push(EthereumTrigger::Block(

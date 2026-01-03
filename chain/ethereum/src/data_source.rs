@@ -520,11 +520,40 @@ impl DataSource {
                         _ => false,
                     })
             }
-            EthereumBlockTriggerType::WithCallTo(_address) => self
-                .mapping
-                .block_handlers
-                .iter()
-                .find(move |handler| handler.filter == Some(BlockHandlerFilter::Call)),
+            EthereumBlockTriggerType::WithCallTo(address) => {
+                use graph::log::logger;
+                let logger = logger(false);
+
+                let handler_option = self
+                    .mapping
+                    .block_handlers
+                    .iter()
+                    .find(move |handler| handler.filter == Some(BlockHandlerFilter::Call));
+
+                if handler_option.is_some() {
+                    debug!(
+                        logger,
+                        "CALL_FILTER_DEBUG: Block handler matched for WithCallTo trigger";
+                        "data_source_name" => &self.name,
+                        "data_source_address" => format!("{:?}", self.address),
+                        "trigger_address" => format!("{:?}", address),
+                        "block_number" => block,
+                        "handler_name" => handler_option.map(|h| h.handler.as_str()).unwrap_or(""),
+                    );
+                } else {
+                    debug!(
+                        logger,
+                        "CALL_FILTER_DEBUG: No block handler matched for WithCallTo trigger";
+                        "data_source_name" => &self.name,
+                        "data_source_address" => format!("{:?}", self.address),
+                        "trigger_address" => format!("{:?}", address),
+                        "block_number" => block,
+                        "available_handlers" => format!("{:?}", self.mapping.block_handlers.iter().map(|h| &h.filter).collect::<Vec<_>>()),
+                    );
+                }
+
+                handler_option
+            }
         }
     }
 

@@ -268,6 +268,15 @@ impl PollingBlockStreamContext {
         if subgraph_ptr.is_none()
             || (head_ptr.number - subgraph_ptr.as_ref().unwrap().number) > reorg_threshold
         {
+            debug!(
+                ctx.logger,
+                "CALL_FILTER_DEBUG: Processing BEYOND reorg threshold (using RPC calls)";
+                "subgraph_block" => subgraph_ptr.as_ref().map(|p| p.number),
+                "head_block" => head_ptr.number,
+                "reorg_threshold" => reorg_threshold,
+                "distance_from_head" => subgraph_ptr.as_ref().map(|p| head_ptr.number - p.number),
+            );
+
             // Since we are beyond the reorg threshold, the Ethereum node knows what block has
             // been permanently assigned this block number.
             // This allows us to ask the node: does subgraph_ptr point to a block that was
@@ -385,6 +394,18 @@ impl PollingBlockStreamContext {
                 blocks, range_size,
             ))
         } else {
+            let subgraph_ptr =
+                subgraph_ptr.expect("subgraph block pointer should not be `None` here");
+
+            debug!(
+                ctx.logger,
+                "CALL_FILTER_DEBUG: Processing WITHIN reorg threshold (using cached blocks)";
+                "subgraph_block" => subgraph_ptr.number,
+                "head_block" => head_ptr.number,
+                "reorg_threshold" => reorg_threshold,
+                "distance_from_head" => head_ptr.number - subgraph_ptr.number,
+            );
+
             // The subgraph ptr is not too far behind the head ptr.
             // This means a few things.
             //
@@ -406,9 +427,6 @@ impl PollingBlockStreamContext {
             // We can do so by walking back up the chain from the head block to the appropriate
             // block number, and checking to see if the block we found matches the
             // subgraph_ptr.
-
-            let subgraph_ptr =
-                subgraph_ptr.expect("subgraph block pointer should not be `None` here");
 
             // Precondition: subgraph_ptr.number < head_ptr.number
             // Walk back to one block short of subgraph_ptr.number
