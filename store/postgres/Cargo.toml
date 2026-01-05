@@ -21,7 +21,6 @@ graphman-store = { workspace = true }
 Inflector = "0.11.3"
 lazy_static = "1.5"
 lru_time_cache = "0.11"
-maybe-owned = "0.3.4"
 postgres = "0.19.1"
 openssl = { version = "0.10.73", features = ["vendored"] }
 postgres-openssl = "0.5.2"

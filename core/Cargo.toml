@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true}
-atomic_refcell = "0.1.13"
 bytes = "1.0"
 graph = { path = "../graph" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
@@ -18,7 +17,6 @@ tokio-retry = { workspace = true }
 # Switch to crates.io once tower 0.5 is released
 tower = { git = "https://github.com/tower-rs/tower.git", features = ["full"] }
 thiserror = { workspace = true }
-cid = "0.11.1"
 anyhow = "1.0"
 
 [dev-dependencies]

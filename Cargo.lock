@@ -2204,7 +2204,6 @@ dependencies = [
  "graph",
  "graph-runtime-wasm",
  "hex",
- "lazy_static",
  "prost",
  "prost-types",
  "semver",
@@ -2220,9 +2219,7 @@ version = "0.36.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "atomic_refcell",
  "bytes",
- "cid",
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
@@ -2263,7 +2260,6 @@ dependencies = [
  "diesel-async",
  "env_logger",
  "git-testament",
- "globset",
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
@@ -2280,7 +2276,6 @@ dependencies = [
  "itertools",
  "json-structural-diff",
  "lazy_static",
- "notify",
  "prometheus",
  "serde",
  "shellexpand",
@@ -2293,8 +2288,6 @@ dependencies = [
 name = "graph-runtime-derive"
 version = "0.36.0"
 dependencies = [
- "heck 0.5.0",
- "proc-macro2",
  "quote",
  "syn 2.0.106",
 ]
@@ -2306,7 +2299,6 @@ dependencies = [
  "async-trait",
  "graph",
  "graph-chain-ethereum",
- "graph-runtime-derive",
  "graph-runtime-wasm",
  "rand 0.9.2",
  "semver",
@@ -2401,7 +2393,6 @@ dependencies = [
  "itertools",
  "lazy_static",
  "lru_time_cache",
- "maybe-owned",
  "openssl",
  "postgres",
  "postgres-openssl",
@@ -2445,7 +2436,6 @@ dependencies = [
 name = "graph_derive"
 version = "0.36.0"
 dependencies = [
- "heck 0.5.0",
  "proc-macro-utils",
  "proc-macro2",
  "quote",
@@ -3528,12 +3518,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
-name = "maybe-owned"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4facc753ae494aeb6e3c22f839b158aebd4f9270f55cd3c79906c45476c47ab4"
-
-[[package]]
 name = "md-5"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4132,9 +4116,9 @@ dependencies = [
 
 [[package]]
 name = "postgres"
-version = "0.19.7"
+version = "0.19.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7915b33ed60abc46040cbcaa25ffa1c7ec240668e0477c4f3070786f5916d451"
+checksum = "e7c48ece1c6cda0db61b058c1721378da76855140e9214339fa1317decacb176"
 dependencies = [
  "bytes",
  "fallible-iterator 0.2.0",
@@ -4199,9 +4183,9 @@ checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
 
 [[package]]
 name = "pq-src"
-version = "0.3.9+libpq-17.5"
+version = "0.3.10+libpq-18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24ee82a51d19317d15e43b82e496db215ad5bf09a245786e7ac75cb859e5ba46"
+checksum = "56ef39ce621f4993d6084fdcd4cbf1e01c84bdba53109cfad095d2cf441b85b9"
 dependencies = [
  "cc",
  "openssl-sys",
