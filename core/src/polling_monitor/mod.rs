@@ -356,6 +356,8 @@ mod tests {
 
     #[graph::test]
     async fn polling_monitor_cancelation() {
+        const REQ: &str = "req-0";
+
         // Cancelation on receiver drop, no pending request.
         let (mut handle, _monitor, rx) = setup();
         drop(rx);
@@ -363,9 +365,16 @@ mod tests {
 
         // Cancelation on receiver drop, with pending request.
         let (mut handle, monitor, rx) = setup();
-        monitor.monitor("req-0");
+        monitor.monitor(REQ);
         drop(rx);
-        assert!(handle.next_request().await.is_none());
+        let mut next = handle.next_request().await;
+        if let Some((a, _)) = next {
+            // The request may or may not have been pulled from the queue
+            // before cancelation.
+            assert_eq!(REQ, a);
+            next = handle.next_request().await;
+        }
+        assert!(next.is_none());
 
         // Cancelation on receiver drop, while queue is waiting.
         let (mut handle, _monitor, rx) = setup();
