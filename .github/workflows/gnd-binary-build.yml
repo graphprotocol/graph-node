@@ -43,18 +43,18 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Install dependencies (Ubuntu)
-        if: startsWith(matrix.runner, 'ubuntu')
+        if: startsWith(matrix.runner, 'ubuntu') || startsWith(matrix.runner, 'nscloud-ubuntu') || contains(matrix.runner, 'linux')
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler musl-tools
 
       - name: Install dependencies (macOS)
-        if: startsWith(matrix.runner, 'macos')
+        if: startsWith(matrix.runner, 'macos') || startsWith(matrix.runner, 'nscloud-macos') || contains(matrix.runner, 'macos')
         run: |
           brew install protobuf
 
       - name: Install protobuf (Windows)
-        if: startsWith(matrix.runner, 'windows')
+        if: startsWith(matrix.runner, 'windows') || startsWith(matrix.runner, 'nscloud-windows') || contains(matrix.runner, 'windows')
         run: choco install protoc
 
 

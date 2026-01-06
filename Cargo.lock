@@ -2050,10 +2050,8 @@ dependencies = [
  "graph-node",
  "lazy_static",
  "notify",
- "openssl-sys",
  "pgtemp",
  "pq-sys",
- "serde",
  "tokio",
 ]
 
