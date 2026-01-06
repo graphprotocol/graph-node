@@ -119,7 +119,7 @@ mod tests {
 
         assert_eq!(
             err.to_string(),
-            "'https://' is not a valid IPFS server address: invalid format",
+            "'https://' is not a valid IPFS server address: empty string",
         );
     }
 
