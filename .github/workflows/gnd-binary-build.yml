@@ -18,7 +18,7 @@ jobs:
             runner: ${{ vars.LINUX_ARM64_RUNNER || 'ubuntu-24.04-arm' }}
             asset_name: gnd-linux-aarch64
           - target: x86_64-apple-darwin
-            runner: ${{ vars.MACOS_X64_RUNNER || 'macos-13' }}
+            runner: ${{ vars.MACOS_X64_RUNNER || 'macos-14' }}
             asset_name: gnd-macos-x86_64
           - target: aarch64-apple-darwin
             runner: ${{ vars.MACOS_ARM64_RUNNER || 'macos-14' }}
