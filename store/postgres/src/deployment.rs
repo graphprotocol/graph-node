@@ -12,6 +12,7 @@ use diesel::{
     sql_types::{Nullable, Text},
 };
 use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
+use graph::prelude::alloy::primitives::B256;
 use graph::{
     blockchain::block_stream::FirehoseCursor,
     data::subgraph::schema::SubgraphError,
@@ -21,16 +22,12 @@ use graph::{
 };
 use graph::{components::store::StoreResult, semver::Version};
 use graph::{
-    data::store::scalar::ToPrimitive,
-    prelude::{
-        anyhow, hex, web3::types::H256, BlockNumber, BlockPtr, DeploymentHash, DeploymentState,
-        StoreError,
-    },
-    schema::InputSchema,
-};
-use graph::{
     data::subgraph::schema::{DeploymentCreate, SubgraphManifestEntity},
     util::backoff::ExponentialBackoff,
+};
+use graph::{
+    prelude::{anyhow, hex, BlockNumber, BlockPtr, DeploymentHash, DeploymentState, StoreError},
+    schema::InputSchema,
 };
 use stable_hash_legacy::crypto::SetHasher;
 use std::sync::Arc;
@@ -263,8 +260,7 @@ async fn graft(
             // FIXME:
             //
             // workaround for arweave
-            let hash = H256::from_slice(&hash.as_slice()[..32]);
-            let block = block.to_u64().expect("block numbers fit into a u64");
+            let hash = B256::from_slice(&hash.as_slice()[..32]);
             let subgraph = DeploymentHash::new(subgraph.clone()).map_err(|_| {
                 StoreError::Unknown(anyhow!(
                     "the base subgraph for a graft must be a valid subgraph id but is `{}`",

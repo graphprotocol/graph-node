@@ -39,15 +39,32 @@ impl TryFrom<RawTransactionReceipt> for LightTransactionReceipt {
         let block_hash = block_hash.map(drain_vector).transpose()?;
         let block_number = block_number.map(drain_vector).transpose()?;
         let gas_used = gas_used.map(drain_vector).transpose()?;
-        let status = status.map(drain_vector).transpose()?;
+
+        // Convert big-endian bytes to numbers
+        let transaction_index = u64::from_be_bytes(transaction_index);
+        let block_number = block_number.map(u64::from_be_bytes);
+        let gas_used = gas_used.map(u64::from_be_bytes).unwrap_or(0);
+
+        // Handle both old U64 format and new boolean format
+        let status = status
+            .map(|bytes| {
+                match bytes.len() {
+                    1 => bytes[0] != 0, // New format: single byte
+                    8 => {
+                        u64::from_be_bytes(drain_vector::<8>(bytes.to_vec()).unwrap_or([0; 8])) != 0
+                    } // Old format: U64
+                    _ => false,         // Fallback
+                }
+            })
+            .unwrap_or(false);
 
         Ok(LightTransactionReceipt {
             transaction_hash: transaction_hash.into(),
-            transaction_index: transaction_index.into(),
+            transaction_index,
             block_hash: block_hash.map(Into::into),
-            block_number: block_number.map(Into::into),
-            gas_used: gas_used.map(Into::into),
-            status: status.map(Into::into),
+            block_number,
+            gas_used,
+            status,
         })
     }
 }

@@ -14,8 +14,7 @@ use graph::data_source::CausalityRegion;
 use graph::env::{EnvVars, TEST_WITH_NO_REORG};
 use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
 use graph::object;
-use graph::prelude::ethabi::ethereum_types::H256;
-use graph::prelude::web3::types::Address;
+use graph::prelude::alloy::primitives::{Address, B256, U256};
 use graph::prelude::{hex, CheapClone, SubgraphAssignmentProvider, SubgraphName, SubgraphStore};
 use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_command, push_test_log,
@@ -67,7 +66,7 @@ async fn data_source_revert() -> anyhow::Result<()> {
         let block1 = empty_block(block0.ptr(), test_ptr(1));
         let block1_reorged_ptr = BlockPtr {
             number: 1,
-            hash: H256::from_low_u64_be(12).into(),
+            hash: B256::from(U256::from(12)).into(),
         };
         let block1_reorged = empty_block(block0.ptr(), block1_reorged_ptr.clone());
         let block2 = empty_block(block1_reorged_ptr, test_ptr(2));
@@ -184,7 +183,7 @@ async fn typename() -> anyhow::Result<()> {
         let block_1 = empty_block(block_0.ptr(), test_ptr(1));
         let block_1_reorged_ptr = BlockPtr {
             number: 1,
-            hash: H256::from_low_u64_be(12).into(),
+            hash: B256::from(U256::from(12)).into(),
         };
         let block_1_reorged = empty_block(block_0.ptr(), block_1_reorged_ptr);
         let block_2 = empty_block(block_1_reorged.ptr(), test_ptr(2));
@@ -1049,7 +1048,7 @@ async fn retry_create_ds() {
         let block1 = empty_block(block0.ptr(), test_ptr(1));
         let block1_reorged_ptr = BlockPtr {
             number: 1,
-            hash: H256::from_low_u64_be(12).into(),
+            hash: B256::from(U256::from(12)).into(),
         };
         let block1_reorged = empty_block(block0.ptr(), block1_reorged_ptr);
         let block2 = empty_block(block1_reorged.ptr(), test_ptr(2));

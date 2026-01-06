@@ -455,7 +455,7 @@ impl WasmInstanceContext<'_> {
         let s: String = asc_get(self, str_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let ctx = &mut self.as_mut().ctx;
-        let h160 = host_exports.string_to_h160(&s, gas, &mut ctx.state)?;
+        let h160 = host_exports.string_to_address(&s, gas, &mut ctx.state)?;
         asc_new(self, &h160, gas).await
     }
 

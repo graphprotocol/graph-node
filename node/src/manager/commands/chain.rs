@@ -12,7 +12,7 @@ use graph::components::store::ChainIdStore;
 use graph::components::store::StoreError;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
-use graph::prelude::LightEthereumBlockExt;
+use graph::prelude::LightEthereumBlock;
 use graph::prelude::{anyhow, anyhow::bail};
 use graph::slog::Logger;
 use graph::{
@@ -300,16 +300,18 @@ pub async fn ingest(
     else {
         bail!("block number {number} not found");
     };
-    let ptr = block.block_ptr();
+    let hash = block.header.hash;
+    let number = block.header.number;
     // For inserting the block, it doesn't matter whether the block is final or not.
-    let block = Arc::new(BlockFinality::Final(Arc::new(block)));
+    let block = Arc::new(BlockFinality::Final(Arc::new(LightEthereumBlock::new(
+        block,
+    ))));
     chain_store.upsert_block(block).await?;
 
-    let rows = chain_store
-        .confirm_block_hash(ptr.number, &ptr.hash)
-        .await?;
+    let hash = hash.into();
+    let rows = chain_store.confirm_block_hash(number as i32, &hash).await?;
 
-    println!("Inserted block {}", ptr);
+    println!("Inserted block {}", hash);
     if rows > 0 {
         println!("    (also deleted {rows} duplicate row(s) with that number)");
     }

@@ -3,12 +3,13 @@ use std::str::FromStr;
 use graph::prelude::{
     lazy_static,
     serde_json::{self, Value},
-    web3::{
-        api::{Eth, Namespace},
-        contract::{tokens::Tokenize, Contract as Web3Contract, Options},
-        transports::Http,
-        types::{Address, Block, BlockId, BlockNumber, Bytes, TransactionReceipt, H256},
-    },
+};
+
+use web3::{
+    api::{Eth, Namespace},
+    contract::{tokens::Tokenize, Contract as Web3Contract, Options},
+    transports::Http,
+    types::{Address, Block, BlockId, BlockNumber, Bytes, TransactionReceipt, H256},
 };
 // web3 version 0.18 does not expose this; once the graph crate updates to
 // version 0.19, we can use web3::signing::SecretKey from the graph crate
@@ -161,16 +162,16 @@ impl Contract {
                 if contract.name == "DeclaredCallsContract" {
                     status!("contracts", "Emitting transfers from DeclaredCallsContract");
                     let addr1 = "0x1111111111111111111111111111111111111111"
-                        .parse::<graph::prelude::web3::types::Address>()
+                        .parse::<web3::types::Address>()
                         .unwrap();
                     let addr2 = "0x2222222222222222222222222222222222222222"
-                        .parse::<graph::prelude::web3::types::Address>()
+                        .parse::<web3::types::Address>()
                         .unwrap();
                     let addr3 = "0x3333333333333333333333333333333333333333"
-                        .parse::<graph::prelude::web3::types::Address>()
+                        .parse::<web3::types::Address>()
                         .unwrap();
                     let addr4 = "0x4444444444444444444444444444444444444444"
-                        .parse::<graph::prelude::web3::types::Address>()
+                        .parse::<web3::types::Address>()
                         .unwrap();
 
                     contract

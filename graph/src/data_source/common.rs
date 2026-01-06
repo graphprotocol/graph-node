@@ -1,3 +1,6 @@
+use crate::abi;
+use crate::abi::DynSolValueExt;
+use crate::abi::FunctionExt;
 use crate::blockchain::block_stream::EntitySourceOperation;
 use crate::data::subgraph::SPEC_VERSION_1_4_0;
 use crate::prelude::{BlockPtr, Value};
@@ -7,8 +10,9 @@ use crate::{
     data::value::Word,
     prelude::Link,
 };
+use alloy::primitives::{Address, U256};
+use alloy::rpc::types::Log;
 use anyhow::{anyhow, Context, Error};
-use ethabi::{Address, Contract, Function, LogParam, ParamType, Token};
 use graph_derive::CheapClone;
 use lazy_static::lazy_static;
 use num_bigint::Sign;
@@ -19,12 +23,11 @@ use serde_json;
 use slog::Logger;
 use std::collections::HashMap;
 use std::{str::FromStr, sync::Arc};
-use web3::types::{Log, H160};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MappingABI {
     pub name: String,
-    pub contract: Contract,
+    pub contract: abi::JsonAbi,
 }
 
 impl MappingABI {
@@ -33,24 +36,27 @@ impl MappingABI {
         contract_name: &str,
         name: &str,
         signature: Option<&str>,
-    ) -> Result<&Function, Error> {
+    ) -> Result<&abi::Function, Error> {
         let contract = &self.contract;
         let function = match signature {
             // Behavior for apiVersion < 0.0.4: look up function by name; for overloaded
             // functions this always picks the same overloaded variant, which is incorrect
             // and may lead to encoding/decoding errors
-            None => contract.function(name).with_context(|| {
-                format!(
-                    "Unknown function \"{}::{}\" called from WASM runtime",
-                    contract_name, name
-                )
-            })?,
+            None => contract
+                .function(name)
+                .and_then(|matches| matches.first())
+                .with_context(|| {
+                    format!(
+                        "Unknown function \"{}::{}\" called from WASM runtime",
+                        contract_name, name
+                    )
+                })?,
 
             // Behavior for apiVersion >= 0.0.04: look up function by signature of
             // the form `functionName(uint256,string) returns (bytes32,string)`; this
             // correctly picks the correct variant of an overloaded function
             Some(ref signature) => contract
-                .functions_by_name(name)
+                .function(name)
                 .with_context(|| {
                     format!(
                         "Unknown function \"{}::{}\" called from WASM runtime",
@@ -58,7 +64,7 @@ impl MappingABI {
                     )
                 })?
                 .iter()
-                .find(|f| signature == &f.signature())
+                .find(|f| signature == &f.signature_compat())
                 .with_context(|| {
                     format!(
                         "Unknown function \"{}::{}\" with signature `{}` \
@@ -120,7 +126,7 @@ impl AbiJson {
                                             if param_type == "tuple" {
                                                 if let Some(components) = input.get("components") {
                                                     // Parse the ParamType from the JSON (simplified for now)
-                                                    let param_type = ParamType::Tuple(vec![]);
+                                                    let param_type = abi::DynSolType::Tuple(vec![]);
                                                     return StructFieldInfo::from_components(
                                                         param_name.to_string(),
                                                         param_type,
@@ -358,7 +364,7 @@ impl UnresolvedMappingABI {
                     self.name, self.file.link
                 )
             })?;
-        let contract = Contract::load(&*contract_bytes)
+        let contract = serde_json::from_slice(&*contract_bytes)
             .with_context(|| format!("failed to load ABI {}", self.name))?;
 
         // Parse ABI JSON for on-demand struct field extraction
@@ -408,17 +414,25 @@ impl CallDecl {
         self.expr.validate_args()
     }
 
-    pub fn address_for_log(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
+    pub fn address_for_log(
+        &self,
+        log: &Log,
+        params: &[abi::DynSolParam],
+    ) -> Result<Address, Error> {
         self.address_for_log_with_abi(log, params)
     }
 
-    pub fn address_for_log_with_abi(&self, log: &Log, params: &[LogParam]) -> Result<H160, Error> {
+    pub fn address_for_log_with_abi(
+        &self,
+        log: &Log,
+        params: &[abi::DynSolParam],
+    ) -> Result<Address, Error> {
         let address = match &self.expr.address {
             CallArg::HexAddress(address) => *address,
             CallArg::Ethereum(arg) => match arg {
-                EthereumArg::Address => log.address,
+                EthereumArg::Address => log.address(),
                 EthereumArg::Param(name) => {
-                    let value = params
+                    let value = &params
                         .iter()
                         .find(|param| &param.name == name.as_str())
                         .ok_or_else(|| {
@@ -428,15 +442,17 @@ impl CallDecl {
                                 name
                             )
                         })?
-                        .value
-                        .clone();
-                    value.into_address().ok_or_else(|| {
+                        .value;
+
+                    let address = value.as_address().ok_or_else(|| {
                         anyhow!(
                             "In declarative call '{}': param {} is not an address",
                             self.label,
                             name
                         )
-                    })?
+                    })?;
+
+                    Address::from(address.into_array())
                 }
                 EthereumArg::StructField(param_name, field_accesses) => {
                     let param = params
@@ -467,22 +483,27 @@ impl CallDecl {
         Ok(address)
     }
 
-    pub fn args_for_log(&self, log: &Log, params: &[LogParam]) -> Result<Vec<Token>, Error> {
+    pub fn args_for_log(
+        &self,
+        log: &Log,
+        params: &[abi::DynSolParam],
+    ) -> Result<Vec<abi::DynSolValue>, Error> {
         self.args_for_log_with_abi(log, params)
     }
 
     pub fn args_for_log_with_abi(
         &self,
         log: &Log,
-        params: &[LogParam],
-    ) -> Result<Vec<Token>, Error> {
+        params: &[abi::DynSolParam],
+    ) -> Result<Vec<abi::DynSolValue>, Error> {
+        use abi::DynSolValue;
         self.expr
             .args
             .iter()
             .map(|arg| match arg {
-                CallArg::HexAddress(address) => Ok(Token::Address(*address)),
+                CallArg::HexAddress(address) => Ok(DynSolValue::Address(*address)),
                 CallArg::Ethereum(arg) => match arg {
-                    EthereumArg::Address => Ok(Token::Address(log.address)),
+                    EthereumArg::Address => Ok(DynSolValue::Address(log.address())),
                     EthereumArg::Param(name) => {
                         let value = params
                             .iter()
@@ -513,7 +534,10 @@ impl CallDecl {
             .collect()
     }
 
-    pub fn get_function(&self, mapping: &dyn FindMappingABI) -> Result<Function, anyhow::Error> {
+    pub fn get_function(
+        &self,
+        mapping: &dyn FindMappingABI,
+    ) -> Result<abi::Function, anyhow::Error> {
         let contract_name = self.expr.abi.to_string();
         let function_name = self.expr.func.as_str();
         let abi = mapping.find_abi(&contract_name)?;
@@ -524,6 +548,7 @@ impl CallDecl {
         // and may lead to encoding/decoding errors
         abi.contract
             .function(function_name)
+            .and_then(|matches| matches.first())
             .cloned()
             .with_context(|| {
                 format!(
@@ -536,7 +561,7 @@ impl CallDecl {
     pub fn address_for_entity_handler(
         &self,
         entity: &EntitySourceOperation,
-    ) -> Result<H160, Error> {
+    ) -> Result<Address, Error> {
         match &self.expr.address {
             // Static hex address - just return it directly
             CallArg::HexAddress(address) => Ok(*address),
@@ -557,7 +582,7 @@ impl CallDecl {
                 // Make sure it's a bytes value and convert to address
                 match value {
                     Value::Bytes(bytes) => {
-                        let address = H160::from_slice(bytes.as_slice());
+                        let address = Address::from_slice(bytes.as_slice());
                         Ok(address)
                     }
                     _ => Err(anyhow!("param '{name}' must be an address")),
@@ -571,8 +596,8 @@ impl CallDecl {
     pub fn args_for_entity_handler(
         &self,
         entity: &EntitySourceOperation,
-        param_types: Vec<ParamType>,
-    ) -> Result<Vec<Token>, Error> {
+        param_types: Vec<abi::DynSolType>,
+    ) -> Result<Vec<abi::DynSolValue>, Error> {
         self.validate_entity_handler_args(&param_types)?;
 
         self.expr
@@ -586,7 +611,7 @@ impl CallDecl {
     }
 
     /// Validates that the number of provided arguments matches the expected parameter types.
-    fn validate_entity_handler_args(&self, param_types: &[ParamType]) -> Result<(), Error> {
+    fn validate_entity_handler_args(&self, param_types: &[abi::DynSolType]) -> Result<(), Error> {
         if self.expr.args.len() != param_types.len() {
             return Err(anyhow!(
                 "mismatched number of arguments: expected {}, got {}",
@@ -602,9 +627,9 @@ impl CallDecl {
     fn process_entity_handler_arg(
         &self,
         arg: &CallArg,
-        expected_type: &ParamType,
+        expected_type: &abi::DynSolType,
         entity: &EntitySourceOperation,
-    ) -> Result<Token, Error> {
+    ) -> Result<abi::DynSolValue, Error> {
         match arg {
             CallArg::HexAddress(address) => self.process_hex_address(*address, expected_type),
             CallArg::Ethereum(_) => Err(anyhow!(
@@ -619,11 +644,11 @@ impl CallDecl {
     /// Converts a hex address to a token, ensuring it matches the expected parameter type.
     fn process_hex_address(
         &self,
-        address: H160,
-        expected_type: &ParamType,
-    ) -> Result<Token, Error> {
+        address: Address,
+        expected_type: &abi::DynSolType,
+    ) -> Result<abi::DynSolValue, Error> {
         match expected_type {
-            ParamType::Address => Ok(Token::Address(address)),
+            abi::DynSolType::Address => Ok(abi::DynSolValue::Address(address)),
             _ => Err(anyhow!(
                 "type mismatch: hex address provided for non-address parameter"
             )),
@@ -634,9 +659,9 @@ impl CallDecl {
     fn process_entity_param(
         &self,
         name: &str,
-        expected_type: &ParamType,
+        expected_type: &abi::DynSolType,
         entity: &EntitySourceOperation,
-    ) -> Result<Token, Error> {
+    ) -> Result<abi::DynSolValue, Error> {
         let value = entity
             .entity
             .get(name)
@@ -650,27 +675,44 @@ impl CallDecl {
     fn convert_entity_value_to_token(
         &self,
         value: &Value,
-        expected_type: &ParamType,
+        expected_type: &abi::DynSolType,
         param_name: &str,
-    ) -> Result<Token, Error> {
+    ) -> Result<abi::DynSolValue, Error> {
+        use abi::DynSolType;
+        use abi::DynSolValue;
+
         match (expected_type, value) {
-            (ParamType::Address, Value::Bytes(b)) => {
-                Ok(Token::Address(H160::from_slice(b.as_slice())))
+            (DynSolType::Address, Value::Bytes(b)) => {
+                Ok(DynSolValue::Address(b.as_slice().try_into()?))
             }
-            (ParamType::Bytes, Value::Bytes(b)) => Ok(Token::Bytes(b.as_ref().to_vec())),
-            (ParamType::FixedBytes(size), Value::Bytes(b)) if b.len() == *size => {
-                Ok(Token::FixedBytes(b.as_ref().to_vec()))
+            (DynSolType::Bytes, Value::Bytes(b)) => Ok(DynSolValue::Bytes(b.as_ref().to_vec())),
+            (DynSolType::FixedBytes(size), Value::Bytes(b)) if b.len() == *size => {
+                DynSolValue::fixed_bytes_from_slice(b.as_ref())
             }
-            (ParamType::String, Value::String(s)) => Ok(Token::String(s.to_string())),
-            (ParamType::Bool, Value::Bool(b)) => Ok(Token::Bool(*b)),
-            (ParamType::Int(_), Value::Int(i)) => Ok(Token::Int((*i).into())),
-            (ParamType::Int(_), Value::Int8(i)) => Ok(Token::Int((*i).into())),
-            (ParamType::Int(_), Value::BigInt(i)) => Ok(Token::Int(i.to_signed_u256())),
-            (ParamType::Uint(_), Value::Int(i)) if *i >= 0 => Ok(Token::Uint((*i).into())),
-            (ParamType::Uint(_), Value::BigInt(i)) if i.sign() == Sign::Plus => {
-                Ok(Token::Uint(i.to_unsigned_u256()?))
+            (DynSolType::String, Value::String(s)) => Ok(DynSolValue::String(s.to_string())),
+            (DynSolType::Bool, Value::Bool(b)) => Ok(DynSolValue::Bool(*b)),
+            (DynSolType::Int(_), Value::Int(i)) => {
+                let x = abi::I256::try_from(*i)?;
+                Ok(DynSolValue::Int(x, x.bits() as usize))
             }
-            (ParamType::Array(inner_type), Value::List(values)) => {
+            (DynSolType::Int(_), Value::Int8(i)) => {
+                let x = abi::I256::try_from(*i)?;
+                Ok(DynSolValue::Int(x, x.bits() as usize))
+            }
+            (DynSolType::Int(_), Value::BigInt(i)) => {
+                let x =
+                    abi::I256::from_le_bytes(i.to_signed_u256().to_le_bytes::<{ U256::BYTES }>());
+                Ok(DynSolValue::Int(x, x.bits() as usize))
+            }
+            (DynSolType::Uint(_), Value::Int(i)) if *i >= 0 => {
+                let x = U256::try_from(*i)?;
+                Ok(DynSolValue::Uint(x, x.bit_len()))
+            }
+            (DynSolType::Uint(_), Value::BigInt(i)) if i.sign() == Sign::Plus => {
+                let x = i.to_unsigned_u256()?;
+                Ok(DynSolValue::Uint(x, x.bit_len()))
+            }
+            (DynSolType::Array(inner_type), Value::List(values)) => {
                 self.process_entity_array_values(values, inner_type.as_ref(), param_name)
             }
             _ => Err(anyhow!(
@@ -684,41 +726,42 @@ impl CallDecl {
     fn process_entity_array_values(
         &self,
         values: &[Value],
-        inner_type: &ParamType,
+        inner_type: &abi::DynSolType,
         param_name: &str,
-    ) -> Result<Token, Error> {
-        let tokens: Result<Vec<Token>, Error> = values
+    ) -> Result<abi::DynSolValue, Error> {
+        let tokens: Result<Vec<abi::DynSolValue>, Error> = values
             .iter()
             .enumerate()
             .map(|(idx, v)| {
                 self.convert_entity_value_to_token(v, inner_type, &format!("{param_name}[{idx}]"))
             })
             .collect();
-        Ok(Token::Array(tokens?))
+        Ok(abi::DynSolValue::Array(tokens?))
     }
 
     /// Extracts a nested field value from a struct parameter with mixed numeric/named access
     fn extract_nested_struct_field_as_address(
-        struct_token: &Token,
+        struct_token: &abi::DynSolValue,
         field_accesses: &[usize],
         call_label: &str,
-    ) -> Result<H160, Error> {
+    ) -> Result<Address, Error> {
         let field_token =
             Self::extract_nested_struct_field(struct_token, field_accesses, call_label)?;
-        field_token.into_address().ok_or_else(|| {
+        let address = field_token.as_address().ok_or_else(|| {
             anyhow!(
                 "In declarative call '{}': nested struct field is not an address",
                 call_label
             )
-        })
+        })?;
+        Ok(address)
     }
 
     /// Extracts a nested field value from a struct parameter using numeric indices
     fn extract_nested_struct_field(
-        struct_token: &Token,
+        struct_token: &abi::DynSolValue,
         field_accesses: &[usize],
         call_label: &str,
-    ) -> Result<Token, Error> {
+    ) -> Result<abi::DynSolValue, Error> {
         assert!(
             !field_accesses.is_empty(),
             "Internal error: empty field access path should be caught at parse time"
@@ -728,7 +771,7 @@ impl CallDecl {
 
         for (index, &field_index) in field_accesses.iter().enumerate() {
             match current_token {
-                Token::Tuple(fields) => {
+                abi::DynSolValue::Tuple(fields) => {
                     let field_token = fields
                         .get(field_index)
                         .ok_or_else(|| {
@@ -998,15 +1041,15 @@ pub struct StructFieldInfo {
     pub param_name: String,
     /// Mapping from field names to their indices in the tuple
     pub field_mappings: HashMap<String, usize>,
-    /// The ethabi ParamType for type validation
-    pub param_type: ParamType,
+    /// The alloy DynSolType for type validation
+    pub param_type: abi::DynSolType,
 }
 
 impl StructFieldInfo {
     /// Create a new StructFieldInfo from ABI JSON components
     pub fn from_components(
         param_name: String,
-        param_type: ParamType,
+        param_type: abi::DynSolType,
         components: &serde_json::Value,
     ) -> Result<Self, Error> {
         let mut field_mappings = HashMap::new();
@@ -1189,16 +1232,16 @@ pub struct DeclaredCall {
     label: String,
     contract_name: String,
     address: Address,
-    function: Function,
-    args: Vec<Token>,
+    function: abi::Function,
+    args: Vec<abi::DynSolValue>,
 }
 
 impl DeclaredCall {
     pub fn from_log_trigger(
         mapping: &dyn FindMappingABI,
         call_decls: &CallDecls,
-        log: &Log,
-        params: &[LogParam],
+        log: &alloy::rpc::types::Log,
+        params: &[abi::DynSolParam],
     ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
         Self::from_log_trigger_with_event(mapping, call_decls, log, params)
     }
@@ -1207,7 +1250,7 @@ impl DeclaredCall {
         mapping: &dyn FindMappingABI,
         call_decls: &CallDecls,
         log: &Log,
-        params: &[LogParam],
+        params: &[abi::DynSolParam],
     ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
         Self::create_calls(mapping, call_decls, |decl, _| {
             Ok((
@@ -1221,13 +1264,13 @@ impl DeclaredCall {
         mapping: &dyn FindMappingABI,
         call_decls: &CallDecls,
         entity: &EntitySourceOperation,
-    ) -> Result<Vec<DeclaredCall>, anyhow::Error> {
+    ) -> Result<Vec<DeclaredCall>, Error> {
         Self::create_calls(mapping, call_decls, |decl, function| {
             let param_types = function
                 .inputs
                 .iter()
-                .map(|param| param.kind.clone())
-                .collect::<Vec<_>>();
+                .map(|param| param.selector_type().parse())
+                .collect::<Result<Vec<_>, _>>()?;
 
             Ok((
                 decl.address_for_entity_handler(entity)?,
@@ -1247,7 +1290,7 @@ impl DeclaredCall {
         get_address_and_args: F,
     ) -> Result<Vec<DeclaredCall>, anyhow::Error>
     where
-        F: Fn(&CallDecl, &Function) -> Result<(Address, Vec<Token>), anyhow::Error>,
+        F: Fn(&CallDecl, &abi::Function) -> Result<(Address, Vec<abi::DynSolValue>), anyhow::Error>,
     {
         let mut calls = Vec::new();
         for decl in call_decls.decls.iter() {
@@ -1285,13 +1328,15 @@ pub struct ContractCall {
     pub contract_name: String,
     pub address: Address,
     pub block_ptr: BlockPtr,
-    pub function: Function,
-    pub args: Vec<Token>,
+    pub function: abi::Function,
+    pub args: Vec<abi::DynSolValue>,
     pub gas: Option<u32>,
 }
 
 #[cfg(test)]
 mod tests {
+    use alloy::primitives::B256;
+
     use crate::data::subgraph::SPEC_VERSION_1_3_0;
 
     use super::*;
@@ -1530,7 +1575,7 @@ mod tests {
         let parser = ExprParser::new();
 
         let addr = "0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF";
-        let hex_address = CallArg::HexAddress(web3::types::H160::from_str(addr).unwrap());
+        let hex_address = CallArg::HexAddress(Address::from_str(addr).unwrap());
 
         // Test HexAddress in address position
         let expr: CallExpr = parser.ok(&format!("Pool[{}].growth()", addr));
@@ -1597,18 +1642,19 @@ mod tests {
 
     #[test]
     fn test_struct_field_access_functions() {
-        use ethabi::Token;
+        use crate::abi::DynSolValue;
+        use alloy::primitives::{Address, U256};
 
         let parser = ExprParser::new();
 
         let tuple_fields = vec![
-            Token::Uint(ethabi::Uint::from(8u8)),     // index 0: uint8
-            Token::Address([1u8; 20].into()),         // index 1: address
-            Token::Uint(ethabi::Uint::from(1000u64)), // index 2: uint256
+            DynSolValue::Uint(U256::from(8u8), 8), // index 0: uint8
+            DynSolValue::Address(Address::from([1u8; 20])), // index 1: address
+            DynSolValue::Uint(U256::from(1000u64), 256), // index 2: uint256
         ];
 
         // Test extract_struct_field with numeric indices
-        let struct_token = Token::Tuple(tuple_fields.clone());
+        let struct_token = DynSolValue::Tuple(tuple_fields.clone());
 
         // Test accessing index 0 (uint8)
         let result =
@@ -1646,8 +1692,9 @@ mod tests {
 
     #[test]
     fn test_declarative_call_error_context() {
-        use crate::prelude::web3::types::{Log, H160, H256};
-        use ethabi::{LogParam, Token};
+        use crate::abi::{DynSolParam, DynSolValue};
+        use alloy::primitives::U256;
+        use alloy::rpc::types::Log;
 
         let parser = ExprParser::new();
 
@@ -1659,18 +1706,19 @@ mod tests {
         };
 
         // Test scenario 1: Unknown parameter
+        let inner_log = alloy::primitives::Log {
+            address: Address::ZERO,
+            data: alloy::primitives::LogData::new_unchecked(vec![].into(), vec![].into()),
+        };
         let log = Log {
-            address: H160::zero(),
-            topics: vec![],
-            data: vec![].into(),
-            block_hash: Some(H256::zero()),
-            block_number: Some(1.into()),
-            transaction_hash: Some(H256::zero()),
-            transaction_index: Some(0.into()),
-            log_index: Some(0.into()),
-            transaction_log_index: Some(0.into()),
-            log_type: None,
-            removed: Some(false),
+            inner: inner_log,
+            block_hash: Some(B256::ZERO),
+            block_number: Some(1),
+            block_timestamp: None,
+            transaction_hash: Some(B256::ZERO),
+            transaction_index: Some(0),
+            log_index: Some(0),
+            removed: false,
         };
         let params = vec![]; // Empty params - 'asset' param is missing
 
@@ -1681,9 +1729,9 @@ mod tests {
         assert!(error_msg.contains("unknown param asset"));
 
         // Test scenario 2: Struct field access error
-        let params = vec![LogParam {
+        let params = vec![DynSolParam {
             name: "asset".to_string(),
-            value: Token::Tuple(vec![Token::Uint(ethabi::Uint::from(1u8))]), // Only 1 field, but trying to access index 1
+            value: DynSolValue::Tuple(vec![DynSolValue::Uint(U256::from(1u8), 8)]), // Only 1 field, but trying to access index 1
         }];
 
         let result = call_decl.address_for_log(&log, &params);
@@ -1694,11 +1742,11 @@ mod tests {
         assert!(error_msg.contains("struct has 1 fields"));
 
         // Test scenario 3: Non-address field access
-        let params = vec![LogParam {
+        let params = vec![DynSolParam {
             name: "asset".to_string(),
-            value: Token::Tuple(vec![
-                Token::Uint(ethabi::Uint::from(1u8)),
-                Token::Uint(ethabi::Uint::from(2u8)), // Index 1 is uint, not address
+            value: DynSolValue::Tuple(vec![
+                DynSolValue::Uint(U256::from(1u8), 8),
+                DynSolValue::Uint(U256::from(2u8), 8), // Index 1 is uint, not address
             ]),
         }];
 
@@ -1724,18 +1772,18 @@ mod tests {
 
         // Create a structure where base has only 2 fields instead of 3
         // The parser thinks there should be 3 fields based on ABI, but at runtime we provide only 2
-        let base_struct = Token::Tuple(vec![
-            Token::Address([1u8; 20].into()), // addr at index 0
-            Token::Uint(ethabi::Uint::from(100u64)), // amount at index 1
-                                              // Missing the active field at index 2!
+        let base_struct = DynSolValue::Tuple(vec![
+            DynSolValue::Address(Address::from([1u8; 20])), // addr at index 0
+            DynSolValue::Uint(U256::from(100u64), 256),     // amount at index 1
+                                                            // Missing the active field at index 2!
         ]);
 
-        let params = vec![LogParam {
+        let params = vec![DynSolParam {
             name: "complexAsset".to_string(),
-            value: Token::Tuple(vec![
-                base_struct,                           // base with only 2 fields
-                Token::String("metadata".to_string()), // metadata at index 1
-                Token::Array(vec![]),                  // values at index 2
+            value: DynSolValue::Tuple(vec![
+                base_struct,                                 // base with only 2 fields
+                DynSolValue::String("metadata".to_string()), // metadata at index 1
+                DynSolValue::Array(vec![]),                  // values at index 2
             ]),
         }];
 
@@ -1749,7 +1797,8 @@ mod tests {
 
     #[test]
     fn test_struct_field_extraction_comprehensive() {
-        use ethabi::Token;
+        use crate::abi::DynSolValue;
+        use alloy::primitives::{Address, U256};
 
         // Create a complex nested structure for comprehensive testing:
         // struct Asset {
@@ -1761,37 +1810,37 @@ mod tests {
         //   address addr;        // index 0
         //   string name;         // index 1
         // }
-        let inner_struct = Token::Tuple(vec![
-            Token::Address([0x42; 20].into()),      // token.addr
-            Token::String("TokenName".to_string()), // token.name
+        let inner_struct = DynSolValue::Tuple(vec![
+            DynSolValue::Address(Address::from([0x42; 20])), // token.addr
+            DynSolValue::String("TokenName".to_string()),    // token.name
         ]);
 
-        let outer_struct = Token::Tuple(vec![
-            Token::Uint(ethabi::Uint::from(1u8)),     // asset.kind
-            inner_struct,                             // asset.token
-            Token::Uint(ethabi::Uint::from(1000u64)), // asset.amount
+        let outer_struct = DynSolValue::Tuple(vec![
+            DynSolValue::Uint(U256::from(1u8), 8),       // asset.kind
+            inner_struct,                                // asset.token
+            DynSolValue::Uint(U256::from(1000u64), 256), // asset.amount
         ]);
 
         // Test cases: (path, expected_value, description)
         let test_cases = vec![
             (
                 vec![0],
-                Token::Uint(ethabi::Uint::from(1u8)),
+                DynSolValue::Uint(U256::from(1u8), 8),
                 "Simple field access",
             ),
             (
                 vec![1, 0],
-                Token::Address([0x42; 20].into()),
+                DynSolValue::Address(Address::from([0x42; 20])),
                 "Nested field access",
             ),
             (
                 vec![1, 1],
-                Token::String("TokenName".to_string()),
+                DynSolValue::String("TokenName".to_string()),
                 "Nested string field",
             ),
             (
                 vec![2],
-                Token::Uint(ethabi::Uint::from(1000u64)),
+                DynSolValue::Uint(U256::from(1000u64), 256),
                 "Last field access",
             ),
         ];

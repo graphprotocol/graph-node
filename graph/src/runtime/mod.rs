@@ -260,7 +260,7 @@ pub enum IndexForAscTypeId {
     // Reserved discriminant space for more Ethereum type IDs: [1000, 1499]
     TransactionReceipt = 1000,
     Log = 1001,
-    ArrayH256 = 1002,
+    ArrayB256 = 1002,
     ArrayLog = 1003,
     ArrayTypedMapStringStoreValue = 1004,
     // Continue to add more Ethereum type IDs here.

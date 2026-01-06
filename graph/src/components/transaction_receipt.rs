@@ -3,37 +3,28 @@
 //! This module exposes the [`LightTransactionReceipt`] type, which holds basic information about
 //! the retrieved transaction receipts.
 
-use web3::types::{TransactionReceipt, H256, U256, U64};
+use alloy::network::ReceiptResponse;
+use alloy::primitives::B256;
 
-/// Like web3::types::Receipt, but with fewer fields.
 #[derive(Debug, PartialEq, Eq)]
 pub struct LightTransactionReceipt {
-    pub transaction_hash: H256,
-    pub transaction_index: U64,
-    pub block_hash: Option<H256>,
-    pub block_number: Option<U64>,
-    pub gas_used: Option<U256>,
-    pub status: Option<U64>,
+    pub transaction_hash: B256,
+    pub transaction_index: u64,
+    pub block_hash: Option<B256>,
+    pub block_number: Option<u64>,
+    pub gas_used: u64,
+    pub status: bool,
 }
 
-impl From<TransactionReceipt> for LightTransactionReceipt {
-    fn from(receipt: TransactionReceipt) -> Self {
-        let TransactionReceipt {
-            transaction_hash,
-            transaction_index,
-            block_hash,
-            block_number,
-            gas_used,
-            status,
-            ..
-        } = receipt;
+impl From<alloy::network::AnyTransactionReceipt> for LightTransactionReceipt {
+    fn from(receipt: alloy::network::AnyTransactionReceipt) -> Self {
         LightTransactionReceipt {
-            transaction_hash,
-            transaction_index,
-            block_hash,
-            block_number,
-            gas_used,
-            status,
+            transaction_hash: receipt.transaction_hash,
+            transaction_index: receipt.transaction_index.unwrap(), // unwrap is safe because its None only for pending transactions, graph-node does not ingest pending transactions
+            block_hash: receipt.block_hash,
+            block_number: receipt.block_number,
+            gas_used: receipt.gas_used,
+            status: receipt.status(),
         }
     }
 }

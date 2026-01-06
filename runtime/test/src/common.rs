@@ -1,4 +1,3 @@
-use ethabi::Contract;
 use graph::blockchain::BlockTime;
 use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::SharedProofOfIndexing;
@@ -8,6 +7,7 @@ use graph::data_source::common::MappingABI;
 use graph::env::EnvVars;
 use graph::ipfs::{IpfsMetrics, IpfsRpcClient, ServerAddress};
 use graph::log;
+use graph::prelude::alloy::primitives::Address;
 use graph::prelude::*;
 use graph_chain_ethereum::{Chain, DataSource, DataSourceTemplate, Mapping, TemplateSource};
 use graph_runtime_wasm::host_exports::DataSourceDetails;
@@ -15,7 +15,6 @@ use graph_runtime_wasm::{HostExports, MappingContext};
 use semver::Version;
 use std::env;
 use std::str::FromStr;
-use web3::types::Address;
 
 lazy_static! {
     pub static ref LOGGER: Logger = match env::var_os("GRAPH_LOG") {
@@ -83,7 +82,7 @@ fn mock_host_exports(
 fn mock_abi() -> MappingABI {
     MappingABI {
         name: "mock_abi".to_string(),
-        contract: Contract::load(
+        contract: serde_json::from_str(
             r#"[
             {
                 "inputs": [
@@ -94,8 +93,7 @@ fn mock_abi() -> MappingABI {
                 ],
                 "type": "constructor"
             }
-        ]"#
-            .as_bytes(),
+        ]"#,
         )
         .unwrap(),
     }

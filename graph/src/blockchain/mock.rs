@@ -16,6 +16,7 @@ use crate::{
         DataSourceTemplateInfo, StoreError,
     },
 };
+use alloy::primitives::{B256, U256};
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -26,7 +27,6 @@ use std::{
     convert::TryFrom,
     sync::Arc,
 };
-use web3::types::H256;
 
 use super::{
     block_stream::{self, BlockStream, FirehoseCursor},
@@ -73,7 +73,7 @@ pub fn test_ptr(n: BlockNumber) -> BlockPtr {
 }
 
 pub fn test_ptr_reorged(n: BlockNumber, reorg_n: u32) -> BlockPtr {
-    let mut hash = H256::from_low_u64_be(n as u64);
+    let mut hash = B256::from(U256::from(n as u64));
     hash[0..4].copy_from_slice(&reorg_n.to_be_bytes());
     BlockPtr {
         hash: hash.into(),
@@ -524,7 +524,7 @@ impl ChainStore for MockChainStore {
     async fn attempt_chain_head_update(
         self: Arc<Self>,
         _ancestor_count: BlockNumber,
-    ) -> Result<Option<H256>, Error> {
+    ) -> Result<Option<B256>, Error> {
         unimplemented!()
     }
     async fn blocks(self: Arc<Self>, _hashes: Vec<BlockHash>) -> Result<Vec<Value>, Error> {
@@ -571,7 +571,7 @@ impl ChainStore for MockChainStore {
     }
     async fn transaction_receipts_in_block(
         &self,
-        _block_ptr: &H256,
+        _block_ptr: &B256,
     ) -> Result<Vec<LightTransactionReceipt>, StoreError> {
         unimplemented!()
     }

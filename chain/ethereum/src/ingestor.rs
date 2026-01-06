@@ -4,14 +4,14 @@ use async_trait::async_trait;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockchainKind;
 use graph::components::network_provider::ChainName;
+use graph::prelude::alloy::primitives::B256;
 use graph::slog::o;
 use graph::util::backoff::ExponentialBackoff;
 use graph::{
     blockchain::{BlockHash, BlockIngestor, BlockPtr, IngestorError},
     cheap_clone::CheapClone,
     prelude::{
-        error, ethabi::ethereum_types::H256, info, tokio, trace, warn, ChainStore, Error,
-        EthereumBlockWithCalls, LogCode, Logger,
+        error, info, tokio, trace, warn, ChainStore, Error, EthereumBlockWithCalls, LogCode, Logger,
     },
 };
 use std::{sync::Arc, time::Duration};
@@ -173,8 +173,7 @@ impl PollingBlockIngestor {
         eth_adapter: &Arc<EthereumAdapter>,
         block_hash: &BlockHash,
     ) -> Result<Option<BlockHash>, IngestorError> {
-        // TODO: H256::from_slice can panic
-        let block_hash = H256::from_slice(block_hash.as_slice());
+        let block_hash = B256::from_slice(block_hash.as_slice());
 
         // Get the fully populated block
         let block = eth_adapter
@@ -211,10 +210,7 @@ impl PollingBlockIngestor {
         logger: &Logger,
         eth_adapter: &Arc<EthereumAdapter>,
     ) -> Result<BlockPtr, IngestorError> {
-        eth_adapter
-            .latest_block_header(&logger)
-            .await
-            .map(|block| block.into())
+        eth_adapter.latest_block_ptr(&logger).await
     }
 
     async fn eth_adapter(&self) -> anyhow::Result<Arc<EthereumAdapter>> {

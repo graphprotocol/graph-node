@@ -7,18 +7,17 @@ pub mod pbcodec;
 pub mod substreams_triggers;
 
 use graph::{
-    blockchain::Block as BlockchainBlock,
-    blockchain::{BlockPtr, BlockTime},
-    prelude::{hex, web3::types::H256, BlockNumber},
+    blockchain::{Block as BlockchainBlock, BlockPtr, BlockTime},
+    prelude::{alloy::primitives::B256, hex, BlockNumber},
 };
 use std::convert::TryFrom;
 use std::fmt::LowerHex;
 
 pub use pbcodec::*;
 
-impl From<&CryptoHash> for H256 {
+impl From<&CryptoHash> for B256 {
     fn from(input: &CryptoHash) -> Self {
-        H256::from_slice(&input.bytes)
+        B256::from_slice(&input.bytes)
     }
 }
 
@@ -31,7 +30,7 @@ impl LowerHex for &CryptoHash {
 impl BlockHeader {
     pub fn parent_ptr(&self) -> Option<BlockPtr> {
         match (self.prev_hash.as_ref(), self.prev_height) {
-            (Some(hash), number) => Some(BlockPtr::from((H256::from(hash), number))),
+            (Some(hash), number) => Some(BlockPtr::from((B256::from(hash), number))),
             _ => None,
         }
     }
@@ -39,7 +38,7 @@ impl BlockHeader {
 
 impl<'a> From<&'a BlockHeader> for BlockPtr {
     fn from(b: &'a BlockHeader) -> BlockPtr {
-        BlockPtr::from((H256::from(b.hash.as_ref().unwrap()), b.height))
+        BlockPtr::from((B256::from(b.hash.as_ref().unwrap()), b.height))
     }
 }
 

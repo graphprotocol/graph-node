@@ -1,68 +1,160 @@
-use serde::{Deserialize, Serialize};
-use std::{convert::TryFrom, sync::Arc};
-use web3::types::{
-    Action, Address, Block, Bytes, Log, Res, Trace, Transaction, TransactionReceipt, H256, U256,
-    U64,
+use alloy::{
+    network::{AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, ReceiptResponse, TransactionResponse},
+    primitives::{Address, Bytes, B256, U256, U64},
+    rpc::types::{
+        trace::parity::{Action, LocalizedTransactionTrace, TraceOutput},
+        Log,
+    },
 };
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::{
     blockchain::{BlockPtr, BlockTime},
     prelude::BlockNumber,
 };
 
-pub type LightEthereumBlock = Block<Transaction>;
+// Use Alloy's official types for handling any transaction type
+pub type AnyTransaction = AnyRpcTransaction;
+pub type AnyBlock = AnyRpcBlock;
+
+// BlockWrapper wraps AnyBlock
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, Serialize)]
+pub struct BlockWrapper(AnyBlock);
+
+impl Default for BlockWrapper {
+    fn default() -> Self {
+        use alloy::rpc::types::{Block, BlockTransactions};
+        use alloy::serde::WithOtherFields;
+
+        let default_block = Block {
+            header: AnyRpcHeader::default(),
+            transactions: BlockTransactions::Full(vec![]),
+            uncles: vec![],
+            withdrawals: None,
+        };
+        Self(AnyBlock::new(WithOtherFields::new(default_block)))
+    }
+}
+
+impl BlockWrapper {
+    pub fn new(block: AnyBlock) -> Self {
+        Self(block)
+    }
+
+    pub fn hash(&self) -> B256 {
+        self.0.header.hash
+    }
+
+    pub fn number_u64(&self) -> u64 {
+        self.0.header.number
+    }
+
+    pub fn timestamp_u64(&self) -> u64 {
+        self.0.header.timestamp
+    }
+
+    pub fn transactions(&self) -> Option<&[AnyTransaction]> {
+        self.0.transactions.as_transactions()
+    }
+
+    pub fn inner(&self) -> &AnyBlock {
+        &self.0
+    }
+
+    pub fn base_fee_per_gas(&self) -> Option<u64> {
+        self.0.header.base_fee_per_gas
+    }
+}
+
+pub type LightEthereumBlock = BlockWrapper;
 
 pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction>;
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction>;
+    fn transaction_for_log(&self, log: &Log) -> Option<AnyTransaction>;
+    fn transaction_for_call(&self, call: &EthereumCall) -> Option<AnyTransaction>;
     fn parent_ptr(&self) -> Option<BlockPtr>;
     fn format(&self) -> String;
     fn block_ptr(&self) -> BlockPtr;
     fn timestamp(&self) -> BlockTime;
 }
 
-impl LightEthereumBlockExt for LightEthereumBlock {
+impl LightEthereumBlockExt for AnyBlock {
     fn number(&self) -> BlockNumber {
-        BlockNumber::try_from(self.number.unwrap().as_u64()).unwrap()
+        self.header.number as BlockNumber
     }
 
-    fn transaction_for_log(&self, log: &Log) -> Option<Transaction> {
-        log.transaction_hash
-            .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
-            .cloned()
+    fn timestamp(&self) -> BlockTime {
+        let time = self.header.timestamp;
+        let time = i64::try_from(time).unwrap();
+        BlockTime::since_epoch(time, 0)
     }
 
-    fn transaction_for_call(&self, call: &EthereumCall) -> Option<Transaction> {
-        call.transaction_hash
-            .and_then(|hash| self.transactions.iter().find(|tx| tx.hash == hash))
-            .cloned()
+    fn transaction_for_log(&self, log: &Log) -> Option<AnyTransaction> {
+        log.transaction_hash.and_then(|hash| {
+            self.transactions
+                .txns()
+                .find(|tx| &tx.tx_hash() == &hash)
+                .cloned()
+        })
+    }
+
+    fn transaction_for_call(&self, call: &EthereumCall) -> Option<AnyTransaction> {
+        call.transaction_hash.and_then(|hash| {
+            self.transactions
+                .txns()
+                .find(|tx| &tx.tx_hash() == &hash)
+                .cloned()
+        })
     }
 
     fn parent_ptr(&self) -> Option<BlockPtr> {
-        match self.number() {
+        match self.header.number {
             0 => None,
-            n => Some(BlockPtr::from((self.parent_hash, n - 1))),
+            n => {
+                let number = i32::try_from(n - 1).unwrap();
+                Some(BlockPtr::new(self.header.parent_hash.into(), number))
+            }
         }
     }
 
     fn format(&self) -> String {
-        format!(
-            "{} ({})",
-            self.number
-                .map_or(String::from("none"), |number| format!("#{}", number)),
-            self.hash
-                .map_or(String::from("-"), |hash| format!("{:x}", hash))
-        )
+        format!("{} ({})", self.header.number, self.header.hash)
     }
 
     fn block_ptr(&self) -> BlockPtr {
-        BlockPtr::from((self.hash.unwrap(), self.number.unwrap().as_u64()))
+        BlockPtr::new(self.header.hash.into(), self.header.number as i32)
+    }
+}
+
+impl LightEthereumBlockExt for LightEthereumBlock {
+    fn number(&self) -> BlockNumber {
+        self.0.header.number.try_into().unwrap()
+    }
+
+    fn transaction_for_log(&self, log: &alloy::rpc::types::Log) -> Option<AnyTransaction> {
+        self.0.transaction_for_log(log)
+    }
+
+    fn transaction_for_call(&self, call: &EthereumCall) -> Option<AnyTransaction> {
+        self.0.transaction_for_call(call)
+    }
+
+    fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.0.parent_ptr()
+    }
+
+    fn format(&self) -> String {
+        self.0.format()
+    }
+
+    fn block_ptr(&self) -> BlockPtr {
+        self.0.block_ptr()
     }
 
     fn timestamp(&self) -> BlockTime {
-        let ts = i64::try_from(self.timestamp.as_u64()).unwrap();
-        BlockTime::since_epoch(ts, 0)
+        self.0.timestamp()
     }
 }
 
@@ -90,7 +182,7 @@ impl EthereumBlockWithCalls {
                 "failed to find the receipt for this transaction"
             ))?;
 
-        Ok(evaluate_transaction_status(receipt.status))
+        Ok(receipt.status())
     }
 }
 
@@ -104,10 +196,10 @@ pub fn evaluate_transaction_status(receipt_status: Option<U64>) -> bool {
         .unwrap_or(true)
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EthereumBlock {
     pub block: Arc<LightEthereumBlock>,
-    pub transaction_receipts: Vec<Arc<TransactionReceipt>>,
+    pub transaction_receipts: Vec<Arc<alloy::network::AnyTransactionReceipt>>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -115,31 +207,34 @@ pub struct EthereumCall {
     pub from: Address,
     pub to: Address,
     pub value: U256,
-    pub gas_used: U256,
+    pub gas_used: u64,
     pub input: Bytes,
     pub output: Bytes,
     pub block_number: BlockNumber,
-    pub block_hash: H256,
-    pub transaction_hash: Option<H256>,
+    pub block_hash: B256,
+    pub transaction_hash: Option<B256>,
     pub transaction_index: u64,
 }
 
 impl EthereumCall {
-    pub fn try_from_trace(trace: &Trace) -> Option<Self> {
+    pub fn try_from_trace(trace: &LocalizedTransactionTrace) -> Option<Self> {
         // The parity-ethereum tracing api returns traces for operations which had execution errors.
         // Filter errorful traces out, since call handlers should only run on successful CALLs.
-        if trace.error.is_some() {
+
+        let tx_trace = &trace.trace;
+
+        if tx_trace.error.is_some() {
             return None;
         }
         // We are only interested in traces from CALLs
-        let call = match &trace.action {
+        let call = match &tx_trace.action {
             // Contract to contract value transfers compile to the CALL opcode
             // and have no input. Call handlers are for triggering on explicit method calls right now.
             Action::Call(call) if call.input.0.len() >= 4 => call,
             _ => return None,
         };
-        let (output, gas_used) = match &trace.result {
-            Some(Res::Call(result)) => (result.output.clone(), result.gas_used),
+        let (output, gas_used) = match &tx_trace.result {
+            Some(TraceOutput::Call(result)) => (result.output.clone(), result.gas_used),
             _ => return None,
         };
 
@@ -151,26 +246,14 @@ impl EthereumCall {
             from: call.from,
             to: call.to,
             value: call.value,
-            gas_used,
+            gas_used: gas_used,
             input: call.input.clone(),
-            output,
-            block_number: trace.block_number as BlockNumber,
-            block_hash: trace.block_hash,
+            output: output,
+            block_number: trace.block_number? as BlockNumber,
+            block_hash: trace.block_hash?,
             transaction_hash: trace.transaction_hash,
             transaction_index,
         })
-    }
-}
-
-impl From<EthereumBlock> for BlockPtr {
-    fn from(b: EthereumBlock) -> BlockPtr {
-        BlockPtr::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
-    }
-}
-
-impl<'a> From<&'a EthereumBlock> for BlockPtr {
-    fn from(b: &'a EthereumBlock) -> BlockPtr {
-        BlockPtr::from((b.block.hash.unwrap(), b.block.number.unwrap().as_u64()))
     }
 }
 
