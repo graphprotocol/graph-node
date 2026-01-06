@@ -3,6 +3,7 @@ use graph::blockchain::BlockTime;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data_source::common::MappingABI;
+use graph::prelude::alloy::primitives::{Address, B256};
 use graph::schema::{EntityType, InputSchema};
 use graph_chain_ethereum::Mapping;
 use hex_literal::hex;
@@ -15,13 +16,11 @@ use graph::data::subgraph::*;
 use graph::{
     blockchain::DataSource,
     components::store::{BlockStore as _, EntityFilter, EntityOrder, EntityQuery, StatusStore},
-    prelude::ethabi::Contract,
 };
 use graph::{data::store::scalar, semver::Version};
 use graph::{entity, prelude::*};
 use graph_store_postgres::layout_for_tests::STRING_PREFIX_SIZE;
 use graph_store_postgres::{Store as DieselStore, SubgraphStore as DieselSubgraphStore};
-use web3::types::{Address, H256};
 
 const USER_GQL: &str = "
     interface ColorAndAge {
@@ -65,56 +64,56 @@ lazy_static! {
         InputSchema::parse_latest(USER_GQL, TEST_SUBGRAPH_ID.clone())
             .expect("Failed to parse user schema");
     static ref TEST_BLOCK_0_PTR: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
         )),
         0u64
     )
         .into();
     static ref TEST_BLOCK_1_PTR: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13"
         )),
         1u64
     )
         .into();
     static ref TEST_BLOCK_2_PTR: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1"
         )),
         2u64
     )
         .into();
     static ref TEST_BLOCK_3_PTR: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
         )),
         3u64
     )
         .into();
     static ref TEST_BLOCK_3A_PTR: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "d163aec0592c7cb00c2700ab65dcaac93289f5d250b3b889b39198b07e1fbe4a"
         )),
         3u64
     )
         .into();
     static ref TEST_BLOCK_4_PTR: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "007a03cdf635ebb66f5e79ae66cc90ca23d98031665649db056ff9c6aac2d74d"
         )),
         4u64
     )
         .into();
     static ref TEST_BLOCK_4A_PTR: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "8fab27e9e9285b0a39110f4d9877f05d0f43d2effa157e55f4dcc49c3cf8cbd7"
         )),
         4u64
     )
         .into();
     static ref TEST_BLOCK_5_PTR: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "e8b3b02b936c4a4a331ac691ac9a86e197fb7731f14e3108602c87d4dac55160"
         )),
         5u64
@@ -1133,19 +1132,18 @@ fn mock_data_source() -> graph_chain_ethereum::DataSource {
 fn mock_abi() -> MappingABI {
     MappingABI {
         name: "mock_abi".to_string(),
-        contract: Contract::load(
+        contract: serde_json::from_str(
             r#"[
-            {
-                "inputs": [
-                    {
-                        "name": "a",
-                        "type": "address"
-                    }
-                ],
-                "type": "constructor"
-            }
-        ]"#
-            .as_bytes(),
+                {
+                    "inputs": [
+                        {
+                            "name": "a",
+                            "type": "address"
+                        }
+                    ],
+                    "type": "constructor"
+                }
+            ]"#,
         )
         .unwrap(),
     }
