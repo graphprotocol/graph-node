@@ -9,6 +9,7 @@ pub mod chain;
 pub mod config;
 mod helpers;
 pub mod launcher;
+pub mod log_config_provider;
 pub mod manager;
 pub mod network_setup;
 pub mod opt;
