@@ -15,7 +15,7 @@ jobs:
             runner: ubuntu-22.04
             asset_name: gnd-linux-x86_64
           - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-22.04
+            runner: nscloud-ubuntu-22.04-arm64-16x32
             asset_name: gnd-linux-aarch64
           - target: x86_64-apple-darwin
             runner: macos-13
