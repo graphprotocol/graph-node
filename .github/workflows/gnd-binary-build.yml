@@ -12,19 +12,19 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-22.04
+            runner: ${{ vars.LINUX_X64_RUNNER || 'ubuntu-22.04' }}
             asset_name: gnd-linux-x86_64
           - target: aarch64-unknown-linux-gnu
-            runner: nscloud-ubuntu-22.04-arm64-16x32
+            runner: ${{ vars.LINUX_ARM64_RUNNER || 'ubuntu-24.04-arm' }}
             asset_name: gnd-linux-aarch64
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: ${{ vars.MACOS_X64_RUNNER || 'macos-13' }}
             asset_name: gnd-macos-x86_64
           - target: aarch64-apple-darwin
-            runner: macos-latest
+            runner: ${{ vars.MACOS_ARM64_RUNNER || 'macos-14' }}
             asset_name: gnd-macos-aarch64
           - target: x86_64-pc-windows-msvc
-            runner: windows-latest
+            runner: ${{ vars.WINDOWS_X64_RUNNER || 'windows-latest' }}
             asset_name: gnd-windows-x86_64.exe
 
     steps:
