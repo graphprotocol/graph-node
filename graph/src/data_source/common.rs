@@ -24,11 +24,33 @@ use slog::Logger;
 use std::collections::HashMap;
 use std::{str::FromStr, sync::Arc};
 
+/// Normalizes ABI JSON to handle compatibility issues between the legacy `ethabi`/`rust-web3`
+/// parser and the stricter `alloy` parser.
+///
+/// Some deployed subgraph ABIs contain non-standard constructs that `ethabi` accepted but
+/// `alloy` rejects. This function patches these issues to maintain backward compatibility:
+///
+/// 1. **`stateMutability: "undefined"`** - Some ABIs use "undefined" which is not a valid
+///    Solidity state mutability. We replace it with "nonpayable".
+///
+/// 2. **Duplicate constructors** - Some ABIs contain multiple constructor definitions.
+///    We keep only the first one.
+///
+/// 3. **Duplicate fallback functions** - Similar to constructors, some ABIs have multiple
+///    fallback definitions. We keep only the first one.
+///
+/// 4. **`indexed` field in non-event params** - The `indexed` field is only valid for event
+///    parameters, but some ABIs include it on function inputs/outputs. We strip it from
+///    non-event items.
+///
+/// These issues were identified by validating ABIs across deployed subgraphs in production
+/// before the migration to alloy.
 fn normalize_abi_json(json_bytes: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
     let mut value: serde_json::Value = serde_json::from_slice(json_bytes)?;
 
     if let Some(array) = value.as_array_mut() {
         let mut found_constructor = false;
+        let mut found_fallback = false;
         let mut indices_to_remove = Vec::new();
 
         for (index, item) in array.iter_mut().enumerate() {
@@ -41,14 +63,19 @@ fn normalize_abi_json(json_bytes: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
                     }
                 }
 
-                if let Some(item_type) = obj.get("type") {
-                    if item_type == "constructor" {
-                        if found_constructor {
-                            indices_to_remove.push(index);
-                        } else {
-                            found_constructor = true;
-                        }
-                    }
+                let item_type = obj.get("type").and_then(|t| t.as_str());
+
+                match item_type {
+                    Some("constructor") if found_constructor => indices_to_remove.push(index),
+                    Some("constructor") => found_constructor = true,
+                    Some("fallback") if found_fallback => indices_to_remove.push(index),
+                    Some("fallback") => found_fallback = true,
+                    _ => {}
+                }
+
+                if item_type != Some("event") {
+                    strip_indexed_from_params(obj.get_mut("inputs"));
+                    strip_indexed_from_params(obj.get_mut("outputs"));
                 }
             }
         }
@@ -59,6 +86,16 @@ fn normalize_abi_json(json_bytes: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
     }
 
     Ok(serde_json::to_vec(&value)?)
+}
+
+fn strip_indexed_from_params(params: Option<&mut serde_json::Value>) {
+    if let Some(serde_json::Value::Array(arr)) = params {
+        for param in arr.iter_mut() {
+            if let Some(obj) = param.as_object_mut() {
+                obj.remove("indexed");
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -401,6 +438,8 @@ impl UnresolvedMappingABI {
                     self.name, self.file.link
                 )
             })?;
+        // Normalize the ABI to handle compatibility issues between ethabi and alloy parsers.
+        // See `normalize_abi_json` for details on the specific issues being addressed.
         let normalized_bytes = normalize_abi_json(&contract_bytes)
             .with_context(|| format!("failed to normalize ABI JSON for {}", self.name))?;
 
@@ -2206,6 +2245,75 @@ mod tests {
             assert_eq!(array[0]["type"], "constructor");
             assert_eq!(array[0]["inputs"][0]["name"], "param1");
             assert_eq!(array[1]["type"], "function");
+        } else {
+            panic!("Expected JSON array");
+        }
+
+        let json_abi: abi::JsonAbi = serde_json::from_slice(&normalized).unwrap();
+        assert_eq!(json_abi.len(), 2);
+    }
+
+    #[test]
+    fn test_normalize_abi_json_with_duplicate_fallbacks() {
+        let abi_with_duplicate_fallbacks = r#"[
+            {
+                "type": "fallback",
+                "stateMutability": "payable"
+            },
+            {
+                "type": "function",
+                "name": "someFunction",
+                "inputs": [],
+                "outputs": [],
+                "stateMutability": "view"
+            },
+            {
+                "type": "fallback",
+                "stateMutability": "nonpayable"
+            }
+        ]"#;
+
+        let normalized = normalize_abi_json(abi_with_duplicate_fallbacks.as_bytes()).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&normalized).unwrap();
+
+        if let Some(array) = result.as_array() {
+            assert_eq!(array.len(), 2);
+            assert_eq!(array[0]["type"], "fallback");
+            assert_eq!(array[0]["stateMutability"], "payable");
+            assert_eq!(array[1]["type"], "function");
+        } else {
+            panic!("Expected JSON array");
+        }
+
+        let json_abi: abi::JsonAbi = serde_json::from_slice(&normalized).unwrap();
+        assert_eq!(json_abi.len(), 2);
+    }
+
+    #[test]
+    fn test_normalize_abi_json_strips_indexed_from_non_events() {
+        let abi_with_indexed_in_function = r#"[
+            {
+                "type": "function",
+                "name": "testFunction",
+                "inputs": [{"name": "x", "type": "uint256", "indexed": true}],
+                "outputs": [{"name": "y", "type": "address", "indexed": false}],
+                "stateMutability": "view"
+            },
+            {
+                "type": "event",
+                "name": "TestEvent",
+                "anonymous": false,
+                "inputs": [{"name": "from", "type": "address", "indexed": true}]
+            }
+        ]"#;
+
+        let normalized = normalize_abi_json(abi_with_indexed_in_function.as_bytes()).unwrap();
+        let result: serde_json::Value = serde_json::from_slice(&normalized).unwrap();
+
+        if let Some(array) = result.as_array() {
+            assert!(array[0]["inputs"][0].get("indexed").is_none());
+            assert!(array[0]["outputs"][0].get("indexed").is_none());
+            assert_eq!(array[1]["inputs"][0]["indexed"], true);
         } else {
             panic!("Expected JSON array");
         }
