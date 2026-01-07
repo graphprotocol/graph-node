@@ -2,14 +2,13 @@ use async_trait::async_trait;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::FirehoseBlockIngestor;
 use graph::blockchain::{
-    BasicBlockchainBuilder, BlockIngestor, BlockchainBuilder, BlockchainKind, NoopDecoderHook,
-    NoopRuntimeAdapter, TriggerFilterWrapper,
+    BlockIngestor, BlockchainKind, NoopDecoderHook, NoopRuntimeAdapter, TriggerFilterWrapper,
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::network_provider::ChainName;
 use graph::components::store::{ChainHeadStore, DeploymentCursorTracker, SourceableStore};
 use graph::data::subgraph::UnifiedMappingApiVersion;
-use graph::firehose::FirehoseEndpoint;
+use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints};
 use graph::futures03::TryFutureExt;
 use graph::prelude::MetricsRegistry;
 use graph::{
@@ -113,15 +112,20 @@ impl std::fmt::Debug for Chain {
     }
 }
 
-#[async_trait]
-impl BlockchainBuilder<Chain> for BasicBlockchainBuilder {
-    async fn build(self) -> Chain {
+impl Chain {
+    pub fn new(
+        logger_factory: LoggerFactory,
+        name: ChainName,
+        chain_head_store: Arc<dyn ChainHeadStore>,
+        firehose_endpoints: FirehoseEndpoints,
+        metrics_registry: Arc<MetricsRegistry>,
+    ) -> Self {
         Chain {
-            logger_factory: self.logger_factory,
-            name: self.name,
-            chain_head_store: self.chain_head_store,
-            client: Arc::new(ChainClient::new_firehose(self.firehose_endpoints)),
-            metrics_registry: self.metrics_registry,
+            logger_factory,
+            name,
+            chain_head_store,
+            client: Arc::new(ChainClient::new_firehose(firehose_endpoints)),
+            metrics_registry,
             block_stream_builder: Arc::new(NearStreamBuilder {}),
         }
     }

@@ -3,7 +3,6 @@
 //! trait which is the centerpiece of this module.
 
 pub mod block_stream;
-mod builder;
 pub mod client;
 mod empty_node_capabilities;
 pub mod firehose_block_ingestor;
@@ -49,7 +48,6 @@ use std::{
 use web3::types::H256;
 
 pub use block_stream::{ChainHeadUpdateListener, ChainHeadUpdateStream, TriggersAdapter};
-pub use builder::{BasicBlockchainBuilder, BlockchainBuilder};
 pub use empty_node_capabilities::EmptyNodeCapabilities;
 pub use noop_runtime_adapter::NoopRuntimeAdapter;
 pub use types::{BlockHash, BlockPtr, BlockTime, ChainIdentifier, ExtendedBlockPtr};

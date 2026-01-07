@@ -10,9 +10,7 @@ use ethereum::network::EthereumNetworkAdapter;
 use ethereum::ProviderEthRpcMetrics;
 use graph::anyhow::bail;
 use graph::blockchain::client::ChainClient;
-use graph::blockchain::{
-    BasicBlockchainBuilder, BlockchainBuilder as _, BlockchainKind, BlockchainMap, ChainIdentifier,
-};
+use graph::blockchain::{BlockchainKind, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::components::network_provider::ChainName;
 use graph::components::store::BlockStore as _;
@@ -383,20 +381,14 @@ pub async fn networks_as_chains(
             }
             BlockchainKind::Near => {
                 let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
-                blockchain_map.insert::<graph_chain_near::Chain>(
+                let chain = graph_chain_near::Chain::new(
+                    logger_factory.clone(),
                     chain_id.clone(),
-                    Arc::new(
-                        BasicBlockchainBuilder {
-                            logger_factory: logger_factory.clone(),
-                            name: chain_id.clone(),
-                            chain_head_store: chain_store.cheap_clone(),
-                            firehose_endpoints,
-                            metrics_registry: metrics_registry.clone(),
-                        }
-                        .build()
-                        .await,
-                    ),
+                    chain_store.cheap_clone(),
+                    firehose_endpoints,
+                    metrics_registry.clone(),
                 );
+                blockchain_map.insert::<graph_chain_near::Chain>(chain_id.clone(), Arc::new(chain));
             }
         }
     }
