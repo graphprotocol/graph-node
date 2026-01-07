@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use graph::futures01::sync::mpsc::Sender;
 use graph::futures03::channel::oneshot::channel;
 
-use graph::blockchain::{BlockTime, Blockchain, HostFn, RuntimeAdapter};
+use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{
@@ -221,74 +221,6 @@ where
         // Discard the gas value
         result.map(|(block_state, _)| block_state)
     }
-
-    async fn send_wasm_block_request(
-        &self,
-        logger: &Logger,
-        state: BlockState,
-        block_ptr: BlockPtr,
-        timestamp: BlockTime,
-        block_data: Box<[u8]>,
-        handler: String,
-        proof_of_indexing: SharedProofOfIndexing,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        instrument: bool,
-    ) -> Result<BlockState, MappingError> {
-        trace!(
-            logger, "Start processing wasm block";
-            "block_ptr" => &block_ptr,
-            "handler" => &handler,
-            "data_source" => &self.data_source.name(),
-        );
-
-        let (result_sender, result_receiver) = channel();
-        let start_time = Instant::now();
-        let metrics = self.metrics.clone();
-
-        self.mapping_request_sender
-            .clone()
-            .send(WasmRequest::new_block(
-                MappingContext {
-                    logger: logger.cheap_clone(),
-                    state,
-                    host_exports: self.host_exports.cheap_clone(),
-                    block_ptr: block_ptr.clone(),
-                    timestamp,
-                    proof_of_indexing,
-                    host_fns: self.host_fns.cheap_clone(),
-                    debug_fork: debug_fork.cheap_clone(),
-                    mapping_logger: Logger::new(&logger, o!("component" => "UserBlockMapping")),
-                    instrument,
-                },
-                handler.clone(),
-                block_data,
-                result_sender,
-            ))
-            .compat()
-            .await
-            .context("Mapping terminated before passing in wasm block")?;
-
-        let result = result_receiver
-            .await
-            .context("Mapping terminated before handling block")?;
-
-        let elapsed = start_time.elapsed();
-        metrics.observe_handler_execution_time(elapsed.as_secs_f64(), &handler);
-
-        // If there is an error, "gas_used" is incorrectly reported as 0.
-        let gas_used = result.as_ref().map(|(_, gas)| gas).unwrap_or(&Gas::ZERO);
-        debug!(
-            logger, "Done processing wasm block";
-            "block_ptr" => &block_ptr,
-            "total_ms" => elapsed.as_millis(),
-            "handler" => handler,
-            "data_source" => &self.data_source.name(),
-            "gas_used" => gas_used.to_string(),
-        );
-
-        // Discard the gas value
-        result.map(|(block_state, _)| block_state)
-    }
 }
 
 #[async_trait]
@@ -304,32 +236,6 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error> {
         self.data_source.match_and_decode(trigger, block, logger)
-    }
-
-    async fn process_block(
-        &self,
-        logger: &Logger,
-        block_ptr: BlockPtr,
-        block_time: BlockTime,
-        block_data: Box<[u8]>,
-        handler: String,
-        state: BlockState,
-        proof_of_indexing: SharedProofOfIndexing,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        instrument: bool,
-    ) -> Result<BlockState, MappingError> {
-        self.send_wasm_block_request(
-            logger,
-            state,
-            block_ptr,
-            block_time,
-            block_data,
-            handler,
-            proof_of_indexing,
-            debug_fork,
-            instrument,
-        )
-        .await
     }
 
     async fn process_mapping_trigger(

@@ -17,7 +17,7 @@ use graph::prelude::*;
 use graph::runtime::{
     asc_new,
     gas::{Gas, GasCounter, SaturatingInto},
-    HostExportError, ToAscObj,
+    HostExportError,
 };
 use graph::{components::subgraph::MappingError, runtime::AscPtr};
 
@@ -109,22 +109,6 @@ impl WasmInstance {
         wasm_ctx.ctx.state.exit_handler();
 
         Ok(wasm_ctx.take_state())
-    }
-
-    pub(crate) async fn handle_block(
-        mut self,
-        _logger: &Logger,
-        handler_name: &str,
-        block_data: Box<[u8]>,
-    ) -> Result<(BlockState, Gas), MappingError> {
-        let gas = self.gas.clone();
-        let mut ctx = self.instance_ctx();
-        let obj = block_data.to_vec().to_asc_obj(&mut ctx, &gas).await?;
-
-        let obj = AscPtr::alloc_obj(obj, &mut ctx, &gas).await?;
-
-        self.invoke_handler(handler_name, obj, Arc::new(o!()), None)
-            .await
     }
 
     pub(crate) async fn handle_trigger<C: Blockchain>(

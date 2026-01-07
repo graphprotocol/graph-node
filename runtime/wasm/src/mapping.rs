@@ -81,10 +81,6 @@ where
                                 handle_trigger(&logger, module, trigger, host_metrics.cheap_clone())
                                     .await
                             }
-                            WasmRequestInner::BlockRequest(BlockRequest {
-                                block_data,
-                                handler,
-                            }) => module.handle_block(&logger, &handler, block_data).await,
                         },
                         Err(e) => Err(MappingError::Unknown(e)),
                     }
@@ -181,32 +177,10 @@ impl<C: Blockchain> WasmRequest<C> {
             result_sender,
         }
     }
-
-    pub(crate) fn new_block(
-        ctx: MappingContext,
-        handler: String,
-        block_data: Box<[u8]>,
-        result_sender: Sender<Result<(BlockState, Gas), MappingError>>,
-    ) -> Self {
-        WasmRequest {
-            ctx,
-            inner: WasmRequestInner::BlockRequest(BlockRequest {
-                handler,
-                block_data,
-            }),
-            result_sender,
-        }
-    }
 }
 
 pub enum WasmRequestInner<C: Blockchain> {
     TriggerRequest(TriggerWithHandler<MappingTrigger<C>>),
-    BlockRequest(BlockRequest),
-}
-
-pub struct BlockRequest {
-    pub(crate) handler: String,
-    pub(crate) block_data: Box<[u8]>,
 }
 
 pub struct MappingContext {

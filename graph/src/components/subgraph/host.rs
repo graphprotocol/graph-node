@@ -6,7 +6,6 @@ use anyhow::Error;
 use async_trait::async_trait;
 use futures01::sync::mpsc;
 
-use crate::blockchain::BlockTime;
 use crate::components::metrics::gas::GasMetrics;
 use crate::components::store::SubgraphFork;
 use crate::data_source::{
@@ -70,19 +69,6 @@ pub trait RuntimeHost<C: Blockchain>: Send + Sync + 'static {
         block: &Arc<C::Block>,
         logger: &Logger,
     ) -> Result<Option<TriggerWithHandler<MappingTrigger<C>>>, Error>;
-
-    async fn process_block(
-        &self,
-        logger: &Logger,
-        block_ptr: BlockPtr,
-        block_time: BlockTime,
-        block_data: Box<[u8]>,
-        handler: String,
-        state: BlockState,
-        proof_of_indexing: SharedProofOfIndexing,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        instrument: bool,
-    ) -> Result<BlockState, MappingError>;
 
     async fn process_mapping_trigger(
         &self,

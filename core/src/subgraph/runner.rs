@@ -47,7 +47,6 @@ const MINUTE: Duration = Duration::from_secs(60);
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
 const HANDLE_REVERT_SECTION_NAME: &str = "handle_revert";
 const PROCESS_BLOCK_SECTION_NAME: &str = "process_block";
-const PROCESS_WASM_BLOCK_SECTION_NAME: &str = "process_wasm_block";
 const PROCESS_TRIGGERS_SECTION_NAME: &str = "process_triggers";
 const HANDLE_CREATED_DS_SECTION_NAME: &str = "handle_new_data_sources";
 
@@ -869,37 +868,6 @@ where
         Ok(Arc::new(block))
     }
 
-    async fn process_wasm_block(
-        &mut self,
-        proof_of_indexing: &SharedProofOfIndexing,
-        block_ptr: BlockPtr,
-        block_time: BlockTime,
-        block_data: Box<[u8]>,
-        handler: String,
-        causality_region: &str,
-    ) -> Result<BlockState, MappingError> {
-        let block_state = BlockState::new(
-            self.inputs.store.clone(),
-            std::mem::take(&mut self.state.entity_lfu_cache),
-        );
-
-        self.ctx
-            .process_block(
-                &self.logger,
-                block_ptr,
-                block_time,
-                block_data,
-                handler,
-                block_state,
-                proof_of_indexing,
-                causality_region,
-                &self.inputs.debug_fork,
-                &self.metrics.subgraph,
-                self.inputs.instrument,
-            )
-            .await
-    }
-
     fn create_dynamic_data_sources(
         &mut self,
         created_data_sources: Vec<InstanceDSTemplateInfo>,
@@ -1171,20 +1139,6 @@ where
     ) -> Result<Action, Error> {
         let stopwatch = &self.metrics.stream.stopwatch;
         let action = match event {
-            Some(Ok(BlockStreamEvent::ProcessWasmBlock(
-                block_ptr,
-                block_time,
-                data,
-                handler,
-                cursor,
-            ))) => {
-                let _section = stopwatch.start_section(PROCESS_WASM_BLOCK_SECTION_NAME);
-                let res = self
-                    .handle_process_wasm_block(block_ptr.clone(), block_time, data, handler, cursor)
-                    .await;
-                let start = Instant::now();
-                self.handle_action(start, block_ptr, res).await?
-            }
             Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => {
                 let _section = stopwatch.start_section(PROCESS_BLOCK_SECTION_NAME);
                 self.handle_process_block(block, cursor).await?
@@ -1335,82 +1289,6 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    async fn handle_process_wasm_block(
-        &mut self,
-        block_ptr: BlockPtr,
-        block_time: BlockTime,
-        block_data: Box<[u8]>,
-        handler: String,
-        cursor: FirehoseCursor,
-    ) -> Result<Action, ProcessingError> {
-        let logger = self.logger.new(o!(
-                "block_number" => format!("{:?}", block_ptr.number),
-                "block_hash" => format!("{}", block_ptr.hash)
-        ));
-
-        debug!(logger, "Start processing wasm block";);
-
-        self.metrics
-            .stream
-            .deployment_head
-            .set(block_ptr.number as f64);
-
-        let proof_of_indexing =
-            SharedProofOfIndexing::new(block_ptr.number, self.inputs.poi_version);
-
-        // Causality region for onchain triggers.
-        let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
-
-        let block_state = {
-            match self
-                .process_wasm_block(
-                    &proof_of_indexing,
-                    block_ptr.clone(),
-                    block_time,
-                    block_data,
-                    handler,
-                    &causality_region,
-                )
-                .await
-            {
-                // Triggers processed with no errors or with only deterministic errors.
-                Ok(block_state) => block_state,
-
-                // Some form of unknown or non-deterministic error ocurred.
-                Err(MappingError::Unknown(e)) => return Err(ProcessingError::Unknown(e).into()),
-                Err(MappingError::PossibleReorg(e)) => {
-                    info!(logger,
-                        "Possible reorg detected, retrying";
-                        "error" => format!("{:#}", e),
-                    );
-
-                    // In case of a possible reorg, we want this function to do nothing and restart the
-                    // block stream so it has a chance to detect the reorg.
-                    //
-                    // The state is unchanged at this point, except for having cleared the entity cache.
-                    // Losing the cache is a bit annoying but not an issue for correctness.
-                    //
-                    // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
-                    return Ok(Action::Restart);
-                }
-            }
-        };
-
-        self.transact_block_state(
-            &logger,
-            block_ptr.clone(),
-            cursor.clone(),
-            block_time,
-            block_state,
-            proof_of_indexing,
-            vec![],
-            vec![],
-        )
-        .await?;
-
-        Ok(Action::Continue)
-    }
-
     async fn handle_process_block(
         &mut self,
         block: BlockWithTriggers<C>,

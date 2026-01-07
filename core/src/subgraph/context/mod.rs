@@ -6,11 +6,8 @@ use crate::polling_monitor::{
 use anyhow::{self, Error};
 use bytes::Bytes;
 use graph::{
-    blockchain::{BlockTime, Blockchain, TriggerFilterWrapper},
-    components::{
-        store::{DeploymentId, SubgraphFork},
-        subgraph::{HostMetrics, MappingError, RuntimeHost as _, SharedProofOfIndexing},
-    },
+    blockchain::{Blockchain, TriggerFilterWrapper},
+    components::{store::DeploymentId, subgraph::HostMetrics},
     data::subgraph::SubgraphManifest,
     data_source::{
         causality_region::CausalityRegionSeq,
@@ -20,14 +17,13 @@ use graph::{
     derive::CheapClone,
     ipfs::IpfsContext,
     prelude::{
-        BlockNumber, BlockPtr, BlockState, CancelGuard, CheapClone, DeploymentHash,
-        MetricsRegistry, RuntimeHostBuilder, SubgraphCountMetric, SubgraphInstanceMetrics,
-        TriggerProcessor,
+        BlockNumber, CancelGuard, CheapClone, DeploymentHash, MetricsRegistry, RuntimeHostBuilder,
+        SubgraphCountMetric, TriggerProcessor,
     },
     slog::Logger,
 };
+use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::{collections::HashMap, time::Instant};
 use tokio::sync::mpsc;
 
 use self::instance::SubgraphInstance;
@@ -107,59 +103,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             trigger_processor,
             decoder,
         }
-    }
-
-    pub async fn process_block(
-        &self,
-        logger: &Logger,
-        block_ptr: BlockPtr,
-        block_time: BlockTime,
-        block_data: Box<[u8]>,
-        handler: String,
-        mut state: BlockState,
-        proof_of_indexing: &SharedProofOfIndexing,
-        causality_region: &str,
-        debug_fork: &Option<Arc<dyn SubgraphFork>>,
-        subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-        instrument: bool,
-    ) -> Result<BlockState, MappingError> {
-        let error_count = state.deterministic_errors.len();
-
-        proof_of_indexing.start_handler(causality_region);
-
-        let start = Instant::now();
-
-        // This flow is expected to have a single data source(and a corresponding host) which
-        // gets executed every block.
-        state = self
-            .instance
-            .first_host()
-            .expect("Expected this flow to have exactly one host")
-            .process_block(
-                logger,
-                block_ptr,
-                block_time,
-                block_data,
-                handler,
-                state,
-                proof_of_indexing.cheap_clone(),
-                debug_fork,
-                instrument,
-            )
-            .await?;
-
-        let elapsed = start.elapsed().as_secs_f64();
-        subgraph_metrics.observe_trigger_processing_duration(elapsed);
-
-        if state.deterministic_errors.len() != error_count {
-            assert!(state.deterministic_errors.len() == error_count + 1);
-
-            // If a deterministic error has happened, write a new
-            // ProofOfIndexingEvent::DeterministicError to the SharedProofOfIndexing.
-            proof_of_indexing.write_deterministic_error(logger, causality_region);
-        }
-
-        Ok(state)
     }
 
     /// Removes data sources hosts with a creation block greater or equal to `reverted_block`, so

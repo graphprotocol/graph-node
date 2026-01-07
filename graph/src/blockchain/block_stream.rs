@@ -10,7 +10,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use super::{Block, BlockPtr, BlockTime, Blockchain, Trigger, TriggerFilterWrapper};
+use super::{Block, BlockPtr, Blockchain, Trigger, TriggerFilterWrapper};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator, SourceableStore};
 use crate::data::subgraph::UnifiedMappingApiVersion;
@@ -721,7 +721,6 @@ pub enum BlockStreamEvent<C: Blockchain> {
     Revert(BlockPtr, FirehoseCursor),
 
     ProcessBlock(BlockWithTriggers<C>, FirehoseCursor),
-    ProcessWasmBlock(BlockPtr, BlockTime, Box<[u8]>, String, FirehoseCursor),
 }
 
 #[derive(Clone)]

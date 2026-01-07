@@ -255,8 +255,4 @@ where
     pub fn hosts_len(&self) -> usize {
         self.onchain_hosts.len() + self.offchain_hosts.len()
     }
-
-    pub fn first_host(&self) -> Option<&Arc<T::Host>> {
-        self.onchain_hosts.hosts().first()
-    }
 }
