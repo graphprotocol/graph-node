@@ -13,7 +13,7 @@ graph = { path = "../../graph" }
 graph-store-postgres = { path = "../postgres" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 lazy_static = "1.5"
-hex-literal = "1.0"
+hex-literal = "1.1"
 diesel = { workspace = true }
 diesel-async = { workspace = true }
 prost-types = { workspace = true }
