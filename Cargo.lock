@@ -5503,9 +5503,9 @@ dependencies = [
 
 [[package]]
 name = "substreams"
-version = "0.6.0"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bb63116b90d4c174114fb237a8916dd995c939874f7576333990a44d78b642a"
+checksum = "8e02e7abbbcbd809708634207bbe87f904db8696f5c148c6dd46cee5d7713d25"
 dependencies = [
  "anyhow",
  "bigdecimal 0.3.1",
@@ -5520,7 +5520,30 @@ dependencies = [
  "prost",
  "prost-build",
  "prost-types",
- "substreams-macro",
+ "substreams-macro 0.6.4",
+ "thiserror 1.0.61",
+]
+
+[[package]]
+name = "substreams"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72f4b73d245d760af8ba1d2ddab91780cb2e65414c3396ba7c9764a6f025c4a4"
+dependencies = [
+ "anyhow",
+ "bigdecimal 0.3.1",
+ "hex",
+ "hex-literal 0.3.4",
+ "num-bigint 0.4.6",
+ "num-integer",
+ "num-traits",
+ "pad",
+ "pest",
+ "pest_derive",
+ "prost",
+ "prost-build",
+ "prost-types",
+ "substreams-macro 0.7.0",
  "thiserror 1.0.61",
 ]
 
@@ -5533,7 +5556,7 @@ dependencies = [
  "base64 0.13.1",
  "prost",
  "prost-types",
- "substreams",
+ "substreams 0.6.4",
 ]
 
 [[package]]
@@ -5542,9 +5565,21 @@ version = "0.36.0"
 
 [[package]]
 name = "substreams-macro"
-version = "0.6.0"
+version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f36f36e9da94db29f49daf3ab6b47b529b57c43fc5d58bc35b160aaad1a7233f"
+checksum = "21b4fdca34da8c0250425bd798bd843f95b12dea527eeb3ba571e0b0af93d1b7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+ "thiserror 1.0.61",
+]
+
+[[package]]
+name = "substreams-macro"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d13adb6281069af403be11e7c93ef0026250cc2692387446e4bc1cecda7a6e1d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5572,7 +5607,7 @@ version = "0.36.0"
 dependencies = [
  "hex",
  "prost",
- "substreams",
+ "substreams 0.7.0",
  "substreams-entity-change",
  "substreams-near-core",
  "tonic-build",
