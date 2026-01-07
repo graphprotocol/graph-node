@@ -21,7 +21,6 @@ use crate::{prelude::*, prometheus::labels};
 
 pub const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
 pub const FIREHOSE_BUFFER_STREAM_SIZE: usize = 1;
-pub const SUBSTREAMS_BUFFER_STREAM_SIZE: usize = 100;
 
 pub struct BufferedBlockStream<C: Blockchain> {
     inner: Pin<Box<dyn Stream<Item = Result<BlockStreamEvent<C>, BlockStreamError>> + Send>>,
@@ -700,58 +699,10 @@ impl From<BlockStreamError> for FirehoseError {
     }
 }
 
-#[derive(Error, Debug)]
-pub enum SubstreamsError {
-    #[error("response is missing the clock information")]
-    MissingClockError,
-
-    #[error("invalid undo message")]
-    InvalidUndoError,
-
-    #[error("entity validation failed {0}")]
-    EntityValidationError(#[from] crate::data::store::EntityValidationError),
-
-    /// We were unable to decode the received block payload into the chain specific Block struct (e.g. chain_ethereum::pb::Block)
-    #[error("received gRPC block payload cannot be decoded: {0}")]
-    DecodingError(#[from] prost::DecodeError),
-
-    /// Some unknown error occurred
-    #[error("unknown error {0}")]
-    UnknownError(#[from] anyhow::Error),
-
-    #[error("multiple module output error")]
-    MultipleModuleOutputError,
-
-    #[error("module output was not available (none) or wrong data provided")]
-    ModuleOutputNotPresentOrUnexpected,
-
-    #[error("unexpected store delta output")]
-    UnexpectedStoreDeltaOutput,
-}
-
-impl SubstreamsError {
-    pub fn is_deterministic(&self) -> bool {
-        use SubstreamsError::*;
-
-        match self {
-            EntityValidationError(_) => true,
-            MissingClockError
-            | InvalidUndoError
-            | DecodingError(_)
-            | UnknownError(_)
-            | MultipleModuleOutputError
-            | ModuleOutputNotPresentOrUnexpected
-            | UnexpectedStoreDeltaOutput => false,
-        }
-    }
-}
-
 #[derive(Debug, Error)]
 pub enum BlockStreamError {
     #[error("Failed to decode protobuf {0}")]
     ProtobufDecodingError(#[from] prost::DecodeError),
-    #[error("substreams error: {0}")]
-    SubstreamsError(#[from] SubstreamsError),
     #[error("block stream error {0}")]
     Unknown(#[from] anyhow::Error),
     #[error("block stream fatal error {0}")]
