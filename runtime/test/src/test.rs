@@ -141,14 +141,13 @@ pub async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInsta
         .0
 }
 
+pub trait SyncWasmTy: wasmtime::WasmTy + Sync {}
+impl<T: wasmtime::WasmTy + Sync> SyncWasmTy for T {}
+
 #[async_trait]
 pub trait WasmInstanceExt {
     async fn invoke_export0_void(&mut self, f: &str) -> Result<(), Error>;
-    async fn invoke_export1_val_void<V: wasmtime::WasmTy>(
-        &mut self,
-        f: &str,
-        v: V,
-    ) -> Result<(), Error>;
+    async fn invoke_export1_val_void<V: SyncWasmTy>(&mut self, f: &str, v: V) -> Result<(), Error>;
     #[allow(dead_code)]
     async fn invoke_export0<R>(&mut self, f: &str) -> AscPtr<R>;
     async fn invoke_export1<C, T, R>(&mut self, f: &str, arg: &T) -> AscPtr<R>
@@ -177,17 +176,13 @@ pub trait WasmInstanceExt {
         C2: AscType + AscIndexId + Send,
         T1: ToAscObj<C1> + Sync + ?Sized,
         T2: ToAscObj<C2> + Sync + ?Sized;
-    async fn invoke_export0_val<V: wasmtime::WasmTy>(&mut self, func: &str) -> V;
-    async fn invoke_export1_val<V: wasmtime::WasmTy, C, T>(&mut self, func: &str, v: &T) -> V
+    async fn invoke_export0_val<V: SyncWasmTy>(&mut self, func: &str) -> V;
+    async fn invoke_export1_val<V: SyncWasmTy, C, T>(&mut self, func: &str, v: &T) -> V
     where
         C: AscType + AscIndexId + Send,
         T: ToAscObj<C> + Sync + ?Sized;
     async fn takes_ptr_returns_ptr<C: Send, R>(&mut self, f: &str, arg: AscPtr<C>) -> AscPtr<R>;
-    async fn takes_val_returns_ptr<P>(
-        &mut self,
-        fn_name: &str,
-        val: impl wasmtime::WasmTy,
-    ) -> AscPtr<P>;
+    async fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl SyncWasmTy) -> AscPtr<P>;
 }
 
 #[async_trait]
@@ -245,7 +240,7 @@ impl WasmInstanceExt for WasmInstance {
         ptr.into()
     }
 
-    async fn invoke_export1_val_void<V: wasmtime::WasmTy>(
+    async fn invoke_export1_val_void<V: wasmtime::WasmTy + Sync>(
         &mut self,
         f: &str,
         v: V,
@@ -314,7 +309,7 @@ impl WasmInstanceExt for WasmInstance {
         .await
     }
 
-    async fn invoke_export0_val<V: wasmtime::WasmTy>(&mut self, func: &str) -> V {
+    async fn invoke_export0_val<V: wasmtime::WasmTy + Sync>(&mut self, func: &str) -> V {
         let func = self
             .get_func(func)
             .typed(&self.store.as_context())
@@ -325,7 +320,7 @@ impl WasmInstanceExt for WasmInstance {
             .unwrap()
     }
 
-    async fn invoke_export1_val<V: wasmtime::WasmTy, C, T>(&mut self, func: &str, v: &T) -> V
+    async fn invoke_export1_val<V: SyncWasmTy, C, T>(&mut self, func: &str, v: &T) -> V
     where
         C: AscType + AscIndexId + Send,
         T: ToAscObj<C> + Sync + ?Sized,
@@ -341,11 +336,7 @@ impl WasmInstanceExt for WasmInstance {
             .unwrap()
     }
 
-    async fn takes_val_returns_ptr<P>(
-        &mut self,
-        fn_name: &str,
-        val: impl wasmtime::WasmTy,
-    ) -> AscPtr<P> {
+    async fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl SyncWasmTy) -> AscPtr<P> {
         let func = self
             .get_func(fn_name)
             .typed(&self.store.as_context())
