@@ -294,3 +294,61 @@ those.
   `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT` and `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`.
 - `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT`: Sets the minimum total number of versions a table must have to be considered for account-like flagging. Expects a positive integer value. No default value.
 - `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`: Sets the maximum unique entities to version ratio (e.g., 0.01 ≈ 1:100 entity-to-version ratio).
+
+## Log Store Configuration
+
+`graph-node` supports storing and querying subgraph logs through multiple backends: Elasticsearch, Loki, local files, or disabled.
+
+**For complete log store documentation**, including detailed configuration, querying examples, and choosing the right backend, see the **[Log Store Guide](log-store.md)**.
+
+### Quick Reference
+
+**Backend selection:**
+- `GRAPH_LOG_STORE_BACKEND`: `disabled` (default), `elasticsearch`, `loki`, or `file`
+
+**Elasticsearch:**
+- `GRAPH_LOG_STORE_ELASTICSEARCH_URL`: Elasticsearch endpoint URL (required)
+- `GRAPH_LOG_STORE_ELASTICSEARCH_USER`: Username (optional)
+- `GRAPH_LOG_STORE_ELASTICSEARCH_PASSWORD`: Password (optional)
+- `GRAPH_LOG_STORE_ELASTICSEARCH_INDEX`: Index name (default: `subgraph`)
+
+**Loki:**
+- `GRAPH_LOG_STORE_LOKI_URL`: Loki endpoint URL (required)
+- `GRAPH_LOG_STORE_LOKI_TENANT_ID`: Tenant ID (optional)
+
+**File-based:**
+- `GRAPH_LOG_STORE_FILE_DIR`: Log directory (required)
+- `GRAPH_LOG_STORE_FILE_MAX_SIZE`: Max file size in bytes (default: 104857600 = 100MB)
+- `GRAPH_LOG_STORE_FILE_RETENTION_DAYS`: Retention period (default: 30)
+
+**Deprecated variables** (will be removed in future versions):
+- `GRAPH_LOG_STORE` → use `GRAPH_LOG_STORE_BACKEND`
+- `GRAPH_ELASTICSEARCH_URL` → use `GRAPH_LOG_STORE_ELASTICSEARCH_URL`
+- `GRAPH_ELASTICSEARCH_USER` → use `GRAPH_LOG_STORE_ELASTICSEARCH_USER`
+- `GRAPH_ELASTICSEARCH_PASSWORD` → use `GRAPH_LOG_STORE_ELASTICSEARCH_PASSWORD`
+- `GRAPH_ELASTIC_SEARCH_INDEX` → use `GRAPH_LOG_STORE_ELASTICSEARCH_INDEX`
+- `GRAPH_LOG_LOKI_ENDPOINT` → use `GRAPH_LOG_STORE_LOKI_URL`
+- `GRAPH_LOG_LOKI_TENANT` → use `GRAPH_LOG_STORE_LOKI_TENANT_ID`
+- `GRAPH_LOG_FILE_DIR` → use `GRAPH_LOG_STORE_FILE_DIR`
+- `GRAPH_LOG_FILE_MAX_SIZE` → use `GRAPH_LOG_STORE_FILE_MAX_SIZE`
+- `GRAPH_LOG_FILE_RETENTION_DAYS` → use `GRAPH_LOG_STORE_FILE_RETENTION_DAYS`
+
+### Example: File-based Logs for Local Development
+
+```bash
+mkdir -p ./graph-logs
+export GRAPH_LOG_STORE_BACKEND=file
+export GRAPH_LOG_STORE_FILE_DIR=./graph-logs
+
+graph-node \
+  --postgres-url postgresql://graph:pass@localhost/graph-node \
+  --ethereum-rpc mainnet:https://... \
+  --ipfs 127.0.0.1:5001
+```
+
+See the **[Log Store Guide](log-store.md)** for:
+- Detailed configuration for all backends
+- How log stores work internally
+- GraphQL query examples
+- Choosing the right backend for your use case
+- Best practices and troubleshooting

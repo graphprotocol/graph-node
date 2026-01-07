@@ -1,3 +1,4 @@
+pub mod config;
 pub mod elasticsearch;
 pub mod file;
 pub mod loki;
@@ -169,62 +170,113 @@ impl LogStoreFactory {
     }
 
     /// Parse configuration from environment variables
+    ///
+    /// Supports both new (GRAPH_LOG_STORE_*) and old (deprecated) environment variable names
+    /// for backward compatibility. The new keys take precedence when both are set.
     pub fn from_env() -> Result<LogStoreConfig, LogStoreError> {
-        let backend = std::env::var("GRAPH_LOG_STORE").unwrap_or_else(|_| "disabled".to_string());
+        // Logger for deprecation warnings
+        let logger = crate::log::logger(false);
+
+        // Read backend selector with backward compatibility
+        let backend = config::read_env_with_default(
+            &logger,
+            "GRAPH_LOG_STORE_BACKEND",
+            "GRAPH_LOG_STORE",
+            "disabled",
+        );
 
         match backend.to_lowercase().as_str() {
             "disabled" | "none" => Ok(LogStoreConfig::Disabled),
 
             "elasticsearch" | "elastic" | "es" => {
-                let endpoint = std::env::var("GRAPH_ELASTICSEARCH_URL").map_err(|e| {
+                let endpoint = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_ELASTICSEARCH_URL",
+                    "GRAPH_ELASTICSEARCH_URL",
+                )
+                .ok_or_else(|| {
                     LogStoreError::ConfigurationError(anyhow::anyhow!(
-                        "GRAPH_ELASTICSEARCH_URL not set: {}",
-                        e
+                        "Elasticsearch endpoint not set. Use GRAPH_LOG_STORE_ELASTICSEARCH_URL environment variable"
                     ))
                 })?;
 
+                let username = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_ELASTICSEARCH_USER",
+                    "GRAPH_ELASTICSEARCH_USER",
+                );
+
+                let password = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_ELASTICSEARCH_PASSWORD",
+                    "GRAPH_ELASTICSEARCH_PASSWORD",
+                );
+
+                let index = config::read_env_with_default(
+                    &logger,
+                    "GRAPH_LOG_STORE_ELASTICSEARCH_INDEX",
+                    "GRAPH_ELASTIC_SEARCH_INDEX",
+                    "subgraph",
+                );
+
                 Ok(LogStoreConfig::Elasticsearch {
                     endpoint,
-                    username: std::env::var("GRAPH_ELASTICSEARCH_USER").ok(),
-                    password: std::env::var("GRAPH_ELASTICSEARCH_PASSWORD").ok(),
-                    index: std::env::var("GRAPH_ELASTIC_SEARCH_INDEX")
-                        .unwrap_or_else(|_| "subgraph".to_string()),
+                    username,
+                    password,
+                    index,
                 })
             }
 
             "loki" => {
-                let endpoint = std::env::var("GRAPH_LOG_LOKI_ENDPOINT").map_err(|e| {
+                let endpoint = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_LOKI_URL",
+                    "GRAPH_LOG_LOKI_ENDPOINT",
+                )
+                .ok_or_else(|| {
                     LogStoreError::ConfigurationError(anyhow::anyhow!(
-                        "GRAPH_LOG_LOKI_ENDPOINT not set: {}",
-                        e
+                        "Loki endpoint not set. Use GRAPH_LOG_STORE_LOKI_URL environment variable"
                     ))
                 })?;
 
+                let tenant_id = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_LOKI_TENANT_ID",
+                    "GRAPH_LOG_LOKI_TENANT",
+                );
+
                 Ok(LogStoreConfig::Loki {
                     endpoint,
-                    tenant_id: std::env::var("GRAPH_LOG_LOKI_TENANT").ok(),
+                    tenant_id,
                 })
             }
 
             "file" | "files" => {
-                let directory = std::env::var("GRAPH_LOG_FILE_DIR")
-                    .map(PathBuf::from)
-                    .map_err(|e| {
-                        LogStoreError::ConfigurationError(anyhow::anyhow!(
-                            "GRAPH_LOG_FILE_DIR not set: {}",
-                            e
-                        ))
-                    })?;
+                let directory = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_FILE_DIR",
+                    "GRAPH_LOG_FILE_DIR",
+                )
+                .ok_or_else(|| {
+                    LogStoreError::ConfigurationError(anyhow::anyhow!(
+                        "File log directory not set. Use GRAPH_LOG_STORE_FILE_DIR environment variable"
+                    ))
+                })
+                .map(PathBuf::from)?;
 
-                let max_file_size = std::env::var("GRAPH_LOG_FILE_MAX_SIZE")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(100 * 1024 * 1024); // 100MB default
+                let max_file_size = config::read_u64_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_FILE_MAX_SIZE",
+                    "GRAPH_LOG_FILE_MAX_SIZE",
+                    100 * 1024 * 1024, // 100MB default
+                );
 
-                let retention_days = std::env::var("GRAPH_LOG_FILE_RETENTION_DAYS")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(30);
+                let retention_days = config::read_u32_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_FILE_RETENTION_DAYS",
+                    "GRAPH_LOG_FILE_RETENTION_DAYS",
+                    30,
+                );
 
                 Ok(LogStoreConfig::File {
                     directory,

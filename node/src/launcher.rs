@@ -405,17 +405,96 @@ pub async fn run(
     info!(logger, "Starting up"; "node_id" => &node_id);
 
     // Create log store configuration provider
-    let cli_config = opt.elasticsearch_url.clone().map(|endpoint| {
-        let index =
-            std::env::var("GRAPH_ELASTIC_SEARCH_INDEX").unwrap_or_else(|_| "subgraph".to_string());
+    // Build LogStoreConfig from CLI args with backward compatibility
+    let cli_config = if let Some(backend) = opt.log_store_backend.as_ref() {
+        // New generic CLI args used
+        match backend.to_lowercase().as_str() {
+            "elasticsearch" | "elastic" | "es" => {
+                let url = opt
+                    .log_store_elasticsearch_url
+                    .clone()
+                    .or_else(|| {
+                        if opt.elasticsearch_url.is_some() {
+                            warn!(
+                                logger,
+                                "Using deprecated --elasticsearch-url, use --log-store-elasticsearch-url instead"
+                            );
+                        }
+                        opt.elasticsearch_url.clone()
+                    });
 
-        graph::components::log_store::LogStoreConfig::Elasticsearch {
-            endpoint,
-            username: opt.elasticsearch_user.clone(),
-            password: opt.elasticsearch_password.clone(),
-            index,
+                url.map(|endpoint| {
+                    let index = opt
+                        .log_store_elasticsearch_index
+                        .clone()
+                        .or_else(|| std::env::var("GRAPH_LOG_STORE_ELASTICSEARCH_INDEX").ok())
+                        .or_else(|| std::env::var("GRAPH_ELASTIC_SEARCH_INDEX").ok())
+                        .unwrap_or_else(|| "subgraph".to_string());
+
+                    graph::components::log_store::LogStoreConfig::Elasticsearch {
+                        endpoint,
+                        username: opt
+                            .log_store_elasticsearch_user
+                            .clone()
+                            .or_else(|| opt.elasticsearch_user.clone()),
+                        password: opt
+                            .log_store_elasticsearch_password
+                            .clone()
+                            .or_else(|| opt.elasticsearch_password.clone()),
+                        index,
+                    }
+                })
+            }
+
+            "loki" => opt.log_store_loki_url.clone().map(|endpoint| {
+                graph::components::log_store::LogStoreConfig::Loki {
+                    endpoint,
+                    tenant_id: opt.log_store_loki_tenant_id.clone(),
+                }
+            }),
+
+            "file" | "files" => opt.log_store_file_dir.clone().map(|directory| {
+                graph::components::log_store::LogStoreConfig::File {
+                    directory: std::path::PathBuf::from(directory),
+                    max_file_size: opt.log_store_file_max_size.unwrap_or(100 * 1024 * 1024),
+                    retention_days: opt.log_store_file_retention_days.unwrap_or(30),
+                }
+            }),
+
+            "disabled" | "none" => None,
+
+            other => {
+                warn!(logger, "Invalid log store backend: {}", other);
+                None
+            }
         }
-    });
+    } else if opt.elasticsearch_url.is_some() {
+        // Old Elasticsearch-specific CLI args used (backward compatibility)
+        warn!(
+            logger,
+            "Using deprecated --elasticsearch-url CLI argument, \
+             please use --log-store-backend elasticsearch --log-store-elasticsearch-url instead"
+        );
+
+        let index = opt
+            .log_store_elasticsearch_index
+            .clone()
+            .or_else(|| std::env::var("GRAPH_LOG_STORE_ELASTICSEARCH_INDEX").ok())
+            .or_else(|| std::env::var("GRAPH_ELASTIC_SEARCH_INDEX").ok())
+            .unwrap_or_else(|| "subgraph".to_string());
+
+        Some(
+            graph::components::log_store::LogStoreConfig::Elasticsearch {
+                endpoint: opt.elasticsearch_url.clone().unwrap(),
+                username: opt.elasticsearch_user.clone(),
+                password: opt.elasticsearch_password.clone(),
+                index,
+            },
+        )
+    } else {
+        // No CLI config provided
+        None
+    };
 
     let log_config_provider = LogStoreConfigProvider::new(LogStoreConfigSources { cli_config });
 

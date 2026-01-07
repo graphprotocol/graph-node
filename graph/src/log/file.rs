@@ -133,9 +133,9 @@ impl FileDrain {
 
 impl Drain for FileDrain {
     type Ok = ();
-    type Err = ();
+    type Err = Never;
 
-    fn log(&self, record: &Record, values: &OwnedKVList) -> std::result::Result<(), ()> {
+    fn log(&self, record: &Record, values: &OwnedKVList) -> std::result::Result<(), Never> {
         // Don't write `trace` logs to file
         if record.level() == Level::Trace {
             return Ok(());
@@ -326,7 +326,7 @@ mod tests {
         let file = File::open(file_path).unwrap();
         let reader = BufReader::new(file);
 
-        let lines: Vec<String> = reader.lines().filter_map(Result::ok).collect();
+        let lines: Vec<String> = reader.lines().filter_map(|r| r.ok()).collect();
 
         // Should have written at least one line
         assert!(lines.len() > 0);
