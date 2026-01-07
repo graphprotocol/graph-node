@@ -4,7 +4,6 @@ use super::Blockchain;
 use crate::{
     components::store::ChainHeadStore,
     data::value::Word,
-    env::EnvVars,
     firehose::FirehoseEndpoints,
     prelude::{LoggerFactory, MetricsRegistry},
 };
@@ -26,5 +25,5 @@ pub trait BlockchainBuilder<C>
 where
     C: Blockchain,
 {
-    async fn build(self, config: &Arc<EnvVars>) -> C;
+    async fn build(self) -> C;
 }

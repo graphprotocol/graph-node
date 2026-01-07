@@ -10,7 +10,6 @@ pub mod firehose_block_ingestor;
 pub mod firehose_block_stream;
 pub mod mock;
 mod noop_runtime_adapter;
-pub mod substreams_block_stream;
 mod types;
 
 // Try to reexport most of the necessary types

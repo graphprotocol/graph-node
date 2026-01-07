@@ -206,8 +206,6 @@ pub struct EnvVars {
     /// Set by the env var `GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS` which should point
     /// to a file with subgraph-specific settings
     pub subgraph_settings: Option<String>,
-    /// Whether to prefer substreams blocks streams over firehose when available.
-    pub prefer_substreams_block_streams: bool,
     /// Set by the flag `GRAPH_ENABLE_DIPS_METRICS`. Whether to enable
     /// gas metrics. Off by default.
     pub enable_dips_metrics: bool,
@@ -355,7 +353,6 @@ impl EnvVars {
             enable_sql_queries: inner.enable_sql_queries.0,
             ingestor_polling_interval: Duration::from_millis(inner.ingestor_polling_interval),
             subgraph_settings: inner.subgraph_settings,
-            prefer_substreams_block_streams: inner.prefer_substreams_block_streams,
             enable_dips_metrics: inner.enable_dips_metrics.0,
             history_blocks_override: inner.history_blocks_override,
             min_history_blocks: inner
@@ -553,11 +550,6 @@ struct Inner {
     ingestor_polling_interval: u64,
     #[envconfig(from = "GRAPH_EXPERIMENTAL_SUBGRAPH_SETTINGS")]
     subgraph_settings: Option<String>,
-    #[envconfig(
-        from = "GRAPH_EXPERIMENTAL_PREFER_SUBSTREAMS_BLOCK_STREAMS",
-        default = "false"
-    )]
-    prefer_substreams_block_streams: bool,
     #[envconfig(from = "GRAPH_ENABLE_DIPS_METRICS", default = "false")]
     enable_dips_metrics: EnvVarBoolean,
     #[envconfig(from = "GRAPH_HISTORY_BLOCKS_OVERRIDE")]

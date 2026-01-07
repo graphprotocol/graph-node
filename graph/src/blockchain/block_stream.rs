@@ -1,21 +1,15 @@
 use crate::blockchain::SubgraphFilter;
 use crate::data_source::{subgraph, CausalityRegion};
-use crate::substreams::Clock;
-use crate::substreams_rpc::response::Message as SubstreamsMessage;
-use crate::substreams_rpc::BlockScopedData;
 use anyhow::Error;
 use async_stream::stream;
 use async_trait::async_trait;
 use futures03::Stream;
-use prost_types::Any;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::sync::Arc;
-use std::time::Instant;
 use thiserror::Error;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use super::substreams_block_stream::SubstreamsLogData;
 use super::{Block, BlockPtr, BlockTime, Blockchain, Trigger, TriggerFilterWrapper};
 use crate::anyhow::Result;
 use crate::components::store::{BlockNumber, DeploymentLocator, SourceableStore};
@@ -23,7 +17,6 @@ use crate::data::subgraph::UnifiedMappingApiVersion;
 use crate::firehose::{self, FirehoseEndpoint};
 use crate::futures03::stream::StreamExt as _;
 use crate::schema::{EntityType, InputSchema};
-use crate::substreams_rpc::response::Message;
 use crate::{prelude::*, prometheus::labels};
 
 pub const BUFFERED_BLOCK_STREAM_SIZE: usize = 100;
@@ -131,16 +124,6 @@ pub trait BlockStreamBuilder<C: Blockchain>: Send + Sync {
         subgraph_current_block: Option<BlockPtr>,
         filter: Arc<C::TriggerFilter>,
         unified_api_version: UnifiedMappingApiVersion,
-    ) -> Result<Box<dyn BlockStream<C>>>;
-
-    async fn build_substreams(
-        &self,
-        chain: &C,
-        schema: InputSchema,
-        deployment: DeploymentLocator,
-        block_cursor: FirehoseCursor,
-        subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<C::TriggerFilter>,
     ) -> Result<Box<dyn BlockStream<C>>>;
 
     async fn build_polling(
@@ -695,102 +678,6 @@ pub trait BlockStreamMapper<C: Blockchain>: Send + Sync {
         logger: &Logger,
         block: C::Block,
     ) -> Result<BlockWithTriggers<C>, BlockStreamError>;
-
-    async fn handle_substreams_block(
-        &self,
-        logger: &Logger,
-        clock: Clock,
-        cursor: FirehoseCursor,
-        block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<C>, BlockStreamError>;
-
-    async fn to_block_stream_event(
-        &self,
-        logger: &mut Logger,
-        message: Option<Message>,
-        log_data: &mut SubstreamsLogData,
-    ) -> Result<Option<BlockStreamEvent<C>>, BlockStreamError> {
-        match message {
-            Some(SubstreamsMessage::Session(session_init)) => {
-                info!(
-                    &logger,
-                    "Received session init";
-                    "session" => format!("{:?}", session_init),
-                );
-                log_data.trace_id = session_init.trace_id;
-                return Ok(None);
-            }
-            Some(SubstreamsMessage::BlockUndoSignal(undo)) => {
-                let valid_block = match undo.last_valid_block {
-                    Some(clock) => clock,
-                    None => return Err(BlockStreamError::from(SubstreamsError::InvalidUndoError)),
-                };
-                let valid_ptr = BlockPtr {
-                    hash: valid_block.id.trim_start_matches("0x").try_into()?,
-                    number: valid_block.number as i32,
-                };
-                log_data.last_seen_block = valid_block.number;
-                return Ok(Some(BlockStreamEvent::Revert(
-                    valid_ptr,
-                    FirehoseCursor::from(undo.last_valid_cursor.clone()),
-                )));
-            }
-
-            Some(SubstreamsMessage::BlockScopedData(block_scoped_data)) => {
-                let BlockScopedData {
-                    output,
-                    clock,
-                    cursor,
-                    final_block_height: _,
-                    debug_map_outputs: _,
-                    debug_store_outputs: _,
-                } = block_scoped_data;
-
-                let module_output = match output {
-                    Some(out) => out,
-                    None => return Ok(None),
-                };
-
-                let clock = match clock {
-                    Some(clock) => clock,
-                    None => return Err(BlockStreamError::from(SubstreamsError::MissingClockError)),
-                };
-
-                let value = match module_output.map_output {
-                    Some(Any { type_url: _, value }) => value,
-                    None => return Ok(None),
-                };
-
-                log_data.last_seen_block = clock.number;
-                let cursor = FirehoseCursor::from(cursor);
-
-                let event = self
-                    .handle_substreams_block(&logger, clock, cursor, value)
-                    .await?;
-
-                Ok(Some(event))
-            }
-
-            Some(SubstreamsMessage::Progress(progress)) => {
-                if log_data.last_progress.elapsed() > Duration::from_secs(30) {
-                    info!(&logger, "{}", log_data.info_string(&progress); "trace_id" => &log_data.trace_id);
-                    debug!(&logger, "{}", log_data.debug_string(&progress); "trace_id" => &log_data.trace_id);
-                    trace!(
-                        &logger,
-                        "Received progress update";
-                        "progress" => format!("{:?}", progress),
-                        "trace_id" => &log_data.trace_id,
-                    );
-                    log_data.last_progress = Instant::now();
-                }
-                Ok(None)
-            }
-
-            // ignoring Progress messages and SessionInit
-            // We are only interested in Data and Undo signals
-            _ => Ok(None),
-        }
-    }
 }
 
 #[derive(Error, Debug)]

@@ -1,8 +1,0 @@
-[package]
-name = "substreams-head-tracker"
-version.workspace = true
-edition.workspace = true
-
-[lib]
-crate-type = ["cdylib"]
-

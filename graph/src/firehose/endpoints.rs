@@ -1,4 +1,3 @@
-use crate::firehose::codec::InfoRequest;
 use crate::firehose::fetch_client::FetchClient;
 use crate::firehose::interceptors::AuthInterceptor;
 use crate::{
@@ -11,7 +10,6 @@ use crate::{
     env::ENV_VARS,
     firehose::decode_firehose_block,
     prelude::{anyhow, debug, DeploymentHash},
-    substreams_rpc,
 };
 use anyhow::Context;
 use async_trait::async_trait;
@@ -53,7 +51,6 @@ pub struct FirehoseEndpoint {
     pub filters_enabled: bool,
     pub compression_enabled: bool,
     pub subgraph_limit: SubgraphLimit,
-    is_substreams: bool,
     endpoint_metrics: Arc<EndpointMetrics>,
     channel: Channel,
 
@@ -185,7 +182,6 @@ impl FirehoseEndpoint {
         compression_enabled: bool,
         subgraph_limit: SubgraphLimit,
         endpoint_metrics: Arc<EndpointMetrics>,
-        is_substreams_endpoint: bool,
     ) -> Self {
         let uri = url
             .as_ref()
@@ -254,7 +250,6 @@ impl FirehoseEndpoint {
             subgraph_limit,
             endpoint_metrics,
             info_response: OnceCell::new(),
-            is_substreams: is_substreams_endpoint,
         }
     }
 
@@ -334,51 +329,6 @@ impl FirehoseEndpoint {
         }
 
         client = client.with_max_message_size(self.max_message_size());
-        client
-    }
-
-    fn new_substreams_info_client(
-        &self,
-    ) -> crate::substreams_rpc::endpoint_info_client::EndpointInfoClient<
-        InterceptedService<MetricsInterceptor<Channel>, impl tonic::service::Interceptor>,
-    > {
-        let metrics = self.metrics_interceptor();
-
-        let mut client =
-            crate::substreams_rpc::endpoint_info_client::EndpointInfoClient::with_interceptor(
-                metrics,
-                self.auth.clone(),
-            )
-            .accept_compressed(CompressionEncoding::Gzip);
-
-        if self.compression_enabled {
-            client = client.send_compressed(CompressionEncoding::Gzip);
-        }
-
-        client = client.max_decoding_message_size(self.max_message_size());
-
-        client
-    }
-
-    fn new_substreams_streaming_client(
-        &self,
-    ) -> substreams_rpc::stream_client::StreamClient<
-        InterceptedService<MetricsInterceptor<Channel>, impl tonic::service::Interceptor>,
-    > {
-        let metrics = self.metrics_interceptor();
-
-        let mut client = substreams_rpc::stream_client::StreamClient::with_interceptor(
-            metrics,
-            self.auth.clone(),
-        )
-        .accept_compressed(CompressionEncoding::Gzip);
-
-        if self.compression_enabled {
-            client = client.send_compressed(CompressionEncoding::Gzip);
-        }
-
-        client = client.max_decoding_message_size(self.max_message_size());
-
         client
     }
 
@@ -687,19 +637,6 @@ impl FirehoseEndpoint {
         Ok(block_stream)
     }
 
-    pub async fn substreams(
-        self: Arc<Self>,
-        request: substreams_rpc::Request,
-        headers: &ConnectionHeaders,
-    ) -> Result<tonic::Streaming<substreams_rpc::Response>, anyhow::Error> {
-        let mut client = self.new_substreams_streaming_client();
-        let request = headers.add_to_request(request);
-        let response_stream = client.blocks(request).await?;
-        let block_stream = response_stream.into_inner();
-
-        Ok(block_stream)
-    }
-
     pub async fn info(
         self: Arc<Self>,
     ) -> Result<crate::firehose::endpoint_info::InfoResponse, anyhow::Error> {
@@ -707,20 +644,9 @@ impl FirehoseEndpoint {
 
         self.info_response
             .get_or_try_init(move || async move {
-                if endpoint.is_substreams {
-                    let mut client = endpoint.new_substreams_info_client();
+                let mut client = endpoint.new_firehose_info_client();
 
-                    client
-                        .info(InfoRequest {})
-                        .await
-                        .map(|r| r.into_inner())
-                        .map_err(anyhow::Error::from)
-                        .and_then(|e| e.try_into())
-                } else {
-                    let mut client = endpoint.new_firehose_info_client();
-
-                    client.info().await
-                }
+                client.info().await
             })
             .await
             .map(ToOwned::to_owned)
@@ -808,7 +734,6 @@ mod test {
             false,
             SubgraphLimit::Unlimited,
             Arc::new(EndpointMetrics::mock()),
-            false,
         ))];
 
         let endpoints = FirehoseEndpoints::for_testing(endpoint);
@@ -841,7 +766,6 @@ mod test {
             false,
             SubgraphLimit::Limit(2),
             Arc::new(EndpointMetrics::mock()),
-            false,
         ))];
 
         let endpoints = FirehoseEndpoints::for_testing(endpoint);
@@ -869,7 +793,6 @@ mod test {
             false,
             SubgraphLimit::Disabled,
             Arc::new(EndpointMetrics::mock()),
-            false,
         ))];
 
         let endpoints = FirehoseEndpoints::for_testing(endpoint);
@@ -896,7 +819,6 @@ mod test {
             false,
             SubgraphLimit::Unlimited,
             endpoint_metrics.clone(),
-            false,
         ));
         let high_error_adapter2 = Arc::new(FirehoseEndpoint::new(
             "high_error".to_string(),
@@ -907,7 +829,6 @@ mod test {
             false,
             SubgraphLimit::Unlimited,
             endpoint_metrics.clone(),
-            false,
         ));
         let low_availability = Arc::new(FirehoseEndpoint::new(
             "low availability".to_string(),
@@ -918,7 +839,6 @@ mod test {
             false,
             SubgraphLimit::Limit(2),
             endpoint_metrics.clone(),
-            false,
         ));
         let high_availability = Arc::new(FirehoseEndpoint::new(
             "high availability".to_string(),
@@ -929,7 +849,6 @@ mod test {
             false,
             SubgraphLimit::Unlimited,
             endpoint_metrics.clone(),
-            false,
         ));
 
         endpoint_metrics.report_for_test(&high_error_adapter1.provider, false);

@@ -24,10 +24,6 @@ pub mod runtime;
 
 pub mod firehose;
 
-pub mod substreams;
-
-pub mod substreams_rpc;
-
 pub mod endpoint;
 
 pub mod schema;

@@ -130,7 +130,6 @@ pub fn create_firehose_networks(
                         firehose.compression_enabled(),
                         firehose.limit_for(&config.node),
                         endpoint_metrics.cheap_clone(),
-                        false,
                     )));
                 }
             }
@@ -394,7 +393,7 @@ pub async fn networks_as_chains(
                             firehose_endpoints,
                             metrics_registry: metrics_registry.clone(),
                         }
-                        .build(config)
+                        .build()
                         .await,
                     ),
                 );

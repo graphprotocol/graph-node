@@ -46,7 +46,6 @@ use graph::prelude::{
     SubgraphName, SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
     TriggerProcessor,
 };
-use graph::schema::InputSchema;
 use graph_chain_ethereum::chain::RuntimeAdapterBuilder;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::Chain;
@@ -106,7 +105,6 @@ impl CommonChainConfig {
                 false,
                 SubgraphLimit::Unlimited,
                 Arc::new(EndpointMetrics::mock()),
-                false,
             ))]);
 
         Self {
@@ -748,18 +746,6 @@ impl<C: Blockchain> BlockStreamBuilder<C> for MutexBlockStreamBuilder<C> {
             .await
     }
 
-    async fn build_substreams(
-        &self,
-        _chain: &C,
-        _schema: InputSchema,
-        _deployment: DeploymentLocator,
-        _block_cursor: FirehoseCursor,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<C::TriggerFilter>,
-    ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
-        unimplemented!();
-    }
-
     async fn build_polling(
         &self,
         chain: &C,
@@ -800,18 +786,6 @@ impl<C: Blockchain> BlockStreamBuilder<C> for StaticStreamBuilder<C>
 where
     C::TriggerData: Clone,
 {
-    async fn build_substreams(
-        &self,
-        _chain: &C,
-        _schema: InputSchema,
-        _deployment: DeploymentLocator,
-        _block_cursor: FirehoseCursor,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<C::TriggerFilter>,
-    ) -> anyhow::Result<Box<dyn BlockStream<C>>> {
-        unimplemented!()
-    }
-
     async fn build_firehose(
         &self,
         _chain: &C,

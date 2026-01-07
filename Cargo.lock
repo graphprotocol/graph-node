@@ -1368,7 +1368,7 @@ dependencies = [
  "encode_unicode",
  "libc",
  "once_cell",
- "unicode-width 0.2.0",
+ "unicode-width",
  "windows-sys 0.59.0",
 ]
 
@@ -2846,7 +2846,7 @@ dependencies = [
  "graphql-parser",
  "half",
  "hex",
- "hex-literal 1.1.0",
+ "hex-literal",
  "http 0.2.12",
  "http 1.4.0",
  "http-body-util",
@@ -2955,7 +2955,6 @@ dependencies = [
  "serde",
  "tokio",
  "tonic-build",
- "trigger-filters",
 ]
 
 [[package]]
@@ -3451,12 +3450,6 @@ checksum = "fda06d18ac606267c40c04e41b9947729bf8b9efe74bd4e82b61a5f26a510b9f"
 dependencies = [
  "arrayvec 0.7.4",
 ]
-
-[[package]]
-name = "hex-literal"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ebdb29d2ea9ed0083cd8cece49bbd968021bd99b0849edb4a9a7ee0fdf6a4e0"
 
 [[package]]
 name = "hex-literal"
@@ -4850,15 +4843,6 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
-
-[[package]]
-name = "pad"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2ad9b889f1b12e0b9ee24db044b5129150d5eada288edc800f789928dc8c0e3"
-dependencies = [
- "unicode-width 0.1.13",
-]
 
 [[package]]
 name = "parity-scale-codec"
@@ -6667,84 +6651,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "substreams"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5bb63116b90d4c174114fb237a8916dd995c939874f7576333990a44d78b642a"
-dependencies = [
- "anyhow",
- "bigdecimal 0.3.1",
- "hex",
- "hex-literal 0.3.4",
- "num-bigint 0.4.6",
- "num-integer",
- "num-traits",
- "pad",
- "pest",
- "pest_derive",
- "prost",
- "prost-build",
- "prost-types",
- "substreams-macro",
- "thiserror 1.0.61",
-]
-
-[[package]]
-name = "substreams-entity-change"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0587b8d5dd7bffb0415d544c31e742c4cabdb81bbe9a3abfffff125185e4e9e8"
-dependencies = [
- "base64 0.13.1",
- "prost",
- "prost-types",
- "substreams",
-]
-
-[[package]]
-name = "substreams-head-tracker"
-version = "0.36.0"
-
-[[package]]
-name = "substreams-macro"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f36f36e9da94db29f49daf3ab6b47b529b57c43fc5d58bc35b160aaad1a7233f"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
- "thiserror 1.0.61",
-]
-
-[[package]]
-name = "substreams-near-core"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01ef8a763c5a5604b16f4898ab75d39494ef785c457aaca1fd7761b299f40fbf"
-dependencies = [
- "bs58 0.4.0",
- "getrandom 0.2.15",
- "hex",
- "prost",
- "prost-build",
- "prost-types",
-]
-
-[[package]]
-name = "substreams-trigger-filter"
-version = "0.36.0"
-dependencies = [
- "hex",
- "prost",
- "substreams",
- "substreams-entity-change",
- "substreams-near-core",
- "tonic-build",
- "trigger-filters",
-]
-
-[[package]]
 name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6904,7 +6810,7 @@ dependencies = [
  "graph-node",
  "graph-store-postgres",
  "hex",
- "hex-literal 1.1.0",
+ "hex-literal",
  "lazy_static",
  "pretty_assertions",
  "prost-types",
@@ -7504,13 +7410,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "trigger-filters"
-version = "0.36.0"
-dependencies = [
- "anyhow",
-]
-
-[[package]]
 name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7616,12 +7515,6 @@ name = "unicode-segmentation"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
-
-[[package]]
-name = "unicode-width"
-version = "0.1.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0336d538f7abc86d282a4189614dfaa90810dfc2c6f6427eaf88e16311dd225d"
 
 [[package]]
 name = "unicode-width"
@@ -8193,7 +8086,7 @@ dependencies = [
  "bumpalo",
  "leb128fmt",
  "memchr",
- "unicode-width 0.2.0",
+ "unicode-width",
  "wasm-encoder 0.244.0",
 ]
 

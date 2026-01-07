@@ -16,9 +16,7 @@ use graph::prelude::{
     retry, BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry, StoreError,
 };
-use graph::schema::InputSchema;
 use graph::slog::{debug, error, trace, warn};
-use graph::substreams::Clock;
 use graph::{
     blockchain::{
         block_stream::{
@@ -112,18 +110,6 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             logger,
             chain.registry.clone(),
         )))
-    }
-
-    async fn build_substreams(
-        &self,
-        _chain: &Chain,
-        _schema: InputSchema,
-        _deployment: DeploymentLocator,
-        _block_cursor: FirehoseCursor,
-        _subgraph_current_block: Option<BlockPtr>,
-        _filter: Arc<<Chain as Blockchain>::TriggerFilter>,
-    ) -> Result<Box<dyn BlockStream<Chain>>> {
-        unimplemented!()
     }
 
     async fn build_subgraph_block_stream(
@@ -1158,16 +1144,6 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
             .triggers_in_block(logger, block, &self.filter)
             .await
             .map_err(BlockStreamError::from)
-    }
-
-    async fn handle_substreams_block(
-        &self,
-        _logger: &Logger,
-        _clock: Clock,
-        _cursor: FirehoseCursor,
-        _block: Vec<u8>,
-    ) -> Result<BlockStreamEvent<Chain>, BlockStreamError> {
-        unimplemented!()
     }
 }
 

@@ -19,5 +19,4 @@ graph-runtime-derive = { path = "../../runtime/derive" }
 
 [dev-dependencies]
 diesel = { workspace = true }
-trigger-filters.path = "../../substreams/trigger-filters"
 tokio = { workspace = true }

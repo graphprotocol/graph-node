@@ -1,4 +1,0 @@
-type Block @entity {
-  id: Bytes!
-}
-
