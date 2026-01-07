@@ -1,5 +1,4 @@
 pub mod ethereum;
-pub mod substreams;
 
 use std::collections::{BTreeSet, HashMap};
 use std::marker::PhantomData;
@@ -135,19 +134,6 @@ impl TestChainTrait<Chain> for TestChain<Chain> {
     }
 }
 
-pub struct TestChainSubstreams {
-    pub chain: Arc<graph_chain_substreams::Chain>,
-    pub block_stream_builder: Arc<graph_chain_substreams::BlockStreamBuilder>,
-}
-
-impl TestChainTrait<graph_chain_substreams::Chain> for TestChainSubstreams {
-    fn set_block_stream(&self, _blocks: Vec<BlockWithTriggers<graph_chain_substreams::Chain>>) {}
-
-    fn chain(&self) -> Arc<graph_chain_substreams::Chain> {
-        self.chain.clone()
-    }
-}
-
 pub trait TestChainTrait<C: Blockchain> {
     fn set_block_stream(&self, blocks: Vec<BlockWithTriggers<C>>);
 
@@ -210,37 +196,6 @@ impl TestContext {
         let (logger, deployment, raw) = self.get_runner_context().await;
         let tp: Box<dyn TriggerProcessor<_, _>> =
             Box::new(graph_core::subgraph::SubgraphTriggerProcessor {});
-
-        let deployment_status_metric = self
-            .instance_manager
-            .new_deployment_status_metric(&deployment);
-
-        self.instance_manager
-            .build_subgraph_runner_inner(
-                logger,
-                self.env_vars.cheap_clone(),
-                deployment,
-                raw,
-                Some(stop_block.block_number()),
-                tp,
-                deployment_status_metric,
-                true,
-            )
-            .await
-            .unwrap()
-    }
-
-    pub async fn runner_substreams(
-        &self,
-        stop_block: BlockPtr,
-    ) -> graph_core::subgraph::SubgraphRunner<
-        graph_chain_substreams::Chain,
-        RuntimeHostBuilder<graph_chain_substreams::Chain>,
-    > {
-        let (logger, deployment, raw) = self.get_runner_context().await;
-        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(
-            graph_chain_substreams::TriggerProcessor::new(deployment.clone()),
-        );
 
         let deployment_status_metric = self
             .instance_manager

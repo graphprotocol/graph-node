@@ -9,7 +9,6 @@ bytes = "1.0"
 graph = { path = "../graph" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-near = { path = "../chain/near" }
-graph-chain-substreams = { path = "../chain/substreams" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
 serde_yaml = { workspace = true }
 tokio = { workspace = true }

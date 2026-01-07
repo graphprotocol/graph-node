@@ -10,5 +10,4 @@ graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-chain-near = { path = "../../chain/near" }
-graph-chain-substreams = { path = "../../chain/substreams" }
 git-testament = "0.2.6"

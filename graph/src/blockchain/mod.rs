@@ -571,8 +571,6 @@ pub enum BlockchainKind {
 
     /// NEAR chains (Mainnet, Testnet) or chains that are compatible
     Near,
-
-    Substreams,
 }
 
 impl fmt::Display for BlockchainKind {
@@ -580,7 +578,6 @@ impl fmt::Display for BlockchainKind {
         let value = match self {
             BlockchainKind::Ethereum => "ethereum",
             BlockchainKind::Near => "near",
-            BlockchainKind::Substreams => "substreams",
         };
         write!(f, "{}", value)
     }
@@ -593,7 +590,6 @@ impl FromStr for BlockchainKind {
         match s {
             "ethereum" => Ok(BlockchainKind::Ethereum),
             "near" => Ok(BlockchainKind::Near),
-            "substreams" => Ok(BlockchainKind::Substreams),
             "subgraph" => Ok(BlockchainKind::Ethereum), // TODO(krishna): We should detect the blockchain kind from the source subgraph
             "amp" => Ok(BlockchainKind::Ethereum),      // TODO: Maybe get this from the Amp server
             _ => Err(anyhow!("unknown blockchain kind {}", s)),

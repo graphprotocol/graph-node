@@ -10,7 +10,6 @@ async-stream = "0.3.6"
 async-trait = { workspace = true }
 graph = { path = "../graph" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
-graph-chain-substreams= {path = "../chain/substreams"}
 graph-node = { path = "../node" }
 graph-core = { path = "../core" }
 graph-graphql = { path = "../graphql" }

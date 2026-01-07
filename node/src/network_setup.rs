@@ -30,8 +30,8 @@ use graph_store_postgres::{BlockStore, ChainHeadUpdateListener};
 use std::{any::Any, cmp::Ordering, sync::Arc, time::Duration};
 
 use crate::chain::{
-    create_ethereum_networks, create_firehose_networks, create_substreams_networks,
-    networks_as_chains, AnyChainFilter, ChainFilter, OneChainFilter,
+    create_ethereum_networks, create_firehose_networks, networks_as_chains, AnyChainFilter,
+    ChainFilter, OneChainFilter,
 };
 
 #[derive(Debug, Clone)]
@@ -209,17 +209,7 @@ impl Networks {
             endpoint_metrics.cheap_clone(),
             chain_filter,
         );
-        let substreams = create_substreams_networks(
-            logger.cheap_clone(),
-            &config,
-            endpoint_metrics,
-            chain_filter,
-        );
-        let adapters: Vec<_> = eth
-            .into_iter()
-            .chain(firehose.into_iter())
-            .chain(substreams.into_iter())
-            .collect();
+        let adapters: Vec<_> = eth.into_iter().chain(firehose.into_iter()).collect();
 
         Ok(Networks::new(&logger, adapters, provider_checks))
     }
@@ -379,19 +369,7 @@ impl Networks {
                 BlockchainKind::Near => {
                     block_ingestor::<graph_chain_near::Chain>(logger, id, chain, &mut res).await?
                 }
-                BlockchainKind::Substreams => {}
             }
-        }
-
-        // substreams networks that also have other types of chain(rpc or firehose), will have
-        // block ingestors already running.
-        let visited: Vec<_> = res.iter().map(|b| b.network_name()).collect();
-
-        for ((_, id), chain) in blockchain_map
-            .iter()
-            .filter(|((kind, id), _)| BlockchainKind::Substreams.eq(&kind) && !visited.contains(id))
-        {
-            block_ingestor::<graph_chain_substreams::Chain>(logger, id, chain, &mut res).await?
         }
 
         Ok(res)

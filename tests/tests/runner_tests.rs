@@ -23,7 +23,6 @@ use graph_tests::fixture::ethereum::{
     push_test_polling_trigger,
 };
 
-use graph_tests::fixture::substreams::chain as substreams_chain;
 use graph_tests::fixture::{
     self, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, TestChainTrait,
     TestContext, TestInfo,
@@ -436,37 +435,6 @@ async fn derived_loaders() {
             }
         })
     );
-}
-
-// This PR https://github.com/graphprotocol/graph-node/pull/4787
-// changed the way TriggerFilters were built
-// A bug was introduced in the PR which resulted in filters for substreams not being included
-// This test tests that the TriggerFilter is built correctly for substreams
-#[graph::test]
-async fn substreams_trigger_filter_construction() -> anyhow::Result<()> {
-    let RunnerTestRecipe { stores, test_info } =
-        RunnerTestRecipe::new("substreams", "substreams").await;
-
-    let chain = substreams_chain(&test_info.test_name, &stores).await;
-    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
-
-    let runner = ctx.runner_substreams(test_ptr(0)).await;
-    let filter = runner.build_filter_for_test();
-
-    assert_eq!(filter.chain_filter.module_name(), "graph_out");
-    assert_eq!(
-        filter
-            .chain_filter
-            .modules()
-            .as_ref()
-            .unwrap()
-            .modules
-            .len(),
-        2
-    );
-    assert_eq!(filter.chain_filter.start_block().unwrap(), 0);
-    assert_eq!(filter.chain_filter.data_sources_len(), 1);
-    Ok(())
 }
 
 #[graph::test]

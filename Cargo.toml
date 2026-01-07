@@ -7,7 +7,6 @@ members = [
     "chain/common",
     "chain/ethereum",
     "chain/near",
-    "chain/substreams",
     "gnd",
     "graphql",
     "node",

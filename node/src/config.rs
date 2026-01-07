@@ -568,30 +568,6 @@ impl Chain {
             provider.validate()?
         }
 
-        if !matches!(self.protocol, BlockchainKind::Substreams) {
-            let has_only_substreams_providers = self
-                .providers
-                .iter()
-                .all(|provider| matches!(provider.details, ProviderDetails::Substreams(_)));
-            if has_only_substreams_providers {
-                bail!(
-                    "{} protocol requires an rpc or firehose endpoint defined",
-                    self.protocol
-                );
-            }
-        }
-
-        // When using substreams protocol, only substreams endpoints are allowed
-        if matches!(self.protocol, BlockchainKind::Substreams) {
-            let has_non_substreams_providers = self
-                .providers
-                .iter()
-                .any(|provider| !matches!(provider.details, ProviderDetails::Substreams(_)));
-            if has_non_substreams_providers {
-                bail!("Substreams protocol only supports substreams providers");
-            }
-        }
-
         Ok(())
     }
 }
@@ -628,7 +604,6 @@ pub struct Provider {
 pub enum ProviderDetails {
     Firehose(FirehoseProvider),
     Web3(Web3Provider),
-    Substreams(FirehoseProvider),
     Web3Call(Web3Provider),
 }
 
@@ -747,8 +722,7 @@ impl Provider {
         validate_name(&self.label).context("illegal provider name")?;
 
         match self.details {
-            ProviderDetails::Firehose(ref mut firehose)
-            | ProviderDetails::Substreams(ref mut firehose) => {
+            ProviderDetails::Firehose(ref mut firehose) => {
                 firehose.url = shellexpand::env(&firehose.url)?.into_owned();
 
                 // A Firehose url must be a valid Uri since gRPC library we use (Tonic)
@@ -904,10 +878,7 @@ impl<'de> Deserialize<'de> for Provider {
                         }
 
                         match v {
-                            ProviderDetails::Firehose(ref mut firehose)
-                            | ProviderDetails::Substreams(ref mut firehose) => {
-                                firehose.rules = nodes
-                            }
+                            ProviderDetails::Firehose(ref mut firehose) => firehose.rules = nodes,
                             _ => {}
                         }
 
@@ -1394,47 +1365,6 @@ mod tests {
     }
 
     #[test]
-    fn fails_if_non_substreams_provider_for_substreams_protocol() {
-        let mut actual = toml::from_str::<ChainSection>(
-            r#"
-            ingestor = "block_ingestor_node"
-            [mainnet]
-            shard = "primary"
-            protocol = "substreams"
-            provider = [
-              { label = "firehose", details = { type = "firehose", url = "http://127.0.0.1:8888", token = "TOKEN", features = ["filters"] }},
-            ]
-        "#,
-        )
-        .unwrap();
-        let err = actual.validate().unwrap_err().to_string();
-
-        assert!(err.contains("only supports substreams providers"), "{err}");
-    }
-
-    #[test]
-    fn fails_if_only_substreams_provider_for_non_substreams_protocol() {
-        let mut actual = toml::from_str::<ChainSection>(
-            r#"
-            ingestor = "block_ingestor_node"
-            [mainnet]
-            shard = "primary"
-            protocol = "ethereum"
-            provider = [
-              { label = "firehose", details = { type = "substreams", url = "http://127.0.0.1:8888", token = "TOKEN", features = ["filters"] }},
-            ]
-        "#,
-        )
-        .unwrap();
-        let err = actual.validate().unwrap_err().to_string();
-
-        assert!(
-            err.contains("ethereum protocol requires an rpc or firehose endpoint defined"),
-            "{err}"
-        );
-    }
-
-    #[test]
     fn it_works_on_new_web3_provider_from_toml() {
         let actual = toml::from_str(
             r#"
@@ -1532,54 +1462,12 @@ mod tests {
     }
 
     #[test]
-    fn it_works_on_substreams_provider_from_toml() {
-        let actual = toml::from_str(
+    fn it_fails_for_substreams() {
+        let _actual: Result<Provider, _> = toml::from_str(
             r#"
                 label = "bananas"
                 details = { type = "substreams", url = "http://localhost:9000", features = [] }
             "#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            Provider {
-                label: "bananas".to_owned(),
-                details: ProviderDetails::Substreams(FirehoseProvider {
-                    url: "http://localhost:9000".to_owned(),
-                    token: None,
-                    key: None,
-                    features: BTreeSet::new(),
-                    conn_pool_size: 20,
-                    rules: vec![],
-                }),
-            },
-            actual
-        );
-    }
-
-    #[test]
-    fn it_works_on_substreams_provider_from_toml_with_api_key() {
-        let actual = toml::from_str(
-            r#"
-                label = "authed"
-                details = { type = "substreams", url = "http://localhost:9000", key = "KEY", features = [] }
-            "#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            Provider {
-                label: "authed".to_owned(),
-                details: ProviderDetails::Substreams(FirehoseProvider {
-                    url: "http://localhost:9000".to_owned(),
-                    token: None,
-                    key: Some("KEY".to_owned()),
-                    features: BTreeSet::new(),
-                    conn_pool_size: 20,
-                    rules: vec![],
-                }),
-            },
-            actual
         );
     }
 
@@ -1647,123 +1535,6 @@ mod tests {
             actual
         );
         assert! { actual.validate().is_ok()};
-    }
-
-    #[test]
-    fn it_errors_on_firehose_provider_with_high_limit() {
-        let mut actual = toml::from_str(
-            r#"
-                label = "substreams"
-                details = { type = "substreams", url = "http://localhost:9000" }
-                match = [
-                  { name = "some_node_.*", limit = 101 },
-                  { name = "other_node_.*", limit = 0 } ]
-            "#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            Provider {
-                label: "substreams".to_owned(),
-                details: ProviderDetails::Substreams(FirehoseProvider {
-                    url: "http://localhost:9000".to_owned(),
-                    token: None,
-                    key: None,
-                    features: BTreeSet::new(),
-                    conn_pool_size: 20,
-                    rules: vec![
-                        Web3Rule {
-                            name: Regex::new("some_node_.*").unwrap(),
-                            limit: 101,
-                        },
-                        Web3Rule {
-                            name: Regex::new("other_node_.*").unwrap(),
-                            limit: 0,
-                        }
-                    ],
-                }),
-            },
-            actual
-        );
-        assert! { actual.validate().is_err()};
-    }
-
-    #[test]
-    fn it_works_on_new_substreams_provider_with_doc_example_match() {
-        let mut actual = toml::from_str(
-            r#"
-                label = "substreams"
-                details = { type = "substreams", url = "http://localhost:9000" }
-                match = [
-                  { name = "some_node_.*", limit = 10 },
-                  { name = "other_node_.*", limit = 0 } ]
-            "#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            Provider {
-                label: "substreams".to_owned(),
-                details: ProviderDetails::Substreams(FirehoseProvider {
-                    url: "http://localhost:9000".to_owned(),
-                    token: None,
-                    key: None,
-                    features: BTreeSet::new(),
-                    conn_pool_size: 20,
-                    rules: vec![
-                        Web3Rule {
-                            name: Regex::new("some_node_.*").unwrap(),
-                            limit: 10,
-                        },
-                        Web3Rule {
-                            name: Regex::new("other_node_.*").unwrap(),
-                            limit: 0,
-                        }
-                    ],
-                }),
-            },
-            actual
-        );
-        assert! { actual.validate().is_ok()};
-    }
-
-    #[test]
-    fn it_errors_on_substreams_provider_with_high_limit() {
-        let mut actual = toml::from_str(
-            r#"
-                label = "substreams"
-                details = { type = "substreams", url = "http://localhost:9000" }
-                match = [
-                  { name = "some_node_.*", limit = 101 },
-                  { name = "other_node_.*", limit = 0 } ]
-            "#,
-        )
-        .unwrap();
-
-        assert_eq!(
-            Provider {
-                label: "substreams".to_owned(),
-                details: ProviderDetails::Substreams(FirehoseProvider {
-                    url: "http://localhost:9000".to_owned(),
-                    token: None,
-                    key: None,
-                    features: BTreeSet::new(),
-                    conn_pool_size: 20,
-                    rules: vec![
-                        Web3Rule {
-                            name: Regex::new("some_node_.*").unwrap(),
-                            limit: 101,
-                        },
-                        Web3Rule {
-                            name: Regex::new("other_node_.*").unwrap(),
-                            limit: 0,
-                        }
-                    ],
-                }),
-            },
-            actual
-        );
-        assert! { actual.validate().is_err()};
     }
 
     #[test]

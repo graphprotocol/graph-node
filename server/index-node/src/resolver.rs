@@ -562,24 +562,6 @@ where
                 )
                 .await?
             }
-            BlockchainKind::Substreams => {
-                let unvalidated_subgraph_manifest =
-                    UnvalidatedSubgraphManifest::<graph_chain_substreams::Chain>::resolve(
-                        deployment_hash.clone(),
-                        raw_yaml,
-                        &self.link_resolver,
-                        self.amp_client.cheap_clone(),
-                        &self.logger,
-                        max_spec_version,
-                    )
-                    .await?;
-
-                Self::validate_and_extract_features(
-                    &self.store.subgraph_store(),
-                    unvalidated_subgraph_manifest,
-                )
-                .await?
-            }
         };
 
         Ok(result)
@@ -694,7 +676,7 @@ where
         // type.
         match BlockchainKind::Ethereum {
             // Note: we don't actually care about substreams here.
-            BlockchainKind::Substreams | BlockchainKind::Ethereum | BlockchainKind::Near => (),
+            BlockchainKind::Ethereum | BlockchainKind::Near => (),
         }
 
         // The given network does not exist.

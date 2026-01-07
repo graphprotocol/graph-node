@@ -122,23 +122,6 @@ where
 
                         self.start_subgraph_inner(logger, loc, runner).await
                     }
-                    BlockchainKind::Substreams => {
-                        let runner = instance_manager
-                            .build_subgraph_runner::<graph_chain_substreams::Chain>(
-                                logger.clone(),
-                                self.env_vars.cheap_clone(),
-                                loc.cheap_clone(),
-                                raw_manifest,
-                                stop_block,
-                                Box::new(graph_chain_substreams::TriggerProcessor::new(
-                                    loc.clone(),
-                                )),
-                                deployment_status_metric,
-                            )
-                            .await?;
-
-                        self.start_subgraph_inner(logger, loc, runner).await
-                    }
                 }
             }
         };

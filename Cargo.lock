@@ -2959,25 +2959,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "graph-chain-substreams"
-version = "0.36.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "base64 0.22.1",
- "graph",
- "graph-runtime-wasm",
- "hex",
- "prost",
- "prost-types",
- "semver",
- "serde",
- "tokio",
- "tokio-stream",
- "tonic-build",
-]
-
-[[package]]
 name = "graph-core"
 version = "0.36.0"
 dependencies = [
@@ -2991,7 +2972,6 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-substreams",
  "graph-runtime-wasm",
  "indoc",
  "itertools",
@@ -3038,7 +3018,6 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-substreams",
  "graph-core",
  "graph-graphql",
  "graph-server-http",
@@ -3122,7 +3101,6 @@ dependencies = [
  "graph",
  "graph-chain-ethereum",
  "graph-chain-near",
- "graph-chain-substreams",
  "graph-graphql",
 ]
 
@@ -3194,7 +3172,6 @@ dependencies = [
  "async-trait",
  "graph",
  "graph-chain-ethereum",
- "graph-chain-substreams",
  "graph-core",
  "graph-graphql",
  "graph-node",

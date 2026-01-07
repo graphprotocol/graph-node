@@ -24,7 +24,6 @@ graph = { path = "../graph" }
 graph-core = { path = "../core" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-chain-near = { path = "../chain/near" }
-graph-chain-substreams = { path = "../chain/substreams" }
 graph-graphql = { path = "../graphql" }
 graph-server-http = { path = "../server/http" }
 graph-server-index-node = { path = "../server/index-node" }
