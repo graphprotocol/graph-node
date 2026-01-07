@@ -26,7 +26,7 @@ chrono = "0.4.42"
 envconfig = { workspace = true }
 Inflector = "0.11.3"
 atty = "0.2"
-reqwest = { version = "0.12.23", features = ["json", "stream", "multipart"] }
+reqwest = { version = "0.13.1", features = ["json", "stream", "multipart"] }
 ethabi = "17.2"
 hex = "0.4.3"
 http0 = { version = "0", package = "http" }
