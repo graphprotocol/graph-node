@@ -55,21 +55,19 @@ pub struct FirehoseAdapterConfig {
 pub enum AdapterConfiguration {
     Rpc(EthAdapterConfig),
     Firehose(FirehoseAdapterConfig),
-    Substreams(FirehoseAdapterConfig),
 }
 
 impl AdapterConfiguration {
     pub fn blockchain_kind(&self) -> &BlockchainKind {
         match self {
             AdapterConfiguration::Rpc(_) => &BlockchainKind::Ethereum,
-            AdapterConfiguration::Firehose(fh) | AdapterConfiguration::Substreams(fh) => &fh.kind,
+            AdapterConfiguration::Firehose(fh) => &fh.kind,
         }
     }
     pub fn chain_id(&self) -> &ChainName {
         match self {
             AdapterConfiguration::Rpc(EthAdapterConfig { chain_id, .. })
-            | AdapterConfiguration::Firehose(FirehoseAdapterConfig { chain_id, .. })
-            | AdapterConfiguration::Substreams(FirehoseAdapterConfig { chain_id, .. }) => chain_id,
+            | AdapterConfiguration::Firehose(FirehoseAdapterConfig { chain_id, .. }) => chain_id,
         }
     }
 
@@ -90,24 +88,12 @@ impl AdapterConfiguration {
     pub fn is_firehose(&self) -> bool {
         self.as_firehose().is_none()
     }
-
-    pub fn as_substreams(&self) -> Option<&FirehoseAdapterConfig> {
-        match self {
-            AdapterConfiguration::Substreams(fh) => Some(fh),
-            _ => None,
-        }
-    }
-
-    pub fn is_substreams(&self) -> bool {
-        self.as_substreams().is_none()
-    }
 }
 
 pub struct Networks {
     pub adapters: Vec<AdapterConfiguration>,
     pub rpc_provider_manager: ProviderManager<EthereumNetworkAdapter>,
     pub firehose_provider_manager: ProviderManager<Arc<FirehoseEndpoint>>,
-    pub substreams_provider_manager: ProviderManager<Arc<FirehoseEndpoint>>,
 }
 
 impl Networks {
@@ -121,11 +107,6 @@ impl Networks {
                 ProviderCheckStrategy::MarkAsValid,
             ),
             firehose_provider_manager: ProviderManager::new(
-                Logger::root(Discard, o!()),
-                vec![].into_iter(),
-                ProviderCheckStrategy::MarkAsValid,
-            ),
-            substreams_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
                 vec![].into_iter(),
                 ProviderCheckStrategy::MarkAsValid,
@@ -170,14 +151,6 @@ impl Networks {
                     logger,
                     chain_id,
                     "firehose",
-                )
-            })
-            .or_else(|_| {
-                get_identifier(
-                    self.substreams_provider_manager.clone(),
-                    logger,
-                    chain_id,
-                    "substreams",
                 )
             })
             .await
@@ -288,19 +261,6 @@ impl Networks {
             )
             .collect_vec();
 
-        let substreams_adapters = adapters
-            .iter()
-            .flat_map(|a| a.as_substreams())
-            .cloned()
-            .map(
-                |FirehoseAdapterConfig {
-                     chain_id,
-                     kind: _,
-                     adapters,
-                 }| { (chain_id, adapters) },
-            )
-            .collect_vec();
-
         let s = Self {
             adapters: adapters2,
             rpc_provider_manager: ProviderManager::new(
@@ -311,13 +271,6 @@ impl Networks {
             firehose_provider_manager: ProviderManager::new(
                 logger.clone(),
                 firehose_adapters
-                    .into_iter()
-                    .map(|(chain_id, endpoints)| (chain_id, endpoints)),
-                ProviderCheckStrategy::RequireAll(provider_checks),
-            ),
-            substreams_provider_manager: ProviderManager::new(
-                logger.clone(),
-                substreams_adapters
                     .into_iter()
                     .map(|(chain_id, endpoints)| (chain_id, endpoints)),
                 ProviderCheckStrategy::RequireAll(provider_checks),
@@ -403,10 +356,6 @@ impl Networks {
 
     pub fn firehose_endpoints(&self, chain_id: ChainName) -> FirehoseEndpoints {
         FirehoseEndpoints::new(chain_id, self.firehose_provider_manager.clone())
-    }
-
-    pub fn substreams_endpoints(&self, chain_id: ChainName) -> FirehoseEndpoints {
-        FirehoseEndpoints::new(chain_id, self.substreams_provider_manager.clone())
     }
 
     pub fn ethereum_rpcs(&self, chain_id: ChainName) -> EthereumNetworkAdapters {

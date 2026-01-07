@@ -67,27 +67,6 @@ pub async fn execute(logger: &Logger, networks: &Networks, store: BlockStore, ti
             }
         }
 
-        for adapter in networks
-            .substreams_provider_manager
-            .providers_unchecked(chain_name)
-            .unique_by(|x| x.provider_name())
-        {
-            let validator = chain_id_validator(Box::new(store.cheap_clone()));
-            match tokio::time::timeout(
-                timeout,
-                run_checks(logger, chain_name, adapter, validator.clone()),
-            )
-            .await
-            {
-                Ok(result) => {
-                    errors.extend(result);
-                }
-                Err(_) => {
-                    errors.push("Timeout".to_owned());
-                }
-            }
-        }
-
         if errors.is_empty() {
             println!("Chain: {chain_name}; Status: OK");
             continue;

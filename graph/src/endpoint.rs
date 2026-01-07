@@ -31,7 +31,6 @@ pub struct RequestLabels {
 #[derive(Clone)]
 pub enum ConnectionType {
     Firehose,
-    Substreams,
     Rpc,
 }
 
@@ -39,7 +38,6 @@ impl Into<&str> for &ConnectionType {
     fn into(self) -> &'static str {
         match self {
             ConnectionType::Firehose => "firehose",
-            ConnectionType::Substreams => "substreams",
             ConnectionType::Rpc => "rpc",
         }
     }
