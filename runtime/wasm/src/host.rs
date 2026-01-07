@@ -209,7 +209,7 @@ where
 
         // If there is an error, "gas_used" is incorrectly reported as 0.
         let gas_used = result.as_ref().map(|(_, gas)| gas).unwrap_or(&Gas::ZERO);
-        info!(
+        debug!(
             logger, "Done processing trigger";
             &extras,
             "total_ms" => elapsed.as_millis(),
@@ -277,7 +277,7 @@ where
 
         // If there is an error, "gas_used" is incorrectly reported as 0.
         let gas_used = result.as_ref().map(|(_, gas)| gas).unwrap_or(&Gas::ZERO);
-        info!(
+        debug!(
             logger, "Done processing wasm block";
             "block_ptr" => &block_ptr,
             "total_ms" => elapsed.as_millis(),

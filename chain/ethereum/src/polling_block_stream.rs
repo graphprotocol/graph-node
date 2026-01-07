@@ -14,7 +14,7 @@ use graph::blockchain::block_stream::{
 use graph::blockchain::{Block, BlockPtr, TriggerFilterWrapper};
 use graph::futures03::{stream::Stream, Future, FutureExt};
 use graph::prelude::{DeploymentHash, BLOCK_NUMBER_MAX};
-use graph::slog::{debug, info, trace, warn, Logger};
+use graph::slog::{info, trace, warn, Logger};
 
 use graph::components::store::BlockNumber;
 use graph::data::subgraph::UnifiedMappingApiVersion;
@@ -516,9 +516,12 @@ impl Stream for PollingBlockStream {
                                     total_triggers as f64 / block_range_size as f64;
                                 self.ctx.previous_block_range_size = block_range_size;
                                 if total_triggers > 0 {
-                                    debug!(
+                                    info!(
                                         self.ctx.logger,
-                                        "Processing {} triggers", total_triggers
+                                        "Found {} triggers in {} blocks with a block range of {}",
+                                        total_triggers,
+                                        next_blocks.len(),
+                                        block_range_size
                                     );
                                 }
 

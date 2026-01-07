@@ -595,7 +595,7 @@ where
                 "block_hash" => format!("{}", block_ptr.hash)
         ));
 
-        debug!(logger, "Start processing block";
+        info!(logger, "Start processing block";
                "triggers" => triggers.len());
 
         let proof_of_indexing =
