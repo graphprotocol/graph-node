@@ -1092,7 +1092,7 @@ impl EthereumAdapter {
         // all the traces for the block, we need to ensure that the
         // block hash for the traces is equal to the desired block hash.
         // Assume all traces are for the same block.
-        if traces.iter().nth(0).unwrap().block_hash != block_hash {
+        if traces.first().unwrap().block_hash != block_hash {
             return Err(anyhow!(
                 "Trace stream returned traces for an unexpected block: \
                          number = `{}`, hash = `{}`",
