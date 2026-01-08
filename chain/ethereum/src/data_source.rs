@@ -513,8 +513,7 @@ impl DataSource {
                     .find(move |handler| match handler.filter {
                         Some(BlockHandlerFilter::Polling { every }) => {
                             let start_block = self.start_block;
-                            let should_trigger = (block - start_block) % every.get() as i32 == 0;
-                            should_trigger
+                            (block - start_block) % every.get() as i32 == 0
                         }
                         None => true,
                         _ => false,

@@ -2589,7 +2589,7 @@ impl ChainStoreTrait for ChainStore {
                     })
                     .await;
 
-                let stored = match res {
+                match res {
                     Ok(blocks) => {
                         for block in &blocks {
                             self.recent_blocks_cache.insert_block(block.clone());
@@ -2599,8 +2599,7 @@ impl ChainStoreTrait for ChainStore {
                     Err(e) => {
                         return Err(e.into());
                     }
-                };
-                stored
+                }
             } else {
                 Vec::new()
             };
