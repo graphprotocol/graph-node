@@ -324,6 +324,7 @@ mod data {
 
     #[derive(Clone, Debug, AsExpression, FromSqlRow)]
     #[diesel(sql_type = Text)]
+    #[allow(clippy::large_enum_variant)]
     /// Storage for a chain. The underlying namespace (database schema) is either
     /// `public` or of the form `chain[0-9]+`.
     pub enum Storage {

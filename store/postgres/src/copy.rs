@@ -669,7 +669,7 @@ impl CopyProgress {
 }
 
 enum WorkerResult {
-    Ok(CopyTableWorker),
+    Ok(Box<CopyTableWorker>),
     Err(StoreError),
     Wake,
 }
@@ -677,7 +677,7 @@ enum WorkerResult {
 impl From<Result<CopyTableWorker, StoreError>> for WorkerResult {
     fn from(result: Result<CopyTableWorker, StoreError>) -> Self {
         match result {
-            Ok(worker) => WorkerResult::Ok(worker),
+            Ok(worker) => WorkerResult::Ok(Box::new(worker)),
             Err(e) => WorkerResult::Err(e),
         }
     }

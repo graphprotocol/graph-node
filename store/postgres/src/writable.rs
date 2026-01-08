@@ -650,7 +650,7 @@ impl BlockTracker {
 /// a batch can still be appended to
 enum QueuedBatch {
     /// An open batch that can still be appended to
-    Open(Batch),
+    Open(Box<Batch>),
     /// A closed batch that can no longer be modified
     Closed(Arc<Batch>),
     /// Temporary placeholder during state transitions. Must never be
@@ -688,7 +688,7 @@ impl QueuedBatch {
     fn close(&mut self) -> Arc<Batch> {
         let old = std::mem::replace(self, QueuedBatch::Invalid);
         *self = match old {
-            QueuedBatch::Open(batch) => QueuedBatch::Closed(Arc::new(batch)),
+            QueuedBatch::Open(batch) => QueuedBatch::Closed(Arc::new(*batch)),
             closed @ QueuedBatch::Closed(_) => closed,
             QueuedBatch::Invalid => unreachable!("close is never called on a QueuedBatch::Invalid"),
         };
@@ -707,6 +707,7 @@ impl QueuedBatch {
 /// The `processed` flag is set to true as soon as the background writer is
 /// working on that request. Once it has been set, no changes can be made to
 /// the request
+#[allow(clippy::large_enum_variant)]
 enum Request {
     Write {
         queued: Instant,
@@ -767,7 +768,7 @@ impl Request {
             queued: Instant::now(),
             store,
             stopwatch,
-            batch: RwLock::new(QueuedBatch::Open(batch)),
+            batch: RwLock::new(QueuedBatch::Open(Box::new(batch))),
             processed: AtomicBool::new(false),
         }
     }
