@@ -468,9 +468,9 @@ impl Layout {
                 PruningStrategy::Delete => {
                     // Delete all entity versions whose range was closed
                     // before `req.earliest_block`
-                    let range = VidRange::for_prune(conn, &table, 0, req.earliest_block).await?;
+                    let range = VidRange::for_prune(conn, table, 0, req.earliest_block).await?;
                     let mut batcher =
-                        VidBatcher::load(conn, &self.site.namespace, &table, range).await?;
+                        VidBatcher::load(conn, &self.site.namespace, table, range).await?;
 
                     tracker.start_delete(conn, table, range, &batcher).await?;
                     while !batcher.finished() {

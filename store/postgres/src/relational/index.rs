@@ -607,10 +607,8 @@ impl CreateIndex {
         match self {
             CreateIndex::Unknown { .. } => (),
             CreateIndex::Parsed { columns, .. } => {
-                if columns.len() == 1 {
-                    if columns[0].is_id() {
-                        return true;
-                    }
+                if columns.len() == 1 && columns[0].is_id() {
+                    return true;
                 }
             }
         }
@@ -648,7 +646,7 @@ impl CreateIndex {
         }
     }
 
-    pub fn fields_exist_in_dest<'a>(&self, dest_table: &'a Table) -> bool {
+    pub fn fields_exist_in_dest(&self, dest_table: &Table) -> bool {
         fn column_exists<'a>(it: &mut impl Iterator<Item = &'a str>, column_name: &str) -> bool {
             it.any(|c| *c == *column_name)
         }
@@ -774,7 +772,7 @@ impl IndexList {
         };
         let schema_name = site.namespace.clone();
         let layout = store.layout(conn, site).await?;
-        for (_, table) in &layout.tables {
+        for table in layout.tables.values() {
             let indexes = load_indexes_from_table(conn, table, schema_name.as_str()).await?;
             list.indexes.insert(table.name.to_string(), indexes);
         }
@@ -855,17 +853,13 @@ impl IndexList {
                         .get_results::<IndexInfo>(conn)
                         .await?
                         .into_iter()
-                        .map(|ii| ii.into())
                         .collect::<Vec<IndexInfo>>();
                     assert!(ii_vec.len() <= 1);
-                    if ii_vec.len() == 0 || !ii_vec[0].isvalid {
+                    if ii_vec.is_empty() || !ii_vec[0].isvalid {
                         // if a bad index exist lets first drop it
-                        if ii_vec.len() > 0 {
-                            let drop_query = sql_query(format!(
-                                "DROP INDEX {}.{};",
-                                namespace.to_string(),
-                                index_name
-                            ));
+                        if !ii_vec.is_empty() {
+                            let drop_query =
+                                sql_query(format!("DROP INDEX {}.{};", namespace, index_name));
                             drop_query.execute(conn).await?;
                         }
                         sql_query(create_query).execute(conn).await?;

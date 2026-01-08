@@ -74,12 +74,12 @@ pub fn parse_field_as_filter(key: &str) -> (String, FilterOp) {
         _ => ("", FilterOp::Equal),
     };
 
-    return match op {
+    match op {
         FilterOp::And => (key.to_owned(), op),
         FilterOp::Or => (key.to_owned(), op),
         // Strip the operator suffix to get the attribute.
         _ => (key.trim_end_matches(suffix).to_owned(), op),
-    };
+    }
 }
 
 /// An `ObjectType` with `Hash` and `Eq` derived from the name.
@@ -317,7 +317,7 @@ pub fn is_input_type(schema: &s::Document, t: &s::Type) -> bool {
     match t {
         s::Type::NamedType(name) => {
             let named_type = schema.get_named_type(name);
-            named_type.map_or(false, |type_def| match type_def {
+            named_type.is_some_and(|type_def| match type_def {
                 s::TypeDefinition::Scalar(_)
                 | s::TypeDefinition::Enum(_)
                 | s::TypeDefinition::InputObject(_) => true,
@@ -333,7 +333,7 @@ pub fn is_entity_type(schema: &s::Document, t: &s::Type) -> bool {
     match t {
         s::Type::NamedType(name) => schema
             .get_named_type(name)
-            .map_or(false, is_entity_type_definition),
+            .is_some_and(is_entity_type_definition),
         s::Type::ListType(inner_type) => is_entity_type(schema, inner_type),
         s::Type::NonNullType(inner_type) => is_entity_type(schema, inner_type),
     }

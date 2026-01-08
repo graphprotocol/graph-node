@@ -335,7 +335,7 @@ impl FromColumnValue for r::Value {
 
     fn from_timestamp(i: &str) -> Result<Self, StoreError> {
         scalar::Timestamp::from_rfc3339(i)
-            .map(|v| r::Value::Timestamp(v))
+            .map(r::Value::Timestamp)
             .map_err(|e| {
                 StoreError::Unknown(anyhow!("failed to convert {} to Timestamp: {}", i, e))
             })
@@ -645,7 +645,7 @@ impl<'a> SqlValue<'a> {
             BigDecimal(d) => {
                 S::Numeric(d.to_string())
             }
-            Timestamp(ts) => S::Timestamp(ts.clone()),
+            Timestamp(ts) => S::Timestamp(*ts),
             Bool(b) => S::Bool(*b),
             List(values) => {
                 match column_type {
@@ -685,7 +685,7 @@ impl std::fmt::Display for SqlValue<'_> {
             S::Int(i) => write!(f, "{}", i),
             S::Int8(i) => write!(f, "{}", i),
             S::Numeric(s) => write!(f, "{}", s),
-            S::Timestamp(ts) => write!(f, "{}", ts.as_microseconds_since_epoch().to_string()),
+            S::Timestamp(ts) => write!(f, "{}", ts.as_microseconds_since_epoch()),
             S::Numerics(values) => write!(f, "{:?}", values),
             S::Bool(b) => write!(f, "{}", b),
             S::List(values) => write!(f, "{:?}", values),
@@ -891,12 +891,10 @@ impl Comparison {
                 | Comparison::Greater,
                 Value::Bool(_) | Value::List(_) | Value::Null,
             )
-            | (Comparison::Match, _) => {
-                return Err(StoreError::UnsupportedFilter(
-                    self.to_string(),
-                    value.to_string(),
-                ));
-            }
+            | (Comparison::Match, _) => Err(StoreError::UnsupportedFilter(
+                self.to_string(),
+                value.to_string(),
+            )),
         }
     }
 }
@@ -1278,19 +1276,17 @@ impl<'a> QueryFragment<Pg> for QueryChild<'a> {
                 out.push_sql(" = ");
                 child_column.walk_ast(out.reborrow())?;
             }
+        } else if parent_column.is_list() {
+            // Type C: i.id = any(c.child_ids)
+            child_column.walk_ast(out.reborrow())?;
+            out.push_sql(" = any(");
+            parent_column.walk_ast(out.reborrow())?;
+            out.push_sql(")");
         } else {
-            if parent_column.is_list() {
-                // Type C: i.id = any(c.child_ids)
-                child_column.walk_ast(out.reborrow())?;
-                out.push_sql(" = any(");
-                parent_column.walk_ast(out.reborrow())?;
-                out.push_sql(")");
-            } else {
-                // Type D: i.id = c.child_id
-                child_column.walk_ast(out.reborrow())?;
-                out.push_sql(" = ");
-                parent_column.walk_ast(out.reborrow())?;
-            }
+            // Type D: i.id = c.child_id
+            child_column.walk_ast(out.reborrow())?;
+            out.push_sql(" = ");
+            parent_column.walk_ast(out.reborrow())?;
         }
 
         out.push_sql(" and ");
@@ -1414,12 +1410,10 @@ impl<'a> Filter<'a> {
                 | Value::Int(_)
                 | Value::Int8(_)
                 | Value::List(_)
-                | Value::Null => {
-                    return Err(StoreError::UnsupportedFilter(
-                        op.to_owned(),
-                        value.to_string(),
-                    ));
-                }
+                | Value::Null => Err(StoreError::UnsupportedFilter(
+                    op.to_owned(),
+                    value.to_string(),
+                )),
             }
         }
 
@@ -1435,8 +1429,7 @@ impl<'a> Filter<'a> {
 
             if column.use_prefix_comparison() && !value.is_null() {
                 let column_type = column.column_type();
-                PrefixComparison::new(op, column, column_type, value)
-                    .map(|pc| Filter::PrefixCmp(pc))
+                PrefixComparison::new(op, column, column_type, value).map(Filter::PrefixCmp)
             } else {
                 let value = QueryValue::new(value, column.column_type())?;
                 Ok(Filter::Cmp(column, op, value))
@@ -1522,7 +1515,7 @@ impl<'a> Filter<'a> {
             }
             NotIn(attr, values) => {
                 let column = table.column_for_field(attr.as_str())?;
-                let values = QueryValue::many(values, &column.column_type())?;
+                let values = QueryValue::many(values, column.column_type())?;
                 Ok(F::NotIn(column, values))
             }
             Contains(attr, value) => contains(table, attr, K::Like, value),
@@ -1755,7 +1748,7 @@ impl<'a> Filter<'a> {
 
         if have_non_nulls {
             if column.use_prefix_comparison()
-                && PrefixType::new(&column).is_ok()
+                && PrefixType::new(column).is_ok()
                 && values.iter().all(|v| match &v.value {
                     SqlValue::Text(s) => s.len() < STRING_PREFIX_SIZE,
                     SqlValue::String(s) => s.len() < STRING_PREFIX_SIZE,
@@ -1770,7 +1763,7 @@ impl<'a> Filter<'a> {
                 // query optimizer
                 // See PrefixComparison for a more detailed discussion of what
                 // is happening here
-                PrefixType::new(&column)?.push_column_prefix(&column, &mut out.reborrow())?;
+                PrefixType::new(column)?.push_column_prefix(column, &mut out.reborrow())?;
             } else {
                 column.walk_ast(out.reborrow())?;
             }
@@ -2232,7 +2225,7 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
         // This clause with an empty array would filter out everything
-        if self.excluded_keys.len() > 0 {
+        if !self.excluded_keys.is_empty() {
             out.push_identifier(&self.table.primary_key().name)?;
             // For truly gigantic `excluded_keys` lists, this will be slow, and
             // we should rewrite this query to use a CTE or a temp table to hold
@@ -2316,7 +2309,7 @@ impl<'a> InsertRow<'a> {
                     })
                     .collect::<Result<_, _>>()?;
                 if let ColumnType::TSVector(config) = &column.column_type {
-                    InsertValue::Fulltext(fulltext_field_values, &config)
+                    InsertValue::Fulltext(fulltext_field_values, config)
                 } else {
                     return Err(StoreError::FulltextColumnMissingConfig);
                 }
@@ -2508,7 +2501,7 @@ impl<'a> ConflictingEntitiesQuery<'a> {
             .iter()
             .map(|entity| layout.table_for_entity(entity).map(|table| table.as_ref()))
             .collect::<Result<Vec<_>, _>>()?;
-        let ids = IdList::try_from_iter_ref(group.ids().map(|id| IdRef::from(id)))?;
+        let ids = IdList::try_from_iter_ref(group.ids().map(IdRef::from))?;
         Ok(ConflictingEntitiesQuery { tables, ids })
     }
 }
@@ -3017,11 +3010,11 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("select '");
         out.push_sql(self.table.meta.object.as_str());
         out.push_sql("' as entity, c.id, c.vid, p.id::text as ");
-        out.push_sql(&*PARENT_ID);
+        out.push_sql(PARENT_ID);
         limit
             .sort_key
             .select(&mut out, SelectStatementLevel::InnerStatement)?;
-        self.children(true, &limit, &mut out)
+        self.children(true, limit, &mut out)
     }
 
     /// Collect all the parent id's from all windows
@@ -3587,7 +3580,7 @@ impl<'a> SortKey<'a> {
             direction: SortDirection,
         ) -> Result<Vec<ChildKeyAndIdSharedDetails<'a>>, QueryExecutionError> {
             assert!(entity_types.len() < 255);
-            return entity_types
+            entity_types
                 .iter()
                 .enumerate()
                 .map(|(i, entity_type)| {
@@ -3645,7 +3638,7 @@ impl<'a> SortKey<'a> {
                         })
                     }
                 })
-                .collect::<Result<Vec<ChildKeyAndIdSharedDetails<'a>>, QueryExecutionError>>();
+                .collect::<Result<Vec<ChildKeyAndIdSharedDetails<'a>>, QueryExecutionError>>()
         }
 
         fn with_child_interface_key<'a>(
@@ -3964,7 +3957,7 @@ impl<'a> SortKey<'a> {
     ) -> QueryResult<()> {
         fn order_by_parent_id(out: &mut AstPass<Pg>) {
             out.push_sql("order by ");
-            out.push_sql(&*PARENT_ID);
+            out.push_sql(PARENT_ID);
             out.push_sql(", ");
         }
 
@@ -4065,11 +4058,8 @@ impl<'a> SortKey<'a> {
                 ));
             }
 
-            match sort_by.column_type() {
-                ColumnType::TSVector(_) => {
-                    return Err(internal_error!("TSVector is not supported"));
-                }
-                _ => {}
+            if let ColumnType::TSVector(_) = sort_by.column_type() {
+                return Err(internal_error!("TSVector is not supported"));
             }
         }
 
@@ -4176,8 +4166,8 @@ impl<'a> SortKey<'a> {
             Ok(())
         }
 
-        match self {
-            SortKey::ChildKey(nested) => match nested {
+        if let SortKey::ChildKey(nested) = self {
+            match nested {
                 ChildKey::Single(child) => {
                     add(
                         &child.child_from,
@@ -4218,8 +4208,7 @@ impl<'a> SortKey<'a> {
                         out,
                     )?;
                 }
-            },
-            _ => {}
+            }
         }
         Ok(())
     }
@@ -4389,7 +4378,7 @@ impl<'a> FilterQuery<'a> {
         out.push_sql(" from (select ");
         write_column_names(&window.column_names, window.table, Some("c."), &mut out)?;
         out.push_sql(", p.id::text as ");
-        out.push_sql(&*PARENT_ID);
+        out.push_sql(PARENT_ID);
         window.children(false, &self.limit, &mut out)?;
         out.push_sql(") c");
         out.push_sql("\n ");
@@ -4663,7 +4652,7 @@ impl<'a> QueryFragment<Pg> for ClampRangeQuery<'a> {
         self.br_column.clamp(&mut out)?;
         out.push_sql("\n where ");
 
-        id_is_in(&self.entity_ids, &mut out)?;
+        id_is_in(self.entity_ids, &mut out)?;
         out.push_sql(" and (");
         self.br_column.latest(&mut out);
         out.push_sql(")");
@@ -5097,8 +5086,8 @@ fn jsonb_build_object(
 
 /// Helper function to iterate over the merged fields of BASE_SQL_COLUMNS and the provided attribute
 /// names, yielding valid SQL names for the given table.
-fn iter_column_names<'a, 'b>(
-    attribute_names: &'a BTreeSet<String>,
+fn iter_column_names<'b>(
+    attribute_names: &BTreeSet<String>,
     table: dsl::Table<'b>,
     include_block_range_column: bool,
 ) -> impl Iterator<Item = &'b str> {

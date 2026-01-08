@@ -193,7 +193,7 @@ impl SubscriptionManager {
                     let stale_ids = subscriptions
                         .iter_mut()
                         .filter_map(|(id, sender)| match sender.is_closed() {
-                            true => Some(id.clone()),
+                            true => Some(*id),
                             false => None,
                         })
                         .collect::<Vec<_>>();

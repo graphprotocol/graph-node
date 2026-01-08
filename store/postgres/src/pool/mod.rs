@@ -67,14 +67,14 @@ impl DerefMut for PermittedConnection {
 
 /// The namespace under which the `PRIMARY_TABLES` are mapped into each
 /// shard
-pub(crate) const PRIMARY_PUBLIC: &'static str = "primary_public";
+pub(crate) const PRIMARY_PUBLIC: &str = "primary_public";
 
 /// Tables that we map from the primary into `primary_public` in each shard
 const PRIMARY_TABLES: [&str; 3] = ["deployment_schemas", "chains", "active_copies"];
 
 /// The namespace under which we create views in the primary that union all
 /// the `SHARDED_TABLES`
-pub(crate) const CROSS_SHARD_NSP: &'static str = "sharded";
+pub(crate) const CROSS_SHARD_NSP: &str = "sharded";
 
 /// Tables that we map from each shard into each other shard into the
 /// `shard_<name>_subgraphs` namespace
@@ -206,7 +206,7 @@ impl PoolState {
         // we didn't have an error, it means the database is not available
         if self.needs_setup() {
             error!(self.logger, "Database is not available, setup did not work");
-            return Err(StoreError::DatabaseUnavailable);
+            Err(StoreError::DatabaseUnavailable)
         } else {
             Ok(pool)
         }
@@ -596,17 +596,17 @@ impl PoolInner {
         match res {
             Ok(conn) => {
                 self.state_tracker.mark_available();
-                return Ok(conn);
+                Ok(conn)
             }
             Err(PoolError::Closed) | Err(PoolError::Backend(_)) => {
                 self.state_tracker.mark_unavailable(Duration::from_nanos(0));
-                return Err(StoreError::DatabaseUnavailable);
+                Err(StoreError::DatabaseUnavailable)
             }
             Err(PoolError::Timeout(_)) => {
                 if !self.state_tracker.timeout_is_ignored() {
                     self.state_tracker.mark_unavailable(elapsed);
                 }
-                return Err(StoreError::StatementTimeout);
+                Err(StoreError::StatementTimeout)
             }
             Err(PoolError::NoRuntimeSpecified) | Err(PoolError::PostCreateHook(_)) => {
                 let e = res.err().unwrap();
@@ -650,7 +650,7 @@ impl PoolInner {
     {
         let pool = self.fdw_pool(logger)?;
         loop {
-            match self.get_from_pool(&pool, None, Duration::ZERO).await {
+            match self.get_from_pool(pool, None, Duration::ZERO).await {
                 Ok(conn) => return Ok(conn),
                 Err(e) => {
                     if timeout() {
@@ -701,20 +701,18 @@ impl PoolInner {
 
     async fn locale_check(&self, logger: &Logger) -> Result<(), StoreError> {
         let mut conn = self.get().await?;
-        Ok(
-            if let Err(msg) = catalog::Locale::load(&mut conn).await?.suitable() {
-                if &self.shard == &*PRIMARY_SHARD && primary::is_empty(&mut conn).await? {
-                    const MSG: &str =
-                    "Database does not use C locale. \
-                    Please check the graph-node documentation for how to set up the database locale";
+        let _: () = if let Err(msg) = catalog::Locale::load(&mut conn).await?.suitable() {
+            if self.shard == *PRIMARY_SHARD && primary::is_empty(&mut conn).await? {
+                const MSG: &str = "Database does not use C locale. \
+                Please check the graph-node documentation for how to set up the database locale";
 
-                    crit!(logger, "{}: {}", MSG, msg);
-                    panic!("{}: {}", MSG, msg);
-                } else {
-                    warn!(logger, "{}.\nPlease check the graph-node documentation for how to set up the database locale", msg);
-                }
-            },
-        )
+                crit!(logger, "{}: {}", MSG, msg);
+                panic!("{}: {}", MSG, msg);
+            } else {
+                warn!(logger, "{}.\nPlease check the graph-node documentation for how to set up the database locale", msg);
+            }
+        };
+        Ok(())
     }
 
     pub(crate) async fn query_permit(&self) -> OwnedSemaphorePermit {
@@ -834,7 +832,7 @@ impl PoolInner {
             servers: &'a [ForeignServer],
         ) -> Vec<(&'a str, String)> {
             servers
-                .into_iter()
+                .iter()
                 .map(|server| {
                     let nsp = if &server.shard == current {
                         local_nsp.to_string()
@@ -900,13 +898,13 @@ impl PoolInner {
     /// need to remap anything that we are importing via fdw to make sure we
     /// are using this updated schema
     pub async fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
-        if &server.shard == &*PRIMARY_SHARD {
+        if server.shard == *PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
             let mut conn = self.get().await?;
             conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard).scope_boxed())
                 .await?;
         }
-        if &server.shard != &self.shard {
+        if server.shard != self.shard {
             info!(
                 &self.logger,
                 "Mapping metadata from {}",
@@ -920,7 +918,7 @@ impl PoolInner {
     }
 
     pub async fn needs_remap(&self, server: &ForeignServer) -> Result<bool, StoreError> {
-        if &server.shard == &self.shard {
+        if server.shard == self.shard {
             return Ok(false);
         }
 

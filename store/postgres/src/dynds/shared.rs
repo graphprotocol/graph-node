@@ -117,7 +117,7 @@ pub(super) async fn insert(
     let dds: Vec<_> = data_sources
         .entries
         .iter()
-        .map(|(block_ptr, dds)| {
+        .flat_map(|(block_ptr, dds)| {
             dds.iter().map(|ds| {
                 let StoredDynamicDataSource {
                     manifest_idx: _,
@@ -160,7 +160,6 @@ pub(super) async fn insert(
                 ))
             })
         })
-        .flatten()
         .collect::<Result<_, _>>()?;
 
     insert_into(decds::table)

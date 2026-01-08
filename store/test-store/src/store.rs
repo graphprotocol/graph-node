@@ -608,8 +608,8 @@ pub fn all_shards() -> Vec<Shard> {
 
 fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager>) {
     let mut opt = Opt::default();
-    let url = std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL").filter(|s| s.len() > 0);
-    let file = std::env::var_os("GRAPH_NODE_TEST_CONFIG").filter(|s| s.len() > 0);
+    let url = std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL").filter(|s| !s.is_empty());
+    let file = std::env::var_os("GRAPH_NODE_TEST_CONFIG").filter(|s| !s.is_empty());
     if let Some(file) = file {
         let file = file.into_string().unwrap();
         opt.config = Some(file);

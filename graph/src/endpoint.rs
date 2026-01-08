@@ -34,9 +34,9 @@ pub enum ConnectionType {
     Rpc,
 }
 
-impl Into<&str> for &ConnectionType {
-    fn into(self) -> &'static str {
-        match self {
+impl From<&ConnectionType> for &str {
+    fn from(val: &ConnectionType) -> Self {
+        match val {
             ConnectionType::Firehose => "firehose",
             ConnectionType::Rpc => "rpc",
         }

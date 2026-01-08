@@ -531,7 +531,7 @@ impl WasmInstanceContext<'_> {
         let ipfs_res = host_exports.ipfs_cat(&logger, link).await;
         let logger = self.as_ref().ctx.logger.cheap_clone();
         match ipfs_res {
-            Ok(bytes) => asc_new(self, &*bytes, gas).await.map_err(Into::into),
+            Ok(bytes) => asc_new(self, &*bytes, gas).await,
 
             // Return null in case of error.
             Err(e) => {
@@ -568,7 +568,7 @@ impl WasmInstanceContext<'_> {
             .ipfs_get_block(&self.as_ref().ctx.logger, link)
             .await;
         match ipfs_res {
-            Ok(bytes) => asc_new(self, &*bytes, gas).await.map_err(Into::into),
+            Ok(bytes) => asc_new(self, &*bytes, gas).await,
 
             // Return null in case of error.
             Err(e) => {
@@ -1118,7 +1118,7 @@ impl WasmInstanceContext<'_> {
 
         // map `None` to `null`, and `Some(s)` to a runtime string
         match name {
-            Some(name) => asc_new(self, &*name, gas).await.map_err(Into::into),
+            Some(name) => asc_new(self, &*name, gas).await,
             None => Ok(AscPtr::null()),
         }
     }

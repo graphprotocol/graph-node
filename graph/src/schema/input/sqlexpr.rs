@@ -360,7 +360,7 @@ struct Validator<F> {
     errors: Vec<SchemaValidationError>,
 }
 
-const FN_WHITELIST: [&'static str; 14] = [
+const FN_WHITELIST: [&str; 14] = [
     // Clearly deterministic functions from
     // https://www.postgresql.org/docs/current/functions-math.html, Table
     // 9.5. We could also add trig functions (Table 9.7 and 9.8), but under

@@ -33,7 +33,7 @@ pub async fn load_deployments(
 ) -> Result<Vec<Deployment>, GraphmanError> {
     let mut primary_conn = primary_pool.get().await?;
 
-    crate::deployment::load_deployments(&mut primary_conn, &deployment, &version).await
+    crate::deployment::load_deployments(&mut primary_conn, deployment, version).await
 }
 
 pub async fn load_deployment_statuses(
@@ -56,7 +56,7 @@ pub async fn load_deployment_statuses(
 
             let chain = status
                 .chains
-                .get(0)
+                .first()
                 .ok_or_else(|| {
                     GraphmanError::Store(anyhow!(
                         "deployment status has no chains on deployment '{id}'"

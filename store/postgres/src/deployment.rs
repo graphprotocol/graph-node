@@ -481,7 +481,7 @@ pub async fn transact_block(
     // Performance note: This costs us an extra DB query on every update. We used to put this in the
     // `where` clause of the `update` statement, but that caused Postgres to use bitmap scans instead
     // of a simple primary key lookup. So a separate query it is.
-    let block_ptr = block_ptr(conn, &site).await?;
+    let block_ptr = block_ptr(conn, site).await?;
     if let Some(block_ptr_from) = block_ptr {
         if block_ptr_from.number >= ptr.number {
             return Err(StoreError::DuplicateBlockProcessing(
@@ -561,7 +561,7 @@ pub async fn forward_block_ptr(
 
         // No matching rows were found. This is an error. By the filter conditions, this can only be
         // due to a missing deployment (which `block_ptr` catches) or duplicate block processing.
-        0 => match block_ptr(conn, &site).await? {
+        0 => match block_ptr(conn, site).await? {
             Some(block_ptr_from) if block_ptr_from.number >= ptr.number => Err(
                 StoreError::DuplicateBlockProcessing(site.deployment.clone(), ptr.number),
             ),
@@ -1113,7 +1113,7 @@ pub(crate) async fn revert_subgraph_errors(
     // The result will be the same at `reverted_block` or `reverted_block - 1` since the errors at
     // `reverted_block` were just deleted, but semantically we care about `reverted_block - 1` which
     // is the block being reverted to.
-    check_health(&logger, conn, id, reverted_block - 1).await?;
+    check_health(logger, conn, id, reverted_block - 1).await?;
 
     // If the deployment is failed in both `failed` and `status` columns,
     // update both values respectively to `false` and `healthy`. Basically

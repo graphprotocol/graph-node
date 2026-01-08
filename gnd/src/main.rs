@@ -166,7 +166,7 @@ async fn run_graph_node(
 
     let (prometheus_registry, metrics_registry) = launcher::setup_metrics(logger);
 
-    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &metrics_registry, &logger)
+    let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &metrics_registry, logger)
         .await
         .unwrap_or_else(|err| panic!("Failed to create IPFS client: {err:#}"));
 

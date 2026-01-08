@@ -305,7 +305,7 @@ impl VisitorMut for Validator<'_> {
                 }
                 (Some(_), Some(_)) => {
                     // Table exists but has args, must be a function
-                    return self.validate_function_name(&name);
+                    return self.validate_function_name(name);
                 }
                 (None, Some(args)) => {
                     // Table does not exist but has args, is either an
@@ -314,7 +314,7 @@ impl VisitorMut for Validator<'_> {
 
                     if !self.layout.has_aggregation(table_name.as_str()) {
                         // Not an aggregation, must be a function
-                        return self.validate_function_name(&name);
+                        return self.validate_function_name(name);
                     }
 
                     let TableFunctionArgs { args, settings } = args;
@@ -339,7 +339,7 @@ impl VisitorMut for Validator<'_> {
 
                     let Some(table) = self.layout.aggregation_table(table_name.as_str(), intv)
                     else {
-                        return self.validate_function_name(&name);
+                        return self.validate_function_name(name);
                     };
                     table
                 }

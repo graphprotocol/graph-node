@@ -33,7 +33,7 @@ fn impl_cheap_clone(input: TokenStream2) -> TokenStream2 {
     fn cheap_clone_body(data: Data) -> TokenStream2 {
         match data {
             Data::Struct(st) => match &st.fields {
-                Fields::Unit => return quote! { Self  },
+                Fields::Unit => quote! { Self  },
                 Fields::Unnamed(fields) => {
                     let mut field_clones = Vec::new();
                     for (num, _) in fields.unnamed.iter().enumerate() {
@@ -105,7 +105,7 @@ fn impl_cheap_clone(input: TokenStream2) -> TokenStream2 {
     let input = match syn::parse2::<DeriveInput>(input) {
         Ok(input) => input,
         Err(e) => {
-            return e.to_compile_error().into();
+            return e.to_compile_error();
         }
     };
     let DeriveInput {
@@ -275,7 +275,7 @@ pub fn test(args: TokenStream, item: TokenStream) -> TokenStream {
 
     if input.sig.asyncness.is_none() {
         let msg = "the `async` keyword is missing from the function declaration";
-        return syn::Error::new_spanned(&input.sig.fn_token, msg)
+        return syn::Error::new_spanned(input.sig.fn_token, msg)
             .to_compile_error()
             .into();
     }

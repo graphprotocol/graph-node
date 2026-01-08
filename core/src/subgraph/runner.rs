@@ -144,7 +144,7 @@ where
         // Filter out data sources that have reached their end block
         let end_block_filter = |ds: &&C::DataSource| match current_ptr.as_ref() {
             // We filter out datasources for which the current block is at or past their end block.
-            Some(block) => ds.end_block().map_or(true, |end| block.number < end),
+            Some(block) => ds.end_block().is_none_or(|end| block.number < end),
             // If there is no current block, we keep all datasources.
             None => true,
         };
@@ -308,11 +308,10 @@ where
                 // This will require some code refactor in how the BlockStream is created
                 let block_start = Instant::now();
 
-                let action = self.handle_stream_event(event).await.map(|res| {
+                let action = self.handle_stream_event(event).await.inspect(|res| {
                     self.metrics
                         .subgraph
                         .observe_block_processed(block_start.elapsed(), res.block_finished());
-                    res
                 })?;
 
                 self.update_deployment_synced_metric();
@@ -513,7 +512,7 @@ where
             .observe(elapsed);
 
         block_state_metrics
-            .flush_metrics_to_store(&logger, block_ptr, self.inputs.deployment.id)
+            .flush_metrics_to_store(logger, block_ptr, self.inputs.deployment.id)
             .non_deterministic()?;
 
         if has_errors {
@@ -537,7 +536,7 @@ where
 
             // Use `Canceled` to avoiding setting the subgraph health to failed, an error was
             // just transacted so it will be already be set to unhealthy.
-            Err(ProcessingError::Canceled.into())
+            Err(ProcessingError::Canceled)
         } else {
             Ok(())
         }
@@ -561,8 +560,8 @@ where
         self.ctx
             .decoder
             .match_and_decode_many(
-                &logger,
-                &block,
+                logger,
+                block,
                 triggers,
                 hosts_filter,
                 &self.metrics.subgraph,
@@ -996,11 +995,11 @@ where
                     }
                 }
 
-                return Ok(action);
+                Ok(action)
             }
             Err(ProcessingError::Canceled) => {
                 debug!(self.logger, "Subgraph block stream shut down cleanly");
-                return Ok(Action::Stop);
+                Ok(Action::Stop)
             }
 
             // Handle unexpected stream errors by marking the subgraph as failed.
@@ -1037,7 +1036,7 @@ where
                             .await
                             .context("Failed to set subgraph status to `failed`")?;
 
-                        return Err(err);
+                        Err(err)
                     }
                     false => {
                         // Shouldn't fail subgraph if it's already failed for non-deterministic
@@ -1072,7 +1071,7 @@ where
                         self.state.should_try_unfail_non_deterministic = true;
 
                         // And restart the subgraph.
-                        return Ok(Action::Restart);
+                        Ok(Action::Restart)
                     }
                 }
             }
@@ -1114,12 +1113,12 @@ where
         // it so that we are up to date when checking if synced.
         let cached_head_ptr = self.state.cached_head_ptr.cheap_clone();
         if cached_head_ptr.is_none()
-            || close_to_chain_head(&block_ptr, &cached_head_ptr, CAUGHT_UP_DISTANCE)
+            || close_to_chain_head(block_ptr, &cached_head_ptr, CAUGHT_UP_DISTANCE)
         {
             self.state.cached_head_ptr = self.inputs.chain.chain_head_ptr().await?;
         }
         let is_caught_up =
-            close_to_chain_head(&block_ptr, &self.state.cached_head_ptr, CAUGHT_UP_DISTANCE);
+            close_to_chain_head(block_ptr, &self.state.cached_head_ptr, CAUGHT_UP_DISTANCE);
         if is_caught_up {
             // Stop recording time-to-sync metrics.
             self.metrics.stream.stopwatch.disable();
@@ -1242,7 +1241,7 @@ where
             // This propagates any deterministic error as a non-deterministic one. Which might make
             // sense considering offchain data sources are non-deterministic.
             if let Some(err) = block_state.deterministic_errors.into_iter().next() {
-                return Err(anyhow!("{}", err.to_string()));
+                return Err(anyhow!("{}", err));
             }
 
             mods.extend(
@@ -1469,7 +1468,7 @@ async fn update_proof_of_indexing(
             (digest_name, Value::from(digest)),
         ];
         if entity_cache.schema.has_aggregations() {
-            let block_time = Value::Int8(block_time.as_secs_since_epoch() as i64);
+            let block_time = Value::Int8(block_time.as_secs_since_epoch());
             data.push((entity_cache.schema.poi_block_time(), block_time));
         }
         let poi = entity_cache.make_entity(data)?;

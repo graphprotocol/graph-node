@@ -179,7 +179,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         })
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (&'a K, &'a V)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
         self.queue
             .iter()
             .map(|entry| (&entry.0.key, &entry.0.value))

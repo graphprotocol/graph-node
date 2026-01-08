@@ -565,8 +565,8 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
 
         let ptrs = futures03::future::try_join_all(
             self.source_subgraph_stores
-                .iter()
-                .map(|(_, store)| store.block_ptr()),
+                .values()
+                .map(|store| store.block_ptr()),
         )
         .await?;
 

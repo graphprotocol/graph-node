@@ -20,7 +20,7 @@ pub async fn run(
         ctx.primary_pool.clone(),
         ctx.notification_sender.clone(),
         &deployment,
-        &node,
+        node,
         curr_node,
     )
     .await?;

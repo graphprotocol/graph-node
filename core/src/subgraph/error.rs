@@ -50,7 +50,7 @@ impl ProcessingError {
 /// call the method `detail` to avoid ambiguity with anyhow's `context`
 /// method
 pub trait DetailHelper<T, E> {
-    fn detail(self: Self, ctx: &str) -> Result<T, ProcessingError>;
+    fn detail(self, ctx: &str) -> Result<T, ProcessingError>;
 }
 
 impl<T> DetailHelper<T, ProcessingError> for Result<T, ProcessingError> {
@@ -61,12 +61,12 @@ impl<T> DetailHelper<T, ProcessingError> for Result<T, ProcessingError> {
 
 /// Implement this for errors that are always non-deterministic.
 pub(crate) trait NonDeterministicErrorHelper<T, E> {
-    fn non_deterministic(self: Self) -> Result<T, ProcessingError>;
+    fn non_deterministic(self) -> Result<T, ProcessingError>;
 }
 
 impl<T> NonDeterministicErrorHelper<T, anyhow::Error> for Result<T, anyhow::Error> {
     fn non_deterministic(self) -> Result<T, ProcessingError> {
-        self.map_err(|e| ProcessingError::Unknown(e))
+        self.map_err(ProcessingError::Unknown)
     }
 }
 
@@ -79,7 +79,7 @@ impl<T> NonDeterministicErrorHelper<T, StoreError> for Result<T, StoreError> {
 /// Implement this for errors where it depends on the details whether they
 /// are deterministic or not.
 pub(crate) trait ClassifyErrorHelper<T, E> {
-    fn classify(self: Self) -> Result<T, ProcessingError>;
+    fn classify(self) -> Result<T, ProcessingError>;
 }
 
 impl<T> ClassifyErrorHelper<T, StoreError> for Result<T, StoreError> {
@@ -88,12 +88,10 @@ impl<T> ClassifyErrorHelper<T, StoreError> for Result<T, StoreError> {
             if ENV_VARS.mappings.store_errors_are_nondeterministic {
                 // Old behavior, just in case the new behavior causes issues
                 ProcessingError::Unknown(Error::from(e))
+            } else if e.is_deterministic() {
+                ProcessingError::Deterministic(Box::new(e))
             } else {
-                if e.is_deterministic() {
-                    ProcessingError::Deterministic(Box::new(e))
-                } else {
-                    ProcessingError::Unknown(Error::from(e))
-                }
+                ProcessingError::Unknown(Error::from(e))
             }
         })
     }

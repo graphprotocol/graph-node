@@ -241,7 +241,7 @@ where
                 .matches_by_address(trigger.address_match()),
             TriggerData::Offchain(trigger) => self
                 .offchain_hosts
-                .matches_by_address(trigger.source.address().as_ref().map(|a| a.as_slice())),
+                .matches_by_address(trigger.source.address().as_deref()),
             TriggerData::Subgraph(trigger) => self
                 .subgraph_hosts
                 .matches_by_address(Some(trigger.source.to_bytes().as_slice())),

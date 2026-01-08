@@ -395,7 +395,7 @@ impl MetricsRegistry {
         variable_labels: &[&str],
     ) -> Result<Box<IntCounterVec>, PrometheusError> {
         let opts = Opts::new(name, help);
-        let counters = Box::new(IntCounterVec::new(opts, &variable_labels)?);
+        let counters = Box::new(IntCounterVec::new(opts, variable_labels)?);
         self.register(name, counters.clone());
         Ok(counters)
     }

@@ -528,8 +528,9 @@ impl AscIndexId for AscEnum<YamlValueKind> {
 pub type AscEnumArray<D> = AscPtr<Array<AscPtr<AscEnum<D>>>>;
 
 #[repr(u32)]
-#[derive(AscType, Copy, Clone)]
+#[derive(AscType, Copy, Clone, Default)]
 pub enum EthereumValueKind {
+    #[default]
     Address,
     FixedBytes,
     Bytes,
@@ -559,22 +560,17 @@ impl EthereumValueKind {
     }
 }
 
-impl Default for EthereumValueKind {
-    fn default() -> Self {
-        EthereumValueKind::Address
-    }
-}
-
 impl AscValue for EthereumValueKind {}
 
 #[repr(u32)]
-#[derive(AscType, Copy, Clone)]
+#[derive(AscType, Copy, Clone, Default)]
 pub enum StoreValueKind {
     String,
     Int,
     BigDecimal,
     Bool,
     Array,
+    #[default]
     Null,
     Bytes,
     BigInt,
@@ -598,12 +594,6 @@ impl StoreValueKind {
             Value::Bytes(_) => StoreValueKind::Bytes,
             Value::BigInt(_) => StoreValueKind::BigInt,
         }
-    }
-}
-
-impl Default for StoreValueKind {
-    fn default() -> Self {
-        StoreValueKind::Null
     }
 }
 
@@ -670,20 +660,15 @@ pub type AscEntity = AscTypedMap<AscString, AscEnum<StoreValueKind>>;
 pub(crate) type AscJson = AscTypedMap<AscString, AscEnum<JsonValueKind>>;
 
 #[repr(u32)]
-#[derive(AscType, Copy, Clone)]
+#[derive(AscType, Copy, Clone, Default)]
 pub enum JsonValueKind {
+    #[default]
     Null,
     Bool,
     Number,
     String,
     Array,
     Object,
-}
-
-impl Default for JsonValueKind {
-    fn default() -> Self {
-        JsonValueKind::Null
-    }
 }
 
 impl AscValue for JsonValueKind {}
@@ -780,8 +765,9 @@ impl AscIndexId for AscWrapped<AscPtr<AscEnum<YamlValueKind>>> {
 }
 
 #[repr(u32)]
-#[derive(AscType, Clone, Copy)]
+#[derive(AscType, Clone, Copy, Default)]
 pub enum YamlValueKind {
+    #[default]
     Null,
     Bool,
     Number,
@@ -789,12 +775,6 @@ pub enum YamlValueKind {
     Array,
     Object,
     Tagged,
-}
-
-impl Default for YamlValueKind {
-    fn default() -> Self {
-        YamlValueKind::Null
-    }
 }
 
 impl AscValue for YamlValueKind {}

@@ -731,7 +731,6 @@ mod data {
                         .into_iter()
                         .map(|h| h.parse())
                         .collect::<Result<Vec<BlockHash>, _>>()
-                        .map_err(Error::from)
                 }
                 Storage::Private(Schema { blocks, .. }) => Ok(blocks
                     .table()
@@ -835,7 +834,7 @@ mod data {
                     Ok(Some((
                         number,
                         crate::chain_store::try_parse_timestamp(ts)?,
-                        parent_hash.map(|h| BlockHash::from(h)),
+                        parent_hash.map(BlockHash::from),
                     )))
                 }
             }
@@ -2520,7 +2519,7 @@ impl ChainStoreTrait for ChainStore {
 
                 match res {
                     Ok(blocks) => {
-                        for (_, blocks_for_num) in &blocks {
+                        for blocks_for_num in blocks.values() {
                             if blocks.len() == 1 {
                                 self.recent_blocks_cache
                                     .insert_block(blocks_for_num[0].clone());
@@ -2543,9 +2542,7 @@ impl ChainStoreTrait for ChainStore {
 
             let mut result = cached_map;
             for (num, blocks) in stored {
-                if !result.contains_key(&num) {
-                    result.insert(num, blocks);
-                }
+                result.entry(num).or_insert(blocks);
             }
 
             result
@@ -2579,7 +2576,7 @@ impl ChainStoreTrait for ChainStore {
             let stored = if cached.len() < hashes.len() {
                 let hashes = hashes
                     .iter()
-                    .filter(|hash| cached.iter().find(|(ptr, _)| &ptr.hash == *hash).is_none())
+                    .filter(|hash| !cached.iter().any(|(ptr, _)| &ptr.hash == *hash))
                     .cloned()
                     .collect::<Vec<_>>();
                 // We key this off the entire list of hashes, which means
@@ -3128,7 +3125,7 @@ impl EthereumCallCache for ChainStore {
         }
 
         let ids: Vec<_> = reqs
-            .into_iter()
+            .iter()
             .map(|req| contract_call_id(req, &block))
             .collect();
         let id_refs: Vec<_> = ids.iter().map(|id| id.as_slice()).collect();
@@ -3158,9 +3155,9 @@ impl EthereumCallCache for ChainStore {
             resps.push(resp);
         }
         let calls = reqs
-            .into_iter()
+            .iter()
             .enumerate()
-            .filter(|(idx, _)| !found.contains(&idx))
+            .filter(|(idx, _)| !found.contains(idx))
             .map(|(_, call)| call.cheap_clone())
             .collect();
         Ok((resps, calls))

@@ -358,8 +358,7 @@ pub trait DataSource<C: Blockchain>: 'static + Sized + Send + Sync + Clone {
     fn validate(&self, spec_version: &semver::Version) -> Vec<Error>;
 
     fn has_expired(&self, block: BlockNumber) -> bool {
-        self.end_block()
-            .map_or(false, |end_block| block > end_block)
+        self.end_block().is_some_and(|end_block| block > end_block)
     }
 
     fn has_declared_calls(&self) -> bool {
@@ -602,11 +601,11 @@ impl BlockchainKind {
         //
         // Split by `/` to, for example, read 'ethereum' in 'ethereum/contracts'.
         manifest
-            .get(&Value::String("dataSources".to_owned()))
+            .get(Value::String("dataSources".to_owned()))
             .and_then(|ds| ds.as_sequence())
             .and_then(|ds| ds.first())
             .and_then(|ds| ds.as_mapping())
-            .and_then(|ds| ds.get(&Value::String("kind".to_owned())))
+            .and_then(|ds| ds.get(Value::String("kind".to_owned())))
             .and_then(|kind| kind.as_str())
             .and_then(|kind| kind.split('/').next())
             .context("invalid manifest")

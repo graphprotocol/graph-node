@@ -288,10 +288,7 @@ where
             .to_result()?;
 
         let query_start = Instant::now();
-        let result = store
-            .execute_sql(&req.query)
-            .await
-            .map_err(|e| QueryExecutionError::from(e));
+        let result = store.execute_sql(&req.query).await;
 
         self.load_manager.record_work(
             store.shard(),

@@ -358,7 +358,7 @@ impl Value {
                     })?),
                     BIG_DECIMAL_SCALAR => Value::BigDecimal(scalar::BigDecimal::from_str(s)?),
                     INT8_SCALAR => Value::Int8(s.parse::<i64>().map_err(|_| {
-                        QueryExecutionError::ValueParseError("Int8".to_string(), format!("{}", s))
+                        QueryExecutionError::ValueParseError("Int8".to_string(), s.to_string())
                     })?),
                     TIMESTAMP_SCALAR => {
                         Value::Timestamp(scalar::Timestamp::parse_timestamp(s).map_err(|_| {
@@ -644,7 +644,7 @@ impl From<u64> for Value {
 
 impl From<i64> for Value {
     fn from(value: i64) -> Value {
-        Value::Int8(value.into())
+        Value::Int8(value)
     }
 }
 
@@ -960,7 +960,7 @@ impl Entity {
                         // assigning a scalar to a list will be caught below
                         if let Value::List(elts) = value {
                             for (index, elt) in elts.iter().enumerate() {
-                                if !elt.is_assignable(&scalar_type, false) {
+                                if !elt.is_assignable(scalar_type, false) {
                                     return Err(
                                         EntityValidationError::MismatchedElementTypeInList {
                                             entity: key.entity_type.to_string(),
@@ -976,7 +976,7 @@ impl Entity {
                             }
                         }
                     }
-                    if !value.is_assignable(&scalar_type, field.field_type.is_list()) {
+                    if !value.is_assignable(scalar_type, field.field_type.is_list()) {
                         return Err(EntityValidationError::InvalidFieldType {
                             entity: key.entity_type.to_string(),
                             entity_id: key.entity_id.to_string(),

@@ -106,7 +106,7 @@ impl<'a> TryFrom<&'a EntityModification> for EntityWrite<'a> {
                 end,
             } => Ok(EntityWrite {
                 id: &key.entity_id,
-                entity: &data,
+                entity: data,
                 causality_region: key.causality_region,
                 block: *block,
                 end: *end,
@@ -223,13 +223,11 @@ impl EntityModification {
                 block,
                 end,
             }),
-            Remove { key, .. } => {
-                return Err(internal_error!(
-                    "a remove for {}[{}] can not be converted into an insert",
-                    entity_type,
-                    key.entity_id
-                ))
-            }
+            Remove { key, .. } => Err(internal_error!(
+                "a remove for {}[{}] can not be converted into an insert",
+                entity_type,
+                key.entity_id
+            )),
         }
     }
 
@@ -839,8 +837,7 @@ impl Batch {
             .entries
             .iter()
             .filter(move |(ptr, _)| ptr.number <= at)
-            .map(|(_, ds)| ds)
-            .flatten()
+            .flat_map(|(_, ds)| ds)
             .filter(|ds| {
                 !self
                     .offchain_to_remove
@@ -850,7 +847,7 @@ impl Batch {
             })
     }
 
-    pub fn groups<'a>(&'a self) -> impl Iterator<Item = &'a RowGroup> {
+    pub fn groups(&self) -> impl Iterator<Item = &RowGroup> {
         self.mods.groups.iter()
     }
 
@@ -937,7 +934,6 @@ impl<'a> WriteChunk<'a> {
     /// Return a vector of `WriteChunk`s each containing a single write
     pub fn as_single_writes(&self) -> Vec<Self> {
         (0..self.len())
-            .into_iter()
             .map(|position| WriteChunk {
                 group: self.group,
                 chunk_size: 1,
@@ -981,7 +977,7 @@ impl<'a> Iterator for WriteChunkIter<'a> {
                 return insert;
             }
         }
-        return None;
+        None
     }
 }
 

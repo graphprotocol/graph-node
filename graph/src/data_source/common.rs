@@ -420,7 +420,7 @@ impl CallDecl {
                 EthereumArg::Param(name) => {
                     let value = params
                         .iter()
-                        .find(|param| &param.name == name.as_str())
+                        .find(|param| param.name == name.as_str())
                         .ok_or_else(|| {
                             anyhow!(
                                 "In declarative call '{}': unknown param {}",
@@ -441,7 +441,7 @@ impl CallDecl {
                 EthereumArg::StructField(param_name, field_accesses) => {
                     let param = params
                         .iter()
-                        .find(|param| &param.name == param_name.as_str())
+                        .find(|param| param.name == param_name.as_str())
                         .ok_or_else(|| {
                             anyhow!(
                                 "In declarative call '{}': unknown param {}",
@@ -486,7 +486,7 @@ impl CallDecl {
                     EthereumArg::Param(name) => {
                         let value = params
                             .iter()
-                            .find(|param| &param.name == name.as_str())
+                            .find(|param| param.name == name.as_str())
                             .ok_or_else(|| anyhow!("In declarative call '{}': unknown param {}", self.label, name))?
                             .value
                             .clone();
@@ -495,7 +495,7 @@ impl CallDecl {
                     EthereumArg::StructField(param_name, field_accesses) => {
                         let param = params
                             .iter()
-                            .find(|param| &param.name == param_name.as_str())
+                            .find(|param| param.name == param_name.as_str())
                             .ok_or_else(|| anyhow!("In declarative call '{}': unknown param {}", self.label, param_name))?;
 
                         Self::extract_nested_struct_field(
@@ -578,7 +578,7 @@ impl CallDecl {
         self.expr
             .args
             .iter()
-            .zip(param_types.into_iter())
+            .zip(param_types)
             .map(|(arg, expected_type)| {
                 self.process_entity_handler_arg(arg, &expected_type, entity)
             })
@@ -1163,7 +1163,7 @@ impl CallArg {
                             .into_iter()
                             .map(|part| part.parse::<usize>())
                             .collect::<Result<Vec<_>, _>>()
-                            .with_context(|| format!("Failed to parse numeric field indices"))?
+                            .with_context(|| "Failed to parse numeric field indices".to_string())?
                     };
                     Ok(CallArg::Ethereum(EthereumArg::StructField(
                         Word::from(param),
@@ -1235,7 +1235,7 @@ impl DeclaredCall {
                     .context(format!(
                         "Failed to parse arguments for call to function \"{}\" of contract \"{}\"",
                         decl.expr.func.as_str(),
-                        decl.expr.abi.to_string()
+                        decl.expr.abi
                     ))?,
             ))
         })

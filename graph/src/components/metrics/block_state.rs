@@ -37,6 +37,12 @@ impl From<&str> for CounterKey {
     }
 }
 
+impl Default for BlockStateMetrics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BlockStateMetrics {
     pub fn new() -> Self {
         BlockStateMetrics {
@@ -101,7 +107,7 @@ impl BlockStateMetrics {
         let data_bytes = data.into_bytes();
 
         let bucket =
-            Url::parse(&bucket).map_err(|e| anyhow!("Failed to parse bucket url: {}", e))?;
+            Url::parse(bucket).map_err(|e| anyhow!("Failed to parse bucket url: {}", e))?;
         let store = GoogleCloudStorageBuilder::from_env()
             .with_url(bucket)
             .build()?;

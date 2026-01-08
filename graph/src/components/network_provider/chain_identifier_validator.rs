@@ -78,7 +78,7 @@ impl ChainIdentifierValidator for ChainIdentifierStore {
             .store
             .chain_identifier(chain_name)
             .await
-            .map_err(|err| ChainIdentifierValidationError::Store(err))?;
+            .map_err(ChainIdentifierValidationError::Store)?;
 
         if store_identifier.is_default() {
             return Err(ChainIdentifierValidationError::IdentifierNotSet(
@@ -120,6 +120,6 @@ impl ChainIdentifierValidator for ChainIdentifierStore {
         self.store
             .set_chain_identifier(chain_name, chain_identifier)
             .await
-            .map_err(|err| ChainIdentifierValidationError::Store(err))
+            .map_err(ChainIdentifierValidationError::Store)
     }
 }

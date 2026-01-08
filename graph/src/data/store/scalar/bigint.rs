@@ -73,7 +73,7 @@ mod big_int {
         }
 
         pub fn bits(&self) -> usize {
-            self.0.bits() as usize
+            self.0.bits()
         }
 
         pub(in super::super) fn inner(self) -> num_bigint::BigInt {

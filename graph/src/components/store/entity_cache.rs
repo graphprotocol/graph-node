@@ -220,13 +220,13 @@ impl EntityCache {
 
         if let Some(op) = self.updates.get(key).cloned() {
             entity = op
-                .apply_to(&mut entity)
+                .apply_to(&entity)
                 .map_err(|e| key.unknown_attribute(e))?
                 .map(Arc::new);
         }
         if let Some(op) = self.handler_updates.get(key).cloned() {
             entity = op
-                .apply_to(&mut entity)
+                .apply_to(&entity)
                 .map_err(|e| key.unknown_attribute(e))?
                 .map(Arc::new);
         }
@@ -241,7 +241,7 @@ impl EntityCache {
 
         let query = DerivedEntityQuery {
             entity_type,
-            entity_field: field.name.clone().into(),
+            entity_field: field.name.clone(),
             value: eref.entity_id.clone(),
             causality_region: eref.causality_region,
         };
@@ -250,7 +250,7 @@ impl EntityCache {
 
         for (key, entity) in entity_map.iter() {
             // Only insert to the cache if it's not already there
-            if !self.current.contains_key(&key) {
+            if !self.current.contains_key(key) {
                 self.current
                     .insert(key.clone(), Some(Arc::new(entity.clone())));
             }

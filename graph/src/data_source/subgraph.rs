@@ -250,7 +250,7 @@ impl UnresolvedDataSource {
         source_manifest: &SubgraphManifest<C>,
     ) -> Result<(), Error> {
         for entity in mapping_entities {
-            let type_kind = source_manifest.schema.kind_of_declared_type(&entity);
+            let type_kind = source_manifest.schema.kind_of_declared_type(entity);
 
             match type_kind {
                 Some(TypeKind::Interface) => {
@@ -584,15 +584,15 @@ pub struct DataSourceTemplate {
     pub mapping: Mapping,
 }
 
-impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
-    fn into(self) -> DataSourceTemplateInfo {
+impl From<DataSourceTemplate> for DataSourceTemplateInfo {
+    fn from(val: DataSourceTemplate) -> Self {
         let DataSourceTemplate {
             kind,
             network: _,
             name,
             manifest_idx,
             mapping,
-        } = self;
+        } = val;
 
         DataSourceTemplateInfo {
             api_version: mapping.api_version.clone(),

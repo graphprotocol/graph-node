@@ -727,7 +727,6 @@ impl DeploymentStore {
             sql_query(drop_index_sql).execute(&mut conn).await?;
             Err(StoreError::Canceled)
         }
-        .map_err(Into::into)
     }
 
     /// Returns a list of all existing indexes for the specified Entity table.
@@ -745,8 +744,7 @@ impl DeploymentStore {
         let table_name = &table.name;
         let indexes =
             catalog::indexes_for_table(&mut conn, schema_name.as_str(), table_name.as_str())
-                .await
-                .map_err(StoreError::from)?;
+                .await?;
         Ok(indexes.into_iter().map(CreateIndex::parse).collect())
     }
 
@@ -858,13 +856,13 @@ impl DeploymentStore {
     ) -> Result<Box<dyn PruneReporter>, StoreError> {
         async fn do_prune(
             store: Arc<DeploymentStore>,
-            mut conn: &mut AsyncPgConnection,
+            conn: &mut AsyncPgConnection,
             site: Arc<Site>,
             req: PruneRequest,
             mut reporter: Box<dyn PruneReporter>,
         ) -> Result<Box<dyn PruneReporter>, StoreError> {
-            let layout = store.layout(&mut conn, site.clone()).await?;
-            let state = deployment::state(&mut conn, &site).await?;
+            let layout = store.layout(conn, site.clone()).await?;
+            let state = deployment::state(conn, &site).await?;
 
             if state.latest_block.number <= req.history_blocks {
                 // We haven't accumulated enough history yet, nothing to prune
@@ -884,7 +882,7 @@ impl DeploymentStore {
             .await?;
 
             layout
-                .prune(&store.logger, reporter.as_mut(), &mut conn, &req)
+                .prune(&store.logger, reporter.as_mut(), conn, &req)
                 .await?;
             Ok(reporter)
         }
@@ -1293,7 +1291,7 @@ impl DeploymentStore {
             .await
         }
 
-        if !prune_in_progress(&self, &site)? {
+        if !prune_in_progress(self, &site)? {
             let req = PruneRequest::new(
                 &site.as_ref().into(),
                 history_blocks,
@@ -1303,7 +1301,7 @@ impl DeploymentStore {
             )?;
 
             let deployment_id = site.id;
-            let logger = Logger::new(&logger, o!("component" => "Prune"));
+            let logger = Logger::new(logger, o!("component" => "Prune"));
             let handle = graph::spawn(run(logger, self.clone(), site, req));
             self.prune_handles
                 .lock()
@@ -1733,7 +1731,7 @@ impl DeploymentStore {
                     // We reset the firehose cursor. That way, on resume, Firehose will start from
                     // the block_ptr instead (with sanity checks to ensure it's resuming at the
                     // correct block).
-                    let _ = self.revert_block_operations(site.clone(), parent_ptr.clone(), &FirehoseCursor::None).await?;
+                    self.revert_block_operations(site.clone(), parent_ptr.clone(), &FirehoseCursor::None).await?;
 
                     // Unfail the deployment.
                     deployment::update_deployment_status(conn, deployment_id, prev_health, None,None).await?;
@@ -1946,7 +1944,7 @@ pub fn generate_index_creation_sql(
     after: Option<BlockNumber>,
 ) -> Result<(String, String), StoreError> {
     let schema_name = layout.site.namespace.clone();
-    let table = resolve_table_name(&layout, &entity_name)?;
+    let table = resolve_table_name(&layout, entity_name)?;
     let (column_names, index_exprs) = resolve_column_names_and_index_exprs(table, &field_names)?;
 
     let column_names_sep_by_underscores = column_names.join("_");

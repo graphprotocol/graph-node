@@ -52,7 +52,7 @@ impl FromStr for Bytes {
     }
 }
 
-impl<'a> From<&'a [u8]> for Bytes {
+impl From<&[u8]> for Bytes {
     fn from(array: &[u8]) -> Self {
         Bytes(array.into())
     }

@@ -164,7 +164,7 @@ where
                     .get("X-GraphTraceQuery")
                     .map(|v| {
                         v.to_str()
-                            .map(|s| s == &ENV_VARS.graphql.query_trace_token)
+                            .map(|s| s == ENV_VARS.graphql.query_trace_token)
                             .unwrap_or(false)
                     })
                     .unwrap_or(false)
@@ -342,7 +342,7 @@ where
             segments
                 .iter()
                 .filter(|&&segment| !segment.is_empty())
-                .map(|&segment| segment)
+                .copied()
                 .collect::<Vec<&str>>()
                 .join("/")
         }
@@ -355,7 +355,7 @@ where
                     .find(|(key, _)| key == "query")
                     .map(|(_, value)| value.into_owned())
             })
-            .unwrap_or_else(|| String::new())
+            .unwrap_or_else(String::new)
             .trim()
             .to_lowercase()
             .starts_with("mutation");

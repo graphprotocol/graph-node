@@ -108,7 +108,7 @@ impl Clone for StoreError {
             }
             Self::InvalidIdentifier(arg0) => Self::InvalidIdentifier(arg0.clone()),
             Self::DuplicateBlockProcessing(arg0, arg1) => {
-                Self::DuplicateBlockProcessing(arg0.clone(), arg1.clone())
+                Self::DuplicateBlockProcessing(arg0.clone(), *arg1)
             }
             Self::InternalError(arg0) => Self::InternalError(arg0.clone()),
             Self::DeploymentNotFound(arg0) => Self::DeploymentNotFound(arg0.clone()),
@@ -121,14 +121,14 @@ impl Clone for StoreError {
             Self::Poisoned => Self::Poisoned,
             Self::WriterPanic(arg0) => Self::Unknown(anyhow!("writer panic: {}", arg0)),
             Self::UnsupportedDeploymentSchemaVersion(arg0) => {
-                Self::UnsupportedDeploymentSchemaVersion(arg0.clone())
+                Self::UnsupportedDeploymentSchemaVersion(*arg0)
             }
             Self::PruneFailure(arg0) => Self::PruneFailure(arg0.clone()),
             Self::UnsupportedFilter(arg0, arg1) => {
                 Self::UnsupportedFilter(arg0.clone(), arg1.clone())
             }
             Self::WriteFailure(arg0, arg1, arg2, arg3) => {
-                Self::WriteFailure(arg0.clone(), arg1.clone(), arg2.clone(), arg3.clone())
+                Self::WriteFailure(arg0.clone(), *arg1, arg2.clone(), arg3.clone())
             }
             Self::StatementTimeout => Self::StatementTimeout,
             Self::ConstraintViolation(arg0) => Self::ConstraintViolation(arg0.clone()),
@@ -244,7 +244,7 @@ impl From<QueryExecutionError> for StoreError {
 
 impl From<std::fmt::Error> for StoreError {
     fn from(e: std::fmt::Error) -> Self {
-        StoreError::Unknown(anyhow!("{}", e.to_string()))
+        StoreError::Unknown(anyhow!("{}", e))
     }
 }
 

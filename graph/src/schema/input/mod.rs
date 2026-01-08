@@ -201,7 +201,7 @@ impl TypeInfo {
     }
 
     fn for_aggregation(schema: &Schema, pool: &AtomPool, agg_type: &s::ObjectType) -> Self {
-        let agg_type = Aggregation::new(&schema, &pool, agg_type);
+        let agg_type = Aggregation::new(schema, pool, agg_type);
         TypeInfo::Aggregation(agg_type)
     }
 
@@ -230,7 +230,7 @@ impl Field {
         field_type: &s::Type,
         derived_from: Option<Word>,
     ) -> Self {
-        let value_type = Self::scalar_value_type(&schema, field_type);
+        let value_type = Self::scalar_value_type(schema, field_type);
         Self {
             name: Word::from(name),
             field_type: field_type.clone(),
@@ -245,7 +245,7 @@ impl Field {
             s::Type::NamedType(name) => name.parse::<ValueType>().unwrap_or_else(|_| {
                 match schema.document.get_named_type(name) {
                     Some(t::Object(obj_type)) => {
-                        let id = obj_type.field(&*ID).expect("all object types have an id");
+                        let id = obj_type.field(&ID).expect("all object types have an id");
                         Self::scalar_value_type(schema, &id.field_type)
                     }
                     Some(t::Interface(intf)) => {
@@ -265,7 +265,7 @@ impl Field {
                                 ValueType::String
                             }
                             Some(obj_type) => {
-                                let id = obj_type.field(&*ID).expect("all object types have an id");
+                                let id = obj_type.field(&ID).expect("all object types have an id");
                                 Self::scalar_value_type(schema, &id.field_type)
                             }
                         }
@@ -290,7 +290,7 @@ impl Field {
         let derived_from = self.derived_from.as_ref()?;
         let name = schema
             .pool()
-            .lookup(&self.field_type.get_base_type())
+            .lookup(self.field_type.get_base_type())
             .unwrap();
         schema.field(name, derived_from)
     }
@@ -309,11 +309,9 @@ pub enum ObjectOrInterface<'a> {
 impl<'a> CheapClone for ObjectOrInterface<'a> {
     fn cheap_clone(&self) -> Self {
         match self {
-            ObjectOrInterface::Object(schema, object) => {
-                ObjectOrInterface::Object(*schema, *object)
-            }
+            ObjectOrInterface::Object(schema, object) => ObjectOrInterface::Object(schema, object),
             ObjectOrInterface::Interface(schema, interface) => {
-                ObjectOrInterface::Interface(*schema, *interface)
+                ObjectOrInterface::Interface(schema, interface)
             }
         }
     }
@@ -357,7 +355,7 @@ impl<'a> ObjectOrInterface<'a> {
         let object_type = match self {
             ObjectOrInterface::Object(_, object_type) => Some(*object_type),
             ObjectOrInterface::Interface(schema, interface) => {
-                schema.implementers(&interface).next()
+                schema.implementers(interface).next()
             }
         };
         object_type.and_then(|object_type| object_type.field(name))
@@ -431,7 +429,7 @@ impl ObjectType {
             .fields
             .iter()
             .map(|field| {
-                let derived_from = field.derived_from().map(|name| Word::from(name));
+                let derived_from = field.derived_from().map(Word::from);
                 Field::new(schema, &field.name, &field.field_type, derived_from)
             })
             .collect();
@@ -535,7 +533,7 @@ impl InterfaceType {
                 // since the API schema does not contain certain filters for
                 // derived fields on interfaces that it would for
                 // non-derived fields
-                let derived_from = field.derived_from().map(|name| Word::from(name));
+                let derived_from = field.derived_from().map(Word::from);
                 Field::new(schema, &field.name, &field.field_type, derived_from)
             })
             .collect();
@@ -932,7 +930,7 @@ impl Aggregation {
     pub fn dimensions(&self) -> impl Iterator<Item = &Field> {
         self.fields
             .iter()
-            .filter(|field| &field.name != &*ID && field.name != kw::TIMESTAMP)
+            .filter(|field| field.name != *ID && field.name != kw::TIMESTAMP)
     }
 
     fn object_type(&self, interval: AggregationInterval) -> Option<&ObjectType> {
@@ -969,7 +967,7 @@ impl InputSchema {
                 .iter()
                 .enumerate()
                 .filter_map(|(idx, ti)| ti.aggregation().map(|agg_type| (idx, agg_type)))
-                .map(|(aggregation, agg_type)| {
+                .flat_map(|(aggregation, agg_type)| {
                     agg_type
                         .intervals
                         .iter()
@@ -980,7 +978,6 @@ impl InputSchema {
                             agg_type,
                         })
                 })
-                .flatten()
                 .collect();
             mappings.sort();
             mappings.into_boxed_slice()
@@ -1611,7 +1608,7 @@ impl InputSchema {
 fn atom_pool(document: &s::Document) -> AtomPool {
     let mut pool = AtomPool::new();
 
-    pool.intern(&*ID);
+    pool.intern(&ID);
     // Name and attributes of PoI entity type
     pool.intern(POI_OBJECT);
     pool.intern(POI_DIGEST);
@@ -1676,7 +1673,7 @@ fn atom_pool(document: &s::Document) -> AtomPool {
     }
 
     for object_type in document.get_object_type_definitions() {
-        for defn in InputSchema::fulltext_definitions(&document, &object_type.name).unwrap() {
+        for defn in InputSchema::fulltext_definitions(document, &object_type.name).unwrap() {
             pool.intern(defn.name.as_str());
         }
     }
@@ -1785,8 +1782,7 @@ mod validations {
                 if subgraph_schema_type
                     .directives
                     .iter()
-                    .filter(|directive| !directive.name.eq("fulltext"))
-                    .next()
+                    .find(|directive| !directive.name.eq("fulltext"))
                     .is_some()
                 {
                     Some(SchemaValidationError::InvalidSchemaTypeDirectives)
@@ -2002,7 +1998,7 @@ mod validations {
         /// type `Int8` and that the `id` field has type `Int8`
         fn validate_entity_directives(&self) -> Vec<SchemaValidationError> {
             fn id_type_is_int8(object_type: &s::ObjectType) -> Option<SchemaValidationError> {
-                let field = match object_type.field(&*ID) {
+                let field = match object_type.field(&ID) {
                     Some(field) => field,
                     None => {
                         return Some(Err::IdFieldMissing(object_type.name.to_owned()));
@@ -2066,7 +2062,7 @@ mod validations {
             self.entity_types
                 .iter()
                 .fold(vec![], |mut errors, object_type| {
-                    match object_type.field(&*ID) {
+                    match object_type.field(&ID) {
                         None => errors.push(SchemaValidationError::IdFieldMissing(
                             object_type.name.clone(),
                         )),
@@ -2281,7 +2277,7 @@ mod validations {
                 // when we query, and just assume that that's ok.
                 let target_field_type = target_field.field_type.get_base_type();
                 if target_field_type != object_type.name
-                    && &target_field.name != ID.as_str()
+                    && target_field.name != ID.as_str()
                     && !interface_types
                         .iter()
                         .any(|iface| target_field_type.eq(iface.as_str()))
@@ -2320,7 +2316,7 @@ mod validations {
                 let id_types: HashSet<&str> = HashSet::from_iter(
                     obj_types
                         .iter()
-                        .filter_map(|obj_type| obj_type.field(&*ID))
+                        .filter_map(|obj_type| obj_type.field(&ID))
                         .map(|f| f.field_type.get_base_type())
                         .map(|name| if name == "ID" { "String" } else { name }),
                 );

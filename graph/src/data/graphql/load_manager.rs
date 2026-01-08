@@ -310,9 +310,9 @@ impl LoadManager {
             .map(GenericCounter::inc);
         if !ENV_VARS.load_management_is_disabled() {
             let qref = QueryRef::new(deployment, shape_hash);
-            self.effort
-                .get(shard)
-                .map(|effort| effort.add(shard, qref, duration, &self.effort_gauge));
+            if let Some(effort) = self.effort.get(shard) {
+                effort.add(shard, qref, duration, &self.effort_gauge)
+            }
         }
     }
 

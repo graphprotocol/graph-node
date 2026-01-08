@@ -27,7 +27,6 @@ use diesel::sql_types::Text;
 use diesel::{debug_query, sql_query, OptionalExtension, QueryDsl, QueryResult};
 use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl, SimpleAsyncConnection};
-use tokio;
 
 use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::BlockTime;
@@ -206,7 +205,7 @@ impl PartialEq<str> for SqlName {
 
 impl FromSql<Text, Pg> for SqlName {
     fn from_sql(bytes: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
-        <String as FromSql<Text, Pg>>::from_sql(bytes).map(|s| SqlName::verbatim(s))
+        <String as FromSql<Text, Pg>>::from_sql(bytes).map(SqlName::verbatim)
     }
 }
 
@@ -282,7 +281,7 @@ impl Layout {
 
         if catalog.use_poi {
             tables.push(Self::make_poi_table(
-                &schema,
+                schema,
                 &catalog,
                 has_ts_tables,
                 tables.len(),
@@ -296,7 +295,7 @@ impl Layout {
                 tables
             });
 
-        let rollups = Self::rollups(&tables, &schema)?;
+        let rollups = Self::rollups(&tables, schema)?;
 
         Ok(Layout {
             site,
@@ -652,7 +651,7 @@ impl Layout {
         }
 
         // sort the elements in each blocks bucket by vid
-        for (_, vec) in &mut entities {
+        for vec in entities.values_mut() {
             vec.sort_by(|a, b| a.vid.cmp(&b.vid));
         }
 
@@ -1025,7 +1024,7 @@ impl Layout {
                 // FIXME: we clone all the ids here
                 let chunk = IdList::try_from_iter(
                     group.entity_type.id_type()?,
-                    chunk.into_iter().map(|id| (*id).to_owned()),
+                    chunk.iter().map(|id| (*id).to_owned()),
                 )?;
                 count += ClampRangeQuery::new(table, &chunk, block)?
                     .execute(conn)
@@ -1045,7 +1044,7 @@ impl Layout {
 
     pub async fn truncate_tables(&self, conn: &mut AsyncPgConnection) -> Result<(), StoreError> {
         for table in self.tables.values() {
-            sql_query(&format!("TRUNCATE TABLE {}", table.qualified_name))
+            sql_query(format!("TRUNCATE TABLE {}", table.qualified_name))
                 .execute(conn)
                 .await?;
         }
@@ -1302,7 +1301,7 @@ impl Layout {
                         break;
                     }
                     Some(bucket) => {
-                        rollup.insert(conn, &bucket, *block).await?;
+                        rollup.insert(conn, bucket, *block).await?;
                     }
                 }
             }
@@ -1391,7 +1390,7 @@ impl ColumnType {
         if let Some(id_type) = schema
             .entity_type(name)
             .ok()
-            .and_then(|entity_type| Some(entity_type.id_type()))
+            .map(|entity_type| entity_type.id_type())
             .transpose()?
         {
             return Ok(id_type.into());
@@ -1488,7 +1487,7 @@ impl Column {
 
         let sql_name = SqlName::from(&*field.name);
 
-        let is_reference = schema.is_reference(&field.field_type.get_base_type());
+        let is_reference = schema.is_reference(field.field_type.get_base_type());
 
         let column_type = if sql_name.as_str() == PRIMARY_KEY_COLUMN {
             IdType::try_from(&field.field_type)?.into()

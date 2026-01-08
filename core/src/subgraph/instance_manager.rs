@@ -215,7 +215,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
                 .await?
                 .ok_or_else(|| anyhow!("no active deployment for hash {}", hash))?;
 
-            let sourceable_store = subgraph_store.clone().sourceable(loc.id.clone()).await?;
+            let sourceable_store = subgraph_store.clone().sourceable(loc.id).await?;
             sourceable_stores.push(sourceable_store);
         }
 
@@ -390,11 +390,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
         let end_blocks: BTreeSet<BlockNumber> = manifest
             .data_sources
             .iter()
-            .filter_map(|d| {
-                d.as_onchain()
-                    .map(|d: &C::DataSource| d.end_block())
-                    .flatten()
-            })
+            .filter_map(|d| d.as_onchain().and_then(|d: &C::DataSource| d.end_block()))
             .collect();
 
         // We can set `max_end_block` to the maximum of `end_blocks` and stop the subgraph

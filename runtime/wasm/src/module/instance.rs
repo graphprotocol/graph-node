@@ -174,13 +174,13 @@ impl WasmInstance {
             .await
         {
             Ok(()) => {
-                assert!(self.instance_ctx().as_ref().possible_reorg == false);
-                assert!(self.instance_ctx().as_ref().deterministic_host_trap == false);
+                assert!(!self.instance_ctx().as_ref().possible_reorg);
+                assert!(!self.instance_ctx().as_ref().deterministic_host_trap);
                 None
             }
             Err(trap) if self.instance_ctx().as_ref().possible_reorg => {
                 self.instance_ctx().as_mut().ctx.state.exit_handler();
-                return Err(MappingError::PossibleReorg(trap.into()));
+                return Err(MappingError::PossibleReorg(trap));
             }
 
             // Treat timeouts anywhere in the error chain as a special case to have a better error
@@ -192,7 +192,7 @@ impl WasmInstance {
                     .any(|e| e.downcast_ref::<Trap>() == Some(&Trap::Interrupt)) =>
             {
                 self.instance_ctx().as_mut().ctx.state.exit_handler();
-                return Err(MappingError::Unknown(Error::from(trap).context(format!(
+                return Err(MappingError::Unknown(trap.context(format!(
                         "Handler '{}' hit the timeout of '{}' seconds",
                         handler,
                         self.instance_ctx().as_ref().valid_module.timeout.unwrap().as_secs()
@@ -612,7 +612,7 @@ impl WasmInstance {
         // we cannot execute anything that requires access to the heap before it's created.
         if let Some(start_func) = valid_module.start_function.as_ref() {
             instance
-                .get_func(store.as_context_mut(), &start_func)
+                .get_func(store.as_context_mut(), start_func)
                 .context(format!("`{start_func}` function not found"))?
                 .typed::<(), ()>(store.as_context_mut())?
                 .call_async(store.as_context_mut(), ())

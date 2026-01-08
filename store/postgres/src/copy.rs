@@ -31,7 +31,6 @@ use diesel_async::{
     AsyncConnection,
 };
 use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
-use tokio;
 
 use graph::{
     futures03::{
@@ -214,7 +213,7 @@ impl CopyState {
 
         let mut unfinished = Vec::new();
         for dst_table in dst.tables.values() {
-            if let Some(src_table) = src.table_for_entity(&dst_table.object).ok() {
+            if let Ok(src_table) = src.table_for_entity(&dst_table.object) {
                 unfinished.push(
                     TableState::init(
                         conn,
@@ -386,7 +385,7 @@ impl TableState {
                         e
                     )
                 })
-                .map(|table| table.clone())
+                .cloned()
         }
 
         let mut states = Vec::new();

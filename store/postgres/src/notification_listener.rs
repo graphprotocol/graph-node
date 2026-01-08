@@ -368,10 +368,10 @@ impl JsonNotification {
                         )
                     })?;
 
-                if payload_rows.is_empty() || payload_rows.get(0).is_none() {
+                if payload_rows.is_empty() || payload_rows.is_empty() {
                     return Err(anyhow!("No payload found for notification {}", payload_id))?;
                 }
-                let payload: String = payload_rows.get(0).unwrap().get(0);
+                let payload: String = payload_rows.first().unwrap().get(0);
 
                 Ok(JsonNotification {
                     payload: serde_json::from_str(&payload)?,

@@ -49,7 +49,7 @@ impl ForeignServer {
         if shard == current {
             "subgraphs".to_string()
         } else {
-            Self::metadata_schema(&shard)
+            Self::metadata_schema(shard)
         }
     }
 
@@ -67,7 +67,7 @@ impl ForeignServer {
             ),
         };
 
-        let host = match config.get_hosts().get(0) {
+        let host = match config.get_hosts().first() {
             Some(Host::Tcp(host)) => host.to_string(),
             _ => bail!("can not find host name in `{}`", SafeDisplay(postgres_url)),
         };
@@ -226,7 +226,7 @@ impl ForeignServer {
             existing != needed
         }
 
-        if &self.shard == &*PRIMARY_SHARD {
+        if self.shard == *PRIMARY_SHARD {
             let existing = catalog::foreign_tables(conn, PRIMARY_PUBLIC).await?;
             let needed = PRIMARY_TABLES
                 .into_iter()

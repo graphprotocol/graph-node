@@ -170,9 +170,9 @@ pub fn push_test_subgraph_trigger(
     source_idx: u32,
 ) {
     let entity = EntitySourceOperation {
-        entity: entity,
-        entity_type: entity_type,
-        entity_op: entity_op,
+        entity,
+        entity_type,
+        entity_op,
         vid,
     };
 

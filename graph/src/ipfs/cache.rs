@@ -174,9 +174,7 @@ impl Cache {
 
     async fn insert(&self, logger: &Logger, path: ContentPath, data: Bytes) {
         match self {
-            Cache::Memory { max_entry_size, .. } if data.len() > *max_entry_size => {
-                return;
-            }
+            Cache::Memory { max_entry_size, .. } if data.len() > *max_entry_size => {}
             Cache::Memory { cache, .. } => {
                 let mut cache = cache.lock().unwrap();
 

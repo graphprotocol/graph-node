@@ -209,7 +209,7 @@ query Query ($id: String) {{
                         e
                     ))
                 })?;
-                map.insert(Word::from(f.name.clone()), value);
+                map.insert(f.name.clone(), value);
             }
             map
         };

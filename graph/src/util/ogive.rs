@@ -155,7 +155,7 @@ impl Ogive {
         // rewritten to be more friendly to lossy calculations with f64
         let offset = (value as f64).rem_euclid(self.bin_size) * (b - a) as f64;
         let x = a + (offset / self.bin_size) as i64;
-        Ok(x as i64)
+        Ok(x)
     }
 
     fn check_in_range(&self, point: i64) -> Result<(), StoreError> {

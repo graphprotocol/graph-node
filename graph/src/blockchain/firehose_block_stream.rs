@@ -64,10 +64,10 @@ impl FirehoseBlockStreamMetrics {
 
     fn observe_successful_connection(&self, time: &mut Instant, provider: &str) {
         self.restarts
-            .with_label_values(&[self.deployment.as_str(), &provider, "true"])
+            .with_label_values(&[self.deployment.as_str(), provider, "true"])
             .inc();
         self.connect_duration
-            .with_label_values(&[self.deployment.as_str(), &provider])
+            .with_label_values(&[self.deployment.as_str(), provider])
             .set(time.elapsed().as_secs_f64());
 
         // Reset last connection timestamp
@@ -76,10 +76,10 @@ impl FirehoseBlockStreamMetrics {
 
     fn observe_failed_connection(&self, time: &mut Instant, provider: &str) {
         self.restarts
-            .with_label_values(&[self.deployment.as_str(), &provider, "false"])
+            .with_label_values(&[self.deployment.as_str(), provider, "false"])
             .inc();
         self.connect_duration
-            .with_label_values(&[self.deployment.as_str(), &provider])
+            .with_label_values(&[self.deployment.as_str(), provider])
             .set(time.elapsed().as_secs_f64());
 
         // Reset last connection timestamp
@@ -88,10 +88,10 @@ impl FirehoseBlockStreamMetrics {
 
     fn observe_response(&self, kind: &str, time: &mut Instant, provider: &str) {
         self.time_between_responses
-            .with_label_values(&[self.deployment.as_str(), &provider])
+            .with_label_values(&[self.deployment.as_str(), provider])
             .observe(time.elapsed().as_secs_f64());
         self.responses
-            .with_label_values(&[self.deployment.as_str(), &provider, kind])
+            .with_label_values(&[self.deployment.as_str(), provider, kind])
             .inc();
 
         // Reset last response timestamp

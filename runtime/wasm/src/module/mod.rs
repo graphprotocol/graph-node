@@ -246,7 +246,7 @@ impl AscHeapCtx {
 
 fn host_export_error_from_trap(trap: Error, context: String) -> HostExportError {
     let trap_is_deterministic = is_trap_deterministic(&trap);
-    let e = Error::from(trap).context(context);
+    let e = trap.context(context);
     match trap_is_deterministic {
         true => HostExportError::Deterministic(e),
         false => HostExportError::Unknown(e),

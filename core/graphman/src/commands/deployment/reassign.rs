@@ -100,17 +100,17 @@ pub async fn reassign_deployment(
     let mut catalog_conn = catalog::Connection::new(primary_conn);
     let changes: Vec<AssignmentChange> = match &curr_node {
         Some(curr) => {
-            if &curr == &node {
+            if curr == node {
                 vec![]
             } else {
                 catalog_conn
-                    .reassign_subgraph(&deployment.site, &node)
+                    .reassign_subgraph(&deployment.site, node)
                     .await
                     .map_err(GraphmanError::from)?
             }
         }
         None => catalog_conn
-            .assign_subgraph(&deployment.site, &node)
+            .assign_subgraph(&deployment.site, node)
             .await
             .map_err(GraphmanError::from)?,
     };
@@ -129,7 +129,7 @@ pub async fn reassign_deployment(
 
     let mirror = catalog::Mirror::primary_only(primary_pool);
     let count = mirror
-        .assignments(&node)
+        .assignments(node)
         .await
         .map_err(GraphmanError::from)?
         .len();

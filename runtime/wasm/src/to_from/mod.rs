@@ -223,6 +223,6 @@ where
         depth: usize,
     ) -> Result<Self, DeterministicHostError> {
         let entries: Vec<(T, U)> = asc_get(heap, asc_map.entries, gas, depth)?;
-        Ok(HashMap::from_iter(entries.into_iter()))
+        Ok(HashMap::from_iter(entries))
     }
 }

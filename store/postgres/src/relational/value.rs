@@ -50,22 +50,22 @@ pub enum OidValue {
 
 impl FromSql<Any, Pg> for OidValue {
     fn from_sql(value: diesel::pg::PgValue) -> diesel::deserialize::Result<Self> {
-        const VARCHAR_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1043) };
-        const VARCHAR_ARY_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1015) };
-        const TEXT_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(25) };
-        const TEXT_ARY_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1009) };
-        const BYTEA_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(17) };
-        const BYTEA_ARY_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1001) };
-        const BOOL_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(16) };
-        const BOOL_ARY_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1000) };
-        const INTEGER_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(23) };
-        const INTEGER_ARY_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1007) };
-        const INT8_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(20) };
-        const INT8_ARY_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1016) };
-        const NUMERIC_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1700) };
-        const NUMERIC_ARY_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1231) };
-        const TIMESTAMPTZ_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1184) };
-        const TIMESTAMPTZ_ARY_OID: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(1185) };
+        const VARCHAR_OID: NonZeroU32 = NonZeroU32::new(1043).unwrap();
+        const VARCHAR_ARY_OID: NonZeroU32 = NonZeroU32::new(1015).unwrap();
+        const TEXT_OID: NonZeroU32 = NonZeroU32::new(25).unwrap();
+        const TEXT_ARY_OID: NonZeroU32 = NonZeroU32::new(1009).unwrap();
+        const BYTEA_OID: NonZeroU32 = NonZeroU32::new(17).unwrap();
+        const BYTEA_ARY_OID: NonZeroU32 = NonZeroU32::new(1001).unwrap();
+        const BOOL_OID: NonZeroU32 = NonZeroU32::new(16).unwrap();
+        const BOOL_ARY_OID: NonZeroU32 = NonZeroU32::new(1000).unwrap();
+        const INTEGER_OID: NonZeroU32 = NonZeroU32::new(23).unwrap();
+        const INTEGER_ARY_OID: NonZeroU32 = NonZeroU32::new(1007).unwrap();
+        const INT8_OID: NonZeroU32 = NonZeroU32::new(20).unwrap();
+        const INT8_ARY_OID: NonZeroU32 = NonZeroU32::new(1016).unwrap();
+        const NUMERIC_OID: NonZeroU32 = NonZeroU32::new(1700).unwrap();
+        const NUMERIC_ARY_OID: NonZeroU32 = NonZeroU32::new(1231).unwrap();
+        const TIMESTAMPTZ_OID: NonZeroU32 = NonZeroU32::new(1184).unwrap();
+        const TIMESTAMPTZ_ARY_OID: NonZeroU32 = NonZeroU32::new(1185).unwrap();
 
         match value.get_oid() {
             VARCHAR_OID | TEXT_OID => {
@@ -230,7 +230,7 @@ impl FromOidRow for Entity {
             .filter(|(value, _)| !matches!(value, OidValue::Null))
             .map(|(value, column)| {
                 graph::prelude::Value::from_oid_value(value, &column.column_type)
-                    .map(|value| (Word::from(column.field.clone()), value))
+                    .map(|value| (column.field.clone(), value))
             });
         schema.try_make_entity(x).map_err(StoreError::from)
     }

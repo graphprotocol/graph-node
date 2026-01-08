@@ -365,7 +365,7 @@ impl SubgraphStore {
         // if it doesn't exist, we need to copy the graft base to the new deployment
         let graft_base_layout = if !exists {
             let graft_base = match deployment.graft_base.as_ref() {
-                Some(base) => Some(self.layout(&base).await?),
+                Some(base) => Some(self.layout(base).await?),
                 None => None,
             };
 
@@ -1016,7 +1016,7 @@ impl Inner {
                 .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
             infos.extend(store.deployment_statuses(&sites).await?);
         }
-        let nodes = self.mirror.fill_assignments(&mut infos).await?;
+        let nodes = self.mirror.fill_assignments(&infos).await?;
         for info in infos.iter_mut() {
             info.node = nodes.get(&info.id).map(|(node, _)| node.clone());
             info.paused = nodes.get(&info.id).map(|(_, paused)| *paused);
@@ -1643,10 +1643,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<Option<DeploymentFeatures>, StoreError> {
         let deployment = deployment.to_string();
         let mut pconn = self.primary_conn().await?;
-        pconn
-            .get_subgraph_features(deployment)
-            .await
-            .map_err(|e| e.into())
+        pconn.get_subgraph_features(deployment).await
     }
 
     async fn entity_changes_in_block(

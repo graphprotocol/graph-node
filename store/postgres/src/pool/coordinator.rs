@@ -96,7 +96,7 @@ impl PoolCoordinator {
         if count.had_migrations() {
             let server = self.server(&pool.shard)?;
             for pool in self.pools() {
-                let remap_res = pool.remap(&server).await;
+                let remap_res = pool.remap(server).await;
                 if let Err(e) = remap_res {
                     error!(pool.logger, "Failed to map imports from {}", server.shard; "error" => e.to_string());
                     return Err(e);
@@ -130,7 +130,7 @@ impl PoolCoordinator {
 
     fn primary(&self) -> Result<Arc<PoolInner>, StoreError> {
         let map = self.pools.lock().unwrap();
-        let pool_state = map.get(&*&PRIMARY_SHARD).ok_or_else(|| {
+        let pool_state = map.get(&PRIMARY_SHARD).ok_or_else(|| {
             internal_error!("internal error: primary shard not found in pool coordinator")
         })?;
 
@@ -297,7 +297,7 @@ impl PoolCoordinator {
 
             let migrated = migrate(&states, self.servers.as_ref()).await?;
 
-            let propagated = propagate(&self, migrated).await?;
+            let propagated = propagate(self, migrated).await?;
 
             primary.create_cross_shard_views(&self.servers).await?;
 

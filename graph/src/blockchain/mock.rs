@@ -203,8 +203,8 @@ impl<C: Blockchain> UnresolvedDataSource<C> for MockUnresolvedDataSource {
 #[derive(Debug, Clone)]
 pub struct MockDataSourceTemplate;
 
-impl Into<DataSourceTemplateInfo> for MockDataSourceTemplate {
-    fn into(self) -> DataSourceTemplateInfo {
+impl From<MockDataSourceTemplate> for DataSourceTemplateInfo {
+    fn from(_val: MockDataSourceTemplate) -> Self {
         todo!()
     }
 }

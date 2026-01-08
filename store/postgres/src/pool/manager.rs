@@ -274,7 +274,9 @@ pub(crate) fn spawn_connection_reaper(
             if last_used.elapsed() > CHECK_INTERVAL {
                 // Reset wait time if there was no activity recently so that
                 // we don't report stale wait times
-                wait_gauge.as_ref().map(|wait_gauge| wait_gauge.set(0.0));
+                if let Some(wait_gauge) = wait_gauge.as_ref() {
+                    wait_gauge.set(0.0)
+                }
             }
             tokio::time::sleep(CHECK_INTERVAL).await;
         }

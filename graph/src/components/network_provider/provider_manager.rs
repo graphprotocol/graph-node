@@ -126,7 +126,7 @@ impl<T: NetworkDetails> ProviderManager<T> {
         };
 
         let mut validations: Vec<Validation> = Vec::new();
-        let adapters = Self::adapters_by_chain_names(adapters, &mut validations, &enabled_checks);
+        let adapters = Self::adapters_by_chain_names(adapters, &mut validations, enabled_checks);
 
         let inner = Inner {
             logger,

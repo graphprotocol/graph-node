@@ -102,7 +102,7 @@ impl LastRollup {
             (true, Some(_)) => {
                 let block_time = store.block_time(site).await?;
                 block_time
-                    .map(|b| LastRollup::Some(b))
+                    .map(LastRollup::Some)
                     .unwrap_or(LastRollup::Unknown)
             }
         };
@@ -126,7 +126,7 @@ impl LastRollupTracker {
             block,
         )
         .await
-        .map(|kind| Mutex::new(kind))?;
+        .map(Mutex::new)?;
         Ok(Self(rollup))
     }
 
@@ -209,10 +209,7 @@ impl SyncStore {
     }
 
     async fn block_cursor(&self) -> Result<FirehoseCursor, StoreError> {
-        self.writable
-            .block_cursor(self.site.cheap_clone())
-            .await
-            .map(FirehoseCursor::from)
+        self.writable.block_cursor(self.site.cheap_clone()).await
     }
 
     async fn start_subgraph_deployment(&self, logger: &Logger) -> Result<(), StoreError> {
@@ -1187,7 +1184,7 @@ impl Queue {
                                     // are not 'full' at the head of the
                                     // queue, something that start_writer
                                     // has to take into account
-                                    return Ok(Some(batch));
+                                    Ok(Some(batch))
                                 }
                                 Err(RwLockError::Poisoned(e)) => {
                                     panic!("rwlock on batch was poisoned {:?}", e);
@@ -1364,9 +1361,7 @@ impl Queue {
                 // already existing entries in map as that would make us
                 // produce stale values
                 for (k, v) in effective_ops(batch, derived_query, at) {
-                    if !map.contains_key(&k) {
-                        map.insert(k, v);
-                    }
+                    map.entry(k).or_insert(v);
                 }
                 map
             },
@@ -1920,7 +1915,7 @@ impl WritableStoreTrait for WritableStore {
             store
                 .writable(logger, self.store.site.id.into(), manifest_idx_and_name)
                 .await
-                .map(|store| Some(store))
+                .map(Some)
         } else {
             Ok(None)
         }

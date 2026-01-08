@@ -91,6 +91,12 @@ impl NetworkDetails for Arc<FirehoseEndpoint> {
     }
 }
 
+impl Default for ConnectionHeaders {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConnectionHeaders {
     pub fn new() -> Self {
         Self(HashMap::new())
@@ -269,7 +275,7 @@ impl FirehoseEndpoint {
             metrics: self.endpoint_metrics.cheap_clone(),
             service: self.channel.cheap_clone(),
             labels: RequestLabels {
-                provider: self.provider.clone().into(),
+                provider: self.provider.clone(),
                 req_type: "unknown".into(),
                 conn_type: ConnectionType::Firehose,
             },
@@ -360,7 +366,7 @@ impl FirehoseEndpoint {
             Ok(v) => Ok(M::decode(
                 v.get_ref().block.as_ref().unwrap().value.as_ref(),
             )?),
-            Err(e) => return Err(anyhow::format_err!("firehose error {}", e)),
+            Err(e) => Err(anyhow::format_err!("firehose error {}", e)),
         }
     }
 
@@ -395,7 +401,7 @@ impl FirehoseEndpoint {
             Ok(v) => Ok(M::decode(
                 v.get_ref().block.as_ref().unwrap().value.as_ref(),
             )?),
-            Err(e) => return Err(anyhow::format_err!("firehose error {}", e)),
+            Err(e) => Err(anyhow::format_err!("firehose error {}", e)),
         }
     }
 
@@ -457,7 +463,7 @@ impl FirehoseEndpoint {
             Ok(v) => Ok(M::decode(
                 v.get_ref().block.as_ref().unwrap().value.as_ref(),
             )?),
-            Err(e) => return Err(anyhow::format_err!("firehose error {}", e)),
+            Err(e) => Err(anyhow::format_err!("firehose error {}", e)),
         }
     }
 

@@ -825,7 +825,7 @@ pub async fn create_cross_shard_view(
     ) -> Result<String, std::fmt::Error> {
         let mut query = String::new();
         write!(query, "create view \"{}\".\"{}\" as ", dst_nsp, table_name)?;
-        for (idx, (name, nsp)) in shard_nsps.into_iter().enumerate() {
+        for (idx, (name, nsp)) in shard_nsps.iter().enumerate() {
             if idx > 0 {
                 write!(query, " union all ")?;
             }

@@ -385,7 +385,7 @@ impl<'a> RollupSql<'a> {
                 .aggregates
                 .iter()
                 .flat_map(|agg| &agg.src_columns)
-                .map(|col| *col)
+                .copied()
                 .filter(|&col| col != "id" && col != "timestamp")
                 .collect();
             agg_srcs.sort();
@@ -403,7 +403,7 @@ impl<'a> RollupSql<'a> {
             " order by {src_table}.timestamp) data group by timestamp",
             src_table = self.src_table
         )?;
-        Ok(write_dims(self.dimensions, w)?)
+        write_dims(self.dimensions, w)
     }
 
     fn select(&self, w: &mut dyn fmt::Write) -> fmt::Result {

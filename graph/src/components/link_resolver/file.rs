@@ -33,7 +33,7 @@ impl FileLinkResolver {
     /// All paths are treated as absolute paths.
     pub fn new(base_dir: Option<PathBuf>, aliases: HashMap<String, PathBuf>) -> Self {
         Self {
-            base_dir: base_dir,
+            base_dir,
             timeout: Duration::from_secs(30),
             aliases,
         }
@@ -81,20 +81,20 @@ impl FileLinkResolver {
             aliased.clone()
         } else {
             match &resolver.base_dir {
-                Some(dir) => dir.join(&manifest_path_str),
+                Some(dir) => dir.join(manifest_path_str),
                 None => PathBuf::from(manifest_path_str),
             }
         };
 
         let canonical_manifest_path = manifest_path
             .canonicalize()
-            .map_err(|e| Error::from(anyhow!("Failed to canonicalize manifest path: {}", e)))?;
+            .map_err(|e| anyhow!("Failed to canonicalize manifest path: {}", e))?;
 
         // The manifest path is the path of the subgraph manifest file in the build directory
         // We use the parent directory as the base directory for the new resolver
         let base_dir = canonical_manifest_path
             .parent()
-            .ok_or_else(|| Error::from(anyhow!("Manifest path has no parent directory")))?
+            .ok_or_else(|| anyhow!("Manifest path has no parent directory"))?
             .to_path_buf();
 
         resolver.base_dir = Some(base_dir);
@@ -125,7 +125,7 @@ impl LinkResolverTrait for FileLinkResolver {
 
     async fn cat(&self, ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, Error> {
         let link = remove_prefix(&link.link);
-        let path = self.resolve_path(&link);
+        let path = self.resolve_path(link);
 
         slog::debug!(ctx.logger, "File resolver: reading file";
             "path" => path.to_string_lossy().to_string());
@@ -136,7 +136,7 @@ impl LinkResolverTrait for FileLinkResolver {
                 slog::error!(ctx.logger, "Failed to read file";
                     "path" => path.to_string_lossy().to_string(),
                     "error" => e.to_string());
-                Err(anyhow!("Failed to read file {}: {}", path.display(), e).into())
+                Err(anyhow!("Failed to read file {}: {}", path.display(), e))
             }
         }
     }
@@ -146,7 +146,7 @@ impl LinkResolverTrait for FileLinkResolver {
     }
 
     async fn get_block(&self, _ctx: &LinkResolverContext, _link: &Link) -> Result<Vec<u8>, Error> {
-        Err(anyhow!("get_block is not implemented for FileLinkResolver").into())
+        Err(anyhow!("get_block is not implemented for FileLinkResolver"))
     }
 
     async fn json_stream(
@@ -154,7 +154,9 @@ impl LinkResolverTrait for FileLinkResolver {
         _ctx: &LinkResolverContext,
         _link: &Link,
     ) -> Result<JsonValueStream, Error> {
-        Err(anyhow!("json_stream is not implemented for FileLinkResolver").into())
+        Err(anyhow!(
+            "json_stream is not implemented for FileLinkResolver"
+        ))
     }
 }
 

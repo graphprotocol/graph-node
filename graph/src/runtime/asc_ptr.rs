@@ -69,7 +69,7 @@ impl<C: AscType> AscPtr<C> {
 
         let using_buffer = |buffer: &mut [MaybeUninit<u8>]| {
             let buffer = heap.read(self.0, buffer, gas)?;
-            C::from_asc_bytes(buffer, &heap.api_version())
+            C::from_asc_bytes(buffer, heap.api_version())
         };
 
         let len = len as usize;
@@ -103,7 +103,7 @@ impl<C: AscType> AscPtr<C> {
                 let aligned_len = padding_to_16(bytes.len());
                 // Since AssemblyScript keeps all allocated objects with a 16 byte alignment,
                 // we need to do the same when we allocate ourselves.
-                bytes.extend(std::iter::repeat(0).take(aligned_len));
+                bytes.extend(std::iter::repeat_n(0, aligned_len));
 
                 let header = Self::generate_header(
                     heap,

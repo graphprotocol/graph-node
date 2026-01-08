@@ -315,7 +315,7 @@ impl Field {
                 // can find the field type
                 entity_type
                     .field(&field.name)
-                    .map_or(false, |field| !field.is_derived())
+                    .is_some_and(|field| !field.is_derived())
             })
             .filter_map(|field| {
                 if field.name.starts_with("__") {
@@ -351,13 +351,13 @@ impl Field {
             .map(|value| match value {
                 r::Value::Enum(interval) => interval.parse::<AggregationInterval>().map_err(|_| {
                     QueryExecutionError::InvalidArgumentError(
-                        self.position.clone(),
+                        self.position,
                         kw::INTERVAL.to_string(),
                         q::Value::from(value.clone()),
                     )
                 }),
                 _ => Err(QueryExecutionError::InvalidArgumentError(
-                    self.position.clone(),
+                    self.position,
                     kw::INTERVAL.to_string(),
                     q::Value::from(value.clone()),
                 )),

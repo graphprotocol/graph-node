@@ -116,7 +116,7 @@ impl TryFrom<InnerMappingHandlers> for EnvVarsMapping {
             max_ipfs_file_bytes: x.max_ipfs_file_bytes.0,
             ipfs_request_limit: x.ipfs_request_limit,
             ipfs_max_attempts: x.ipfs_max_attempts,
-            ipfs_cache_location: ipfs_cache_location,
+            ipfs_cache_location,
             allow_non_deterministic_ipfs: x.allow_non_deterministic_ipfs.0,
             disable_declared_calls: x.disable_declared_calls.0,
             store_errors_are_nondeterministic: x.store_errors_are_nondeterministic.0,

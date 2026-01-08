@@ -6,7 +6,7 @@ use serde::Serialize;
 use crate::derive::CacheWeight;
 
 /// Used for checking if a response hit the cache.
-#[derive(Copy, Clone, CacheWeight, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, CacheWeight, Debug, PartialEq, Eq, Hash, Default)]
 pub enum CacheStatus {
     /// Hit is a hit in the generational cache.
     Hit,
@@ -18,13 +18,8 @@ pub enum CacheStatus {
     Insert,
 
     /// A miss is none of the above.
+    #[default]
     Miss,
-}
-
-impl Default for CacheStatus {
-    fn default() -> Self {
-        CacheStatus::Miss
-    }
 }
 
 impl fmt::Display for CacheStatus {

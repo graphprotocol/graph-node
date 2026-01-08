@@ -391,7 +391,7 @@ impl FieldExt for Field {
     }
 
     fn argument(&self, name: &str) -> Option<&s::InputValue> {
-        self.arguments.iter().find(|iv| &iv.name == name)
+        self.arguments.iter().find(|iv| iv.name == name)
     }
 }
 

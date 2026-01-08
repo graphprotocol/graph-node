@@ -31,9 +31,9 @@ impl From<anyhow::Error> for MappingError {
 impl From<HostExportError> for MappingError {
     fn from(value: HostExportError) -> MappingError {
         match value {
-            HostExportError::PossibleReorg(e) => MappingError::PossibleReorg(e.into()),
+            HostExportError::PossibleReorg(e) => MappingError::PossibleReorg(e),
             HostExportError::Deterministic(e) | HostExportError::Unknown(e) => {
-                MappingError::Unknown(e.into())
+                MappingError::Unknown(e)
             }
         }
     }

@@ -380,6 +380,12 @@ pub enum SubgraphManifestResolveError {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DataSourceContext(HashMap<Word, Value>);
 
+impl Default for DataSourceContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DataSourceContext {
     pub fn new() -> Self {
         Self(HashMap::new())
@@ -739,20 +745,19 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         let mut errors = Vec::new();
 
         // Check spec version support for subgraph datasources
-        if *spec_version < SPEC_VERSION_1_3_0 {
-            if data_sources
+        if *spec_version < SPEC_VERSION_1_3_0
+            && data_sources
                 .iter()
                 .any(|ds| matches!(ds, DataSource::Subgraph(_)))
-            {
-                errors.push(SubgraphManifestValidationError::DataSourceValidation(
-                    "subgraph".to_string(),
-                    anyhow!(
-                        "Subgraph datasources are not supported prior to spec version {}",
-                        SPEC_VERSION_1_3_0
-                    ),
-                ));
-                return errors;
-            }
+        {
+            errors.push(SubgraphManifestValidationError::DataSourceValidation(
+                "subgraph".to_string(),
+                anyhow!(
+                    "Subgraph datasources are not supported prior to spec version {}",
+                    SPEC_VERSION_1_3_0
+                ),
+            ));
+            return errors;
         }
 
         let subgraph_ds_count = data_sources
@@ -1012,15 +1017,12 @@ impl<C: Blockchain> SubgraphManifest<C> {
             .map(|s| s.to_string())
             .collect_vec();
 
-        let api_version = unified_api_version
-            .map(|v| v.version().map(|v| v.to_string()))
-            .flatten();
+        let api_version = unified_api_version.and_then(|v| v.version().map(|v| v.to_string()));
 
         let handler_kinds = self
             .data_sources
             .iter()
-            .map(|ds| ds.handler_kinds())
-            .flatten()
+            .flat_map(|ds| ds.handler_kinds())
             .collect::<HashSet<_>>();
 
         let features: Vec<String> = self
@@ -1354,7 +1356,7 @@ impl DeploymentState {
     /// `block`
     pub fn has_deterministic_errors(&self, block: &BlockPtr) -> bool {
         self.first_error_block
-            .map_or(false, |first_error_block| first_error_block <= block.number)
+            .is_some_and(|first_error_block| first_error_block <= block.number)
     }
 }
 

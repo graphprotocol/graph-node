@@ -224,7 +224,7 @@ impl LinkResolver for IpfsResolver {
                         // run through the loop.
                         match try_ready!(stream.poll().map_err(|e| anyhow::anyhow!("{}", e))) {
                             Some(b) => buf.extend_from_slice(&b),
-                            None if !buf.is_empty() => buf.extend_from_slice(&[b'\n']),
+                            None if !buf.is_empty() => buf.extend_from_slice(b"\n"),
                             None => return Ok(Async::Ready(None)),
                         }
                     }

@@ -86,7 +86,7 @@ pub struct ChildAliasStr {
 
 impl ChildAliasStr {
     fn new(idx: u8) -> Self {
-        let c = 'i' as u8;
+        let c = b'i';
         let alias = if idx == 0 {
             [c, 0, 0, 0]
         } else if idx < 10 {
@@ -187,9 +187,9 @@ impl<'a> Table<'a> {
         self.meta
             .columns
             .iter()
-            .chain(META_COLS.into_iter())
+            .chain(*META_COLS)
             .find(|c| &c.name == name)
-            .map(|c| Column::new(self.clone(), c))
+            .map(|c| Column::new(*self, c))
     }
 
     pub fn name(&self) -> &str {
@@ -266,7 +266,7 @@ impl<'a> Table<'a> {
                     .collect();
                 names.sort();
                 for name in names {
-                    let column = self.meta.column_for_field(&name)?;
+                    let column = self.meta.column_for_field(name)?;
                     cols.push(column);
                 }
             }

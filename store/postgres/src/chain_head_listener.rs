@@ -168,8 +168,7 @@ impl ChainHeadUpdateListener {
                 if let Some(watcher) = watchers
                     .try_read()
                     .as_ref()
-                    .map(|w| w.get(&update.network_name))
-                    .flatten()
+                    .and_then(|w| w.get(&update.network_name))
                 {
                     watcher.send();
                 }

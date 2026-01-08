@@ -24,7 +24,7 @@ impl Parser {
         validator.validate_statements(&mut statements)?;
 
         let statement = statements
-            .get(0)
+            .first()
             .ok_or_else(|| anyhow!("No SQL statements found"))?;
 
         Ok(statement.to_string())

@@ -309,7 +309,7 @@ pub(crate) async fn execute_root_selection_set_uncached(
         let ictx = ctx.as_introspection_context();
 
         values.append(
-            execute_selection_set_to_map(&ictx, &intro_set, &*INTROSPECTION_QUERY_TYPE, None)
+            execute_selection_set_to_map(&ictx, &intro_set, &INTROSPECTION_QUERY_TYPE, None)
                 .await?,
         );
     }
@@ -898,8 +898,8 @@ async fn complete_value(
 }
 
 /// Resolves an abstract type (interface, union) into an object type based on the given value.
-fn resolve_abstract_type<'a>(
-    ctx: &'a ExecutionContext<impl Resolver>,
+fn resolve_abstract_type(
+    ctx: &ExecutionContext<impl Resolver>,
     abstract_type: &s::TypeDefinition,
     object_value: &r::Value,
 ) -> Result<sast::ObjectType, Vec<QueryExecutionError>> {

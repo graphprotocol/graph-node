@@ -75,7 +75,7 @@ impl AscType for ArrayBuffer {
         let total_size = self.byte_length as usize + HEADER_SIZE;
         let total_capacity = total_size.next_power_of_two();
         let extra_capacity = total_capacity - total_size;
-        asc_layout.extend(std::iter::repeat(0).take(extra_capacity));
+        asc_layout.extend(std::iter::repeat_n(0, extra_capacity));
 
         Ok(asc_layout)
     }
@@ -205,7 +205,7 @@ impl AscType for AscString {
         let total_size = (self.byte_length as usize * 2) + header_size;
         let total_capacity = total_size.next_power_of_two();
         let extra_capacity = total_capacity - total_size;
-        content.extend(std::iter::repeat(0).take(extra_capacity));
+        content.extend(std::iter::repeat_n(0, extra_capacity));
 
         Ok(content)
     }

@@ -54,20 +54,15 @@ impl ValueExt for q::Value {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
 pub enum BlockConstraint {
     Hash(BlockHash),
     Number(BlockNumber),
     /// Execute the query on the latest block only if the the subgraph has progressed to or past the
     /// given block number.
     Min(BlockNumber),
+    #[default]
     Latest,
-}
-
-impl Default for BlockConstraint {
-    fn default() -> Self {
-        BlockConstraint::Latest
-    }
 }
 
 impl BlockConstraint {

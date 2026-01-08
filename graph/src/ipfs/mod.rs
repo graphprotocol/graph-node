@@ -75,7 +75,7 @@ where
             input: "".to_owned(),
             source: anyhow!("at least one server address is required"),
         }),
-        1 => Ok(clients.pop().unwrap().into()),
+        1 => Ok(clients.pop().unwrap()),
         n => {
             info!(logger, "Creating a pool of {} IPFS clients", n);
 

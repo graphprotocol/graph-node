@@ -133,7 +133,7 @@ impl From<(Deployment, Head)> for DeploymentDetail {
             synced_at,
             synced_at_block_number,
             block_hash: block_hash.clone(),
-            block_number: block_number.clone(),
+            block_number,
             entity_count: entity_count as usize,
         }
     }
@@ -578,7 +578,7 @@ impl StoredDeploymentEntity {
             &detail.subgraph,
             "start_block",
             manifest.start_block_hash.clone(),
-            manifest.start_block_number.map(|n| n.into()),
+            manifest.start_block_number.map(|n| n),
         )?
         .map(|block| block.to_ptr());
 

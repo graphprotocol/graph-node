@@ -457,7 +457,7 @@ impl<C: Blockchain> DataSourceTemplate<C> {
 
     pub fn name(&self) -> &str {
         match self {
-            Self::Onchain(ds) => &ds.name(),
+            Self::Onchain(ds) => ds.name(),
             Self::Offchain(ds) => &ds.name,
             Self::Subgraph(ds) => &ds.name,
         }

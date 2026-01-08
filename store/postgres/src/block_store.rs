@@ -303,19 +303,16 @@ impl BlockStore {
 
         // For each configured chain, add a chain store
         for (chain_name, shard) in chains {
-            match existing_chains
+            if let Some(chain) = existing_chains
                 .iter()
                 .find(|chain| chain.name == chain_name)
             {
-                Some(chain) => {
-                    let status = if chain_ingestible(&block_store.logger, chain, &shard) {
-                        ChainStatus::Ingestible
-                    } else {
-                        ChainStatus::ReadOnly
-                    };
-                    block_store.add_chain_store(chain, status, false).await?;
-                }
-                None => {}
+                let status = if chain_ingestible(&block_store.logger, chain, &shard) {
+                    ChainStatus::Ingestible
+                } else {
+                    ChainStatus::ReadOnly
+                };
+                block_store.add_chain_store(chain, status, false).await?;
             };
         }
 
@@ -544,11 +541,11 @@ impl BlockStore {
         eth_rpc_only_nets: Vec<String>,
     ) -> Result<(), StoreError> {
         for store in self.stores() {
-            if !eth_rpc_only_nets.contains(&&store.chain) {
+            if !eth_rpc_only_nets.contains(&store.chain) {
                 continue;
             };
 
-            if let Some(head_block) = store.remove_cursor(&&store.chain).await? {
+            if let Some(head_block) = store.remove_cursor(&store.chain).await? {
                 let lower_bound = head_block.saturating_sub(ENV_VARS.reorg_threshold() * 2);
                 info!(&self.logger, "Removed cursor for non-firehose chain, now cleaning shallow blocks"; "network" => &store.chain, "lower_bound" => lower_bound);
                 store.cleanup_shallow_blocks(lower_bound).await?;
@@ -601,11 +598,8 @@ impl BlockStore {
         network: &str,
         ident: ChainIdentifier,
     ) -> anyhow::Result<Arc<ChainStore>> {
-        match self.store(network).await {
-            Some(chain_store) => {
-                return Ok(chain_store);
-            }
-            None => {}
+        if let Some(chain_store) = self.store(network).await {
+            return Ok(chain_store);
         }
 
         let mut conn = self.mirror.primary().get().await?;
@@ -620,7 +614,7 @@ impl BlockStore {
                 }
             })
             .ok_or_else(|| anyhow!("unable to find shard for network {}", network))?;
-        let chain = primary::add_chain(&mut conn, &network, &shard, ident).await?;
+        let chain = primary::add_chain(&mut conn, network, shard, ident).await?;
         self.add_chain_store(&chain, ChainStatus::Ingestible, true)
             .await
             .map_err(anyhow::Error::from)
@@ -643,7 +637,7 @@ impl ChainIdStore for BlockStore {
         chain_name: &ChainName,
     ) -> Result<ChainIdentifier, anyhow::Error> {
         let chain_store = self
-            .chain_store(&chain_name)
+            .chain_store(chain_name)
             .await
             .ok_or_else(|| anyhow!("unable to get store for chain '{chain_name}'"))?;
 
@@ -659,7 +653,7 @@ impl ChainIdStore for BlockStore {
 
         // Update the block shard first since that contains a copy from the primary
         let chain_store = self
-            .chain_store(&chain_name)
+            .chain_store(chain_name)
             .await
             .ok_or_else(|| anyhow!("unable to get store for chain '{chain_name}'"))?;
 

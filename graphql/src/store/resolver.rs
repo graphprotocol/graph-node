@@ -164,8 +164,7 @@ impl StoreResolver {
             let Some(block) = field
                 .selection_set
                 .fields()
-                .map(|(_, iter)| iter)
-                .flatten()
+                .flat_map(|(_, iter)| iter)
                 .find(|f| f.name == BLOCK)
             else {
                 return false;
@@ -173,8 +172,7 @@ impl StoreResolver {
             block
                 .selection_set
                 .fields()
-                .map(|(_, iter)| iter)
-                .flatten()
+                .flat_map(|(_, iter)| iter)
                 .any(|f| f.name == TIMESTAMP || f.name == PARENT_HASH)
         }
 
@@ -248,7 +246,7 @@ impl StoreResolver {
             "__typename".into(),
             r::Value::String(META_FIELD_TYPE.to_string()),
         );
-        return Ok(r::Value::object(map));
+        Ok(r::Value::object(map))
     }
 }
 
@@ -299,7 +297,7 @@ impl Resolver for StoreResolver {
         fn child_id(child: &r::Value) -> String {
             match child {
                 r::Value::Object(child) => child
-                    .get(&*ID)
+                    .get(&ID)
                     .map(|id| id.to_string())
                     .unwrap_or("(no id)".to_string()),
                 _ => "(no child object)".to_string(),

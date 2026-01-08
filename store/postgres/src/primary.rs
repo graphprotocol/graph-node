@@ -1265,7 +1265,7 @@ impl Connection {
                     features,
                     data_source_kinds: data_sources,
                     handler_kinds: handlers,
-                    network: network,
+                    network,
                     has_declared_calls,
                     has_bytes_as_ids,
                     has_aggregations,
@@ -1808,7 +1808,7 @@ impl Connection {
                 &detail.subgraph,
                 "latest_ethereum_block",
                 detail.block_hash.clone(),
-                detail.block_number.clone(),
+                detail.block_number,
             )?
             .map(|b| b.to_ptr())
             .map(|ptr| (Some(Vec::from(ptr.hash_slice())), Some(ptr.number)))
@@ -1822,7 +1822,7 @@ impl Connection {
                     u::latest_ethereum_block_number.eq(latest_number),
                     u::failed.eq(detail.failed),
                     u::synced_at.eq(detail.synced_at),
-                    u::synced_at_block_number.eq(detail.synced_at_block_number.clone()),
+                    u::synced_at_block_number.eq(detail.synced_at_block_number),
                 ))
                 .execute(&mut self.conn)
                 .await?;
@@ -2201,7 +2201,7 @@ impl Mirror {
     }
 
     pub async fn active_assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| queries::active_assignments(conn, &node).scope_boxed())
+        self.read_async(|conn| queries::active_assignments(conn, node).scope_boxed())
             .await
     }
 

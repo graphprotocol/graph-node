@@ -1017,12 +1017,12 @@ impl PruneRequest {
     ) -> Result<Self, StoreError> {
         let rebuild_threshold = ENV_VARS.store.rebuild_threshold;
         let delete_threshold = ENV_VARS.store.delete_threshold;
-        if rebuild_threshold < 0.0 || rebuild_threshold > 1.0 {
+        if !(0.0..=1.0).contains(&rebuild_threshold) {
             return Err(internal_error!(
                 "the copy threshold must be between 0 and 1 but is {rebuild_threshold}"
             ));
         }
-        if delete_threshold < 0.0 || delete_threshold > 1.0 {
+        if !(0.0..=1.0).contains(&delete_threshold) {
             return Err(internal_error!(
                 "the delete threshold must be between 0 and 1 but is {delete_threshold}"
             ));

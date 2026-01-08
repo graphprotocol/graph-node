@@ -94,7 +94,7 @@ impl<'a> TryFrom<&s::ObjectType> for IdType {
 
     fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {
         let base_type = obj_type
-            .field(&*ID)
+            .field(&ID)
             .ok_or_else(|| anyhow!("Type {} does not have an `id` field", obj_type.name))?
             .field_type
             .get_base_type();
@@ -484,7 +484,7 @@ impl IdList {
     }
 
     pub fn first(&self) -> Option<IdRef<'_>> {
-        if self.len() > 0 {
+        if !self.is_empty() {
             Some(self.index(0))
         } else {
             None

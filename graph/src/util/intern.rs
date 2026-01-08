@@ -103,7 +103,7 @@ impl AtomPool {
     /// pool or any of its ancestors.
     pub fn get(&self, atom: Atom) -> Option<&str> {
         if atom.0 < self.base_sym {
-            self.base.as_ref().map(|base| base.get(atom)).flatten()
+            self.base.as_ref().and_then(|base| base.get(atom))
         } else {
             self.atoms
                 .get((atom.0 - self.base_sym) as usize)
@@ -271,7 +271,7 @@ impl<V> Object<V> {
     pub(crate) fn contains_key(&self, key: &str) -> bool {
         self.entries
             .iter()
-            .any(|entry| self.pool.get(entry.key).map_or(false, |k| key == k))
+            .any(|entry| self.pool.get(entry.key) == Some(key))
     }
 
     pub fn merge(&mut self, other: Object<V>) {
@@ -337,12 +337,12 @@ impl<V: PartialEq> Object<V> {
         if self.same_pool(other) {
             self.entries
                 .iter()
-                .filter(|e| e.key != TOMBSTONE_KEY && ignore.map_or(true, |ig| e.key != ig))
-                .all(|Entry { key, value }| other.get_by_atom(key).map_or(false, |o| o == value))
+                .filter(|e| e.key != TOMBSTONE_KEY && (ignore != Some(e.key)))
+                .all(|Entry { key, value }| other.get_by_atom(key) == Some(value))
         } else {
             self.iter()
                 .filter(|(key, _)| *key != ignore_key)
-                .all(|(key, value)| other.get(key).map_or(false, |o| o == value))
+                .all(|(key, value)| other.get(key) == Some(value))
         }
     }
 }
@@ -385,7 +385,7 @@ impl<'a, V> Iterator for ObjectIter<'a, V> {
     type Item = (&'a str, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(entry) = self.iter.next() {
+        for entry in self.iter.by_ref() {
             if entry.key != TOMBSTONE_KEY {
                 // unwrap: we only add entries that are backed by the pool
                 let key = self.pool.get(entry.key).unwrap();
@@ -424,7 +424,7 @@ impl<V> Iterator for ObjectOwningIter<V> {
     type Item = (Word, V);
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(entry) = self.iter.next() {
+        for entry in self.iter.by_ref() {
             if entry.key != TOMBSTONE_KEY {
                 // unwrap: we only add entries that are backed by the pool
                 let key = self.pool.get(entry.key).unwrap();
@@ -451,7 +451,7 @@ impl<'a, V> Iterator for AtomIter<'a, V> {
     type Item = Atom;
 
     fn next(&mut self) -> Option<Self::Item> {
-        while let Some(entry) = self.iter.next() {
+        for entry in self.iter.by_ref() {
             if entry.key != TOMBSTONE_KEY {
                 return Some(entry.key);
             }
@@ -498,10 +498,10 @@ impl<V: PartialEq> PartialEq for Object<V> {
             self.entries
                 .iter()
                 .filter(|e| e.key != TOMBSTONE_KEY)
-                .all(|Entry { key, value }| other.get_by_atom(key).map_or(false, |o| o == value))
+                .all(|Entry { key, value }| other.get_by_atom(key) == Some(value))
         } else {
             self.iter()
-                .all(|(key, value)| other.get(key).map_or(false, |o| o == value))
+                .all(|(key, value)| other.get(key) == Some(value))
         }
     }
 }

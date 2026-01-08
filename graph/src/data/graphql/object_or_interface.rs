@@ -100,7 +100,7 @@ impl<'a> ObjectOrInterface<'a> {
     }
 
     pub fn field(&self, name: &str) -> Option<&s::Field> {
-        self.fields().iter().find(|field| &field.name == name)
+        self.fields().iter().find(|field| field.name == name)
     }
 
     pub fn object_types(self, schema: &'a Schema) -> Option<Vec<&'a s::ObjectType>> {

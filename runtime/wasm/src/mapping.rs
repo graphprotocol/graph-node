@@ -320,7 +320,7 @@ impl ValidModule {
 
         let mut epoch_counter_abort_handle = None;
         if let Some(timeout) = timeout {
-            let timeout = timeout.clone();
+            let timeout = timeout;
             let engine = engine.clone();
 
             // The epoch counter task will perpetually increment the epoch every `timeout` seconds.

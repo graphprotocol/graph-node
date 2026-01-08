@@ -124,7 +124,7 @@ impl Subgraph {
     pub async fn wait_ready(name: &str) -> anyhow::Result<Subgraph> {
         let start = Instant::now();
         while start.elapsed() <= CONFIG.timeout {
-            if let Some(subgraph) = Self::status(&name).await? {
+            if let Some(subgraph) = Self::status(name).await? {
                 if subgraph.synced || !subgraph.healthy {
                     return Ok(subgraph);
                 }
@@ -199,7 +199,7 @@ impl Subgraph {
             }
             let data = resp["data"].as_object().unwrap();
             let values = keys
-                .into_iter()
+                .iter()
                 .map(|key| data[*key].as_array().unwrap().clone())
                 .collect::<Vec<_>>();
 

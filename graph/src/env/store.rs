@@ -336,7 +336,7 @@ impl FromStr for ZeroToOneF64 {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let f = s.parse::<f64>()?;
-        if f < 0.0 || f > 1.0 {
+        if !(0.0..=1.0).contains(&f) {
             bail!("invalid value: {s} must be between 0 and 1");
         } else {
             Ok(ZeroToOneF64(f))

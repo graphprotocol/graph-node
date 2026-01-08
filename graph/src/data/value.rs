@@ -409,7 +409,7 @@ impl std::fmt::Display for Value {
                 write!(f, "}}")
             }
             Value::Timestamp(ref ts) => {
-                write!(f, "\"{}\"", ts.as_microseconds_since_epoch().to_string())
+                write!(f, "\"{}\"", ts.as_microseconds_since_epoch())
             }
         }
     }
@@ -433,7 +433,7 @@ impl Serialize for Value {
                 seq.end()
             }
             Value::Timestamp(ts) => {
-                serializer.serialize_str(&ts.as_microseconds_since_epoch().to_string().as_str())
+                serializer.serialize_str(ts.as_microseconds_since_epoch().to_string().as_str())
             }
             Value::Null => serializer.serialize_none(),
             Value::String(s) => serializer.serialize_str(s),

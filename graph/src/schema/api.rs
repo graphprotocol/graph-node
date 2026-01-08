@@ -188,7 +188,7 @@ impl ApiSchema {
         match t {
             s::Type::NamedType(name) => {
                 let named_type = self.get_named_type(name);
-                named_type.map_or(false, |type_def| match type_def {
+                named_type.is_some_and(|type_def| match type_def {
                     s::TypeDefinition::Scalar(_)
                     | s::TypeDefinition::Enum(_)
                     | s::TypeDefinition::InputObject(_) => true,
@@ -916,7 +916,7 @@ fn field_scalar_filter_input_values(
     set: FilterOpsSet<'_>,
 ) -> Vec<s::InputValue> {
     field_filter_ops(set)
-        .into_iter()
+        .iter()
         .map(|filter_type| {
             let field_type = s::Type::NamedType(set.type_name().to_string());
             let value_type = match *filter_type {

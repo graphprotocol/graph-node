@@ -62,7 +62,7 @@ impl ArrayBuffer {
         self.content[byte_offset..]
             .chunks(size_of::<T>())
             .take(length)
-            .map(|asc_obj| T::from_asc_bytes(asc_obj, &api_version))
+            .map(|asc_obj| T::from_asc_bytes(asc_obj, api_version))
             .collect()
 
         // TODO: This code is preferred as it validates the length of the array.
@@ -96,7 +96,7 @@ impl AscType for ArrayBuffer {
         let total_size = self.byte_length as usize + header_size;
         let total_capacity = total_size.next_power_of_two();
         let extra_capacity = total_capacity - total_size;
-        asc_layout.extend(std::iter::repeat(0).take(extra_capacity));
+        asc_layout.extend(std::iter::repeat_n(0, extra_capacity));
         assert_eq!(asc_layout.len(), total_capacity);
 
         Ok(asc_layout)
@@ -249,7 +249,7 @@ impl AscType for AscString {
         }
 
         // Prevents panic when accessing offset + 1 in the loop
-        if asc_obj.len() % 2 != 0 {
+        if !asc_obj.len().is_multiple_of(2) {
             return Err(DeterministicHostError::from(anyhow::anyhow!(
                 "Invalid string length"
             )));

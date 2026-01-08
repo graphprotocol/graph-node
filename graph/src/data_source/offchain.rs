@@ -336,9 +336,9 @@ impl Source {
     }
 }
 
-impl Into<Bytes> for Source {
-    fn into(self) -> Bytes {
-        match self {
+impl From<Source> for Bytes {
+    fn from(val: Source) -> Self {
+        match val {
             Source::Ipfs(ref path) => Bytes::from(path.to_string().as_bytes().to_vec()),
             Source::Arweave(ref base64) => Bytes::from(base64.as_bytes()),
         }
@@ -435,15 +435,15 @@ pub struct DataSourceTemplate {
     pub mapping: Mapping,
 }
 
-impl Into<DataSourceTemplateInfo> for DataSourceTemplate {
-    fn into(self) -> DataSourceTemplateInfo {
+impl From<DataSourceTemplate> for DataSourceTemplateInfo {
+    fn from(val: DataSourceTemplate) -> Self {
         let DataSourceTemplate {
             kind,
             network: _,
             name,
             manifest_idx,
             mapping,
-        } = self;
+        } = val;
 
         DataSourceTemplateInfo {
             api_version: mapping.api_version.clone(),

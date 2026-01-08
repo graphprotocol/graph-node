@@ -175,7 +175,7 @@ impl HostExports {
                 !state
                     .entity_cache
                     .schema
-                    .has_field_with_name(entity_type, &field_name)
+                    .has_field_with_name(entity_type, field_name)
             });
 
             if has_invalid_fields {
@@ -185,7 +185,7 @@ impl HostExports {
                         if !state
                             .entity_cache
                             .schema
-                            .has_field_with_name(entity_type, &field_name)
+                            .has_field_with_name(entity_type, field_name)
                         {
                             Some(field_name.clone())
                         } else {
@@ -326,7 +326,7 @@ impl HostExports {
         let poi_section = stopwatch.start_section("host_export_store_set__proof_of_indexing");
         proof_of_indexing.write_event(
             &ProofOfIndexingEvent::SetEntity {
-                entity_type: &key.entity_type.typename(),
+                entity_type: key.entity_type.typename(),
                 id: &key.entity_id.to_string(),
                 data: &entity,
             },
@@ -412,7 +412,7 @@ impl HostExports {
         )?;
 
         if let Some(ref entity) = result {
-            state.metrics.track_entity_read(&entity_type, &entity)
+            state.metrics.track_entity_read(&entity_type, entity)
         }
 
         Ok(result)
@@ -585,7 +585,7 @@ impl HostExports {
             }
             Ok(v)
         };
-        result.map_err(move |e: Error| anyhow::anyhow!("{}: {}", errmsg, e.to_string()))
+        result.map_err(move |e: Error| anyhow::anyhow!("{}: {}", errmsg, e))
     }
 
     /// Expects a decimal string.
@@ -1164,9 +1164,10 @@ impl HostExports {
         )?;
 
         if bytes.len() > MAX_JSON_SIZE {
-            return Err(DeterministicHostError::Other(
-                anyhow!("JSON size exceeds max size of {}", MAX_JSON_SIZE).into(),
-            ));
+            return Err(DeterministicHostError::Other(anyhow!(
+                "JSON size exceeds max size of {}",
+                MAX_JSON_SIZE
+            )));
         }
 
         serde_json::from_slice(bytes.as_slice())
@@ -1264,13 +1265,10 @@ impl HostExports {
         )?;
 
         if bytes.len() > YAML_MAX_SIZE_BYTES {
-            return Err(DeterministicHostError::Other(
-                anyhow!(
-                    "YAML size exceeds max size of {} bytes",
-                    YAML_MAX_SIZE_BYTES
-                )
-                .into(),
-            ));
+            return Err(DeterministicHostError::Other(anyhow!(
+                "YAML size exceeds max size of {} bytes",
+                YAML_MAX_SIZE_BYTES
+            )));
         }
 
         serde_yaml::from_slice(bytes)

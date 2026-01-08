@@ -35,8 +35,9 @@ impl HttpTrace {
     }
 }
 
-#[derive(Debug, CacheWeight)]
+#[derive(Debug, CacheWeight, Default)]
 pub enum Trace {
+    #[default]
     None,
     Root {
         query: Arc<String>,
@@ -75,12 +76,6 @@ pub enum Trace {
         /// Pairs of response key and traces. Each trace is either a `Trace::Query` or a `Trace::None`
         children: Vec<(String, Trace)>,
     },
-}
-
-impl Default for Trace {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl Trace {

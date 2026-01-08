@@ -147,7 +147,7 @@ where
                     .collect(),
                 _ => unreachable!(),
             })
-            .unwrap_or_else(Vec::new);
+            .unwrap_or_default();
 
         let infos = self
             .store
@@ -738,7 +738,7 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
                         r::Value::object(
                             e.sorted()
                                 .into_iter()
-                                .map(|(name, value)| (name.into(), value.into()))
+                                .map(|(name, value)| (name, value.into()))
                                 .collect(),
                         )
                     })

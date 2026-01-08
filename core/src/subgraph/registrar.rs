@@ -150,7 +150,7 @@ where
 
                 let logger = self.logger.new(o!("subgraph_id" => deployment.hash.to_string(), "node_id" => self.node_id.to_string()));
                 if let Some((assigned, is_paused)) = assigned {
-                    if &assigned == &self.node_id {
+                    if assigned == self.node_id {
                         if is_paused {
                             // Subgraph is paused, so we don't start it
                             debug!(logger, "Deployment assignee is this node"; "assigned_to" => assigned, "paused" => is_paused, "action" => "ignore");
@@ -413,7 +413,7 @@ async fn resolve_start_block(
         0 => Ok(None),
         min_start_block => Retry::spawn(retry_strategy(Some(2), RETRY_DEFAULT_LIMIT), move || {
             chain
-                .block_pointer_from_number(&logger, min_start_block - 1)
+                .block_pointer_from_number(logger, min_start_block - 1)
                 .inspect_err(move |e| warn!(&logger, "Failed to get block number: {}", e))
         })
         .await
