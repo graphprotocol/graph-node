@@ -140,6 +140,7 @@ impl<C: AscType> AscPtr<C> {
     /// - gc_info2: usize -> second GC info (we don't free memory so it's irrelevant)
     /// - rt_id: u32 -> identifier for the class being allocated
     /// - rt_size: u32 -> content size
+    ///
     /// Only used for version >= 0.0.5.
     async fn generate_header<H: AscHeap + ?Sized>(
         heap: &mut H,
@@ -169,12 +170,14 @@ impl<C: AscType> AscPtr<C> {
     }
 
     /// Helper to read the length from the header.
+    ///
     /// An AssemblyScript header has 20 bytes, and it's right before the content, and composed by:
     /// - mm_info: usize
     /// - gc_info: usize
     /// - gc_info2: usize
     /// - rt_id: u32
     /// - rt_size: u32
+    ///
     /// This function returns the `rt_size`.
     /// Only used for version >= 0.0.5.
     pub fn read_len<H: AscHeap + ?Sized>(

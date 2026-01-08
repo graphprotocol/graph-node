@@ -273,7 +273,7 @@ pub async fn create_ethereum_networks_for_chain(
 /// Deep integration chains (explicitly defined on the graph-node like Ethereum, Near, etc):
 ///  - These can have adapter of any type. Adapters of firehose and rpc types are used by the Chain implementation, aka deep integration
 ///  - The substreams adapters will trigger the creation of a Substreams chain, the priority for the block ingestor setup depends on the chain, if enabled at all.
-/// Substreams Chain(chains the graph-node knows nothing about and are only accessible through substreams):
+///    Substreams Chain(chains the graph-node knows nothing about and are only accessible through substreams):
 ///  - This chain type is more generic and can only have adapters of substreams type.
 ///  - Substreams chain are created as a "secondary" chain for deep integrations but in that case the block ingestor should be run by the main/deep integration chain.
 ///  - These chains will use SubstreamsBlockIngestor by default.

@@ -414,7 +414,7 @@ pub struct Link {
 /// Custom deserializer for Link
 /// This handles both formats:
 /// 1. Simple string: "schema.graphql" or "subgraph.yaml" which is used in [`FileLinkResolver`]
-/// FileLinkResolver is used in local development environments
+///    FileLinkResolver is used in local development environments
 /// 2. IPLD format: { "/": "Qm..." } which is used in [`IpfsLinkResolver`]
 impl<'de> de::Deserialize<'de> for Link {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

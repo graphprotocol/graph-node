@@ -2426,10 +2426,10 @@ mod validations {
 
             /// * `source` is an existing timeseries type
             /// * all non-aggregate fields are also fields on the `source`
-            /// type and have the same type
+            ///   type and have the same type
             /// * `arg` for each `@aggregate` is a numeric type in the
-            /// timeseries, coercible to the type of the field (e.g. `Int ->
-            /// BigDecimal`, but not `BigInt -> Int8`)
+            ///   timeseries, coercible to the type of the field (e.g. `Int
+            ///   -> BigDecimal`, but not `BigInt -> Int8`)
             fn aggregate_directive(
                 schema: &Schema,
                 agg_type: &s::ObjectType,
