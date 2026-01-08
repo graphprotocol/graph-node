@@ -140,7 +140,7 @@ impl PollingBlockIngestor {
         // ingest_blocks will return a (potentially incomplete) list of blocks that are
         // missing.
         let mut missing_block_hash = self
-            .ingest_block(&logger, &eth_adapter, &latest_block.hash)
+            .ingest_block(logger, &eth_adapter, &latest_block.hash)
             .await?;
 
         // Repeatedly fetch missing parent blocks, and ingest them.
@@ -162,7 +162,7 @@ impl PollingBlockIngestor {
         //   iteration will have at most block number N-1.
         // - Therefore, the loop will iterate at most ancestor_count times.
         while let Some(hash) = missing_block_hash {
-            missing_block_hash = self.ingest_block(&logger, &eth_adapter, &hash).await?;
+            missing_block_hash = self.ingest_block(logger, &eth_adapter, &hash).await?;
         }
         Ok(())
     }
@@ -181,7 +181,7 @@ impl PollingBlockIngestor {
             .block_by_hash(logger, block_hash)
             .await?
             .ok_or(IngestorError::BlockUnavailable(block_hash))?;
-        let ethereum_block = eth_adapter.load_full_block(&logger, block).await?;
+        let ethereum_block = eth_adapter.load_full_block(logger, block).await?;
 
         // We need something that implements `Block` to store the block; the
         // store does not care whether the block is final or not
@@ -212,7 +212,7 @@ impl PollingBlockIngestor {
         eth_adapter: &Arc<EthereumAdapter>,
     ) -> Result<BlockPtr, IngestorError> {
         eth_adapter
-            .latest_block_header(&logger)
+            .latest_block_header(logger)
             .await
             .map(|block| block.into())
     }

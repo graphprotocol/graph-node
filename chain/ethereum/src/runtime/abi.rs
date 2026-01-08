@@ -438,7 +438,7 @@ impl<'a> ToAscObj<AscEthereumBlock> for EthereumBlockData<'a> {
         gas: &GasCounter,
     ) -> Result<AscEthereumBlock, HostExportError> {
         let size = match self.size() {
-            Some(size) => asc_new(heap, &BigInt::from_unsigned_u256(&size), gas).await?,
+            Some(size) => asc_new(heap, &BigInt::from_unsigned_u256(size), gas).await?,
             None => AscPtr::null(),
         };
 
@@ -474,11 +474,11 @@ impl<'a> ToAscObj<AscEthereumBlock_0_0_6> for EthereumBlockData<'a> {
         gas: &GasCounter,
     ) -> Result<AscEthereumBlock_0_0_6, HostExportError> {
         let size = match self.size() {
-            Some(size) => asc_new(heap, &BigInt::from_unsigned_u256(&size), gas).await?,
+            Some(size) => asc_new(heap, &BigInt::from_unsigned_u256(size), gas).await?,
             None => AscPtr::null(),
         };
         let base_fee_per_block = match self.base_fee_per_gas() {
-            Some(base_fee) => asc_new(heap, &BigInt::from_unsigned_u256(&base_fee), gas).await?,
+            Some(base_fee) => asc_new(heap, &BigInt::from_unsigned_u256(base_fee), gas).await?,
             None => AscPtr::null(),
         };
 

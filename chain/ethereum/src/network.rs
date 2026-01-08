@@ -197,7 +197,7 @@ impl EthereumNetworkAdapters {
         required_capabilities: &NodeCapabilities,
         retest_percent: f64,
     ) -> Result<Arc<EthereumAdapter>, Error> {
-        let retest_rng: f64 = (&mut rand::rng()).random();
+        let retest_rng: f64 = rand::rng().random();
 
         let cheapest = input.into_iter().choose_multiple(&mut rand::rng(), 3);
         let cheapest = cheapest.iter();

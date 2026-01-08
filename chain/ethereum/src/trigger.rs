@@ -359,7 +359,7 @@ impl EthereumTrigger {
                 Some(address)
             }
             EthereumTrigger::Call(call) => Some(&call.to),
-            EthereumTrigger::Log(log_ref) => Some(&log_ref.address()),
+            EthereumTrigger::Log(log_ref) => Some(log_ref.address()),
             // Unfiltered block triggers match any data source address.
             EthereumTrigger::Block(_, EthereumBlockTriggerType::End) => None,
             EthereumTrigger::Block(_, EthereumBlockTriggerType::Start) => None,

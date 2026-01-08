@@ -61,7 +61,7 @@ impl EthereumCallCache for BufferedCallCache {
             return Ok(Some(value));
         }
 
-        let result = self.call_cache.get_call(&call, block).await?;
+        let result = self.call_cache.get_call(call, block).await?;
 
         let mut buffer = self.buffer.lock().unwrap();
         if let Some(call::Response {

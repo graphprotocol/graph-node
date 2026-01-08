@@ -80,15 +80,18 @@ impl EventSignatureWithTopics {
 
         address_matches
             && self.signature == sig
-            && self.topic1.as_ref().map_or(true, |t1| {
-                topics.get(1).map_or(false, |topic| t1.contains(topic))
-            })
-            && self.topic2.as_ref().map_or(true, |t2| {
-                topics.get(2).map_or(false, |topic| t2.contains(topic))
-            })
-            && self.topic3.as_ref().map_or(true, |t3| {
-                topics.get(3).map_or(false, |topic| t3.contains(topic))
-            })
+            && self
+                .topic1
+                .as_ref()
+                .is_none_or(|t1| topics.get(1).is_some_and(|topic| t1.contains(topic)))
+            && self
+                .topic2
+                .as_ref()
+                .is_none_or(|t2| topics.get(2).is_some_and(|topic| t2.contains(topic)))
+            && self
+                .topic3
+                .as_ref()
+                .is_none_or(|t3| topics.get(3).is_some_and(|topic| t3.contains(topic)))
     }
 }
 

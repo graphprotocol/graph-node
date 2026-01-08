@@ -467,7 +467,7 @@ impl DataSource {
         self.mapping
             .event_handlers
             .iter()
-            .filter(|handler| handler.matches(&log))
+            .filter(|handler| handler.matches(log))
             .cloned()
             .collect::<Vec<_>>()
     }
@@ -650,7 +650,7 @@ impl DataSource {
                 // `address,uint256,bool)
                 arguments.push(')');
                 // `operation(address,uint256,bool)`
-                let actual_signature = vec![function.name.clone(), arguments].join("(");
+                let actual_signature = [function.name.clone(), arguments].join("(");
                 target_signature == actual_signature
             })
     }
@@ -1384,11 +1384,9 @@ impl UnresolvedMapping {
             // resolve each abi
             abis.into_iter()
                 .map(|unresolved_abi| async {
-                    Result::<_, Error>::Ok(
-                        unresolved_abi
-                            .resolve(deployment_hash, resolver, logger)
-                            .await?,
-                    )
+                    unresolved_abi
+                        .resolve(deployment_hash, resolver, logger)
+                        .await
                 })
                 .collect::<FuturesOrdered<_>>()
                 .try_collect::<Vec<_>>(),
@@ -1415,7 +1413,7 @@ impl UnresolvedMapping {
                     )
                 })?;
 
-                unresolved_handler.resolve(abi_json, &spec_version)
+                unresolved_handler.resolve(abi_json, spec_version)
             })
             .collect::<Result<Vec<_>, anyhow::Error>>()?;
 
@@ -1561,10 +1559,10 @@ impl MappingEventHandler {
 
     pub fn matches(&self, log: &Log) -> bool {
         let matches_topic = |index: usize, topic_opt: &Option<Vec<H256>>| -> bool {
-            topic_opt.as_ref().map_or(true, |topic_vec| {
+            topic_opt.as_ref().is_none_or(|topic_vec| {
                 log.topics
                     .get(index)
-                    .map_or(false, |log_topic| topic_vec.contains(log_topic))
+                    .is_some_and(|log_topic| topic_vec.contains(log_topic))
             })
         };
 
@@ -1580,9 +1578,9 @@ impl MappingEventHandler {
     }
 
     pub fn has_additional_topics(&self) -> bool {
-        self.topic1.as_ref().map_or(false, |v| !v.is_empty())
-            || self.topic2.as_ref().map_or(false, |v| !v.is_empty())
-            || self.topic3.as_ref().map_or(false, |v| !v.is_empty())
+        self.topic1.as_ref().is_some_and(|v| !v.is_empty())
+            || self.topic2.as_ref().is_some_and(|v| !v.is_empty())
+            || self.topic3.as_ref().is_some_and(|v| !v.is_empty())
     }
 }
 

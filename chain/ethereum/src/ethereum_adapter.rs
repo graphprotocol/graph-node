@@ -498,17 +498,14 @@ impl EthereumAdapter {
         block_ptr: BlockPtr,
     ) -> Result<Bytes, EthereumRpcError> {
         let web3 = self.web3.clone();
-        let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
+        let logger = Logger::new(logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
         let retry_log_message = format!("eth_getCode RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
-            .when(|result| match result {
-                Ok(_) => false,
-                Err(_) => true,
-            })
+            .when(|result| result.is_err())
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
@@ -533,17 +530,14 @@ impl EthereumAdapter {
         block_ptr: BlockPtr,
     ) -> Result<U256, EthereumRpcError> {
         let web3 = self.web3.clone();
-        let logger = Logger::new(&logger, o!("provider" => self.provider.clone()));
+        let logger = Logger::new(logger, o!("provider" => self.provider.clone()));
 
         let block_id = self.block_ptr_to_id(&block_ptr);
         let retry_log_message = format!("eth_getBalance RPC call for block {}", block_ptr);
 
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
-            .when(|result| match result {
-                Ok(_) => false,
-                Err(_) => true,
-            })
+            .when(|result| result.is_err())
             .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
@@ -589,7 +583,7 @@ impl EthereumAdapter {
                 async move {
                     let req = CallRequest {
                         to: Some(call_data.address),
-                        gas: gas.map(|val| web3::types::U256::from(val)),
+                        gas: gas.map(web3::types::U256::from),
                         data: Some(Bytes::from(call_data.encoded_call.to_vec())),
                         from: None,
                         gas_price: None,
@@ -735,7 +729,7 @@ impl EthereumAdapter {
             .await?;
         if let Err(e) = cache
             .set_call(
-                &logger,
+                logger,
                 req.cheap_clone(),
                 call.block_ptr.cheap_clone(),
                 result.clone(),

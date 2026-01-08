@@ -315,7 +315,7 @@ async fn eth_call(
 
     fn result_as_string(result: &Result<Option<Vec<Token>>, HostExportError>) -> String {
         match result {
-            Ok(Some(tokens)) => format!("({})", tokens_as_string(&tokens)),
+            Ok(Some(tokens)) => format!("({})", tokens_as_string(tokens)),
             Ok(None) => "none".to_string(),
             Err(_) => "error".to_string(),
         }
