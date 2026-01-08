@@ -1030,6 +1030,20 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         }
     }
 
+    // Find an ancestor block at the specified offset from the given block pointer.
+    // Primarily used for reorg detection to verify if the indexed position remains
+    // on the main chain.
+    //
+    // Parameters:
+    // - ptr: Starting block pointer from which to walk backwards (typically the chain head)
+    // - offset: Number of blocks to traverse backwards (0 returns ptr, 1 returns parent, etc.)
+    // - root: Optional block hash that serves as a boundary for traversal. This is ESSENTIAL
+    //         for chains with skipped blocks (e.g., Filecoin EVM) where block numbers are not
+    //         consecutive. When provided, traversal stops upon reaching the child of root,
+    //         ensuring correct ancestor relationships even with gaps in block numbers.
+    //
+    // The function attempts to use the database cache first for performance,
+    // with RPC fallback implemented to handle cases where the cache is unavailable.
     async fn ancestor_block(
         &self,
         ptr: BlockPtr,
@@ -1040,56 +1054,97 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         let cached = self
             .chain_store
             .cheap_clone()
-            .ancestor_block(ptr, offset, root)
+            .ancestor_block(ptr.clone(), offset, root.clone())
             .await?;
 
-        let Some((json_value, block_ptr)) = cached else {
-            return Ok(None);
-        };
-
-        match json::from_value::<EthereumBlock>(json_value.clone()) {
-            Ok(block) => Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
-                ethereum_block: block,
-                calls: None,
-            }))),
-            Err(e) => {
-                warn!(
+        // First check if we have the ancestor in cache and can deserialize it
+        let block_ptr = match cached {
+            Some((json, ptr)) => {
+                // Try to deserialize the cached block
+                match json::from_value::<EthereumBlock>(json.clone()) {
+                    Ok(block) => {
+                        // Successfully cached and deserialized
+                        return Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
+                            ethereum_block: block,
+                            calls: None,
+                        })));
+                    }
+                    Err(e) => {
+                        // Cache hit but deserialization failed
+                        warn!(
+                            self.logger,
+                            "Failed to deserialize cached ancestor block {} (offset {} from {}): {}. \
+                             This may indicate stale cache data from a previous version. \
+                             Falling back to Firehose/RPC.",
+                            ptr.hash_hex(),
+                            offset,
+                            ptr_for_log.hash_hex(),
+                            e
+                        );
+                        ptr
+                    }
+                }
+            }
+            None => {
+                // Cache miss - fall back to walking the chain via parent_ptr() calls.
+                // This provides resilience when the block cache is empty (e.g., after truncation).
+                debug!(
                     self.logger,
-                    "Failed to deserialize cached ancestor block {} (offset {} from {}): {}. \
-                     This may indicate stale cache data from a previous version. \
-                     Falling back to Firehose/RPC.",
-                    block_ptr.hash_hex(),
-                    offset,
+                    "ancestor_block cache miss for {} at offset {}, walking back via parent_ptr",
                     ptr_for_log.hash_hex(),
-                    e
+                    offset
                 );
 
-                match self.chain_client.as_ref() {
-                    ChainClient::Firehose(endpoints) => {
-                        let block = self
-                            .fetch_block_with_firehose(endpoints, &block_ptr)
-                            .await?;
-                        let ethereum_block: EthereumBlockWithCalls = (&block).try_into()?;
-                        Ok(Some(BlockFinality::NonFinal(ethereum_block)))
-                    }
-                    ChainClient::Rpc(adapters) => {
-                        match self
-                            .fetch_light_block_with_rpc(adapters, &block_ptr)
-                            .await?
-                        {
-                            Some(light_block) => {
-                                let ethereum_block = EthereumBlock {
-                                    block: light_block,
-                                    transaction_receipts: vec![],
-                                };
-                                Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
-                                    ethereum_block,
-                                    calls: None,
-                                })))
+                let mut current_ptr = ptr.clone();
+                for _ in 0..offset {
+                    if let Some(root_hash) = &root {
+                        match self.parent_ptr(&current_ptr).await? {
+                            Some(parent) => {
+                                if parent.hash == *root_hash {
+                                    // Stop at child of root
+                                    break;
+                                }
+                                current_ptr = parent;
                             }
-                            None => Ok(None),
+                            None => return Ok(None),
+                        }
+                    } else {
+                        match self.parent_ptr(&current_ptr).await? {
+                            Some(parent) => current_ptr = parent,
+                            None => return Ok(None),
                         }
                     }
+                }
+                current_ptr
+            }
+        };
+
+        // Fetch the actual block data for the identified block pointer.
+        // This path is taken for both cache misses and deserialization failures.
+        match self.chain_client.as_ref() {
+            ChainClient::Firehose(endpoints) => {
+                let block = self
+                    .fetch_block_with_firehose(endpoints, &block_ptr)
+                    .await?;
+                let ethereum_block: EthereumBlockWithCalls = (&block).try_into()?;
+                Ok(Some(BlockFinality::NonFinal(ethereum_block)))
+            }
+            ChainClient::Rpc(adapters) => {
+                match self
+                    .fetch_light_block_with_rpc(adapters, &block_ptr)
+                    .await?
+                {
+                    Some(light_block) => {
+                        let ethereum_block = EthereumBlock {
+                            block: light_block,
+                            transaction_receipts: vec![],
+                        };
+                        Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
+                            ethereum_block,
+                            calls: None,
+                        })))
+                    }
+                    None => Ok(None),
                 }
             }
         }
