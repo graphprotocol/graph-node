@@ -578,7 +578,7 @@ impl StoredDeploymentEntity {
             &detail.subgraph,
             "start_block",
             manifest.start_block_hash.clone(),
-            manifest.start_block_number.map(|n| n),
+            manifest.start_block_number,
         )?
         .map(|block| block.to_ptr());
 
