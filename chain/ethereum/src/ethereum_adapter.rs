@@ -1034,7 +1034,7 @@ impl EthereumAdapter {
 
         let blocks_matching_polling_filter = self.load_ptrs_for_blocks(
             logger.clone(),
-            matching_blocks.iter().map(|(k, _)| *k).collect_vec(),
+            matching_blocks.keys().cloned().collect_vec(),
         );
 
         let block_futures = blocks_matching_polling_filter.map(move |ptrs| {

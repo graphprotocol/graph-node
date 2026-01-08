@@ -536,10 +536,8 @@ impl EthereumLogFilter {
         // Handle events with topic filters.
         filters.extend(
             self.events_with_topic_filters
-                .into_iter()
-                .map(|(event_with_topics, _)| {
-                    EthGetLogsFilter::from_event_with_topics(event_with_topics)
-                }),
+                .into_keys()
+                .map(EthGetLogsFilter::from_event_with_topics),
         );
 
         // The current algorithm is to repeatedly find the maximum cardinality vertex and turn all
