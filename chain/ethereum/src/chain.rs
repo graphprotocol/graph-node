@@ -355,6 +355,38 @@ impl std::fmt::Debug for Chain {
     }
 }
 
+/// Walk back from a block pointer by following parent pointers.
+/// This is the core logic used as a fallback when the cache doesn't have ancestor block.
+///
+async fn walk_back_ancestor<F, Fut, E>(
+    start_ptr: BlockPtr,
+    offset: BlockNumber,
+    root: Option<BlockHash>,
+    mut parent_getter: F,
+) -> Result<Option<BlockPtr>, E>
+where
+    F: FnMut(BlockPtr) -> Fut,
+    Fut: std::future::Future<Output = Result<Option<BlockPtr>, E>>,
+{
+    let mut current_ptr = start_ptr;
+
+    for _ in 0..offset {
+        match parent_getter(current_ptr.clone()).await? {
+            Some(parent) => {
+                if let Some(root_hash) = &root {
+                    if parent.hash == *root_hash {
+                        break;
+                    }
+                }
+                current_ptr = parent;
+            }
+            None => return Ok(None),
+        }
+    }
+
+    Ok(Some(current_ptr))
+}
+
 impl Chain {
     /// Creates a new Ethereum [`Chain`].
     pub fn new(
@@ -1095,27 +1127,17 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     offset
                 );
 
-                let mut current_ptr = ptr.clone();
-                for _ in 0..offset {
-                    if let Some(root_hash) = &root {
-                        match self.parent_ptr(&current_ptr).await? {
-                            Some(parent) => {
-                                if parent.hash == *root_hash {
-                                    // Stop at child of root
-                                    break;
-                                }
-                                current_ptr = parent;
-                            }
-                            None => return Ok(None),
-                        }
-                    } else {
-                        match self.parent_ptr(&current_ptr).await? {
-                            Some(parent) => current_ptr = parent,
-                            None => return Ok(None),
-                        }
-                    }
+                match walk_back_ancestor(
+                    ptr.clone(),
+                    offset,
+                    root.clone(),
+                    |block_ptr| async move { self.parent_ptr(&block_ptr).await },
+                )
+                .await?
+                {
+                    Some(ptr) => ptr,
+                    None => return Ok(None),
                 }
-                current_ptr
             }
         };
 
@@ -1515,5 +1537,119 @@ mod tests {
         assert_eq!(missing.len(), 2);
         assert!(missing.contains(&2));
         assert!(missing.contains(&3));
+    }
+
+    #[tokio::test]
+    async fn test_walk_back_ancestor() {
+        use std::collections::HashMap;
+
+        let block_100_hash = BlockHash("block100".as_bytes().to_vec().into_boxed_slice());
+        let block_101_hash = BlockHash("block101".as_bytes().to_vec().into_boxed_slice());
+        let block_102_hash = BlockHash("block102".as_bytes().to_vec().into_boxed_slice());
+        let block_103_hash = BlockHash("block103".as_bytes().to_vec().into_boxed_slice());
+        let block_104_hash = BlockHash("block104".as_bytes().to_vec().into_boxed_slice());
+        let block_105_hash = BlockHash("block105".as_bytes().to_vec().into_boxed_slice());
+
+        let block_105 = BlockPtr::new(block_105_hash.clone(), 105);
+        let block_104 = BlockPtr::new(block_104_hash.clone(), 104);
+        let block_103 = BlockPtr::new(block_103_hash.clone(), 103);
+        let block_102 = BlockPtr::new(block_102_hash.clone(), 102);
+        let block_101 = BlockPtr::new(block_101_hash.clone(), 101);
+        let block_100 = BlockPtr::new(block_100_hash.clone(), 100);
+
+        let mut parent_map = HashMap::new();
+        parent_map.insert(block_105_hash.clone(), block_104.clone());
+        parent_map.insert(block_104_hash.clone(), block_103.clone());
+        parent_map.insert(block_103_hash.clone(), block_102.clone());
+        parent_map.insert(block_102_hash.clone(), block_101.clone());
+        parent_map.insert(block_101_hash.clone(), block_100.clone());
+
+        let result = super::walk_back_ancestor(block_105.clone(), 2, None, |block_ptr| {
+            let parent = parent_map.get(&block_ptr.hash).cloned();
+            async move { Ok::<_, std::convert::Infallible>(parent) }
+        })
+        .await
+        .unwrap();
+        assert_eq!(result, Some(block_103.clone()));
+
+        let result = super::walk_back_ancestor(
+            block_105.clone(),
+            10,
+            Some(block_102_hash.clone()),
+            |block_ptr| {
+                let parent = parent_map.get(&block_ptr.hash).cloned();
+                async move { Ok::<_, std::convert::Infallible>(parent) }
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            result,
+            Some(block_103.clone()),
+            "Should stop at child of root"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_walk_back_ancestor_skipped_blocks_with_root() {
+        use std::collections::HashMap;
+
+        let block_100_hash = BlockHash("block100".as_bytes().to_vec().into_boxed_slice());
+        let block_101_hash = BlockHash("block101".as_bytes().to_vec().into_boxed_slice());
+        let block_102_hash = BlockHash("block102".as_bytes().to_vec().into_boxed_slice());
+        let block_110_hash = BlockHash("block110".as_bytes().to_vec().into_boxed_slice());
+        let block_111_hash = BlockHash("block111".as_bytes().to_vec().into_boxed_slice());
+        let block_112_hash = BlockHash("block112".as_bytes().to_vec().into_boxed_slice());
+        let block_120_hash = BlockHash("block120".as_bytes().to_vec().into_boxed_slice());
+
+        let block_120 = BlockPtr::new(block_120_hash.clone(), 120);
+        let block_112 = BlockPtr::new(block_112_hash.clone(), 112);
+        let block_111 = BlockPtr::new(block_111_hash.clone(), 111);
+        let block_110 = BlockPtr::new(block_110_hash.clone(), 110);
+        let block_102 = BlockPtr::new(block_102_hash.clone(), 102);
+        let block_101 = BlockPtr::new(block_101_hash.clone(), 101);
+        let block_100 = BlockPtr::new(block_100_hash.clone(), 100);
+
+        let mut parent_map = HashMap::new();
+        parent_map.insert(block_120_hash.clone(), block_112.clone());
+        parent_map.insert(block_112_hash.clone(), block_111.clone());
+        parent_map.insert(block_111_hash.clone(), block_110.clone());
+        parent_map.insert(block_110_hash.clone(), block_102.clone());
+        parent_map.insert(block_102_hash.clone(), block_101.clone());
+        parent_map.insert(block_101_hash.clone(), block_100.clone());
+
+        let result = super::walk_back_ancestor(
+            block_120.clone(),
+            10,
+            Some(block_110_hash.clone()),
+            |block_ptr| {
+                let parent = parent_map.get(&block_ptr.hash).cloned();
+                async move { Ok::<_, std::convert::Infallible>(parent) }
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            result,
+            Some(block_111.clone()),
+            "root=110: should stop at 111 (child of root)"
+        );
+
+        let result = super::walk_back_ancestor(
+            block_120.clone(),
+            10,
+            Some(block_101_hash.clone()),
+            |block_ptr| {
+                let parent = parent_map.get(&block_ptr.hash).cloned();
+                async move { Ok::<_, std::convert::Infallible>(parent) }
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            result,
+            Some(block_102.clone()),
+            "root=101: should stop at 102 (child of root, across skip)"
+        );
     }
 }
