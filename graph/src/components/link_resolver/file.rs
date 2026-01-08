@@ -104,11 +104,7 @@ impl FileLinkResolver {
 
 pub fn remove_prefix(link: &str) -> &str {
     const IPFS: &str = "/ipfs/";
-    if link.starts_with(IPFS) {
-        &link[IPFS.len()..]
-    } else {
-        link
-    }
+    link.strip_prefix(IPFS).unwrap_or(link)
 }
 
 #[async_trait]
