@@ -39,7 +39,7 @@ enum BlockStreamState {
     /// store up to date with the chain store.
     ///
     /// Valid next states: BeginReconciliation
-    YieldingBlocks(Box<VecDeque<BlockWithTriggers<Chain>>>),
+    YieldingBlocks(VecDeque<BlockWithTriggers<Chain>>),
 
     /// The BlockStream experienced an error and is pausing before attempting to produce
     /// blocks again.
@@ -526,8 +526,7 @@ impl Stream for PollingBlockStream {
                                 }
 
                                 // Switch to yielding state until next_blocks is depleted
-                                self.state =
-                                    BlockStreamState::YieldingBlocks(Box::new(next_blocks));
+                                self.state = BlockStreamState::YieldingBlocks(next_blocks);
 
                                 // Yield the first block in next_blocks
                                 continue;
