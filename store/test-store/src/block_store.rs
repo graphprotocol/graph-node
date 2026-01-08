@@ -105,13 +105,13 @@ impl FakeBlock {
     pub fn as_ethereum_block(&self) -> EthereumBlock {
         let parent_hash = H256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
 
-        let mut block = LightEthereumBlock::default();
-        block.number = Some(self.number.into());
-        block.parent_hash = parent_hash;
-        block.hash = Some(H256(self.block_hash().as_slice().try_into().unwrap()));
-        if let Some(ts) = self.timestamp {
-            block.timestamp = ts;
-        }
+        let block = LightEthereumBlock {
+            number: Some(self.number.into()),
+            parent_hash,
+            hash: Some(H256(self.block_hash().as_slice().try_into().unwrap())),
+            timestamp: self.timestamp.unwrap_or(U256::default()),
+            ..Default::default()
+        };
 
         EthereumBlock {
             block: Arc::new(block),
@@ -120,19 +120,21 @@ impl FakeBlock {
     }
 
     pub fn as_firehose_block(&self) -> Block {
-        let mut block = Block::default();
-        block.hash = self.hash.clone().into_bytes();
-        block.number = self.number as u64;
+        let header = BlockHeader {
+            parent_hash: self.parent_hash.clone().into_bytes(),
+            timestamp: self.timestamp.map(|ts| Timestamp {
+                seconds: ts.to_string().parse().unwrap(),
+                nanos: 0,
+            }),
+            ..Default::default()
+        };
 
-        let mut header = BlockHeader::default();
-        header.parent_hash = self.parent_hash.clone().into_bytes();
-        header.timestamp = self.timestamp.map(|ts| Timestamp {
-            seconds: ts.to_string().parse().unwrap(),
-            nanos: 0,
-        });
-        block.header = Some(header);
-
-        block
+        Block {
+            hash: self.hash.clone().into_bytes(),
+            number: self.number as u64,
+            header: Some(header),
+            ..Default::default()
+        }
     }
 }
 

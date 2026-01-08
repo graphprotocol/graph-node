@@ -860,11 +860,12 @@ pub enum CheckBlockMethod {
 
 impl From<Opt> for config::Opt {
     fn from(opt: Opt) -> Self {
-        let mut config_opt = config::Opt::default();
-        config_opt.config = Some(opt.config);
-        config_opt.store_connection_pool_size = 5;
-        config_opt.node_id = opt.node_id;
-        config_opt
+        config::Opt {
+            config: Some(opt.config),
+            store_connection_pool_size: 5,
+            node_id: opt.node_id,
+            ..Default::default()
+        }
     }
 }
 
