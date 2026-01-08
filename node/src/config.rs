@@ -322,18 +322,13 @@ impl Shard {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
 #[serde(untagged)]
 pub enum PoolSize {
+    #[default]
     None,
     Fixed(u32),
     Rule(Vec<PoolSizeRule>),
-}
-
-impl Default for PoolSize {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl PoolSize {
@@ -924,20 +919,15 @@ enum ProviderField {
     Headers,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Default)]
 pub enum Transport {
     #[serde(rename = "rpc")]
+    #[default]
     Rpc,
     #[serde(rename = "ws")]
     Ws,
     #[serde(rename = "ipc")]
     Ipc,
-}
-
-impl Default for Transport {
-    fn default() -> Self {
-        Self::Rpc
-    }
 }
 
 impl std::fmt::Display for Transport {

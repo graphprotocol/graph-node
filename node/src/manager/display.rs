@@ -58,6 +58,7 @@ impl List {
 /// A more general list of columns than `List`. In practical terms, this is
 /// a very simple table with two columns, where both columns are
 /// left-aligned
+#[derive(Default)]
 pub struct Columns {
     widths: Vec<usize>,
     rows: Vec<Row>,
@@ -81,15 +82,6 @@ impl Columns {
             row.render(out, &self.widths)?;
         }
         Ok(())
-    }
-}
-
-impl Default for Columns {
-    fn default() -> Self {
-        Self {
-            widths: Vec::new(),
-            rows: Vec::new(),
-        }
     }
 }
 

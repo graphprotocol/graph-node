@@ -227,19 +227,14 @@ impl AscIndexId for AscSignature {
 }
 
 #[repr(u32)]
-#[derive(AscType, Copy, Clone)]
+#[derive(AscType, Copy, Clone, Default)]
 pub(crate) enum AscAccessKeyPermissionKind {
+    #[default]
     FunctionCall,
     FullAccess,
 }
 
 impl AscValue for AscAccessKeyPermissionKind {}
-
-impl Default for AscAccessKeyPermissionKind {
-    fn default() -> Self {
-        Self::FunctionCall
-    }
-}
 
 #[repr(C)]
 #[derive(AscType)]
@@ -293,8 +288,9 @@ impl AscIndexId for AscDataReceiver {
 }
 
 #[repr(u32)]
-#[derive(AscType, Copy, Clone)]
+#[derive(AscType, Copy, Clone, Default)]
 pub(crate) enum AscActionKind {
+    #[default]
     CreateAccount,
     DeployContract,
     FunctionCall,
@@ -306,12 +302,6 @@ pub(crate) enum AscActionKind {
 }
 
 impl AscValue for AscActionKind {}
-
-impl Default for AscActionKind {
-    fn default() -> Self {
-        Self::CreateAccount
-    }
-}
 
 #[repr(C)]
 #[derive(AscType)]
@@ -424,19 +414,14 @@ impl AscIndexId for AscActionReceipt {
 }
 
 #[repr(u32)]
-#[derive(AscType, Copy, Clone)]
+#[derive(AscType, Copy, Clone, Default)]
 pub(crate) enum AscSuccessStatusKind {
+    #[default]
     Value,
     ReceiptId,
 }
 
 impl AscValue for AscSuccessStatusKind {}
-
-impl Default for AscSuccessStatusKind {
-    fn default() -> Self {
-        Self::Value
-    }
-}
 
 pub struct AscSuccessStatusEnum(pub(crate) AscEnum<AscSuccessStatusKind>);
 
@@ -458,19 +443,14 @@ impl AscIndexId for AscSuccessStatusEnum {
 }
 
 #[repr(u32)]
-#[derive(AscType, Copy, Clone)]
+#[derive(AscType, Copy, Clone, Default)]
 pub(crate) enum AscDirection {
+    #[default]
     Left,
     Right,
 }
 
 impl AscValue for AscDirection {}
-
-impl Default for AscDirection {
-    fn default() -> Self {
-        Self::Left
-    }
-}
 
 #[repr(C)]
 #[derive(AscType)]
