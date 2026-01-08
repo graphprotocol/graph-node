@@ -434,6 +434,7 @@ pub const BLOCK_NUMBER_MAX: BlockNumber = i32::MAX;
 /// Details of how query generation for `EntityQuery` works can be found
 /// at https://github.com/graphprotocol/rfcs/blob/master/engineering-plans/0001-graphql-query-prefetching.md
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct EntityQuery {
     /// ID of the subgraph.
     pub subgraph_id: DeploymentHash,
@@ -464,8 +465,6 @@ pub struct EntityQuery {
     pub query_id: Option<String>,
 
     pub trace: bool,
-
-    _force_use_of_new: (),
 }
 
 impl EntityQuery {
@@ -484,7 +483,6 @@ impl EntityQuery {
             logger: None,
             query_id: None,
             trace: false,
-            _force_use_of_new: (),
         }
     }
 

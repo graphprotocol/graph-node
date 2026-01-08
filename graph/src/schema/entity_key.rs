@@ -10,6 +10,7 @@ use crate::util::intern;
 /// Key by which an individual entity in the store can be accessed. Stores
 /// only the entity type and id. The deployment must be known from context.
 #[derive(Clone, CacheWeight, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
 pub struct EntityKey {
     /// Name of the entity type.
     pub entity_type: EntityType,
@@ -23,8 +24,6 @@ pub struct EntityKey {
     /// doing the lookup. So if the entity exists but was created on a different causality region,
     /// the lookup will return empty.
     pub causality_region: CausalityRegion,
-
-    _force_use_of_new: (),
 }
 
 impl EntityKey {
@@ -43,7 +42,6 @@ impl EntityKey {
             entity_type,
             entity_id,
             causality_region,
-            _force_use_of_new: (),
         }
     }
 

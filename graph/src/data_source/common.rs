@@ -387,20 +387,20 @@ impl UnresolvedMappingABI {
 /// `event.params.<name>`. Each entry under `calls` gets turned into a
 /// `CallDcl`
 #[derive(Clone, CheapClone, Debug, Default, Hash, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct CallDecls {
     pub decls: Arc<Vec<CallDecl>>,
-    readonly: (),
 }
 
 /// A single call declaration, like `myCall1:
 /// Contract[address].function(arg1, arg2, ...)`
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct CallDecl {
     /// A user-defined label
     pub label: String,
     /// The call expression
     pub expr: CallExpr,
-    readonly: (),
 }
 
 impl CallDecl {
@@ -763,9 +763,9 @@ impl CallDecl {
 /// Unresolved representation of declared calls stored as raw strings
 /// Used during initial manifest parsing before ABI context is available
 #[derive(Clone, CheapClone, Debug, Default, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct UnresolvedCallDecls {
     pub raw_decls: Arc<std::collections::HashMap<String, String>>,
-    readonly: (),
 }
 
 impl UnresolvedCallDecls {
@@ -784,7 +784,6 @@ impl UnresolvedCallDecls {
                     .map(|expr| CallDecl {
                         label: label.clone(),
                         expr,
-                        readonly: (),
                     })
                     .with_context(|| format!("Error in declared call '{}':", label))
             })
@@ -792,7 +791,6 @@ impl UnresolvedCallDecls {
 
         Ok(CallDecls {
             decls: Arc::new(decls?),
-            readonly: (),
         })
     }
 
@@ -811,18 +809,17 @@ impl<'de> de::Deserialize<'de> for UnresolvedCallDecls {
             de::Deserialize::deserialize(deserializer)?;
         Ok(UnresolvedCallDecls {
             raw_decls: Arc::new(raw_decls),
-            readonly: (),
         })
     }
 }
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
+#[non_exhaustive]
 pub struct CallExpr {
     pub abi: Word,
     pub address: CallArg,
     pub func: Word,
     pub args: Vec<CallArg>,
-    readonly: (),
 }
 
 impl CallExpr {
@@ -962,7 +959,6 @@ impl CallExpr {
             address,
             func: Word::from(func),
             args,
-            readonly: (),
         };
 
         expr.validate_args().with_context(|| {
@@ -1655,7 +1651,6 @@ mod tests {
         let call_decl = CallDecl {
             label: "myTokenCall".to_string(),
             expr: parser.ok("ERC20[event.params.asset.1].name()"),
-            readonly: (),
         };
 
         // Test scenario 1: Unknown parameter
@@ -1719,7 +1714,6 @@ mod tests {
         let call_decl_with_args = CallDecl {
             label: "transferCall".to_string(),
             expr,
-            readonly: (),
         };
 
         // Create a structure where base has only 2 fields instead of 3

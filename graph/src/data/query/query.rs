@@ -127,6 +127,7 @@ impl QueryTarget {
 
 /// A GraphQL query as submitted by a client, either directly or through a subscription.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub struct Query {
     pub document: q::Document,
     pub variables: Option<QueryVariables>,
@@ -134,7 +135,6 @@ pub struct Query {
     pub query_text: Arc<String>,
     pub variables_text: Arc<String>,
     pub trace: bool,
-    _force_use_of_new: (),
 }
 
 impl Query {
@@ -162,7 +162,6 @@ impl Query {
             query_text: Arc::new(query_text),
             variables_text: Arc::new(variables_text),
             trace,
-            _force_use_of_new: (),
         }
     }
 }
