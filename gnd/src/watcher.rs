@@ -294,8 +294,7 @@ pub async fn deploy_all_subgraphs(
     sender: &Sender<(DeploymentHash, SubgraphName)>,
 ) -> Result<()> {
     info!(logger, "File change detected, redeploying all subgraphs");
-    let mut count = 0;
-    for manifest_path in manifests_paths {
+    for (count, manifest_path) in manifests_paths.iter().enumerate() {
         let alias_name = source_subgraph_aliases
             .iter()
             .find(|(_, path)| path == &manifest_path)
@@ -312,7 +311,6 @@ pub async fn deploy_all_subgraphs(
                     .map_err(|_| anyhow!("Failed to create subgraph name"))?,
             ))
             .await;
-        count += 1;
     }
     Ok(())
 }
