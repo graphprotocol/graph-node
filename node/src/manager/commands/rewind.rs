@@ -147,7 +147,7 @@ pub async fn run(
 
     println!("Pausing deployments");
     for (_, locator) in &locators {
-        pause_or_resume(primary.clone(), &sender, &locator, true).await?;
+        pause_or_resume(primary.clone(), sender, locator, true).await?;
     }
 
     // There's no good way to tell that a subgraph has in fact stopped
@@ -193,7 +193,7 @@ pub async fn run(
 
     println!("Resuming deployments");
     for (_, locator) in &locators {
-        pause_or_resume(primary.clone(), &sender, locator, false).await?;
+        pause_or_resume(primary.clone(), sender, locator, false).await?;
     }
     Ok(())
 }

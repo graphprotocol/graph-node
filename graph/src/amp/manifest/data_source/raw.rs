@@ -382,7 +382,7 @@ impl RawAbi {
 
         let file_bytes = link_resolver
             .cat(
-                &LinkResolverContext::new(&DeploymentHash::default(), &logger),
+                &LinkResolverContext::new(&DeploymentHash::default(), logger),
                 &(file.into()),
             )
             .await
@@ -559,7 +559,7 @@ impl RawTable {
 
         let record_batch = RecordBatch::new_empty(schema.into());
         let (block_number_column, _) =
-            auto_block_number_decoder(&record_batch).map_err(|e| Error::InvalidQuery(e))?;
+            auto_block_number_decoder(&record_batch).map_err(Error::InvalidQuery)?;
 
         let need_block_hash_column = auto_block_hash_decoder(&record_batch).is_err();
         let need_block_timestamp_column = input_schema

@@ -86,7 +86,7 @@ impl PruneReporter for Progress {
 
     fn start_analyze(&mut self) {
         if !self.initial_analyze {
-            println!("");
+            println!();
         }
         print!("Analyze tables");
         self.analyze_start = Instant::now();
@@ -105,7 +105,7 @@ impl PruneReporter for Progress {
         let stats: Vec<_> = stats
             .iter()
             .filter(|stat| self.initial_analyze || analyzed.contains(&stat.tablename.as_str()))
-            .map(|stats| stats.clone())
+            .cloned()
             .collect();
         println!(
             "\rAnalyzed {} tables in {}s{: ^30}",
@@ -424,7 +424,7 @@ pub async fn status(
         let table_name = fmt::abbreviate(&table_name, 30);
         let rows = rows.map_or_null(|rows| rows.to_string());
         let batch_size = batch_size.map_or_null(|b| b.to_string());
-        let duration = started_at.map_or_null(|s| fmt::duration(&s, &finished_at));
+        let duration = started_at.map_or_null(|s| fmt::duration(s, &finished_at));
         let phase = phase.as_str();
         writeln!(term,
             "{table_name:<30} | {:<15} {complete:>6} | {rows:>8} | {batch_size:>11} | {duration:>8}",

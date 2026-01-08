@@ -306,7 +306,7 @@ impl Shard {
         let mut url = Url::parse(shellexpand::env(&self.connection)?.as_ref())?;
         // Put the PGAPPNAME into the URL since tokio-postgres ignores this
         // environment variable
-        if let Some(app_name) = std::env::var("PGAPPNAME").ok() {
+        if let Ok(app_name) = std::env::var("PGAPPNAME") {
             let query = match url.query() {
                 Some(query) => {
                     format!("{query}&application_name={app_name}")
@@ -502,7 +502,7 @@ impl ChainSection {
                 })?;
 
                 let (features, url_str) = rest.split_at(colon);
-                let (url, features) = if vec!["http", "https", "ws", "wss"].contains(&features) {
+                let (url, features) = if ["http", "https", "ws", "wss"].contains(&features) {
                     (rest, DEFAULT_PROVIDER_FEATURES.to_vec())
                 } else {
                     (&url_str[1..], features.split(',').collect())

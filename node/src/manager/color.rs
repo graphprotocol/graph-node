@@ -15,6 +15,12 @@ pub struct Terminal {
     spec: ColorSpec,
 }
 
+impl Default for Terminal {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Terminal {
     pub fn set_color_preference(pref: &str) {
         let choice = match pref {
@@ -78,10 +84,10 @@ impl Terminal {
         F: FnOnce(&mut Self) -> io::Result<R>,
     {
         self.spec.set_fg(Some(color));
-        self.out.set_color(&self.spec).map_err(io::Error::from)?;
+        self.out.set_color(&self.spec)?;
         let res = f(self);
         self.spec = ColorSpec::new();
-        self.out.set_color(&self.spec).map_err(io::Error::from)?;
+        self.out.set_color(&self.spec)?;
         res
     }
 }

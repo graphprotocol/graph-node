@@ -148,7 +148,7 @@ fn render(
         }
         table.push_row(["Node ID", &optional(deployment.node_id.as_ref())]);
         table.push_row(["Active", &deployment.is_active.to_string()]);
-        if let Some((_, Some(status))) = deployments.get(0) {
+        if let Some((_, Some(status))) = deployments.first() {
             table.push_row(["Paused", &optional(status.is_paused)]);
             table.push_row(["Synced", &status.is_synced.to_string()]);
             table.push_row(["Health", status.health.as_str()]);

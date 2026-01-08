@@ -18,7 +18,7 @@ impl From<Vec<u8>> for IpfsAddFile {
     fn from(content: Vec<u8>) -> Self {
         Self {
             path: Default::default(),
-            content: content,
+            content,
         }
     }
 }

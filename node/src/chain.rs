@@ -108,7 +108,7 @@ pub fn create_firehose_networks(
 
                 let parsed_networks = networks_by_kind
                     .entry((chain.protocol, name.clone()))
-                    .or_insert_with(Vec::new);
+                    .or_default();
 
                 // Create n FirehoseEndpoints where n is the size of the pool. If a
                 // subgraph limit is defined for this endpoint then each endpoint
@@ -140,7 +140,7 @@ pub fn create_firehose_networks(
             AdapterConfiguration::Firehose(FirehoseAdapterConfig {
                 chain_id,
                 kind,
-                adapters: endpoints.into(),
+                adapters: endpoints,
             })
         })
         .collect()
@@ -172,7 +172,7 @@ pub async fn create_ethereum_networks(
             )
         });
 
-    Ok(try_join_all(eth_networks_futures).await?)
+    try_join_all(eth_networks_futures).await
 }
 
 /// Parses a single Ethereum connection string and returns its network name and `EthereumAdapter`.
@@ -311,7 +311,7 @@ pub async fn networks_as_chains(
             None => {
                 let ident = match timeout(
                     config.genesis_validation_timeout,
-                    networks.chain_identifier(&logger, chain_id),
+                    networks.chain_identifier(logger, chain_id),
                 )
                 .await
                 {

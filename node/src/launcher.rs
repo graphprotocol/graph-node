@@ -119,7 +119,7 @@ async fn build_blockchain_map(
 
     let network_adapters = Networks::from_config(
         logger.cheap_clone(),
-        &config,
+        config,
         metrics_registry.cheap_clone(),
         endpoint_metrics,
         &provider_checks,
@@ -129,10 +129,10 @@ async fn build_blockchain_map(
 
     let blockchain_map = network_adapters
         .blockchain_map(
-            &env_vars,
-            &logger,
+            env_vars,
+            logger,
             block_store,
-            &logger_factory,
+            logger_factory,
             metrics_registry.cheap_clone(),
             chain_head_update_listener,
         )
@@ -184,7 +184,7 @@ async fn spawn_block_ingestor(
     metrics_registry: &Arc<MetricsRegistry>,
 ) {
     let logger = logger.clone();
-    let ingestors = Networks::block_ingestors(&logger, &blockchain_map)
+    let ingestors = Networks::block_ingestors(&logger, blockchain_map)
         .await
         .expect("unable to start block ingestors");
 
@@ -295,7 +295,7 @@ where
 
     if let Some(amp_client) = amp_client.cheap_clone() {
         let amp_instance_manager = graph_core::amp_subgraph::Manager::new(
-            &logger_factory,
+            logger_factory,
             metrics_registry.cheap_clone(),
             env_vars.cheap_clone(),
             &cancel_token,
@@ -311,7 +311,7 @@ where
     }
 
     let subgraph_instance_manager = graph_core::subgraph::SubgraphInstanceManager::new(
-        &logger_factory,
+        logger_factory,
         env_vars.cheap_clone(),
         network_store.subgraph_store(),
         blockchain_map.cheap_clone(),
@@ -330,7 +330,7 @@ where
     );
 
     let subgraph_provider = graph_core::subgraph_provider::SubgraphProvider::new(
-        &logger_factory,
+        logger_factory,
         sg_count.cheap_clone(),
         network_store.subgraph_store(),
         link_resolver.cheap_clone(),
@@ -342,8 +342,9 @@ where
     let version_switching_mode = ENV_VARS.subgraph_version_switching_mode;
 
     // Create named subgraph provider for resolving subgraph name->ID mappings
-    let subgraph_registrar = Arc::new(graph_core::subgraph::SubgraphRegistrar::new(
-        &logger_factory,
+
+    Arc::new(graph_core::subgraph::SubgraphRegistrar::new(
+        logger_factory,
         link_resolver,
         Arc::new(subgraph_provider),
         network_store.subgraph_store(),
@@ -353,9 +354,7 @@ where
         node_id.clone(),
         version_switching_mode,
         Arc::new(subgraph_settings),
-    ));
-
-    subgraph_registrar
+    ))
 }
 
 fn build_graphql_server(
@@ -368,20 +367,19 @@ fn build_graphql_server(
 ) -> GraphQLQueryServer<GraphQlRunner<Store>> {
     let shards: Vec<_> = config.stores.keys().cloned().collect();
     let load_manager = Arc::new(LoadManager::new(
-        &logger,
+        logger,
         shards,
         expensive_queries,
         metrics_registry.clone(),
     ));
     let graphql_runner = Arc::new(GraphQlRunner::new(
-        &logger,
+        logger,
         network_store.clone(),
         load_manager,
         metrics_registry,
     ));
-    let graphql_server = GraphQLQueryServer::new(&logger_factory, graphql_runner.clone());
 
-    graphql_server
+    GraphQLQueryServer::new(logger_factory, graphql_runner.clone())
 }
 
 /// Runs the Graph Node by initializing all components and starting all required services

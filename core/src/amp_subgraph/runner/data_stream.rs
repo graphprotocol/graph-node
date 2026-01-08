@@ -43,7 +43,7 @@ where
     );
 
     loop {
-        let next_block_ranges = next_block_ranges(&cx, latest_queried_block, latest_block);
+        let next_block_ranges = next_block_ranges(cx, latest_queried_block, latest_block);
 
         if next_block_ranges.is_empty() {
             if data_streams.is_empty() {

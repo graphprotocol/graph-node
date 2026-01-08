@@ -287,8 +287,7 @@ impl SubgraphProcessingKind {
                     .filter_map(Value::as_mapping)
                     .filter_map(|map| map.get("kind"))
                     .filter_map(Value::as_str)
-                    .filter(|kind| *kind == amp::manifest::DataSource::KIND)
-                    .next()
+                    .find(|kind| *kind == amp::manifest::DataSource::KIND)
             })
             .is_some();
 

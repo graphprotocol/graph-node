@@ -708,7 +708,7 @@ impl<'de, C: Blockchain> Deserialize<'de> for UnresolvedDataSource<C> {
             amp::manifest::data_source::RawDataSource::deserialize(map.into_deserializer())
                 .map(UnresolvedDataSource::Amp)
                 .map_err(serde::de::Error::custom)
-        } else if (&C::KIND.to_string() == kind) || C::ALIASES.contains(&kind) {
+        } else if (C::KIND.to_string() == kind) || C::ALIASES.contains(&kind) {
             C::UnresolvedDataSource::deserialize(map.into_deserializer())
                 .map_err(serde::de::Error::custom)
                 .map(UnresolvedDataSource::Onchain)
@@ -742,7 +742,7 @@ impl<'de, C: Blockchain> Deserialize<'de> for UnresolvedDataSourceTemplate<C> {
             subgraph::UnresolvedDataSourceTemplate::deserialize(map.into_deserializer())
                 .map_err(serde::de::Error::custom)
                 .map(UnresolvedDataSourceTemplate::Subgraph)
-        } else if (&C::KIND.to_string() == kind) || C::ALIASES.contains(&kind) {
+        } else if (C::KIND.to_string() == kind) || C::ALIASES.contains(&kind) {
             C::UnresolvedDataSourceTemplate::deserialize(map.into_deserializer())
                 .map_err(serde::de::Error::custom)
                 .map(UnresolvedDataSourceTemplate::Onchain)

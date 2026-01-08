@@ -24,9 +24,7 @@ impl<T> MapOrNull<T> for Option<T> {
     where
         F: FnOnce(&T) -> String,
     {
-        self.as_ref()
-            .map(|value| f(value))
-            .unwrap_or_else(|| NULL.to_string())
+        self.as_ref().map(f).unwrap_or_else(|| NULL.to_string())
     }
 }
 

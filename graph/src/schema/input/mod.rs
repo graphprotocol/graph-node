@@ -1782,8 +1782,7 @@ mod validations {
                 if subgraph_schema_type
                     .directives
                     .iter()
-                    .find(|directive| !directive.name.eq("fulltext"))
-                    .is_some()
+                    .any(|directive| !directive.name.eq("fulltext"))
                 {
                     Some(SchemaValidationError::InvalidSchemaTypeDirectives)
                 } else {

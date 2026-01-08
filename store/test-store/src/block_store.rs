@@ -109,7 +109,7 @@ impl FakeBlock {
             number: Some(self.number.into()),
             parent_hash,
             hash: Some(H256(self.block_hash().as_slice().try_into().unwrap())),
-            timestamp: self.timestamp.unwrap_or(U256::default()),
+            timestamp: self.timestamp.unwrap_or_default(),
             ..Default::default()
         };
 

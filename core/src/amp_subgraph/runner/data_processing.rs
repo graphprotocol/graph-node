@@ -258,7 +258,7 @@ fn decode_block_timestamp(record_batches: &[StreamRecordBatch]) -> Result<DateTi
             Ok((_, decoder)) => {
                 return decoder
                     .decode(0)
-                    .map_err(|e| Error::Deterministic(e))?
+                    .map_err(Error::Deterministic)?
                     .ok_or_else(|| Error::Deterministic(anyhow!("block timestamp is empty")));
             }
             Err(e) => {

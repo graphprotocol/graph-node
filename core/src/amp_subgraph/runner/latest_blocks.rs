@@ -31,7 +31,7 @@ impl LatestBlocks {
             .data_sources
             .iter()
             .enumerate()
-            .map(|(i, data_source)| {
+            .flat_map(|(i, data_source)| {
                 data_source
                     .source
                     .tables
@@ -39,10 +39,9 @@ impl LatestBlocks {
                     .enumerate()
                     .map(move |(j, table)| ((i, j), &data_source.source.dataset, table))
             })
-            .flatten()
             .unique_by(|(_, dataset, table)| (dataset.to_string(), table.to_string()))
             .map(|(table_ptr, dataset, table)| {
-                latest_block(&cx, dataset, table)
+                latest_block(cx, dataset, table)
                     .map_ok(move |latest_block| (table_ptr, latest_block))
                     .map_err(move |e| {
                         e.context(format!(
@@ -100,7 +99,7 @@ impl LatestBlocks {
                 let dataset = &source.dataset;
                 let table = &source.tables[j];
 
-                latest_block_changed(&cx, dataset, table, latest_block).map_err(move |e| {
+                latest_block_changed(cx, dataset, table, latest_block).map_err(move |e| {
                     e.context(format!(
                         "failed to check if the latest block changed in '{dataset}.{table}'"
                     ))
@@ -136,9 +135,9 @@ where
     let record_batch = read_once(stream).await?;
 
     let latest_block = block_number_decoder(&record_batch, 0)
-        .map_err(|e| Error::Deterministic(e))?
+        .map_err(Error::Deterministic)?
         .decode(0)
-        .map_err(|e| Error::Deterministic(e))?
+        .map_err(Error::Deterministic)?
         .ok_or_else(|| Error::NonDeterministic(anyhow!("table is empty")))?;
 
     Ok(latest_block)

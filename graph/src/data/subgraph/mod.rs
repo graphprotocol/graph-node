@@ -1185,16 +1185,13 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         let schema = match schema {
             Some(schema) => schema,
             None if amp_data_sources.len() == data_sources.len() => {
-                let table_schemas = amp_data_sources
-                    .iter()
-                    .map(|data_source| {
-                        data_source
-                            .transformer
-                            .tables
-                            .iter()
-                            .map(|table| (table.name.clone(), table.schema.clone()))
-                    })
-                    .flatten();
+                let table_schemas = amp_data_sources.iter().flat_map(|data_source| {
+                    data_source
+                        .transformer
+                        .tables
+                        .iter()
+                        .map(|table| (table.name.clone(), table.schema.clone()))
+                });
 
                 amp::schema::generate_subgraph_schema(&id, table_schemas)?
             }

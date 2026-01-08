@@ -50,11 +50,11 @@ impl AmpEnv {
                 .unwrap_or(Self::DEFAULT_MAX_BUFFER_SIZE),
             max_block_range: raw_env
                 .amp_max_block_range
-                .and_then(|mut value| {
+                .map(|mut value| {
                     if value == 0 {
                         value = usize::MAX;
                     }
-                    Some(value)
+                    value
                 })
                 .unwrap_or(Self::DEFAULT_MAX_BLOCK_RANGE),
             query_retry_min_delay: raw_env

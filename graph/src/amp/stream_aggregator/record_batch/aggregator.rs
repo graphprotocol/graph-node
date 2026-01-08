@@ -107,7 +107,7 @@ impl Aggregator {
             return iter.next();
         }
 
-        iter.skip(1).next()
+        iter.nth(1)
     }
 
     /// Returns `true` if this aggregator contains completed groups.
@@ -220,8 +220,8 @@ impl Aggregator {
         if block_number == max_block_number && block_hash != max_block_hash {
             bail!(
                 "received block hash '0x{}' after '0x{}' for block number {block_number}",
-                hex::encode(&block_hash),
-                hex::encode(&max_block_hash)
+                hex::encode(block_hash),
+                hex::encode(max_block_hash)
             );
         }
 

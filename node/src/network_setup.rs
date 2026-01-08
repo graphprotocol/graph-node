@@ -103,12 +103,12 @@ impl Networks {
             adapters: vec![],
             rpc_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
-                vec![].into_iter(),
+                vec![],
                 ProviderCheckStrategy::MarkAsValid,
             ),
             firehose_provider_manager: ProviderManager::new(
                 Logger::root(Discard, o!()),
-                vec![].into_iter(),
+                vec![],
                 ProviderCheckStrategy::MarkAsValid,
             ),
         }
@@ -171,14 +171,14 @@ impl Networks {
         let eth = create_ethereum_networks(
             logger.cheap_clone(),
             registry,
-            &config,
+            config,
             endpoint_metrics.cheap_clone(),
             chain_filter,
         )
         .await?;
         let firehose = create_firehose_networks(
             logger.cheap_clone(),
-            &config,
+            config,
             endpoint_metrics.cheap_clone(),
             chain_filter,
         );
@@ -270,9 +270,7 @@ impl Networks {
             ),
             firehose_provider_manager: ProviderManager::new(
                 logger.clone(),
-                firehose_adapters
-                    .into_iter()
-                    .map(|(chain_id, endpoints)| (chain_id, endpoints)),
+                firehose_adapters,
                 ProviderCheckStrategy::RequireAll(provider_checks),
             ),
         };

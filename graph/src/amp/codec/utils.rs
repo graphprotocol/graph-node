@@ -92,7 +92,7 @@ where
         }
     }
 
-    return None;
+    None
 }
 
 pub fn column_decoder<'a, T: 'static, U>(

@@ -470,7 +470,7 @@ impl Decoder<Option<DateTime<Utc>>> for ArrayDecoder<'_, TimestampNanosecondArra
     }
 }
 
-fn downcast_ref<'a, T>(array: &'a dyn Array) -> Result<&'a T>
+fn downcast_ref<T>(array: &dyn Array) -> Result<&T>
 where
     T: Array + 'static,
 {

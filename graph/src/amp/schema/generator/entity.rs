@@ -45,9 +45,9 @@ impl SchemaEntity {
 impl fmt::Display for SchemaEntity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write! {f, "type {} @entity(immutable: true)", self.name.to_pascal_case()}?;
-        write! {f, " {{\n"}?;
+        writeln! {f, " {{"}?;
         for field in &self.fields {
-            write! {f, "\t{field}\n"}?;
+            writeln! {f, "\t{field}"}?;
         }
         write! {f, "}}"}
     }

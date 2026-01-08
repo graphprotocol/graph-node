@@ -27,6 +27,6 @@ where
     fn decode(&self, row_index: usize) -> Result<V> {
         let value = self.decoder.decode(row_index)?;
 
-        Ok((&self.mapping)(value))
+        Ok((self.mapping)(value))
     }
 }

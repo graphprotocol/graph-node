@@ -139,7 +139,7 @@ pub async fn provider(
 
     let metrics = Arc::new(EndpointMetrics::mock());
     let caps = caps_from_features(features)?;
-    let networks = Networks::from_config(logger, &config, registry, metrics, &[]).await?;
+    let networks = Networks::from_config(logger, config, registry, metrics, &[]).await?;
     let network: ChainName = network.into();
     let adapters = networks.ethereum_rpcs(network.clone());
 

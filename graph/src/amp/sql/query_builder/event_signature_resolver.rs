@@ -56,7 +56,7 @@ fn visit_expr(expr: &mut ast::Expr, abis: &[(&str, &JsonAbi)]) -> Result<()> {
     Ok(())
 }
 
-fn get_args<'a>(function: &'a ast::Function) -> Option<(&'a str, &'a str)> {
+fn get_args(function: &ast::Function) -> Option<(&str, &str)> {
     let ast::FunctionArguments::List(args) = &function.args else {
         return None;
     };
@@ -71,7 +71,7 @@ fn get_args<'a>(function: &'a ast::Function) -> Option<(&'a str, &'a str)> {
     }
 }
 
-fn get_arg<'a>(arg: &'a ast::FunctionArg) -> Option<&'a str> {
+fn get_arg(arg: &ast::FunctionArg) -> Option<&str> {
     let ast::FunctionArg::Unnamed(ast::FunctionArgExpr::Expr(expr)) = arg else {
         return None;
     };
@@ -92,10 +92,8 @@ fn get_event<'a>(
 ) -> Option<&'a alloy::json_abi::Event> {
     abis.iter()
         .filter(|(name, _)| *name == contract_name)
-        .map(|(_, contract)| contract.event(event_name))
-        .flatten()
-        .map(|events| events.first())
-        .flatten()
+        .filter_map(|(_, contract)| contract.event(event_name))
+        .filter_map(|events| events.first())
         .next()
 }
 

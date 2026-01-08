@@ -103,7 +103,7 @@ where
             let table = &data_source.source.tables[*j];
 
             detect_reorg(
-                &cx,
+                cx,
                 network,
                 dataset,
                 table,

@@ -114,11 +114,7 @@ impl Row {
             }
             Row::Separator => {
                 let total_width = widths.iter().sum::<usize>();
-                let extra_width = if total_width >= LINE_WIDTH {
-                    0
-                } else {
-                    LINE_WIDTH - total_width
-                };
+                let extra_width = LINE_WIDTH.saturating_sub(total_width);
                 for (idx, width) in widths.iter().enumerate() {
                     if idx > 0 {
                         write!(out, "-+-")?;
