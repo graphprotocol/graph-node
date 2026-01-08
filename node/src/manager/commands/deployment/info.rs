@@ -148,26 +148,23 @@ fn render(
         }
         table.push_row(["Node ID", &optional(deployment.node_id.as_ref())]);
         table.push_row(["Active", &deployment.is_active.to_string()]);
-        if let Some((_, status)) = deployments.get(0) {
-            if let Some(status) = status {
-                table.push_row(["Paused", &optional(status.is_paused)]);
-                table.push_row(["Synced", &status.is_synced.to_string()]);
-                table.push_row(["Health", status.health.as_str()]);
+        if let Some((_, Some(status))) = deployments.get(0) {
+            table.push_row(["Paused", &optional(status.is_paused)]);
+            table.push_row(["Synced", &status.is_synced.to_string()]);
+            table.push_row(["Health", status.health.as_str()]);
+            let earliest = status.earliest_block_number;
+            let latest = status.latest_block.as_ref().map(|x| x.number);
+            let chain_head = status.chain_head_block.as_ref().map(|x| x.number);
+            let behind = match (latest, chain_head) {
+                (Some(latest), Some(chain_head)) => Some(chain_head - latest),
+                _ => None,
+            };
 
-                let earliest = status.earliest_block_number;
-                let latest = status.latest_block.as_ref().map(|x| x.number);
-                let chain_head = status.chain_head_block.as_ref().map(|x| x.number);
-                let behind = match (latest, chain_head) {
-                    (Some(latest), Some(chain_head)) => Some(chain_head - latest),
-                    _ => None,
-                };
-
-                table.push_row(["Earliest Block", &earliest.to_string()]);
-                table.push_row(["Latest Block", &number(latest)]);
-                table.push_row(["Chain Head Block", &number(chain_head)]);
-                if let Some(behind) = behind {
-                    table.push_row(["   Blocks behind", &behind.to_string()]);
-                }
+            table.push_row(["Earliest Block", &earliest.to_string()]);
+            table.push_row(["Latest Block", &number(latest)]);
+            table.push_row(["Chain Head Block", &number(chain_head)]);
+            if let Some(behind) = behind {
+                table.push_row(["   Blocks behind", &behind.to_string()]);
             }
         }
     }

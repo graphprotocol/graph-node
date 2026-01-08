@@ -500,29 +500,22 @@ mod data {
             chain: &str,
         ) -> Result<Option<BlockNumber>, StoreError> {
             use diesel::dsl::not;
-            use public::ethereum_networks::dsl::*;
+            use public::ethereum_networks as n;
 
-            match update(
-                ethereum_networks
-                    .filter(name.eq(chain))
-                    .filter(not(head_block_cursor.is_null())),
+            let head_block_number = update(
+                n::table
+                    .filter(n::name.eq(chain))
+                    .filter(not(n::head_block_cursor.is_null())),
             )
-            .set(head_block_cursor.eq(None as Option<String>))
-            .returning(head_block_number)
+            .set(n::head_block_cursor.eq(None as Option<String>))
+            .returning(n::head_block_number)
             .get_result::<Option<i64>>(conn)
             .await
-            .optional()
-            {
-                Ok(res) => match res {
-                    Some(opt_num) => match opt_num {
-                        Some(num) => Ok(Some(num as i32)),
-                        None => Ok(None),
-                    },
-                    None => Ok(None),
-                },
-                Err(e) => Err(e),
-            }
-            .map_err(Into::into)
+            .optional()?
+            .flatten()
+            .map(|num| num as i32);
+
+            Ok(head_block_number)
         }
 
         /// Insert a block. If the table already contains a block with the
