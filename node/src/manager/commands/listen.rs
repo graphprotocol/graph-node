@@ -16,7 +16,7 @@ async fn listen(mgr: Arc<SubscriptionManager>) -> Result<(), Error> {
         .for_each(move |event| {
             serde_json::to_writer_pretty(std::io::stdout(), &event)
                 .expect("event can be serialized to JSON");
-            writeln!(std::io::stdout()).unwrap();
+            println!("");
             std::io::stdout().flush().unwrap();
             future::ready(())
         })
