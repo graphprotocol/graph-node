@@ -36,18 +36,18 @@ impl<K, V> TimedCache<K, V> {
     /// return `None` otherwise. Note that expired entries stay in the cache
     /// as it is assumed that, after returning `None`, the caller will
     /// immediately overwrite that entry with a call to `set`
-    pub fn get<Q: ?Sized>(&self, key: &Q) -> Option<Arc<V>>
+    pub fn get<Q>(&self, key: &Q) -> Option<Arc<V>>
     where
         K: Borrow<Q> + Eq + Hash,
-        Q: Hash + Eq,
+        Q: Hash + Eq + ?Sized,
     {
         self.get_at(key, Instant::now())
     }
 
-    fn get_at<Q: ?Sized>(&self, key: &Q, now: Instant) -> Option<Arc<V>>
+    fn get_at<Q>(&self, key: &Q, now: Instant) -> Option<Arc<V>>
     where
         K: Borrow<Q> + Eq + Hash,
-        Q: Hash + Eq,
+        Q: Hash + Eq + ?Sized,
     {
         match self.entries.read().unwrap().get(key) {
             Some(CacheEntry { value, expires }) if expires >= &now => Some(value.clone()),
@@ -94,10 +94,10 @@ impl<K, V> TimedCache<K, V> {
     /// Remove an entry from the cache. If there was an entry for `key`,
     /// return the value associated with it and whether the entry is still
     /// live
-    pub fn remove<Q: ?Sized>(&self, key: &Q) -> Option<(Arc<V>, bool)>
+    pub fn remove<Q>(&self, key: &Q) -> Option<(Arc<V>, bool)>
     where
         K: Borrow<Q> + Eq + Hash,
-        Q: Hash + Eq,
+        Q: Hash + Eq + ?Sized,
     {
         self.entries
             .write()

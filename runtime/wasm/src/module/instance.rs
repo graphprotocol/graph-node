@@ -59,13 +59,10 @@ mod impl_for_tests {
             asc_get(&ctx, asc_ptr, &self.gas)
         }
 
-        pub async fn asc_new<P, T: ?Sized>(
-            &mut self,
-            rust_obj: &T,
-        ) -> Result<AscPtr<P>, HostExportError>
+        pub async fn asc_new<P, T>(&mut self, rust_obj: &T) -> Result<AscPtr<P>, HostExportError>
         where
             P: AscType + AscIndexId,
-            T: ToAscObj<P>,
+            T: ToAscObj<P> + ?Sized,
         {
             let mut ctx = WasmInstanceContext::new(&mut self.store);
             asc_new(&mut ctx, rust_obj, &self.gas).await

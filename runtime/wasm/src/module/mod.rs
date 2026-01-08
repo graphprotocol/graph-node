@@ -35,7 +35,7 @@ mod instance;
 mod into_wasm_ret;
 
 // Convenience for a 'top-level' asc_get, with depth 0.
-fn asc_get<T, C: AscType, H: AscHeap + ?Sized>(
+fn asc_get<T, C, H: AscHeap + ?Sized>(
     heap: &H,
     ptr: AscPtr<C>,
     gas: &GasCounter,

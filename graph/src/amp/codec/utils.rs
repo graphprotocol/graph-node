@@ -95,13 +95,13 @@ where
     None
 }
 
-pub fn column_decoder<'a, T: 'static, U>(
+pub fn column_decoder<'a, T, U>(
     record_batch: &'a RecordBatch,
     column_index: usize,
     nullable: bool,
 ) -> Result<Box<dyn Decoder<Option<U>> + 'a>>
 where
-    T: Array,
+    T: Array + 'static,
     ArrayDecoder<'a, T>: Decoder<Option<U>>,
 {
     if column_index >= record_batch.num_columns() {

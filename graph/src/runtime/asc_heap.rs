@@ -47,14 +47,14 @@ pub trait AscHeap: Send {
 ///
 /// This operation is expensive as it requires a call to `raw_new` for every
 /// nested object.
-pub async fn asc_new<C, T: ?Sized, H: AscHeap + Send + ?Sized>(
+pub async fn asc_new<C, T, H: AscHeap + Send + ?Sized>(
     heap: &mut H,
     rust_obj: &T,
     gas: &GasCounter,
 ) -> Result<AscPtr<C>, HostExportError>
 where
     C: AscType + AscIndexId,
-    T: ToAscObj<C>,
+    T: ToAscObj<C> + ?Sized,
 {
     let obj = rust_obj.to_asc_obj(heap, gas).await?;
     AscPtr::alloc_obj(obj, heap, gas).await
