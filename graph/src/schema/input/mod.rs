@@ -1405,12 +1405,7 @@ impl InputSchema {
             .filter(|directive| match directive.argument("include") {
                 Some(Value::List(includes)) if !includes.is_empty() => {
                     includes.iter().any(|include| match include {
-                        Value::Object(include) => match include.get("entity") {
-                            Some(Value::String(fulltext_entity)) if fulltext_entity == entity => {
-                                true
-                            }
-                            _ => false,
-                        },
+                        Value::Object(include) => matches!(include.get("entity"), Some(Value::String(fulltext_entity)) if fulltext_entity == entity),
                         _ => false,
                     })
                 }

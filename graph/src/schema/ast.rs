@@ -303,10 +303,7 @@ pub fn get_object_type_directive(
 
 // Returns true if the given type is a non-null type.
 pub fn is_non_null_type(t: &s::Type) -> bool {
-    match t {
-        s::Type::NonNullType(_) => true,
-        _ => false,
-    }
+    matches!(t, s::Type::NonNullType(_))
 }
 
 /// Returns true if the given type is an input type.
@@ -317,11 +314,13 @@ pub fn is_input_type(schema: &s::Document, t: &s::Type) -> bool {
     match t {
         s::Type::NamedType(name) => {
             let named_type = schema.get_named_type(name);
-            named_type.is_some_and(|type_def| match type_def {
-                s::TypeDefinition::Scalar(_)
-                | s::TypeDefinition::Enum(_)
-                | s::TypeDefinition::InputObject(_) => true,
-                _ => false,
+            named_type.is_some_and(|type_def| {
+                matches!(
+                    type_def,
+                    s::TypeDefinition::Scalar(_)
+                        | s::TypeDefinition::Enum(_)
+                        | s::TypeDefinition::InputObject(_)
+                )
             })
         }
         s::Type::ListType(inner) => is_input_type(schema, inner),
@@ -359,10 +358,7 @@ pub fn is_entity_type_definition(type_def: &s::TypeDefinition) -> bool {
 pub fn is_list_or_non_null_list_field(field: &s::Field) -> bool {
     match &field.field_type {
         s::Type::ListType(_) => true,
-        s::Type::NonNullType(inner_type) => match inner_type.deref() {
-            s::Type::ListType(_) => true,
-            _ => false,
-        },
+        s::Type::NonNullType(inner_type) => matches!(inner_type.deref(), s::Type::ListType(_)),
         _ => false,
     }
 }

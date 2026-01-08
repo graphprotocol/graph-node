@@ -237,10 +237,7 @@ impl TypeExt for Type {
 
     // Returns true if the given type is a non-null type.
     fn is_non_null(&self) -> bool {
-        match self {
-            Type::NonNullType(_) => true,
-            _ => false,
-        }
+        matches!(self, Type::NonNullType(_))
     }
 }
 

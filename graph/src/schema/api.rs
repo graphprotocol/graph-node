@@ -188,11 +188,13 @@ impl ApiSchema {
         match t {
             s::Type::NamedType(name) => {
                 let named_type = self.get_named_type(name);
-                named_type.is_some_and(|type_def| match type_def {
-                    s::TypeDefinition::Scalar(_)
-                    | s::TypeDefinition::Enum(_)
-                    | s::TypeDefinition::InputObject(_) => true,
-                    _ => false,
+                named_type.is_some_and(|type_def| {
+                    matches!(
+                        type_def,
+                        s::TypeDefinition::Scalar(_)
+                            | s::TypeDefinition::Enum(_)
+                            | s::TypeDefinition::InputObject(_)
+                    )
                 })
             }
             s::Type::ListType(inner) => self.is_input_type(inner),

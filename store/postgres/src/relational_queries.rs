@@ -718,10 +718,7 @@ impl<'a> QueryValue<'a> {
     }
 
     fn is_null(&self) -> bool {
-        match &self.value {
-            SqlValue::Null => true,
-            _ => false,
-        }
+        matches!(&self.value, SqlValue::Null)
     }
 }
 

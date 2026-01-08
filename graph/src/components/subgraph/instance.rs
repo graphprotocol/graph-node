@@ -140,10 +140,7 @@ impl BlockState {
         assert!(!self.in_handler);
         self.created_data_sources
             .iter()
-            .any(|ds| match ds.template {
-                InstanceDSTemplate::Onchain(_) => true,
-                _ => false,
-            })
+            .any(|ds| matches!(ds.template, InstanceDSTemplate::Onchain(_)))
     }
 
     pub fn drain_created_data_sources(&mut self) -> Vec<InstanceDSTemplateInfo> {
