@@ -505,6 +505,7 @@ impl Layout {
 
             let key =
                 entity_type.key_in(entity_data.id(), CausalityRegion::from_entity(&entity_data));
+            #[allow(clippy::map_entry)]
             if entities.contains_key(&key) {
                 return Err(internal_error!(
                     "duplicate entity {}[{}] in result set, block = {}",
