@@ -39,14 +39,14 @@ impl<T: ?Sized> CheapClone for Arc<T> {
     }
 }
 
-impl<T: ?Sized + CheapClone> CheapClone for Box<T> {
+impl<T: CheapClone> CheapClone for Box<T> {
     #[inline]
     fn cheap_clone(&self) -> Self {
         self.clone()
     }
 }
 
-impl<T: ?Sized + CheapClone> CheapClone for std::pin::Pin<T> {
+impl<T: CheapClone> CheapClone for std::pin::Pin<T> {
     #[inline]
     fn cheap_clone(&self) -> Self {
         self.clone()
