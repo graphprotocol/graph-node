@@ -38,7 +38,7 @@ pub enum Error {
     #[error("Qualified table names are not supported: {0}")]
     NoQualifiedTables(String),
     #[error("Internal error: {0}")]
-    InternalError(String),
+    Internal(String),
 }
 
 /// A wrapper around table names that correctly handles quoted vs unquoted
@@ -108,7 +108,7 @@ impl CteStack {
 
     fn add_ctes(&mut self, ctes: &[Cte]) -> ControlFlow<Error> {
         let Some(entry) = self.stack.last_mut() else {
-            return ControlFlow::Break(Error::InternalError("CTE stack is empty".into()));
+            return ControlFlow::Break(Error::Internal("CTE stack is empty".into()));
         };
         for cte in ctes {
             entry.insert(TableName::from(&cte.alias.name));
