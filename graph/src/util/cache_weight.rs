@@ -265,13 +265,12 @@ fn derive_cache_weight() {
 /// number of entries divided by `NODE_FILL`, and the number of
 /// interior nodes can be determined by dividing the number of nodes
 /// at the child level by `NODE_FILL`
-
+///
 /// The other difficulty is that the structs with which `BTreeMap`
 /// represents internal and leaf nodes are not public, so we can't
 /// get their size with `std::mem::size_of`; instead, we base our
 /// estimates of their size on the current `std` code, assuming that
 /// these structs will not change
-
 pub mod btree {
     use std::collections::BTreeMap;
     use std::mem;

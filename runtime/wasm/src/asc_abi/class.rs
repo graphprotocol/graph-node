@@ -20,7 +20,6 @@ use semver::Version;
 
 ///! Rust types that have with a direct correspondence to an Asc class,
 ///! with their `AscType` implementations.
-
 /// Wrapper of ArrayBuffer for multiple AssemblyScript versions.
 /// It just delegates its method calls to the correct mappings apiVersion.
 pub enum ArrayBuffer {

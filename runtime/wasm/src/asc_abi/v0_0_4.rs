@@ -12,7 +12,7 @@ use graph_runtime_derive::AscType;
 use crate::asc_abi::class;
 
 /// Module related to AssemblyScript version v0.6.
-
+///
 /// Asc std ArrayBuffer: "a generic, fixed-length raw binary data buffer".
 /// See https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management/86447e88be5aa8ec633eaf5fe364651136d136ab#arrays
 pub struct ArrayBuffer {
