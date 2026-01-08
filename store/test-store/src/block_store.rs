@@ -127,7 +127,7 @@ impl FakeBlock {
         let mut header = BlockHeader::default();
         header.parent_hash = self.parent_hash.clone().into_bytes();
         header.timestamp = self.timestamp.map(|ts| Timestamp {
-            seconds: i64::from_str_radix(&ts.to_string(), 10).unwrap(),
+            seconds: ts.to_string().parse().unwrap(),
             nanos: 0,
         });
         block.header = Some(header);
