@@ -19,7 +19,7 @@ impl<T> Copy for AscPtr<T> {}
 
 impl<T> Clone for AscPtr<T> {
     fn clone(&self) -> Self {
-        AscPtr(self.0, PhantomData)
+        *self
     }
 }
 
