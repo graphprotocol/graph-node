@@ -1463,12 +1463,15 @@ mod tests {
 
     #[test]
     fn it_fails_for_substreams() {
-        let _actual: Result<Provider, _> = toml::from_str(
+        let actual: Result<Provider, _> = toml::from_str(
             r#"
                 label = "bananas"
                 details = { type = "substreams", url = "http://localhost:9000", features = [] }
             "#,
         );
+        assert!(actual.is_err());
+        let err = actual.unwrap_err().to_string();
+        assert!(err.contains("unknown variant `substreams`"));
     }
 
     #[test]
