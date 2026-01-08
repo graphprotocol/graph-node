@@ -123,6 +123,7 @@ where
 }
 
 /// Run a test with a connection into the primary database, not a full store
+#[allow(clippy::await_holding_lock)]
 pub async fn run_test_with_conn<F>(test: F)
 where
     F: AsyncFnOnce(&mut AsyncPgConnection),

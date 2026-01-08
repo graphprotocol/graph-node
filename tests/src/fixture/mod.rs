@@ -360,6 +360,7 @@ fn test_logger(test_name: &str) -> Logger {
     graph::log::logger(true).new(o!("test" => test_name.to_string()))
 }
 
+#[allow(clippy::await_holding_lock)]
 pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
     let _mutex_guard = STORE_MUTEX.lock().unwrap();
 
