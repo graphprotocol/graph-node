@@ -9,10 +9,8 @@
 //!   * 1: to synchronize on migratons
 //!
 //! We use the following 2x 32-bit locks
-//!   * 1, n: to lock copying of the deployment with id n in the destination
-//!           shard
-//!   * 2, n: to lock the deployment with id n to make sure only one write
-//!           happens to it
+//!   * 1, n: to lock copying of the deployment with id n in the destination shard
+//!   * 2, n: to lock the deployment with id n to make sure only one write happens to it
 
 use diesel::sql_query;
 use diesel::sql_types::Bool;
