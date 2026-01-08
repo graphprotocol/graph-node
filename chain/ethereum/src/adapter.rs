@@ -614,16 +614,16 @@ pub struct EthereumCallFilter {
     pub wildcard_signatures: HashSet<FunctionSelector>,
 }
 
-impl Into<Vec<CallToFilter>> for EthereumCallFilter {
-    fn into(self) -> Vec<CallToFilter> {
-        if self.is_empty() {
+impl From<EthereumCallFilter> for Vec<CallToFilter> {
+    fn from(val: EthereumCallFilter) -> Self {
+        if val.is_empty() {
             return Vec::new();
         }
 
         let EthereumCallFilter {
             contract_addresses_function_signatures,
             wildcard_signatures,
-        } = self;
+        } = val;
 
         let mut filters: Vec<CallToFilter> = contract_addresses_function_signatures
             .into_iter()
@@ -810,9 +810,9 @@ pub struct EthereumBlockFilter {
     pub trigger_every_block: bool,
 }
 
-impl Into<Vec<CallToFilter>> for EthereumBlockFilter {
-    fn into(self) -> Vec<CallToFilter> {
-        self.contract_addresses
+impl From<EthereumBlockFilter> for Vec<CallToFilter> {
+    fn from(val: EthereumBlockFilter) -> Self {
+        val.contract_addresses
             .into_iter()
             .map(|(_, addr)| addr)
             .sorted()
