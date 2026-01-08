@@ -219,7 +219,7 @@ fn build_list_filter_from_value(
 }
 
 /// build a filter which has list of nested filters
-fn build_list_filter_from_object<'a>(
+fn build_list_filter_from_object(
     entity: &ObjectOrInterface,
     object: &Object,
     schema: &InputSchema,
@@ -235,7 +235,7 @@ fn build_list_filter_from_object<'a>(
 }
 
 /// Parses a GraphQL input object into an EntityFilter, if present.
-fn build_filter_from_object<'a>(
+fn build_filter_from_object(
     entity: &ObjectOrInterface,
     object: &Object,
     schema: &InputSchema,

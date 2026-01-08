@@ -89,7 +89,7 @@ impl IdType {
     }
 }
 
-impl<'a> TryFrom<&s::ObjectType> for IdType {
+impl TryFrom<&s::ObjectType> for IdType {
     type Error = Error;
 
     fn try_from(obj_type: &s::ObjectType) -> Result<Self, Self::Error> {

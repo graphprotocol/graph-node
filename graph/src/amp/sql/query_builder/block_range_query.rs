@@ -17,7 +17,7 @@ use super::{extract_tables, parse_query, TableReference};
 /// All the table references in the original SQL query are replaced with the created CTE names.
 ///
 /// The output is ordered by block numbers.
-pub(super) fn new_block_range_query<'a>(
+pub(super) fn new_block_range_query(
     query: &ast::Query,
     block_number_column: &str,
     block_range: &RangeInclusive<BlockNumber>,
