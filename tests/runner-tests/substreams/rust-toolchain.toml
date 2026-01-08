@@ -1,3 +1,0 @@
-[toolchain]
-components = ["rustfmt"]
-targets = ["wasm32-unknown-unknown"]
