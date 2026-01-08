@@ -1,5 +1,6 @@
 mod cache;
 /// Implementation of the GraphQL execution algorithm.
+#[allow(clippy::module_inception)]
 mod execution;
 mod query;
 /// Common trait for field resolvers used in the execution.

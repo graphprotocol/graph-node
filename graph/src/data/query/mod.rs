@@ -1,5 +1,6 @@
 mod cache_status;
 mod error;
+#[allow(clippy::module_inception)]
 mod query;
 mod result;
 mod trace;
