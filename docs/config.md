@@ -112,7 +112,7 @@ The configuration for a chain `name` is specified in the section
 
 - `shard`: where chain data is stored
 - `protocol`: the protocol type being indexed, default `ethereum`
-(alternatively `near`, `cosmos`,`arweave`,`starknet`)
+  (alternatively `near`, `cosmos`,`arweave`,`starknet`)
 - `polling_interval`: the polling interval for the block ingestor (default 500ms)
 - `provider`: a list of providers for that chain
 
@@ -123,7 +123,7 @@ A `provider` is an object with the following characteristics:
 
 `details` includes the following:
 
-- `type`: one of `web3` (default), `firehose`, `substreams` or `web3call`
+- `type`: one of `web3` (default), `firehose`, or `web3call`
 - `transport`: one of `rpc`, `ws`, and `ipc`. Defaults to `rpc`.
 - `url`: the URL for the provider
 - `features`: an array of features that the provider supports, either empty
@@ -135,8 +135,8 @@ A `provider` is an object with the following characteristics:
   otherwise `graph-node` might not be able to handle all subgraphs. The
   tracking for this is approximate, and a small amount of deviation from
   this value should be expected. The deviation will be less than 10.
-- `token`: bearer token, for Firehose and Substreams providers
-- `key`: API key for Firehose and Substreams providers when using key-based authentication
+- `token`: bearer token, for Firehose providers
+- `key`: API key for Firehose providers when using key-based authentication
 
 Note that for backwards compatibility, Web3 provider `details` can be specified at the "top level" of
 the `provider`.
