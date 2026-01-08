@@ -769,14 +769,13 @@ impl FromIterator<(BlockNumber, Address, FunctionSelector)> for EthereumCallFilt
             .for_each(|(start_block, address, function_signature)| {
                 lookup
                     .entry(address)
+                    .and_modify(|set| {
+                        if set.0 > start_block {
+                            set.0 = start_block
+                        }
+                        set.1.insert(function_signature);
+                    })
                     .or_insert((start_block, HashSet::default()));
-                lookup.get_mut(&address).map(|set| {
-                    if set.0 > start_block {
-                        set.0 = start_block
-                    }
-                    set.1.insert(function_signature);
-                    set
-                });
             });
         EthereumCallFilter {
             contract_addresses_function_signatures: lookup,

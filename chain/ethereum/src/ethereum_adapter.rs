@@ -169,7 +169,7 @@ impl EthereumAdapter {
                         .trace()
                         .filter(trace_filter)
                         .await
-                        .map(move |traces| {
+                        .inspect(|traces| {
                             if !traces.is_empty() {
                                 if to == from {
                                     debug!(
@@ -188,7 +188,6 @@ impl EthereumAdapter {
                                     );
                                 }
                             }
-                            traces
                         })
                         .map_err(Error::from);
 
@@ -1217,9 +1216,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
                             ENV_VARS.genesis_block_number.into(),
                         )))
                         .await
-                        .map_err(|e| {
+                        .inspect_err(|_| {
                             metrics.set_status(ProviderStatus::GenesisFail, &provider);
-                            e
                         })?
                         .and_then(|gen_block| gen_block.hash.map(BlockHash::from))
                         .ok_or_else(|| anyhow!("Ethereum node could not find genesis block"))
