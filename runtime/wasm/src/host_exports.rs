@@ -385,9 +385,9 @@ impl HostExports {
         Ok(())
     }
 
-    pub(crate) async fn store_get<'a>(
+    pub(crate) async fn store_get(
         &self,
-        state: &'a mut BlockState,
+        state: &mut BlockState,
         entity_type: String,
         entity_id: String,
         gas: &GasCounter,
