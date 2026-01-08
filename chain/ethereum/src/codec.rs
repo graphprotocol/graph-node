@@ -533,7 +533,7 @@ mod test {
 fn get_to_address(trace: &TransactionTrace) -> Result<Option<H160>, Error> {
     // Try to detect contract creation transactions, which have no 'to' address
     let is_contract_creation = trace.to.len() == 0
-        || trace.calls.get(0).map_or(false, |call| {
+        || trace.calls.first().map_or(false, |call| {
             CallType::try_from(call.call_type)
                 .map_or(false, |call_type| call_type == CallType::Create)
         });

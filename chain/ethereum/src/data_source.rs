@@ -97,7 +97,7 @@ impl blockchain::DataSource<Chain> for DataSource {
 
         // Obtain the address from the parameters
         let string = params
-            .get(0)
+            .first()
             .with_context(|| {
                 format!(
                     "Failed to create data source from template `{}`: address parameter is missing",
@@ -1569,7 +1569,7 @@ impl MappingEventHandler {
             })
         };
 
-        if let Some(topic0) = log.topics.get(0) {
+        if let Some(topic0) = log.topics.first() {
             return self.topic0() == *topic0
                 && matches_topic(1, &self.topic1)
                 && matches_topic(2, &self.topic2)
