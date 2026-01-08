@@ -438,8 +438,7 @@ impl LoadManager {
         // Kill random queries in case we have no queries, or not enough queries
         // that cause at least 20% of the effort
         let kill_rate = self.update_kill_rate(shard, kill_rate, last_update, overloaded, wait_ms);
-        let decline =
-            rng().random_bool((kill_rate * query_effort / total_effort).min(1.0).max(0.0));
+        let decline = rng().random_bool((kill_rate * query_effort / total_effort).clamp(0.0, 1.0));
         if decline {
             if ENV_VARS.load_simulate {
                 debug!(self.logger, "Declining query";
