@@ -746,7 +746,7 @@ async fn fetch_unique_blocks_from_cache(
     // Load blocks from the cache
     let blocks_map = chain_store
         .cheap_clone()
-        .block_ptrs_by_numbers(block_numbers.iter().map(|&b| b).collect::<Vec<_>>())
+        .block_ptrs_by_numbers(block_numbers.iter().copied().collect::<Vec<_>>())
         .await
         .map_err(|e| {
             error!(logger, "Error accessing block cache {}", e);
