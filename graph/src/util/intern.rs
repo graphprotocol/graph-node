@@ -64,7 +64,7 @@ impl Error {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 /// A pool of interned strings. Pools can be organized hierarchically with
 /// lookups in child pools also considering the parent pool. The chain of
 /// pools from a pool through all its ancestors act as one big pool to the

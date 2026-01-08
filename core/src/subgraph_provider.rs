@@ -230,6 +230,7 @@ enum Error {
 ///
 /// Before starting a subgraph, its processing kind is determined from the subgraph manifest.
 /// Then, the appropriate instance manager is loaded from this mapping.
+#[derive(Default)]
 pub struct SubgraphInstanceManagers(
     HashMap<SubgraphProcessingKind, Arc<dyn SubgraphInstanceManager>>,
 );
