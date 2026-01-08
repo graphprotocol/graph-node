@@ -1233,11 +1233,12 @@ dependencies = [
 
 [[package]]
 name = "deadpool"
-version = "0.12.2"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ed5957ff93768adf7a65ab167a17835c3d2c3c50d084fe305174c112f468e2f"
+checksum = "0be2b1d1d6ec8d846f05e137292d0b89133caf95ef33695424c09568bdd39b1b"
 dependencies = [
  "deadpool-runtime",
+ "lazy_static",
  "num_cpus",
  "tokio",
 ]
