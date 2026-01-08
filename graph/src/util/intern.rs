@@ -211,6 +211,10 @@ impl<V> Object<V> {
             .count()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Find the value for `key` in the object. Return `None` if the key is
     /// not present.
     pub fn get(&self, key: &str) -> Option<&V> {

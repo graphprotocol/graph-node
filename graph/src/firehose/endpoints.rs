@@ -687,6 +687,10 @@ impl FirehoseEndpoints {
         self.1.len(&self.0)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// This function will attempt to grab an endpoint based on the Lowest error count
     //  with high capacity available. If an adapter cannot be found `endpoint` will
     // return an error.
