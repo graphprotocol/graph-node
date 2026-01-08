@@ -150,8 +150,8 @@ where
             let options = QueryExecutionOptions {
                 resolver,
                 deadline: None,
-                max_first: std::u32::MAX,
-                max_skip: std::u32::MAX,
+                max_first: u32::MAX,
+                max_skip: u32::MAX,
                 trace: false,
             };
             let (result, _) = execute_query(query_clone.cheap_clone(), None, None, options).await;

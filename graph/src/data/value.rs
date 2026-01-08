@@ -350,7 +350,7 @@ impl Value {
             ("BigDecimal", Value::Int(i)) => Ok(Value::String(i.to_string())),
             ("BigDecimal", Value::String(s)) => Ok(Value::String(s)),
             ("Int", Value::Int(num)) => {
-                if i32::min_value() as i64 <= num && num <= i32::max_value() as i64 {
+                if i32::MIN as i64 <= num && num <= i32::MAX as i64 {
                     Ok(Value::Int(num))
                 } else {
                     Err(Value::Int(num))

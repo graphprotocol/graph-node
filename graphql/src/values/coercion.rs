@@ -37,7 +37,7 @@ impl MaybeCoercible<ScalarType> for q::Value {
             ("BigDecimal", q::Value::String(s)) => Ok(r::Value::String(s)),
             ("Int", q::Value::Int(num)) => {
                 let n = num.as_i64().ok_or_else(|| q::Value::Int(num.clone()))?;
-                if i32::min_value() as i64 <= n && n <= i32::max_value() as i64 {
+                if i32::MIN as i64 <= n && n <= i32::MAX as i64 {
                     Ok(r::Value::Int((n as i32).into()))
                 } else {
                     Err(q::Value::Int(num))

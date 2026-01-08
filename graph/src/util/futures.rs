@@ -114,8 +114,8 @@ where
     /// Never log failed attempts.
     /// May still log at `trace` logging level.
     pub fn no_logging(mut self) -> Self {
-        self.log_after = u64::max_value();
-        self.warn_after = u64::max_value();
+        self.log_after = u64::MAX;
+        self.warn_after = u64::MAX;
         self
     }
 

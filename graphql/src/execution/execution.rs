@@ -258,8 +258,8 @@ where
             resolver: introspection_resolver,
             query: self.query.cheap_clone(),
             deadline: self.deadline,
-            max_first: std::u32::MAX,
-            max_skip: std::u32::MAX,
+            max_first: u32::MAX,
+            max_skip: u32::MAX,
 
             // `cache_status` is a dead value for the introspection context.
             cache_status: AtomicCell::new(CacheStatus::Miss),

@@ -569,8 +569,8 @@ async fn execute_subgraph_query_internal(
             QueryExecutionOptions {
                 resolver,
                 deadline,
-                max_first: std::u32::MAX,
-                max_skip: std::u32::MAX,
+                max_first: u32::MAX,
+                max_skip: u32::MAX,
                 trace,
             },
         )

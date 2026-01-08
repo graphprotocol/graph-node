@@ -35,7 +35,7 @@ impl ArrayBuffer {
             content.extend(&asc_bytes);
         }
 
-        if content.len() > u32::max_value() as usize {
+        if content.len() > u32::MAX as usize {
             return Err(DeterministicHostError::from(anyhow::anyhow!(
                 "slice cannot fit in WASM memory"
             )));
@@ -194,7 +194,7 @@ pub struct AscString {
 
 impl AscString {
     pub fn new(content: &[u16]) -> Result<Self, DeterministicHostError> {
-        if size_of_val(content) > u32::max_value() as usize {
+        if size_of_val(content) > u32::MAX as usize {
             return Err(DeterministicHostError::from(anyhow!(
                 "string cannot fit in WASM memory"
             )));

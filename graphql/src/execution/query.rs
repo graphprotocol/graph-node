@@ -602,9 +602,7 @@ impl<'s> RawQuery<'s> {
             Ok(complexity) => Ok(complexity),
             Err(ComplexityError::Invalid) => Ok(0),
             Err(ComplexityError::TooDeep) => Err(QueryExecutionError::TooDeep(max_depth)),
-            Err(ComplexityError::Overflow) => {
-                Err(QueryExecutionError::TooComplex(u64::max_value(), 0))
-            }
+            Err(ComplexityError::Overflow) => Err(QueryExecutionError::TooComplex(u64::MAX, 0)),
             Err(ComplexityError::CyclicalFragment(name)) => {
                 Err(QueryExecutionError::CyclicalFragment(name))
             }

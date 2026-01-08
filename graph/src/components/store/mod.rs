@@ -427,7 +427,7 @@ impl EntityCollection {
 /// be enough for everybody
 pub type BlockNumber = i32;
 
-pub const BLOCK_NUMBER_MAX: BlockNumber = std::i32::MAX;
+pub const BLOCK_NUMBER_MAX: BlockNumber = i32::MAX;
 
 /// A query for entities in a store.
 ///

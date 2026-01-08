@@ -347,8 +347,7 @@ impl JsonNotification {
                     anyhow!("Invalid notification ID, not compatible with i64: {}", n)
                 })?;
 
-                if payload_id < (i32::min_value() as i64) || payload_id > (i32::max_value() as i64)
-                {
+                if payload_id < (i32::MIN as i64) || payload_id > (i32::MAX as i64) {
                     Err(anyhow!(
                         "Invalid notification ID, value exceeds i32: {}",
                         payload_id

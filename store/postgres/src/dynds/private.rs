@@ -1,4 +1,4 @@
-use std::{collections::HashMap, i32, ops::Bound};
+use std::{collections::HashMap, ops::Bound};
 
 use diesel::{
     pg::{sql_types, Pg},
