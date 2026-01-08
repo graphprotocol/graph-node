@@ -368,10 +368,14 @@ mod tests {
         monitor.monitor(REQ);
         drop(rx);
         let mut next = handle.next_request().await;
-        if let Some((a, _)) = next {
+        if let Some((req, responder)) = next {
             // The request may or may not have been pulled from the queue
             // before cancelation.
-            assert_eq!(REQ, a);
+            assert_eq!(REQ, req);
+            // Explicitly complete the request so the monitor task can process it
+            // and detect the cancellation. Dropping the responder without responding
+            // is racy in a multi-threaded runtime.
+            responder.send_error(anyhow!("cancelled"));
             next = handle.next_request().await;
         }
         assert!(next.is_none());
