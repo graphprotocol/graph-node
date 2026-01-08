@@ -51,9 +51,8 @@ async fn deploy_subgraph(
             true,
         )
         .await
-        .and_then(|locator| {
+        .inspect(|locator| {
             info!(logger, "Subgraph deployed"; "name" => name.to_string(), "id" => subgraph_id.to_string(), "locator" => locator.to_string());
-            Ok(locator)
         })
 }
 
