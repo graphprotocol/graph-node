@@ -1030,7 +1030,9 @@ impl Inner {
             let id = DeploymentHash::new(deployment_id.clone())
                 .map_err(|id| internal_error!("illegal deployment id {}", id))?;
             let (store, site) = self.store(&id).await?;
-            let statuses = store.deployment_statuses(&[site.clone()]).await?;
+            let statuses = store
+                .deployment_statuses(std::slice::from_ref(&site))
+                .await?;
             let status = statuses
                 .first()
                 .ok_or_else(|| StoreError::DeploymentNotFound(deployment_id.clone()))?;
