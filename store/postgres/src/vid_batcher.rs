@@ -435,20 +435,23 @@ mod tests {
 
         // The schedule of how we move through the bounds above in batches,
         // with varying timings for each batch
-        batcher.run(040, 075, 10, S010).await;
-        batcher.run(076, 145, 20, S010).await;
-        batcher.run(146, 240, 40, S200).await;
-        batcher.run(241, 270, 20, S200).await;
-        batcher.run(271, 281, 10, S200).await;
-        batcher.run(282, 287, 05, S050).await;
-        batcher.run(288, 298, 10, S050).await;
-        batcher.run(299, 309, 20, S050).await;
-        batcher.run(310, 325, 40, S100).await;
-        batcher.run(326, 336, 40, S100).await;
-        batcher.run(337, 347, 40, S100).await;
-        batcher.run(348, 357, 40, S100).await;
-        batcher.run(358, 359, 40, S010).await;
-        assert!(batcher.finished());
+        #[allow(clippy::zero_prefixed_literal)]
+        {
+            batcher.run(040, 075, 10, S010).await;
+            batcher.run(076, 145, 20, S010).await;
+            batcher.run(146, 240, 40, S200).await;
+            batcher.run(241, 270, 20, S200).await;
+            batcher.run(271, 281, 10, S200).await;
+            batcher.run(282, 287, 05, S050).await;
+            batcher.run(288, 298, 10, S050).await;
+            batcher.run(299, 309, 20, S050).await;
+            batcher.run(310, 325, 40, S100).await;
+            batcher.run(326, 336, 40, S100).await;
+            batcher.run(337, 347, 40, S100).await;
+            batcher.run(348, 357, 40, S100).await;
+            batcher.run(358, 359, 40, S010).await;
+            assert!(batcher.finished());
+        }
 
         batcher.at(360, 359, 80);
         batcher.step(360, 359, S010).await;
