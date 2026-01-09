@@ -406,6 +406,7 @@ impl Table {
         self.create_table(out)?;
         self.create_time_travel_indexes(catalog, out)?;
         if index_def.is_some() && ENV_VARS.postpone_attribute_index_creation {
+            #[allow(clippy::unnecessary_unwrap)]
             let arr = index_def
                 .unwrap()
                 .indexes_for_table(&self.nsp, &self.name.to_string(), self, false, false, false)

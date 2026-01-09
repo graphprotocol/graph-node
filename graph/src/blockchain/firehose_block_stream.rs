@@ -366,10 +366,12 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
             let previous_block_ptr = block.parent_ptr();
             if previous_block_ptr.is_some() && previous_block_ptr.as_ref() != subgraph_current_block
             {
+                #[allow(clippy::unnecessary_unwrap)]
+                let firehose_start_block = previous_block_ptr.unwrap();
                 warn!(&logger,
                     "Firehose selected first streamed block's parent should match subgraph start block, reverting to last know final chain segment";
                     "subgraph_current_block" => &subgraph_current_block.unwrap(),
-                    "firehose_start_block" => &previous_block_ptr.unwrap(),
+                    "firehose_start_block" => &firehose_start_block,
                 );
 
                 let mut revert_to = mapper

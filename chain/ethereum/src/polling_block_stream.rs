@@ -406,6 +406,7 @@ impl PollingBlockStreamContext {
             // block number, and checking to see if the block we found matches the
             // subgraph_ptr.
 
+            #[allow(clippy::unnecessary_unwrap)]
             let subgraph_ptr =
                 subgraph_ptr.expect("subgraph block pointer should not be `None` here");
 
