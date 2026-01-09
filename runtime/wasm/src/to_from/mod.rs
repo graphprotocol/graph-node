@@ -1,3 +1,5 @@
+//! Implementations of `ToAscObj` and `FromAscObj` for Rust types.
+//! Standard Rust types go in `mod.rs` and external types in `external.rs`.
 use anyhow::anyhow;
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -14,8 +16,6 @@ use graph::{
 
 use crate::asc_abi::class::*;
 
-///! Implementations of `ToAscObj` and `FromAscObj` for Rust types.
-///! Standard Rust types go in `mod.rs` and external types in `external.rs`.
 mod external;
 
 #[async_trait]

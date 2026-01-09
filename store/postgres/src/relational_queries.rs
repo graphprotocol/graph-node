@@ -1,10 +1,10 @@
-///! This module contains the gory details of using Diesel to query
-///! a database schema that is not known at compile time. The code in this
-///! module is mostly concerned with constructing SQL queries and some
-///! helpers for serializing and deserializing entities.
-///!
-///! Code in this module works very hard to minimize the number of allocations
-///! that it performs
+//! This module contains the gory details of using Diesel to query
+//! a database schema that is not known at compile time. The code in this
+//! module is mostly concerned with constructing SQL queries and some
+//! helpers for serializing and deserializing entities.
+//!
+//! Code in this module works very hard to minimize the number of allocations
+//! that it performs
 use diesel::pg::Pg;
 use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::query_dsl::RunQueryDsl;

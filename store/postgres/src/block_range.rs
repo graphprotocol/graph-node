@@ -1,8 +1,8 @@
+//! Utilities to deal with block numbers and block ranges
 use derive_more::Constructor;
 use diesel::pg::Pg;
 use diesel::query_builder::{AstPass, QueryFragment};
 use diesel::result::QueryResult;
-///! Utilities to deal with block numbers and block ranges
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::{Integer, Range};
 use graph::env::ENV_VARS;
