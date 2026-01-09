@@ -142,7 +142,7 @@ mod tests {
                 break;
             }
             if start.elapsed() > Duration::from_secs(2) {
-                assert!(false, "Counting to 10 took longer than 2 seconds");
+                panic!("Counting to 10 took longer than 2 seconds");
             }
         }
 

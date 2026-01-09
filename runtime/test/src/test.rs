@@ -1081,7 +1081,7 @@ async fn test_entity_store(api_version: Version) {
             assert_eq!(Some(&Value::from("steve")), data.get("id"));
             assert_eq!(Some(&Value::from("Steve-O")), data.get("name"));
         }
-        _ => assert!(false, "expected Overwrite modification"),
+        _ => panic!("expected Overwrite modification"),
     }
 
     // Load, set, save cycle for a new entity with fulltext API
@@ -1104,7 +1104,7 @@ async fn test_entity_store(api_version: Version) {
             assert_eq!(Some(&Value::from("herobrine")), data.get("id"));
             assert_eq!(Some(&Value::from("Brine-O")), data.get("name"));
         }
-        _ => assert!(false, "expected Insert modification"),
+        _ => panic!("expected Insert modification"),
     };
 }
 
@@ -1123,20 +1123,16 @@ fn test_detect_contract_calls(api_version: Version) {
         &wasm_file_path("abi_store_value.wasm", api_version.clone()),
         api_version.clone(),
     );
-    assert!(
-        !data_source_without_calls
-            .mapping
-            .requires_archive()
-            .unwrap()
-    );
+    assert!(!data_source_without_calls
+        .mapping
+        .requires_archive()
+        .unwrap());
 
     let data_source_with_calls = mock_data_source(
         &wasm_file_path("contract_calls.wasm", api_version.clone()),
         api_version,
     );
-    assert!(
-        data_source_with_calls.mapping.requires_archive().unwrap()
-    );
+    assert!(data_source_with_calls.mapping.requires_archive().unwrap());
 }
 
 #[graph::test]

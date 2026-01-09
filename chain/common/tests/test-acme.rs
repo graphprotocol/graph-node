@@ -63,7 +63,7 @@ fn required_ok() {
                 !f.required,
                 "Transaction.events field should NOT be required!"
             ),
-            _ => assert!(false, "Unexpected message field [{}]!", f.name),
+            _ => panic!("Unexpected message field [{}]!", f.name),
         };
     });
 }
