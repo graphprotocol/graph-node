@@ -329,6 +329,7 @@ mod tests {
     use super::{EthereumNetworkAdapter, EthereumNetworkAdapters, NodeCapabilities};
 
     #[test]
+    #[allow(clippy::neg_cmp_op_on_partial_ord)]
     fn ethereum_capabilities_comparison() {
         let archive = NodeCapabilities {
             archive: true,
@@ -470,9 +471,7 @@ mod tests {
         {
             let adapter = adapters.call_or_cheapest(None).unwrap();
             assert!(adapter.is_call_only());
-            assert!(
-                !adapters.call_or_cheapest(None).unwrap().is_call_only()
-            );
+            assert!(!adapters.call_or_cheapest(None).unwrap().is_call_only());
         }
 
         // Check empty falls back to call only
@@ -620,9 +619,7 @@ mod tests {
         // one reference above and one inside adapters struct
         assert_eq!(Arc::strong_count(&eth_call_adapter), 2);
         assert_eq!(Arc::strong_count(&eth_adapter), 2);
-        assert!(
-            !adapters.call_or_cheapest(None).unwrap().is_call_only()
-        );
+        assert!(!adapters.call_or_cheapest(None).unwrap().is_call_only());
     }
 
     #[graph::test]
@@ -665,9 +662,7 @@ mod tests {
         .await;
         // one reference above and one inside adapters struct
         assert_eq!(Arc::strong_count(&eth_adapter), 2);
-        assert!(
-            !adapters.call_or_cheapest(None).unwrap().is_call_only()
-        );
+        assert!(!adapters.call_or_cheapest(None).unwrap().is_call_only());
     }
 
     #[graph::test]
@@ -687,7 +682,8 @@ mod tests {
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
         let chain_id: Word = "chain_id".into();
 
-        let adapters = [fake_adapter(
+        let adapters = [
+            fake_adapter(
                 &logger,
                 unavailable_provider,
                 &provider_metrics,
@@ -703,7 +699,8 @@ mod tests {
                 &metrics,
                 false,
             )
-            .await];
+            .await,
+        ];
 
         // Set errors
         metrics.report_for_test(&ProviderName::from(error_provider), false);
@@ -896,11 +893,7 @@ mod tests {
         });
         let manager = ProviderManager::new(
             logger,
-            vec![(
-                chain_id.clone(),
-                no_available_adapter.to_vec(),
-            )]
-            .into_iter(),
+            vec![(chain_id.clone(), no_available_adapter.to_vec())].into_iter(),
             ProviderCheckStrategy::MarkAsValid,
         );
 
