@@ -1789,7 +1789,7 @@ async fn test_yaml_parsing(api_version: Version, gas_used: u64) {
     test("{a: 1, - b: 2}", "error").await;
 
     // Test size limit;
-    test(&"x".repeat(10_000_0001), "error").await;
+    test(&"x".repeat(10_000_001), "error").await;
 
     // Test nulls;
     test("null", "(0) null").await;
@@ -1829,10 +1829,10 @@ async fn test_yaml_parsing(api_version: Version, gas_used: u64) {
 
 #[graph::test]
 async fn yaml_parsing_v0_0_4() {
-    test_yaml_parsing(API_VERSION_0_0_4, 10462217077171).await;
+    test_yaml_parsing(API_VERSION_0_0_4, 1053927678771).await;
 }
 
 #[graph::test]
 async fn yaml_parsing_v0_0_5() {
-    test_yaml_parsing(API_VERSION_0_0_5, 10462245390665).await;
+    test_yaml_parsing(API_VERSION_0_0_5, 1053955992265).await;
 }
