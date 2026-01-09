@@ -1121,8 +1121,8 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let node = match NodeId::new(&opt.node_id) {
-        Err(()) => {
-            eprintln!("invalid node id: {}", opt.node_id);
+        Err(node_id) => {
+            eprintln!("invalid node id: {}", node_id);
             std::process::exit(1);
         }
         Ok(node) => node,

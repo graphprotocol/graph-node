@@ -35,7 +35,7 @@ pub async fn reassign(
     search: &DeploymentSearch,
     node: String,
 ) -> Result<(), Error> {
-    let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
+    let node = NodeId::new(node).map_err(|node| anyhow!("illegal node id `{}`", node))?;
     let locator = search.locate_unique(&primary).await?;
 
     let pconn = primary.get_permitted().await?;

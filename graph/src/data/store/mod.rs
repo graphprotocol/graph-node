@@ -37,12 +37,14 @@ pub mod sql;
 pub struct NodeId(String);
 
 impl NodeId {
-    pub fn new(s: impl Into<String>) -> Result<Self, ()> {
+    /// Create a new NodeId. The name `s` must be between 1 and 63
+    /// characters long. If it is not, `Err(s)` is returned
+    pub fn new(s: impl Into<String>) -> Result<Self, String> {
         let s = s.into();
 
         // Enforce minimum and maximum length limit
         if s.len() > 63 || s.is_empty() {
-            return Err(());
+            return Err(s);
         }
 
         Ok(NodeId(s))
@@ -76,8 +78,8 @@ impl<'de> de::Deserialize<'de> for NodeId {
         D: de::Deserializer<'de>,
     {
         let s: String = de::Deserialize::deserialize(deserializer)?;
-        NodeId::new(s.clone())
-            .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid node ID"))
+        NodeId::new(s)
+            .map_err(|s| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid node ID"))
     }
 }
 

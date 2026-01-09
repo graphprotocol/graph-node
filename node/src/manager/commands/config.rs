@@ -72,7 +72,7 @@ pub fn pools(config: &Config, nodes: Vec<String>, shard: bool) -> Result<(), Err
         .into_iter()
         .map(|name| {
             NodeId::new(name.replace('-', "_"))
-                .map_err(|()| anyhow!("illegal node name `{}`", name))
+                .map_err(|name| anyhow!("illegal node name `{}`", name))
         })
         .collect::<Result<_, _>>()?;
     // node -> shard_name -> size

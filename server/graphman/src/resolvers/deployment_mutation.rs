@@ -118,7 +118,7 @@ impl DeploymentMutation {
     ) -> Result<ReassignResponse> {
         let ctx = GraphmanContext::new(ctx)?;
         let deployment = deployment.try_into()?;
-        let node = NodeId::new(node.clone()).map_err(|()| anyhow!("illegal node id `{}`", node))?;
+        let node = NodeId::new(node).map_err(|node| anyhow!("illegal node id `{}`", node))?;
         let reassign_result = reassign::run(&ctx, &deployment, &node).await?;
         match reassign_result {
             ReassignResult::CompletedWithWarnings(warnings) => Ok(

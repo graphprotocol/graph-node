@@ -681,7 +681,7 @@ mod queries {
             .await
             .optional()?
             .map(|node| {
-                NodeId::new(&node).map_err(|()| {
+                NodeId::new(node).map_err(|node| {
                     internal_error!(
                         "invalid node id `{}` in assignment for `{}`",
                         node,
@@ -707,7 +707,7 @@ mod queries {
             .await
             .optional()?
             .map(|(node, ts)| {
-                let node_id = NodeId::new(&node).map_err(|()| {
+                let node_id = NodeId::new(node).map_err(|node| {
                     internal_error!(
                         "invalid node id `{}` in assignment for `{}`",
                         node,
@@ -1634,7 +1634,7 @@ impl Connection {
             .map(|(node, count)| (node.as_str(), *count))
             .chain(missing)
             .min_by_key(|(_, count)| *count)
-            .map(|(node, _)| NodeId::new(node).map_err(|()| node))
+            .map(|(node, _)| NodeId::new(node))
             .transpose()
             // This can't really happen since we filtered by valid NodeId's
             .map_err(|node| {

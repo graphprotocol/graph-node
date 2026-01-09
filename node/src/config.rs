@@ -181,7 +181,7 @@ impl Config {
 
     pub fn from_str(config: &str, node: &str) -> Result<Config> {
         let mut config: Config = toml::from_str(config)?;
-        config.node = NodeId::new(node).map_err(|()| anyhow!("invalid node id {}", node))?;
+        config.node = NodeId::new(node).map_err(|node| anyhow!("invalid node id {}", node))?;
         config.validate()?;
         Ok(config)
     }
@@ -191,7 +191,7 @@ impl Config {
         let mut stores = BTreeMap::new();
         let chains = ChainSection::from_opt(opt)?;
         let node = NodeId::new(opt.node_id.to_string())
-            .map_err(|()| anyhow!("invalid node id {}", opt.node_id))?;
+            .map_err(|node| anyhow!("invalid node id {}", node))?;
         stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(true, opt)?);
         Ok(Config {
             node,
@@ -426,7 +426,7 @@ pub struct ChainSection {
 impl ChainSection {
     fn validate(&mut self) -> Result<()> {
         NodeId::new(&self.ingestor)
-            .map_err(|()| anyhow!("invalid node id for ingestor {}", &self.ingestor))?;
+            .map_err(|node| anyhow!("invalid node id for ingestor {}", node))?;
         for (_, chain) in self.chains.iter_mut() {
             chain.validate()?
         }
@@ -993,8 +993,7 @@ impl DeploymentPlacer for Deployment {
                     .indexers
                     .iter()
                     .map(|idx| {
-                        NodeId::new(idx.clone())
-                            .map_err(|()| format!("{} is not a valid node name", idx))
+                        NodeId::new(idx).map_err(|idx| format!("{} is not a valid node name", idx))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
                 Some((shards, indexers))
@@ -1041,7 +1040,7 @@ impl Rule {
             return Err(anyhow!("useless rule without indexers"));
         }
         for indexer in &self.indexers {
-            NodeId::new(indexer).map_err(|()| anyhow!("invalid node id {}", &indexer))?;
+            NodeId::new(indexer).map_err(|indexer| anyhow!("invalid node id {}", indexer))?;
         }
         self.shard_names().map_err(Error::from)?;
         Ok(())
