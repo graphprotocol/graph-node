@@ -93,6 +93,17 @@ serde_plain = "1.0.2"
 csv = "1.4.0"
 object_store = { version = "0.12.4", features = ["gcp"] }
 
+# Dependencies related to Amp subgraphs
+ahash.workspace = true
+alloy.workspace = true
+arrow-flight.workspace = true
+arrow.workspace = true
+half.workspace = true
+indoc.workspace = true
+lazy-regex.workspace = true
+sqlparser-latest.workspace = true
+tokio-util.workspace = true
+
 [dev-dependencies]
 clap.workspace = true
 maplit = "1.0.2"

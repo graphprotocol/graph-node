@@ -37,6 +37,8 @@ pub mod env;
 
 pub mod ipfs;
 
+pub mod amp;
+
 /// Wrapper for spawning tasks that abort on panic, which is our default.
 mod tokio;
 #[cfg(debug_assertions)]
@@ -135,8 +137,7 @@ pub mod prelude {
     };
     pub use crate::components::subgraph::{
         BlockState, HostMetrics, InstanceDSTemplateInfo, RuntimeHost, RuntimeHostBuilder,
-        SubgraphAssignmentProvider, SubgraphInstanceManager, SubgraphRegistrar,
-        SubgraphVersionSwitchingMode,
+        SubgraphInstanceManager, SubgraphRegistrar, SubgraphVersionSwitchingMode,
     };
     pub use crate::components::trigger_processor::TriggerProcessor;
     pub use crate::components::versions::{ApiVersion, FeatureFlag};

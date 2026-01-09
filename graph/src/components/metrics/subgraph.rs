@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use indoc::indoc;
 use prometheus::Counter;
 use prometheus::IntGauge;
 
@@ -87,12 +88,13 @@ impl SubgraphInstanceMetrics {
         let blocks_processed_count = registry
             .new_counter_with_labels(
                 "deployment_blocks_processed_count",
-                "Measures the number of blocks processed",
+                "Tracks the total number of blocks processed by a deployment",
                 labels,
             )
             .expect("failed to create blocks_processed_count counter");
 
-        let deployment_synced = DeploymentSyncedMetric::register(&registry, subgraph_hash);
+        let deployment_synced =
+            DeploymentSyncedMetric::register(&registry, subgraph_hash, &stopwatch.shard());
 
         Self {
             block_trigger_count,
@@ -183,13 +185,21 @@ impl DeploymentStatusMetric {
         let deployment_status = registry
             .new_int_gauge(
                 "deployment_status",
-                "Indicates the current indexing status of a deployment.\n\
-                 Possible values:\n\
-                 1 - graph-node is preparing to start indexing;\n\
-                 2 - deployment is being indexed;\n\
-                 3 - indexing is stopped by request;\n\
-                 4 - indexing failed;",
-                [("deployment", deployment.hash.as_str())],
+                indoc!(
+                    "
+                    Indicates the current indexing status of a deployment.
+                    Possible values:
+                    1 - graph-node is preparing to start indexing;
+                    2 - deployment is being indexed;
+                    3 - indexing is stopped by request;
+                    4 - indexing failed;
+                    "
+                ),
+                [
+                    ("deployment", deployment.hash.as_str()),
+                    // TODO: Shard not available because this metric is initialized when there is no access to the writable store.
+                    ("shard", ""),
+                ],
             )
             .expect("failed to register `deployment_status` gauge");
 
@@ -233,15 +243,19 @@ impl DeploymentSyncedMetric {
     const SYNCED: i64 = 1;
 
     /// Registers the metric.
-    pub fn register(registry: &MetricsRegistry, deployment_hash: &str) -> Self {
+    pub fn register(registry: &MetricsRegistry, deployment_hash: &str, shard: &str) -> Self {
         let metric = registry
             .new_int_gauge(
                 "deployment_synced",
-                "Indicates whether a deployment has reached the chain head since it was deployed.\n\
-                 Possible values:\n\
-                 0 - deployment is not synced;\n\
-                 1 - deployment is synced;",
-                [("deployment", deployment_hash)],
+                indoc!(
+                    "
+                    Indicates whether a deployment has reached the chain head or the end block since it was deployed.
+                    Possible values:
+                    0 - deployment is not synced;
+                    1 - deployment is synced;
+                    "
+                ),
+                [("deployment", deployment_hash), ("shard", shard)],
             )
             .expect("failed to register `deployment_synced` gauge");
 

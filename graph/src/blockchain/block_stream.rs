@@ -916,7 +916,7 @@ impl BlockStreamMetrics {
         let deployment_head = registry
             .new_gauge(
                 "deployment_head",
-                "Track the head block number for a deployment",
+                "Tracks the most recent block number processed by a deployment",
                 labels.clone(),
             )
             .expect("failed to create `deployment_head` gauge");

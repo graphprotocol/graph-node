@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 use anyhow::Error;
 use async_stream::stream;
 use async_trait::async_trait;
+use graph::amp;
 use graph::blockchain::block_stream::{
     BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamEvent,
     BlockWithTriggers, FirehoseCursor,
@@ -25,7 +26,7 @@ use graph::components::link_resolver::{
 use graph::components::metrics::MetricsRegistry;
 use graph::components::network_provider::ChainName;
 use graph::components::store::{DeploymentLocator, EthereumCallCache, SourceableStore};
-use graph::components::subgraph::Settings;
+use graph::components::subgraph::{Settings, SubgraphInstanceManager as _};
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::{Query, QueryTarget};
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
@@ -42,19 +43,15 @@ use graph::prelude::ethabi::ethereum_types::H256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
     lazy_static, q, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
-    IpfsResolver, LinkResolver, LoggerFactory, NodeId, QueryError, SubgraphAssignmentProvider,
-    SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore as _,
-    SubgraphVersionSwitchingMode, TriggerProcessor,
+    IpfsResolver, LinkResolver, LoggerFactory, NodeId, QueryError, SubgraphCountMetric,
+    SubgraphName, SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
+    TriggerProcessor,
 };
 use graph::schema::InputSchema;
 use graph_chain_ethereum::chain::RuntimeAdapterBuilder;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::Chain;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
-use graph_core::{
-    SubgraphAssignmentProvider as IpfsSubgraphAssignmentProvider, SubgraphInstanceManager,
-    SubgraphRegistrar as IpfsSubgraphRegistrar, SubgraphTriggerProcessor,
-};
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
 use graph_runtime_wasm::RuntimeHostBuilder;
@@ -159,21 +156,22 @@ pub trait TestChainTrait<C: Blockchain> {
 
 pub struct TestContext {
     pub logger: Logger,
-    pub provider: Arc<
-        IpfsSubgraphAssignmentProvider<
-            SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
-        >,
-    >,
+    pub provider: Arc<graph_core::subgraph_provider::SubgraphProvider>,
     pub store: Arc<SubgraphStore>,
     pub deployment: DeploymentLocator,
     pub subgraph_name: SubgraphName,
-    pub instance_manager: SubgraphInstanceManager<graph_store_postgres::SubgraphStore>,
+    pub instance_manager: Arc<
+        graph_core::subgraph::SubgraphInstanceManager<
+            graph_store_postgres::SubgraphStore,
+            amp::FlightClient,
+        >,
+    >,
     pub link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver>,
     pub arweave_resolver: Arc<dyn ArweaveResolver>,
     pub env_vars: Arc<EnvVars>,
     pub ipfs: Arc<dyn IpfsClient>,
     graphql_runner: Arc<GraphQlRunner>,
-    indexing_status_service: Arc<IndexNodeService<graph_store_postgres::Store>>,
+    indexing_status_service: Arc<IndexNodeService<graph_store_postgres::Store, amp::FlightClient>>,
 }
 
 #[derive(Deserialize)]
@@ -205,12 +203,13 @@ impl TestContext {
     pub async fn runner(
         &self,
         stop_block: BlockPtr,
-    ) -> graph_core::SubgraphRunner<
+    ) -> graph_core::subgraph::SubgraphRunner<
         graph_chain_ethereum::Chain,
         RuntimeHostBuilder<graph_chain_ethereum::Chain>,
     > {
         let (logger, deployment, raw) = self.get_runner_context().await;
-        let tp: Box<dyn TriggerProcessor<_, _>> = Box::new(SubgraphTriggerProcessor {});
+        let tp: Box<dyn TriggerProcessor<_, _>> =
+            Box::new(graph_core::subgraph::SubgraphTriggerProcessor {});
 
         let deployment_status_metric = self
             .instance_manager
@@ -234,7 +233,7 @@ impl TestContext {
     pub async fn runner_substreams(
         &self,
         stop_block: BlockPtr,
-    ) -> graph_core::SubgraphRunner<
+    ) -> graph_core::subgraph::SubgraphRunner<
         graph_chain_substreams::Chain,
         RuntimeHostBuilder<graph_chain_substreams::Chain>,
     > {
@@ -283,10 +282,13 @@ impl TestContext {
 
     pub async fn start_and_sync_to(&self, stop_block: BlockPtr) {
         // In case the subgraph has been previously started.
-        self.provider.stop(self.deployment.clone()).await;
+        self.provider
+            .stop_subgraph(self.deployment.cheap_clone())
+            .await;
 
         self.provider
-            .start(self.deployment.clone(), Some(stop_block.number))
+            .cheap_clone()
+            .start_subgraph(self.deployment.cheap_clone(), Some(stop_block.number))
             .await;
 
         debug!(self.logger, "TEST: syncing to {}", stop_block.number);
@@ -303,9 +305,14 @@ impl TestContext {
 
     pub async fn start_and_sync_to_error(&self, stop_block: BlockPtr) -> SubgraphError {
         // In case the subgraph has been previously started.
-        self.provider.stop(self.deployment.clone()).await;
+        self.provider
+            .stop_subgraph(self.deployment.cheap_clone())
+            .await;
 
-        self.provider.start(self.deployment.clone(), None).await;
+        self.provider
+            .cheap_clone()
+            .start_subgraph(self.deployment.cheap_clone(), None)
+            .await;
 
         wait_for_sync(
             &self.logger,
@@ -556,7 +563,8 @@ pub async fn setup_inner<C: Blockchain>(
     let sg_count = Arc::new(SubgraphCountMetric::new(mock_registry.cheap_clone()));
 
     let blockchain_map = Arc::new(blockchain_map);
-    let subgraph_instance_manager = SubgraphInstanceManager::new(
+
+    let subgraph_instance_manager = Arc::new(graph_core::subgraph::SubgraphInstanceManager::new(
         &logger_factory,
         env_vars.cheap_clone(),
         subgraph_store.clone(),
@@ -566,8 +574,25 @@ pub async fn setup_inner<C: Blockchain>(
         link_resolver.cheap_clone(),
         ipfs_service,
         arweave_service,
+        None,
         static_filters,
+    ));
+
+    let mut subgraph_instance_managers =
+        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
+
+    subgraph_instance_managers.add(
+        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
+        subgraph_instance_manager.cheap_clone(),
     );
+
+    let subgraph_provider = Arc::new(graph_core::subgraph_provider::SubgraphProvider::new(
+        &logger_factory,
+        sg_count.cheap_clone(),
+        link_resolver.cheap_clone(),
+        tokio_util::sync::CancellationToken::new(),
+        subgraph_instance_managers,
+    ));
 
     // Graphql runner
     let load_manager = LoadManager::new(&logger, Vec::new(), Vec::new(), mock_registry.clone());
@@ -583,23 +608,18 @@ pub async fn setup_inner<C: Blockchain>(
         blockchain_map.cheap_clone(),
         stores.network_store.cheap_clone(),
         link_resolver.cheap_clone(),
-    ));
-
-    // Create IPFS-based subgraph provider
-    let subgraph_provider = Arc::new(IpfsSubgraphAssignmentProvider::new(
-        &logger_factory,
-        subgraph_instance_manager.clone(),
-        sg_count,
+        None,
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
 
-    let subgraph_registrar = Arc::new(IpfsSubgraphRegistrar::new(
+    let subgraph_registrar = Arc::new(graph_core::subgraph::SubgraphRegistrar::new(
         &logger_factory,
         link_resolver.cheap_clone(),
-        subgraph_provider.clone(),
+        subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
+        Option::<Arc<amp::FlightClient>>::None,
         blockchain_map.clone(),
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,

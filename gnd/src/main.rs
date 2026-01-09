@@ -14,6 +14,7 @@ use graph_core::polling_monitor::ipfs_service;
 use graph_node::{launcher, opt::Opt};
 use lazy_static::lazy_static;
 use tokio::{self, sync::mpsc};
+use tokio_util::sync::CancellationToken;
 
 use gnd::watcher::{deploy_all_subgraphs, parse_manifest_args, watch_subgraphs};
 
@@ -159,6 +160,7 @@ async fn run_graph_node(
     opt: Opt,
     link_resolver: Arc<dyn LinkResolver>,
     subgraph_updates_channel: mpsc::Receiver<(DeploymentHash, SubgraphName)>,
+    cancel_token: CancellationToken,
 ) -> Result<()> {
     let env_vars = Arc::new(EnvVars::from_env().context("Failed to load environment variables")?);
 
@@ -184,6 +186,7 @@ async fn run_graph_node(
         Some(subgraph_updates_channel),
         prometheus_registry,
         metrics_registry,
+        cancel_token,
     )
     .await;
     Ok(())
@@ -237,6 +240,7 @@ async fn main() -> Result<()> {
 
     let database_dir = Path::new(&dev_opt.database_dir);
 
+    let cancel_token = shutdown_token();
     let logger = logger(true);
 
     info!(logger, "Starting Graph Node Dev 1");
@@ -256,7 +260,7 @@ async fn main() -> Result<()> {
 
     let logger_clone = logger.clone();
     graph::spawn(async move {
-        let _ = run_graph_node(&logger_clone, opt, file_link_resolver, rx).await;
+        let _ = run_graph_node(&logger_clone, opt, file_link_resolver, rx, cancel_token).await;
     });
 
     if let Err(e) =
@@ -301,4 +305,40 @@ async fn main() -> Result<()> {
 
     #[allow(unreachable_code)]
     Ok(())
+}
+
+fn shutdown_token() -> CancellationToken {
+    use tokio::signal;
+
+    let cancel_token = CancellationToken::new();
+    let cancel_token_clone = cancel_token.clone();
+
+    async fn shutdown_signal_handler() {
+        let ctrl_c = async {
+            signal::ctrl_c().await.unwrap();
+        };
+
+        #[cfg(unix)]
+        let terminate = async {
+            signal::unix::signal(signal::unix::SignalKind::terminate())
+                .unwrap()
+                .recv()
+                .await;
+        };
+
+        #[cfg(not(unix))]
+        let terminate = std::future::pending::<()>();
+
+        tokio::select! {
+            _ = ctrl_c => {},
+            _ = terminate => {},
+        };
+    }
+
+    tokio::spawn(async move {
+        shutdown_signal_handler().await;
+        cancel_token_clone.cancel();
+    });
+
+    cancel_token
 }

@@ -8,6 +8,7 @@ use graph::schema::EntityType;
 use web3::types::Address;
 
 use git_testament::{git_testament, CommitKind};
+use graph::amp;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::link_resolver::LinkResolverContext;
 use graph::components::store::{BlockPtrForNumber, BlockStore, QueryPermit, Store};
@@ -96,19 +97,25 @@ impl IntoValue for PublicProofOfIndexingResult {
 
 /// Resolver for the index node GraphQL API.
 #[derive(Clone)]
-pub struct IndexNodeResolver<S: Store> {
+pub struct IndexNodeResolver<S: Store, AC> {
     logger: Logger,
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
     link_resolver: Arc<dyn LinkResolver>,
+    amp_client: Option<Arc<AC>>,
     bearer_token: Option<String>,
 }
 
-impl<S: Store> IndexNodeResolver<S> {
+impl<S, AC> IndexNodeResolver<S, AC>
+where
+    S: Store,
+    AC: amp::Client + Send + Sync + 'static,
+{
     pub fn new(
         logger: &Logger,
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
+        amp_client: Option<Arc<AC>>,
         bearer_token: Option<String>,
         blockchain_map: Arc<BlockchainMap>,
     ) -> Self {
@@ -119,6 +126,7 @@ impl<S: Store> IndexNodeResolver<S> {
             blockchain_map,
             store,
             link_resolver,
+            amp_client,
             bearer_token,
         }
     }
@@ -524,6 +532,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
+                        self.amp_client.cheap_clone(),
                         &self.logger,
                         max_spec_version,
                     )
@@ -541,6 +550,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
+                        self.amp_client.cheap_clone(),
                         &self.logger,
                         max_spec_version,
                     )
@@ -558,6 +568,7 @@ impl<S: Store> IndexNodeResolver<S> {
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
+                        self.amp_client.cheap_clone(),
                         &self.logger,
                         max_spec_version,
                     )
@@ -692,7 +703,11 @@ impl<S: Store> IndexNodeResolver<S> {
 }
 
 #[async_trait]
-impl<S: Store> BlockPtrForNumber for IndexNodeResolver<S> {
+impl<S, AC> BlockPtrForNumber for IndexNodeResolver<S, AC>
+where
+    S: Store,
+    AC: amp::Client + Send + Sync + 'static,
+{
     async fn block_ptr_for_number(
         &self,
         network: String,
@@ -765,7 +780,11 @@ fn entity_changes_to_graphql(entity_changes: Vec<EntityOperation>) -> r::Value {
 }
 
 #[async_trait]
-impl<S: Store> Resolver for IndexNodeResolver<S> {
+impl<S, AC> Resolver for IndexNodeResolver<S, AC>
+where
+    S: Store,
+    AC: amp::Client + Send + Sync + 'static,
+{
     const CACHEABLE: bool = false;
 
     async fn query_permit(&self) -> QueryPermit {

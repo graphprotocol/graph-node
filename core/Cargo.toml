@@ -19,6 +19,19 @@ tower = { git = "https://github.com/tower-rs/tower.git", features = ["full"] }
 thiserror = { workspace = true }
 anyhow = "1.0"
 
+# Dependencies related to Amp subgraphs
+alloy.workspace = true
+arrow.workspace = true
+chrono.workspace = true
+futures.workspace = true
+indoc.workspace = true
+itertools.workspace = true
+parking_lot.workspace = true
+prometheus.workspace = true
+slog.workspace = true
+strum.workspace = true
+tokio-util.workspace = true
+
 [dev-dependencies]
 tower-test = { git = "https://github.com/tower-rs/tower.git" }
 wiremock = "0.6.5"

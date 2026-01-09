@@ -226,20 +226,56 @@ impl BigInt {
     }
 }
 
+impl From<i8> for BigInt {
+    fn from(i: i8) -> BigInt {
+        BigInt::unchecked_new(i.into())
+    }
+}
+
+impl From<i16> for BigInt {
+    fn from(i: i16) -> BigInt {
+        BigInt::unchecked_new(i.into())
+    }
+}
+
 impl From<i32> for BigInt {
     fn from(i: i32) -> BigInt {
         BigInt::unchecked_new(i.into())
     }
 }
 
-impl From<u64> for BigInt {
-    fn from(i: u64) -> BigInt {
+impl From<i64> for BigInt {
+    fn from(i: i64) -> BigInt {
         BigInt::unchecked_new(i.into())
     }
 }
 
-impl From<i64> for BigInt {
-    fn from(i: i64) -> BigInt {
+impl From<i128> for BigInt {
+    fn from(i: i128) -> BigInt {
+        BigInt::unchecked_new(i.into())
+    }
+}
+
+impl From<u8> for BigInt {
+    fn from(i: u8) -> BigInt {
+        BigInt::unchecked_new(i.into())
+    }
+}
+
+impl From<u16> for BigInt {
+    fn from(i: u16) -> BigInt {
+        BigInt::unchecked_new(i.into())
+    }
+}
+
+impl From<u32> for BigInt {
+    fn from(i: u32) -> BigInt {
+        BigInt::unchecked_new(i.into())
+    }
+}
+
+impl From<u64> for BigInt {
+    fn from(i: u64) -> BigInt {
         BigInt::unchecked_new(i.into())
     }
 }

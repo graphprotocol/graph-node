@@ -182,6 +182,7 @@ where
                     Ok(Some(host))
                 }
             }
+            DataSource::Amp(_) => unreachable!(),
         }
     }
 

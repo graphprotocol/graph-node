@@ -25,7 +25,7 @@ use crate::{
     prelude::{CheapClone as _, DataSourceContext},
     schema::{EntityType, InputSchema},
 };
-use anyhow::Error;
+use anyhow::{anyhow, Context, Error};
 use semver::Version;
 use serde::{de::IntoDeserializer as _, Deserialize, Deserializer};
 use slog::{Logger, SendSyncRefUnwindSafeKV};
@@ -36,11 +36,14 @@ use std::{
 };
 use thiserror::Error;
 
+use crate::amp;
+
 #[derive(Debug)]
 pub enum DataSource<C: Blockchain> {
     Onchain(C::DataSource),
     Offchain(offchain::DataSource),
     Subgraph(subgraph::DataSource),
+    Amp(amp::manifest::DataSource),
 }
 
 #[derive(Error, Debug)]
@@ -96,6 +99,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => Some(ds),
             Self::Offchain(_) => None,
             Self::Subgraph(_) => None,
+            Self::Amp(_) => None,
         }
     }
 
@@ -104,6 +108,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(_) => None,
             Self::Offchain(_) => None,
             Self::Subgraph(ds) => Some(ds),
+            Self::Amp(_) => None,
         }
     }
 
@@ -112,6 +117,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(_) => true,
             Self::Offchain(_) => false,
             Self::Subgraph(_) => true,
+            Self::Amp(_) => true,
         }
     }
 
@@ -120,6 +126,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(_) => None,
             Self::Offchain(ds) => Some(ds),
             Self::Subgraph(_) => None,
+            Self::Amp(_) => None,
         }
     }
 
@@ -128,6 +135,7 @@ impl<C: Blockchain> DataSource<C> {
             DataSourceEnum::Onchain(ds) => ds.network(),
             DataSourceEnum::Offchain(_) => None,
             DataSourceEnum::Subgraph(ds) => ds.network(),
+            Self::Amp(ds) => Some(&ds.network),
         }
     }
 
@@ -136,6 +144,7 @@ impl<C: Blockchain> DataSource<C> {
             DataSourceEnum::Onchain(ds) => Some(ds.start_block()),
             DataSourceEnum::Offchain(_) => None,
             DataSourceEnum::Subgraph(ds) => Some(ds.source.start_block),
+            Self::Amp(ds) => Some(ds.source.start_block as i32),
         }
     }
 
@@ -152,6 +161,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.address().map(ToOwned::to_owned),
             Self::Offchain(ds) => ds.address(),
             Self::Subgraph(ds) => ds.address(),
+            Self::Amp(ds) => Some(ds.source.address.to_vec()),
         }
     }
 
@@ -160,6 +170,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.name(),
             Self::Offchain(ds) => &ds.name,
             Self::Subgraph(ds) => &ds.name,
+            Self::Amp(ds) => ds.name.as_str(),
         }
     }
 
@@ -168,6 +179,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.kind().to_owned(),
             Self::Offchain(ds) => ds.kind.to_string(),
             Self::Subgraph(ds) => ds.kind.clone(),
+            Self::Amp(_) => amp::manifest::DataSource::KIND.to_string(),
         }
     }
 
@@ -176,6 +188,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.min_spec_version(),
             Self::Offchain(ds) => ds.min_spec_version(),
             Self::Subgraph(ds) => ds.min_spec_version(),
+            Self::Amp(_) => amp::manifest::DataSource::MIN_SPEC_VERSION,
         }
     }
 
@@ -184,6 +197,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.end_block(),
             Self::Offchain(_) => None,
             Self::Subgraph(_) => None,
+            Self::Amp(ds) => Some(ds.source.end_block as i32),
         }
     }
 
@@ -192,6 +206,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.creation_block(),
             Self::Offchain(ds) => ds.creation_block,
             Self::Subgraph(ds) => ds.creation_block,
+            Self::Amp(_) => None,
         }
     }
 
@@ -200,6 +215,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.context(),
             Self::Offchain(ds) => ds.context.clone(),
             Self::Subgraph(ds) => ds.context.clone(),
+            Self::Amp(_) => Arc::new(None),
         }
     }
 
@@ -208,6 +224,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.api_version(),
             Self::Offchain(ds) => ds.mapping.api_version.clone(),
             Self::Subgraph(ds) => ds.mapping.api_version.clone(),
+            Self::Amp(ds) => ds.transformer.api_version.clone(),
         }
     }
 
@@ -216,6 +233,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.runtime(),
             Self::Offchain(ds) => Some(ds.mapping.runtime.cheap_clone()),
             Self::Subgraph(ds) => Some(ds.mapping.runtime.cheap_clone()),
+            Self::Amp(_) => None,
         }
     }
 
@@ -226,6 +244,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(_) => EntityTypeAccess::Any,
             Self::Offchain(ds) => EntityTypeAccess::Restriced(ds.mapping.entities.clone()),
             Self::Subgraph(_) => EntityTypeAccess::Any,
+            Self::Amp(_) => EntityTypeAccess::Any,
         }
     }
 
@@ -234,6 +253,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.handler_kinds(),
             Self::Offchain(ds) => vec![ds.handler_kind()].into_iter().collect(),
             Self::Subgraph(ds) => vec![ds.handler_kind()].into_iter().collect(),
+            Self::Amp(_) => HashSet::new(),
         }
     }
 
@@ -242,6 +262,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.has_declared_calls(),
             Self::Offchain(_) => false,
             Self::Subgraph(_) => false,
+            Self::Amp(_) => false,
         }
     }
 
@@ -268,6 +289,7 @@ impl<C: Blockchain> DataSource<C> {
             | (Self::Offchain(_), TriggerData::Subgraph(_))
             | (Self::Subgraph(_), TriggerData::Onchain(_))
             | (Self::Subgraph(_), TriggerData::Offchain(_)) => Ok(None),
+            (Self::Amp(_), _) => Ok(None),
         }
     }
 
@@ -284,6 +306,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.as_stored_dynamic_data_source(),
             Self::Offchain(ds) => ds.as_stored_dynamic_data_source(),
             Self::Subgraph(_) => todo!(), // TODO(krishna)
+            Self::Amp(_) => unreachable!(),
         }
     }
 
@@ -309,6 +332,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(ds) => ds.validate(spec_version),
             Self::Offchain(_) => vec![],
             Self::Subgraph(_) => vec![], // TODO(krishna)
+            Self::Amp(_) => Vec::new(),
         }
     }
 
@@ -317,6 +341,7 @@ impl<C: Blockchain> DataSource<C> {
             Self::Onchain(_) => CausalityRegion::ONCHAIN,
             Self::Offchain(ds) => ds.causality_region,
             Self::Subgraph(_) => CausalityRegion::ONCHAIN,
+            Self::Amp(_) => CausalityRegion::ONCHAIN,
         }
     }
 }
@@ -326,16 +351,19 @@ pub enum UnresolvedDataSource<C: Blockchain> {
     Onchain(C::UnresolvedDataSource),
     Offchain(offchain::UnresolvedDataSource),
     Subgraph(subgraph::UnresolvedDataSource),
+    Amp(amp::manifest::data_source::RawDataSource),
 }
 
 impl<C: Blockchain> UnresolvedDataSource<C> {
-    pub async fn resolve(
+    pub async fn resolve<AC: amp::Client>(
         self,
         deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
+        amp_client: Option<Arc<AC>>,
         logger: &Logger,
         manifest_idx: u32,
         spec_version: &semver::Version,
+        input_schema: Option<&InputSchema>,
     ) -> Result<DataSource<C>, anyhow::Error> {
         match self {
             Self::Onchain(unresolved) => unresolved
@@ -349,9 +377,10 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
                 .await
                 .map(DataSource::Onchain),
             Self::Subgraph(unresolved) => unresolved
-                .resolve::<C>(
+                .resolve::<C, AC>(
                     deployment_hash,
                     resolver,
+                    amp_client,
                     logger,
                     manifest_idx,
                     spec_version,
@@ -364,7 +393,16 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
                      for details see https://github.com/graphprotocol/graph-node/issues/3864"
                 );
             }
+            Self::Amp(raw_data_source) => match amp_client {
+                Some(amp_client) => raw_data_source
+                    .resolve(logger, resolver.as_ref(), amp_client.as_ref(), input_schema)
+                    .await
+                    .map(DataSource::Amp)
+                    .map_err(Error::from),
+                None => Err(anyhow!("support for Amp data sources is not enabled")),
+            },
         }
+        .with_context(|| format!("failed to resolve data source at index {manifest_idx}"))
     }
 }
 
@@ -624,58 +662,95 @@ impl<C: Blockchain> MappingTrigger<C> {
     }
 }
 
-macro_rules! clone_data_source {
-    ($t:ident) => {
-        impl<C: Blockchain> Clone for $t<C> {
-            fn clone(&self) -> Self {
-                match self {
-                    Self::Onchain(ds) => Self::Onchain(ds.clone()),
-                    Self::Offchain(ds) => Self::Offchain(ds.clone()),
-                    Self::Subgraph(ds) => Self::Subgraph(ds.clone()),
-                }
-            }
+impl<C: Blockchain> Clone for DataSource<C> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Onchain(ds) => Self::Onchain(ds.clone()),
+            Self::Offchain(ds) => Self::Offchain(ds.clone()),
+            Self::Subgraph(ds) => Self::Subgraph(ds.clone()),
+            Self::Amp(ds) => Self::Amp(ds.clone()),
         }
-    };
+    }
 }
 
-clone_data_source!(DataSource);
-clone_data_source!(DataSourceTemplate);
-
-macro_rules! deserialize_data_source {
-    ($t:ident) => {
-        impl<'de, C: Blockchain> Deserialize<'de> for $t<C> {
-            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-            where
-                D: Deserializer<'de>,
-            {
-                let map: BTreeMap<String, serde_json::Value> = BTreeMap::deserialize(deserializer)?;
-                let kind = map
-                    .get("kind")
-                    .ok_or(serde::de::Error::missing_field("kind"))?
-                    .as_str()
-                    .unwrap_or("?");
-                if OFFCHAIN_KINDS.contains_key(&kind) {
-                    offchain::$t::deserialize(map.into_deserializer())
-                        .map_err(serde::de::Error::custom)
-                        .map($t::Offchain)
-                } else if SUBGRAPH_DS_KIND == kind {
-                    subgraph::$t::deserialize(map.into_deserializer())
-                        .map_err(serde::de::Error::custom)
-                        .map($t::Subgraph)
-                } else if (&C::KIND.to_string() == kind) || C::ALIASES.contains(&kind) {
-                    C::$t::deserialize(map.into_deserializer())
-                        .map_err(serde::de::Error::custom)
-                        .map($t::Onchain)
-                } else {
-                    Err(serde::de::Error::custom(format!(
-                        "data source has invalid `kind`; expected {}, file/ipfs",
-                        C::KIND,
-                    )))
-                }
-            }
+impl<C: Blockchain> Clone for DataSourceTemplate<C> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Onchain(ds) => Self::Onchain(ds.clone()),
+            Self::Offchain(ds) => Self::Offchain(ds.clone()),
+            Self::Subgraph(ds) => Self::Subgraph(ds.clone()),
         }
-    };
+    }
 }
 
-deserialize_data_source!(UnresolvedDataSource);
-deserialize_data_source!(UnresolvedDataSourceTemplate);
+impl<'de, C: Blockchain> Deserialize<'de> for UnresolvedDataSource<C> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let map: BTreeMap<String, serde_json::Value> = BTreeMap::deserialize(deserializer)?;
+
+        let kind = map
+            .get("kind")
+            .ok_or(serde::de::Error::missing_field("kind"))?
+            .as_str()
+            .unwrap_or("?");
+
+        if OFFCHAIN_KINDS.contains_key(&kind) {
+            offchain::UnresolvedDataSource::deserialize(map.into_deserializer())
+                .map_err(serde::de::Error::custom)
+                .map(UnresolvedDataSource::Offchain)
+        } else if SUBGRAPH_DS_KIND == kind {
+            subgraph::UnresolvedDataSource::deserialize(map.into_deserializer())
+                .map_err(serde::de::Error::custom)
+                .map(UnresolvedDataSource::Subgraph)
+        } else if amp::manifest::DataSource::KIND == kind {
+            amp::manifest::data_source::RawDataSource::deserialize(map.into_deserializer())
+                .map(UnresolvedDataSource::Amp)
+                .map_err(serde::de::Error::custom)
+        } else if (&C::KIND.to_string() == kind) || C::ALIASES.contains(&kind) {
+            C::UnresolvedDataSource::deserialize(map.into_deserializer())
+                .map_err(serde::de::Error::custom)
+                .map(UnresolvedDataSource::Onchain)
+        } else {
+            Err(serde::de::Error::custom(format!(
+                "data source has invalid `kind`; expected {}, file/ipfs",
+                C::KIND,
+            )))
+        }
+    }
+}
+
+impl<'de, C: Blockchain> Deserialize<'de> for UnresolvedDataSourceTemplate<C> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let map: BTreeMap<String, serde_json::Value> = BTreeMap::deserialize(deserializer)?;
+
+        let kind = map
+            .get("kind")
+            .ok_or(serde::de::Error::missing_field("kind"))?
+            .as_str()
+            .unwrap_or("?");
+
+        if OFFCHAIN_KINDS.contains_key(&kind) {
+            offchain::UnresolvedDataSourceTemplate::deserialize(map.into_deserializer())
+                .map_err(serde::de::Error::custom)
+                .map(UnresolvedDataSourceTemplate::Offchain)
+        } else if SUBGRAPH_DS_KIND == kind {
+            subgraph::UnresolvedDataSourceTemplate::deserialize(map.into_deserializer())
+                .map_err(serde::de::Error::custom)
+                .map(UnresolvedDataSourceTemplate::Subgraph)
+        } else if (&C::KIND.to_string() == kind) || C::ALIASES.contains(&kind) {
+            C::UnresolvedDataSourceTemplate::deserialize(map.into_deserializer())
+                .map_err(serde::de::Error::custom)
+                .map(UnresolvedDataSourceTemplate::Onchain)
+        } else {
+            Err(serde::de::Error::custom(format!(
+                "data source has invalid `kind`; expected {}, file/ipfs",
+                C::KIND,
+            )))
+        }
+    }
+}
