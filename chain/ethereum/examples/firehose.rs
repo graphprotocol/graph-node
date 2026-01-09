@@ -9,6 +9,7 @@ use graph::{
 use graph_chain_ethereum::codec;
 use hex::ToHex;
 use prost::Message;
+use std::slice;
 use std::sync::Arc;
 use tonic::Streaming;
 
@@ -25,7 +26,7 @@ async fn main() -> Result<(), Error> {
     let host = "https://api.streamingfast.io:443".to_string();
     let metrics = Arc::new(EndpointMetrics::new(
         logger,
-        &[host.clone()],
+        slice::from_ref(&host),
         Arc::new(MetricsRegistry::mock()),
     ));
 

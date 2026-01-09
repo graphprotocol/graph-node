@@ -566,6 +566,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
+            #[allow(clippy::cloned_ref_to_slice_refs)]
             ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
@@ -583,6 +584,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
+            #[allow(clippy::cloned_ref_to_slice_refs)]
             ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
@@ -675,6 +677,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone(), adapter_2.clone()])],
+            #[allow(clippy::cloned_ref_to_slice_refs)]
             ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
@@ -736,6 +739,7 @@ mod tests {
         let mut manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
+            #[allow(clippy::cloned_ref_to_slice_refs)]
             ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
@@ -766,6 +770,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
+            #[allow(clippy::cloned_ref_to_slice_refs)]
             ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
@@ -793,6 +798,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
+            #[allow(clippy::cloned_ref_to_slice_refs)]
             ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
@@ -822,6 +828,7 @@ mod tests {
         let mut manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
+            #[allow(clippy::cloned_ref_to_slice_refs)]
             ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
@@ -850,6 +857,7 @@ mod tests {
         let mut manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
+            #[allow(clippy::cloned_ref_to_slice_refs)]
             ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
@@ -889,6 +897,7 @@ mod tests {
                 chain_name(),
                 vec![adapter_1.clone(), adapter_2.clone(), adapter_3.clone()],
             )],
+            #[allow(clippy::cloned_ref_to_slice_refs)]
             ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
@@ -933,6 +942,7 @@ mod tests {
         let manager: ProviderManager<Arc<TestAdapter>> = ProviderManager::new(
             discard(),
             [(chain_name(), vec![adapter_1.clone()])],
+            #[allow(clippy::cloned_ref_to_slice_refs)]
             ProviderCheckStrategy::RequireAll(&[check_1.clone()]),
         );
 
