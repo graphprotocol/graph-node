@@ -252,12 +252,8 @@ impl BlockIngestor for PollingBlockIngestor {
                 .logger
                 .new(o!("provider" => eth_adapter.provider().to_string()));
 
-            match self.do_poll(&logger, eth_adapter).await {
-                // Some polls will fail due to transient issues
-                Err(err) => {
-                    error!(logger, "Trying again after block polling failed: {}", err);
-                }
-                Ok(()) => (),
+            if let Err(err) = self.do_poll(&logger, eth_adapter).await {
+                error!(logger, "Trying again after block polling failed: {}", err);
             }
 
             if ENV_VARS.cleanup_blocks {

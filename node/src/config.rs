@@ -872,9 +872,8 @@ impl<'de> Deserialize<'de> for Provider {
                             return Err(serde::de::Error::custom("when `details` field is provided, deprecated `url`, `transport`, `features` and `headers` cannot be specified"));
                         }
 
-                        match v {
-                            ProviderDetails::Firehose(ref mut firehose) => firehose.rules = nodes,
-                            _ => {}
+                        if let ProviderDetails::Firehose(ref mut firehose) = v {
+                            firehose.rules = nodes
                         }
 
                         v
