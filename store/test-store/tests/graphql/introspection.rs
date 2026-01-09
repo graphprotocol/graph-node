@@ -46,7 +46,7 @@ impl Resolver for MockResolver {
 
     async fn resolve_object(
         &self,
-        __: Option<r::Value>,
+        _: Option<r::Value>,
         _field: &a::Field,
         _field_definition: &s::Field,
         _object_type: ObjectOrInterface<'_>,
