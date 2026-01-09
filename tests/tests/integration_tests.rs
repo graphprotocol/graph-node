@@ -98,7 +98,7 @@ pub enum SourceSubgraph {
 }
 
 impl SourceSubgraph {
-    pub fn from_str(s: &str) -> Self {
+    fn new(s: &str) -> Self {
         if let Some((alias, subgraph)) = s.split_once(':') {
             Self::WithAlias((alias.to_string(), subgraph.to_string()))
         } else {
@@ -144,7 +144,7 @@ impl TestCase {
         T: Future<Output = Result<(), anyhow::Error>> + Send + 'static,
     {
         let mut test_case = Self::new(name, test);
-        test_case.source_subgraph = Some(vec![SourceSubgraph::from_str(base_subgraph)]);
+        test_case.source_subgraph = Some(vec![SourceSubgraph::new(base_subgraph)]);
         test_case
     }
 
@@ -160,7 +160,7 @@ impl TestCase {
         test_case.source_subgraph = Some(
             source_subgraphs
                 .into_iter()
-                .map(SourceSubgraph::from_str)
+                .map(SourceSubgraph::new)
                 .collect(),
         );
         test_case
