@@ -152,8 +152,6 @@ pub struct ReceiptWithOutcome {
 
 #[cfg(test)]
 mod tests {
-    use std::convert::TryFrom;
-
     use super::*;
 
     use graph::{
@@ -407,8 +405,7 @@ mod tests {
     }
 
     fn big_int(input: u64) -> Option<codec::BigInt> {
-        let value =
-            BigInt::try_from(input).unwrap_or_else(|_| panic!("Invalid BigInt value {}", input));
+        let value = BigInt::from(input);
         let bytes = value.to_signed_bytes_le();
 
         Some(codec::BigInt { bytes })
