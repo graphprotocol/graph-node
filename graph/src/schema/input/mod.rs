@@ -2395,13 +2395,9 @@ mod validations {
                             )),
                             Err(_) => {
                                 if is_first_last
-                                    && schema
-                                        .entity_types
-                                        .iter()
-                                        .find(|entity_type| {
-                                            entity_type.name.eq(field.field_type.get_base_type())
-                                        })
-                                        .is_some()
+                                    && schema.entity_types.iter().any(|entity_type| {
+                                        entity_type.name.eq(field.field_type.get_base_type())
+                                    })
                                 {
                                     return Ok(());
                                 }
