@@ -464,7 +464,7 @@ fn graphql_can_unassign_deployments() {
         let is_node_null = subgraph_node_id["data"]["deployment"]["info"][0]["nodeId"].is_null();
 
         assert_eq!(unassign_req, expected_resp);
-        assert_eq!(is_node_null, true);
+        assert!(is_node_null);
     });
 }
 

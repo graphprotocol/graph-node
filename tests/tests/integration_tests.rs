@@ -175,7 +175,7 @@ impl TestCase {
         contracts: &[Contract],
     ) -> Result<Subgraph> {
         status!(&self.name, "Deploying subgraph");
-        let subgraph_name = match Subgraph::deploy(&subgraph_name, contracts).await {
+        let subgraph_name = match Subgraph::deploy(subgraph_name, contracts).await {
             Ok(name) => name,
             Err(e) => {
                 error!(&self.name, "Deploy failed");
@@ -1119,7 +1119,7 @@ async fn test_declared_calls_basic(ctx: TestContext) -> anyhow::Result<()> {
     assert!(subgraph.healthy);
 
     // Query the results
-    const QUERY: &'static str = "{
+    const QUERY: &str = "{
         transferCalls(first: 1, orderBy: blockNumber) {
             id
             from
@@ -1200,7 +1200,7 @@ async fn test_declared_calls_struct_fields(ctx: TestContext) -> anyhow::Result<(
     sleep(Duration::from_secs(2)).await;
 
     // Query the results
-    const QUERY: &'static str = "{
+    const QUERY: &str = "{
         assetTransferCalls(first: 1, orderBy: blockNumber) {
             id
             assetAddr

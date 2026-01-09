@@ -173,7 +173,7 @@ fn compare(a: &r::Value, b: &r::Value, path: &mut Vec<String>) -> Option<(r::Val
                     path.push(la.len().to_string());
                     return different(&r::Value::Null, &lb[la.len()]);
                 }
-                return None;
+                None
             }
             _ => different(a, b),
         },
@@ -207,7 +207,7 @@ fn compare(a: &r::Value, b: &r::Value, path: &mut Vec<String>) -> Option<(r::Val
                         }
                     }
                 }
-                return None;
+                None
             }
             _ => different(a, b),
         },

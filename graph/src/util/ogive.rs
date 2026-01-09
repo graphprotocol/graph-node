@@ -192,17 +192,17 @@ mod tests {
         }
 
         // Check that the ogive is correct
-        assert_eq!(ogive.bin_size, 700 as f64 / 5 as f64);
+        assert_eq!(ogive.bin_size, 700_f64 / 5_f64);
         assert_eq!(ogive.range, 10..=60);
 
         // Test value method
-        for point in vec![20, 30, 45, 50, 60] {
+        for point in [20, 30, 45, 50, 60] {
             assert_eq!(ogive.value(point).unwrap(), f(point), "value for {}", point);
         }
 
         // Test next_point method
-        for step in vec![50, 140, 200] {
-            for value in vec![10, 20, 30, 35, 45, 50, 60] {
+        for step in [50, 140, 200] {
+            for value in [10, 20, 30, 35, 45, 50, 60] {
                 assert_eq!(
                     ogive.next_point(value, step).unwrap(),
                     g(f(value) + step as i64).min(60),
@@ -240,17 +240,17 @@ mod tests {
         }
 
         // Check that the ogive is correct
-        assert_eq!(ogive.bin_size, 700 as f64 / 1 as f64);
+        assert_eq!(ogive.bin_size, 700_f64 / 1_f64);
         assert_eq!(ogive.range, 10..=20);
 
         // Test value method
-        for point in vec![10, 15, 20] {
+        for point in [10, 15, 20] {
             assert_eq!(ogive.value(point).unwrap(), f(point), "value for {}", point);
         }
 
         // Test next_point method
-        for step in vec![50, 140, 200] {
-            for value in vec![10, 15, 20] {
+        for step in [50, 140, 200] {
+            for value in [10, 15, 20] {
                 assert_eq!(
                     ogive.next_point(value, step).unwrap(),
                     g(f(value) + step as i64).min(20),

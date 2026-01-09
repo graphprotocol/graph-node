@@ -164,8 +164,7 @@ mod tests {
                     )),
                 ),
                 (String::from("int"), r::Value::Int(5)),
-            ]
-            .into_iter(),
+            ],
         ));
 
         assert_eq!(query.document, expected_query);

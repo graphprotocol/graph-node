@@ -20,7 +20,7 @@ async fn test_unbounded_loop(api_version: Version) {
     .0;
     let res: Result<(), _> = instance
         .get_func("loop")
-        .typed(&mut instance.store.as_context_mut())
+        .typed(instance.store.as_context_mut())
         .unwrap()
         .call_async(&mut instance.store.as_context_mut(), ())
         .await;
@@ -54,7 +54,7 @@ async fn test_unbounded_recursion(api_version: Version) {
     .await;
     let res: Result<(), _> = instance
         .get_func("rabbit_hole")
-        .typed(&mut instance.store.as_context_mut())
+        .typed(instance.store.as_context_mut())
         .unwrap()
         .call_async(&mut instance.store.as_context_mut(), ())
         .await;
@@ -251,7 +251,7 @@ async fn test_abi_ethabi_token_identity(api_version: Version) {
     let token_bool_ptr = instance.asc_new(&token_bool).await.unwrap();
     let func = instance
         .get_func("token_to_bool")
-        .typed(&mut instance.store.as_context_mut())
+        .typed(instance.store.as_context_mut())
         .unwrap()
         .clone();
     let boolean: i32 = func
@@ -324,7 +324,7 @@ async fn test_abi_store_value(api_version: Version) {
     // Value::Null
     let func = instance
         .get_func("value_null")
-        .typed(&mut instance.store.as_context_mut())
+        .typed(instance.store.as_context_mut())
         .unwrap()
         .clone();
     let ptr: u32 = func
@@ -381,7 +381,7 @@ async fn test_abi_store_value(api_version: Version) {
     // Value::List
     let func = instance
         .get_func("array_from_values")
-        .typed(&mut instance.store.as_context_mut())
+        .typed(instance.store.as_context_mut())
         .unwrap()
         .clone();
 
@@ -578,7 +578,7 @@ async fn test_invalid_discriminant(api_version: Version) {
 
     let func = instance
         .get_func("invalid_discriminant")
-        .typed(&mut instance.store.as_context_mut())
+        .typed(instance.store.as_context_mut())
         .unwrap()
         .clone();
     let ptr: u32 = func

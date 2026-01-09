@@ -374,7 +374,6 @@ mod tests {
                 (_, None) => {
                     if start > end {
                         // Expected, the batcher is exhausted
-                        return;
                     } else {
                         panic!("step didn't return start and end")
                     }

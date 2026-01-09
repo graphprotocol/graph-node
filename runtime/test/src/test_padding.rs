@@ -185,7 +185,7 @@ async fn manual_padding_should_fail(api_version: semver::Version) {
 
     let func = instance
         .get_func("test_padding_manual")
-        .typed(&mut instance.store.as_context_mut())
+        .typed(instance.store.as_context_mut())
         .unwrap()
         .clone();
 
@@ -220,7 +220,7 @@ async fn manual_padding_manualy_fixed_ok(api_version: semver::Version) {
 
     let func = instance
         .get_func("test_padding_manual")
-        .typed(&mut instance.store.as_context_mut())
+        .typed(instance.store.as_context_mut())
         .unwrap()
         .clone();
 

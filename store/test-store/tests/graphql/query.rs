@@ -420,7 +420,7 @@ async fn insert_test_entities(
     ) -> Vec<EntityOperation> {
         entities
             .into_iter()
-            .map(|(typename, entities)| {
+            .flat_map(|(typename, entities)| {
                 let entity_type = schema.entity_type(typename).unwrap();
                 entities.into_iter().map(move |mut data| {
                     data.set_vid_if_empty();
@@ -430,7 +430,6 @@ async fn insert_test_entities(
                     }
                 })
             })
-            .flatten()
             .collect()
     }
 
@@ -470,8 +469,8 @@ async fn insert_test_entities(
         (
             "Musician",
             vec![
-                entity! { is => id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"], favoriteCount: 10, birthDate: timestamp.clone(), vid: 0i64 },
-                entity! { is => id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"], favoriteCount: 100, birthDate: timestamp.clone(), vid: 1i64 },
+                entity! { is => id: "m1", name: "John", mainBand: "b1", bands: vec!["b1", "b2"], favoriteCount: 10, birthDate: timestamp, vid: 0i64 },
+                entity! { is => id: "m2", name: "Lisa", mainBand: "b1", bands: vec!["b1"], favoriteCount: 100, birthDate: timestamp, vid: 1i64 },
             ],
         ),
         ("Publisher", vec![entity! { is => id: pub1, vid: 0i64 }]),
@@ -580,9 +579,9 @@ async fn insert_test_entities(
     let entities1 = vec![(
         "Musician",
         vec![
-            entity! { is => id: "m3", name: "Tom", mainBand: "b2", bands: vec!["b1", "b2"], favoriteCount: 5, birthDate: timestamp.clone(), vid: 2i64 },
-            entity! { is => id: "m4", name: "Valerie", bands: Vec::<String>::new(), favoriteCount: 20, birthDate: timestamp.clone(), vid: 3i64 },
-            entity! { is => id: "m5", name: "Paul", mainBand: "b2", bands: vec!["b2"], favoriteCount: 2 , birthDate: timestamp.clone(), vid: 4i64 },
+            entity! { is => id: "m3", name: "Tom", mainBand: "b2", bands: vec!["b1", "b2"], favoriteCount: 5, birthDate: timestamp, vid: 2i64 },
+            entity! { is => id: "m4", name: "Valerie", bands: Vec::<String>::new(), favoriteCount: 20, birthDate: timestamp, vid: 3i64 },
+            entity! { is => id: "m5", name: "Paul", mainBand: "b2", bands: vec!["b2"], favoriteCount: 2 , birthDate: timestamp, vid: 4i64 },
         ],
     )];
     let entities1 = insert_ops(&manifest.schema, entities1);
@@ -2121,7 +2120,7 @@ fn ignores_invalid_field_arguments() {
             },
             // With validations
             Err(e) => {
-                match e.get(0).unwrap() {
+                match e.first().unwrap() {
                     QueryError::ExecutionError(QueryExecutionError::ValidationError(
                         _pos,
                         message,
@@ -2156,7 +2155,7 @@ fn leaf_selection_mismatch() {
             }
             // With validations
             Err(e) => {
-                match e.get(0).unwrap() {
+                match e.first().unwrap() {
                     QueryError::ExecutionError(QueryExecutionError::ValidationError(
                         _pos,
                         message,
@@ -2192,7 +2191,7 @@ fn leaf_selection_mismatch() {
             }
             // With validations
             Err(e) => {
-                match e.get(0).unwrap() {
+                match e.first().unwrap() {
                     QueryError::ExecutionError(QueryExecutionError::ValidationError(
                         _pos,
                         message,
@@ -2231,7 +2230,7 @@ fn missing_variable() {
                 assert_eq!(exp, *data);
             }
             // With GraphQL validations active, this query fails
-            Err(e) => match e.get(0).unwrap() {
+            Err(e) => match e.first().unwrap() {
                 QueryError::ExecutionError(QueryExecutionError::ValidationError(_pos, message)) => {
                     assert_eq!(message, "Variable \"$first\" is not defined.");
                 }
@@ -2262,7 +2261,7 @@ fn missing_variable() {
                 assert_eq!(exp, *data);
             }
             // With GraphQL validations active, this query fails
-            Err(e) => match e.get(0).unwrap() {
+            Err(e) => match e.first().unwrap() {
                 QueryError::ExecutionError(QueryExecutionError::ValidationError(_pos, message)) => {
                     assert_eq!(message, "Variable \"$where\" is not defined.");
                 }

@@ -323,7 +323,7 @@ mod tests {
             )
             .await;
 
-        assert!(matches!(result, Err(_)));
+        assert!(result.is_err());
     }
 
     #[crate::test]

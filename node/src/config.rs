@@ -1327,9 +1327,9 @@ mod tests {
         "#,
         );
 
-        assert_eq!(true, actual.is_err());
+        assert!(actual.is_err());
         let err_str = actual.unwrap_err().to_string();
-        assert_eq!(err_str.contains("missing field `url`"), true, "{}", err_str);
+        assert!(err_str.contains("missing field `url`"), "{}", err_str);
     }
 
     #[test]
@@ -1342,11 +1342,10 @@ mod tests {
         "#,
         );
 
-        assert_eq!(true, actual.is_err());
+        assert!(actual.is_err());
         let err_str = actual.unwrap_err().to_string();
-        assert_eq!(
+        assert!(
             err_str.contains("missing field `features`"),
-            true,
             "{}",
             err_str
         );
@@ -1418,9 +1417,9 @@ mod tests {
         "#,
         );
 
-        assert_eq!(true, actual.is_err());
+        assert!(actual.is_err());
         let err_str = actual.unwrap_err().to_string();
-        assert_eq!(err_str.contains("when `details` field is provided, deprecated `url`, `transport`, `features` and `headers` cannot be specified"),true, "{}", err_str);
+        assert!(err_str.contains("when `details` field is provided, deprecated `url`, `transport`, `features` and `headers` cannot be specified"), "{}", err_str);
     }
 
     #[test]
@@ -1536,11 +1535,10 @@ mod tests {
                 details = { type = "firehose", url = "http://localhost:9000", features = ["bananas"]}
             "#,
         ).unwrap().validate();
-        assert_eq!(true, actual.is_err(), "{:?}", actual);
+        assert!(actual.is_err(), "{:?}", actual);
 
         if let Err(error) = actual {
-            assert_eq!(
-                true,
+            assert!(
                 error
                     .to_string()
                     .starts_with("supported firehose endpoint filters are:")
@@ -1643,10 +1641,9 @@ mod tests {
         .unwrap();
 
         let err = actual.validate();
-        assert_eq!(true, err.is_err());
+        assert!(err.is_err());
         let err = err.unwrap_err();
-        assert_eq!(
-            true,
+        assert!(
             err.to_string().contains("unique"),
             "result: {:?}",
             err
@@ -1675,7 +1672,7 @@ mod tests {
         .unwrap();
 
         let result = actual.validate();
-        assert_eq!(true, result.is_ok(), "error: {:?}", result.unwrap_err());
+        assert!(result.is_ok(), "error: {:?}", result.unwrap_err());
     }
 
     #[test]

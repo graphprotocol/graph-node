@@ -524,7 +524,7 @@ mod tests {
             .body(Full::from("{}"))
             .unwrap();
 
-        let response = service.call(request.into()).await;
+        let response = service.call(request).await;
 
         let content_type_header = response.status();
         assert_eq!(content_type_header, StatusCode::OK);

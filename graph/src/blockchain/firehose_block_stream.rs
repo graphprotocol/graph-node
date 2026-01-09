@@ -465,48 +465,40 @@ mod tests {
 
         // Nothing
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &no_current_block, &no_cursor, 10),
-            false,
+        assert!(
+            !must_check_subgraph_continuity(&logger, &no_current_block, &no_cursor, 10),
         );
 
         // No cursor, subgraph current block ptr <, ==, > than manifest start block num
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &some_current_block(9), &no_cursor, 10),
-            false,
+        assert!(
+            !must_check_subgraph_continuity(&logger, &some_current_block(9), &no_cursor, 10),
         );
 
-        assert_eq!(
+        assert!(
             must_check_subgraph_continuity(&logger, &some_current_block(10), &no_cursor, 10),
-            true,
         );
 
-        assert_eq!(
+        assert!(
             must_check_subgraph_continuity(&logger, &some_current_block(11), &no_cursor, 10),
-            true,
         );
 
         // Some cursor, subgraph current block ptr <, ==, > than manifest start block num
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &no_current_block, &some_cursor, 10),
-            false,
+        assert!(
+            !must_check_subgraph_continuity(&logger, &no_current_block, &some_cursor, 10),
         );
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &some_current_block(9), &some_cursor, 10),
-            false,
+        assert!(
+            !must_check_subgraph_continuity(&logger, &some_current_block(9), &some_cursor, 10),
         );
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &some_current_block(10), &some_cursor, 10),
-            false,
+        assert!(
+            !must_check_subgraph_continuity(&logger, &some_current_block(10), &some_cursor, 10),
         );
 
-        assert_eq!(
-            must_check_subgraph_continuity(&logger, &some_current_block(11), &some_cursor, 10),
-            false,
+        assert!(
+            !must_check_subgraph_continuity(&logger, &some_current_block(11), &some_cursor, 10),
         );
     }
 }

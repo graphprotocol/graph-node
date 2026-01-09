@@ -83,7 +83,7 @@ pub fn main() -> anyhow::Result<()> {
             let id = &ids[pos];
             let data = vec![
                 (Word::from("id"), Value::String(id.to_string())),
-                (Word::from("count"), Value::Int(block as i32)),
+                (Word::from("count"), Value::Int(block)),
             ];
             let data = Arc::new(SCHEMA.make_entity(data).unwrap());
             let md = if existing.contains(id) {

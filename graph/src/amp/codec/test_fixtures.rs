@@ -35,9 +35,7 @@ pub static RECORD_BATCH: LazyLock<RecordBatch> = LazyLock::new(|| {
 
     let columns = record_batches
         .into_iter()
-        .map(|record_batch| record_batch.columns())
-        .flatten()
-        .map(|column| column.clone())
+        .flat_map(|record_batch| record_batch.columns()).cloned()
         .collect::<Vec<_>>();
 
     RecordBatch::try_new(Schema::try_merge(schemas).unwrap().into(), columns).unwrap()

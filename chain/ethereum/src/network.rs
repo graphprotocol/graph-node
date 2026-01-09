@@ -352,35 +352,35 @@ mod tests {
         };
 
         // Test all real combinations of capability comparisons
-        assert_eq!(false, &full >= &archive);
-        assert_eq!(false, &full >= &traces);
-        assert_eq!(false, &full >= &archive_traces);
-        assert_eq!(true, &full >= &full);
-        assert_eq!(false, &full >= &full_traces);
+        assert!(!(full >= archive));
+        assert!(!(full >= traces));
+        assert!(!(full >= archive_traces));
+        assert!(full >= full);
+        assert!(!(full >= full_traces));
 
-        assert_eq!(true, &archive >= &archive);
-        assert_eq!(false, &archive >= &traces);
-        assert_eq!(false, &archive >= &archive_traces);
-        assert_eq!(true, &archive >= &full);
-        assert_eq!(false, &archive >= &full_traces);
+        assert!(archive >= archive);
+        assert!(!(archive >= traces));
+        assert!(!(archive >= archive_traces));
+        assert!(archive >= full);
+        assert!(!(archive >= full_traces));
 
-        assert_eq!(false, &traces >= &archive);
-        assert_eq!(true, &traces >= &traces);
-        assert_eq!(false, &traces >= &archive_traces);
-        assert_eq!(true, &traces >= &full);
-        assert_eq!(true, &traces >= &full_traces);
+        assert!(!(traces >= archive));
+        assert!(traces >= traces);
+        assert!(!(traces >= archive_traces));
+        assert!(traces >= full);
+        assert!(traces >= full_traces);
 
-        assert_eq!(true, &archive_traces >= &archive);
-        assert_eq!(true, &archive_traces >= &traces);
-        assert_eq!(true, &archive_traces >= &archive_traces);
-        assert_eq!(true, &archive_traces >= &full);
-        assert_eq!(true, &archive_traces >= &full_traces);
+        assert!(archive_traces >= archive);
+        assert!(archive_traces >= traces);
+        assert!(archive_traces >= archive_traces);
+        assert!(archive_traces >= full);
+        assert!(archive_traces >= full_traces);
 
-        assert_eq!(false, &full_traces >= &archive);
-        assert_eq!(true, &full_traces >= &traces);
-        assert_eq!(false, &full_traces >= &archive_traces);
-        assert_eq!(true, &full_traces >= &full);
-        assert_eq!(true, &full_traces >= &full_traces);
+        assert!(!(full_traces >= archive));
+        assert!(full_traces >= traces);
+        assert!(!(full_traces >= archive_traces));
+        assert!(full_traces >= full);
+        assert!(full_traces >= full_traces);
     }
 
     #[graph::test]
@@ -463,16 +463,15 @@ mod tests {
                 })
                 .await
                 .unwrap();
-            assert_eq!(adapter.is_call_only(), false);
+            assert!(!adapter.is_call_only());
         }
 
         // Check limits
         {
             let adapter = adapters.call_or_cheapest(None).unwrap();
             assert!(adapter.is_call_only());
-            assert_eq!(
-                adapters.call_or_cheapest(None).unwrap().is_call_only(),
-                false
+            assert!(
+                !adapters.call_or_cheapest(None).unwrap().is_call_only()
             );
         }
 
@@ -485,7 +484,7 @@ mod tests {
                     traces: false,
                 }))
                 .unwrap();
-            assert_eq!(adapter.is_call_only(), false);
+            assert!(!adapter.is_call_only());
         }
     }
 
@@ -553,11 +552,11 @@ mod tests {
 
         // verify that after all call_only were exhausted, we can still
         // get normal adapters
-        let keep: Vec<Arc<EthereumAdapter>> = vec![0; 10]
+        let keep: Vec<Arc<EthereumAdapter>> = [0; 10]
             .iter()
             .map(|_| adapters.call_or_cheapest(None).unwrap())
             .collect();
-        assert_eq!(keep.iter().any(|a| !a.is_call_only()), false);
+        assert!(!keep.iter().any(|a| !a.is_call_only()));
     }
 
     #[graph::test]
@@ -621,9 +620,8 @@ mod tests {
         // one reference above and one inside adapters struct
         assert_eq!(Arc::strong_count(&eth_call_adapter), 2);
         assert_eq!(Arc::strong_count(&eth_adapter), 2);
-        assert_eq!(
-            adapters.call_or_cheapest(None).unwrap().is_call_only(),
-            false
+        assert!(
+            !adapters.call_or_cheapest(None).unwrap().is_call_only()
         );
     }
 
@@ -667,9 +665,8 @@ mod tests {
         .await;
         // one reference above and one inside adapters struct
         assert_eq!(Arc::strong_count(&eth_adapter), 2);
-        assert_eq!(
-            adapters.call_or_cheapest(None).unwrap().is_call_only(),
-            false
+        assert!(
+            !adapters.call_or_cheapest(None).unwrap().is_call_only()
         );
     }
 
@@ -690,25 +687,23 @@ mod tests {
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
         let chain_id: Word = "chain_id".into();
 
-        let adapters = vec![
-            fake_adapter(
+        let adapters = [fake_adapter(
                 &logger,
-                &unavailable_provider,
+                unavailable_provider,
                 &provider_metrics,
                 &metrics,
                 false,
             )
             .await,
-            fake_adapter(&logger, &error_provider, &provider_metrics, &metrics, false).await,
+            fake_adapter(&logger, error_provider, &provider_metrics, &metrics, false).await,
             fake_adapter(
                 &logger,
-                &no_error_provider,
+                no_error_provider,
                 &provider_metrics,
                 &metrics,
                 false,
             )
-            .await,
-        ];
+            .await];
 
         // Set errors
         metrics.report_for_test(&ProviderName::from(error_provider), false);
@@ -813,7 +808,7 @@ mod tests {
                 archive: true,
                 traces: false,
             },
-            adapter: fake_adapter(&logger, &error_provider, &provider_metrics, &metrics, false)
+            adapter: fake_adapter(&logger, error_provider, &provider_metrics, &metrics, false)
                 .await,
             limit: SubgraphLimit::Unlimited,
         });
@@ -827,7 +822,7 @@ mod tests {
             },
             adapter: fake_adapter(
                 &logger,
-                &no_error_provider,
+                no_error_provider,
                 &provider_metrics,
                 &metrics,
                 false,
@@ -891,7 +886,7 @@ mod tests {
             },
             adapter: fake_adapter(
                 &logger,
-                &no_error_provider,
+                no_error_provider,
                 &provider_metrics,
                 &metrics,
                 false,
@@ -903,7 +898,7 @@ mod tests {
             logger,
             vec![(
                 chain_id.clone(),
-                no_available_adapter.iter().cloned().collect(),
+                no_available_adapter.to_vec(),
             )]
             .into_iter(),
             ProviderCheckStrategy::MarkAsValid,
@@ -927,7 +922,7 @@ mod tests {
         call_only: bool,
     ) -> Arc<EthereumAdapter> {
         let transport = Transport::new_rpc(
-            Url::parse(&"http://127.0.0.1").unwrap(),
+            Url::parse("http://127.0.0.1").unwrap(),
             HeaderMap::new(),
             endpoint_metrics.clone(),
             "",

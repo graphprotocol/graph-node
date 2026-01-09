@@ -543,12 +543,9 @@ mod test {
             .collect();
         assert_eq!(errs.len(), 2, "{:?}", ds);
 
-        let expected_errors = vec![
-            "partial account prefixes can't have empty values".to_string(),
-            "partial account suffixes can't have empty values".to_string(),
-        ];
-        assert_eq!(
-            true,
+        let expected_errors = ["partial account prefixes can't have empty values".to_string(),
+            "partial account suffixes can't have empty values".to_string()];
+        assert!(
             expected_errors.iter().all(|err| errs.contains(err)),
             "{:?}",
             errs
@@ -634,8 +631,7 @@ mod test {
                 case.name,
                 receipt.partial_accounts,
             );
-            assert_eq!(
-                true,
+            assert!(
                 case.expected
                     .iter()
                     .all(|x| receipt.partial_accounts.contains(x)),

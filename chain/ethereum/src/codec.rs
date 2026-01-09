@@ -499,6 +499,21 @@ impl BlockchainBlock for HeaderOnlyBlock {
     }
 }
 
+fn get_to_address(trace: &TransactionTrace) -> Result<Option<H160>, Error> {
+    // Try to detect contract creation transactions, which have no 'to' address
+    let is_contract_creation = trace.to.is_empty()
+        || trace
+            .calls
+            .first()
+            .is_some_and(|call| CallType::try_from(call.call_type) == Ok(CallType::Create));
+
+    if is_contract_creation {
+        Ok(None)
+    } else {
+        Ok(Some(trace.to.try_decode_proto("transaction to address")?))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use graph::{blockchain::Block as _, prelude::chrono::Utc};
@@ -527,20 +542,5 @@ mod test {
             // if you're confused when reading this, format needs {{ to escape {
             format!(r#"{{"block":{{"data":null,"timestamp":"{}"}}}}"#, now)
         );
-    }
-}
-
-fn get_to_address(trace: &TransactionTrace) -> Result<Option<H160>, Error> {
-    // Try to detect contract creation transactions, which have no 'to' address
-    let is_contract_creation = trace.to.is_empty()
-        || trace
-            .calls
-            .first()
-            .is_some_and(|call| CallType::try_from(call.call_type) == Ok(CallType::Create));
-
-    if is_contract_creation {
-        Ok(None)
-    } else {
-        Ok(Some(trace.to.try_decode_proto("transaction to address")?))
     }
 }

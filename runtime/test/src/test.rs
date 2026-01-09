@@ -190,7 +190,7 @@ impl WasmInstanceExt for WasmInstance {
     async fn invoke_export0_void(&mut self, f: &str) -> Result<(), Error> {
         let func = self
             .get_func(f)
-            .typed(&self.store.as_context())
+            .typed(self.store.as_context())
             .unwrap()
             .clone();
         func.call_async(&mut self.store.as_context_mut(), ()).await
@@ -199,7 +199,7 @@ impl WasmInstanceExt for WasmInstance {
     async fn invoke_export0<R>(&mut self, f: &str) -> AscPtr<R> {
         let func = self
             .get_func(f)
-            .typed(&self.store.as_context())
+            .typed(self.store.as_context())
             .unwrap()
             .clone();
         let ptr: u32 = func
@@ -212,7 +212,7 @@ impl WasmInstanceExt for WasmInstance {
     async fn takes_ptr_returns_ptr<C: Send, R>(&mut self, f: &str, arg: AscPtr<C>) -> AscPtr<R> {
         let func = self
             .get_func(f)
-            .typed(&self.store.as_context())
+            .typed(self.store.as_context())
             .unwrap()
             .clone();
         let ptr: u32 = func
@@ -229,7 +229,7 @@ impl WasmInstanceExt for WasmInstance {
     {
         let func = self
             .get_func(f)
-            .typed(&self.store.as_context())
+            .typed(self.store.as_context())
             .unwrap()
             .clone();
         let ptr = self.asc_new(arg).await.unwrap();
@@ -268,7 +268,7 @@ impl WasmInstanceExt for WasmInstance {
     {
         let func = self
             .get_func(f)
-            .typed(&self.store.as_context())
+            .typed(self.store.as_context())
             .unwrap()
             .clone();
         let arg0 = self.asc_new(arg0).await.unwrap();
@@ -297,7 +297,7 @@ impl WasmInstanceExt for WasmInstance {
     {
         let func = self
             .get_func(f)
-            .typed(&self.store.as_context())
+            .typed(self.store.as_context())
             .unwrap()
             .clone();
         let arg0 = self.asc_new(arg0).await.unwrap();
@@ -312,7 +312,7 @@ impl WasmInstanceExt for WasmInstance {
     async fn invoke_export0_val<V: wasmtime::WasmTy + Sync>(&mut self, func: &str) -> V {
         let func = self
             .get_func(func)
-            .typed(&self.store.as_context())
+            .typed(self.store.as_context())
             .unwrap()
             .clone();
         func.call_async(&mut self.store.as_context_mut(), ())
@@ -327,7 +327,7 @@ impl WasmInstanceExt for WasmInstance {
     {
         let func = self
             .get_func(func)
-            .typed(&self.store.as_context())
+            .typed(self.store.as_context())
             .unwrap()
             .clone();
         let ptr = self.asc_new(v).await.unwrap();
@@ -339,7 +339,7 @@ impl WasmInstanceExt for WasmInstance {
     async fn takes_val_returns_ptr<P>(&mut self, fn_name: &str, val: impl SyncWasmTy) -> AscPtr<P> {
         let func = self
             .get_func(fn_name)
-            .typed(&self.store.as_context())
+            .typed(self.store.as_context())
             .unwrap()
             .clone();
         let ptr: u32 = func
@@ -848,7 +848,7 @@ async fn test_abort(api_version: Version, error_msg: &str) {
     .await;
     let res: Result<(), _> = instance
         .get_func("abort")
-        .typed(&instance.store.as_context())
+        .typed(instance.store.as_context())
         .unwrap()
         .call_async(&mut instance.store.as_context_mut(), ())
         .await;
@@ -1123,21 +1123,19 @@ fn test_detect_contract_calls(api_version: Version) {
         &wasm_file_path("abi_store_value.wasm", api_version.clone()),
         api_version.clone(),
     );
-    assert_eq!(
-        data_source_without_calls
+    assert!(
+        !data_source_without_calls
             .mapping
             .requires_archive()
-            .unwrap(),
-        false
+            .unwrap()
     );
 
     let data_source_with_calls = mock_data_source(
         &wasm_file_path("contract_calls.wasm", api_version.clone()),
         api_version,
     );
-    assert_eq!(
-        data_source_with_calls.mapping.requires_archive().unwrap(),
-        true
+    assert!(
+        data_source_with_calls.mapping.requires_archive().unwrap()
     );
 }
 

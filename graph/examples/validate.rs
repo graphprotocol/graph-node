@@ -238,8 +238,8 @@ impl Sizer {
                 .map_err(Into::into)
         })?;
         let (input_size, input_schema) =
-            self.size(|| InputSchema::parse_latest(raw, id.clone()).map_err(Into::into))?;
-        let (api_size, api) = self.size(|| input_schema.api_schema().map_err(Into::into))?;
+            self.size(|| InputSchema::parse_latest(raw, id.clone()))?;
+        let (api_size, api) = self.size(|| input_schema.api_schema())?;
         let api_text = api.document().to_string().len();
         Ok(Sizes {
             gql: gql_size,

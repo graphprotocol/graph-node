@@ -30,7 +30,7 @@ fn mock_host_exports(
     store: Arc<impl SubgraphStore>,
     api_version: Version,
 ) -> HostExports {
-    let templates = vec![data_source::DataSourceTemplate::Onchain::<Chain>(
+    let templates = [data_source::DataSourceTemplate::Onchain::<Chain>(
         DataSourceTemplate {
             kind: String::from("ethereum/contract"),
             name: String::from("example template"),

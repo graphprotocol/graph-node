@@ -44,7 +44,7 @@ fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
         let split_err: Vec<&str> = err.message.split("\\twasm backtrace:").collect();
         let split_expected: Vec<&str> = expected.message.split("\\twasm backtrace:").collect();
 
-        split_err.get(0) == split_expected.get(0)
+        split_err.first() == split_expected.first()
     };
 
     if !equal {
@@ -233,7 +233,7 @@ async fn api_version_0_0_7() {
     ctx.start_and_sync_to(stop_block).await;
 
     let query_res = ctx
-        .query(&format!(r#"{{ testResults{{ id, message }} }}"#,))
+        .query(&r#"{ testResults{ id, message } }"#.to_string())
         .await
         .unwrap();
 
@@ -317,9 +317,7 @@ async fn derived_loaders() {
     // Where the test cases are documented in the code.
 
     let query_res = ctx
-    .query(&format!(
-        r#"{{ testResult(id:"1_0", block: {{ number: 1 }} ){{ id barDerived{{id value value2}} bBarDerived{{id value value2}} }} }}"#,
-    ))
+    .query(&r#"{ testResult(id:"1_0", block: { number: 1 } ){ id barDerived{id value value2} bBarDerived{id value value2} } }"#.to_string())
     .await
     .unwrap();
 
@@ -367,9 +365,7 @@ async fn derived_loaders() {
     );
 
     let query_res = ctx
-    .query(&format!(
-        r#"{{ testResult(id:"1_1", block: {{ number: 1 }} ){{ id barDerived{{id value value2}} bBarDerived{{id value value2}} }} }}"#,
-    ))
+    .query(&r#"{ testResult(id:"1_1", block: { number: 1 } ){ id barDerived{id value value2} bBarDerived{id value value2} } }"#.to_string())
     .await
     .unwrap();
 
@@ -407,9 +403,7 @@ async fn derived_loaders() {
     );
 
     let query_res = ctx.query(
-    &format!(
-        r#"{{ testResult(id:"2_0" ){{ id barDerived{{id value value2}} bBarDerived{{id value value2}} }} }}"#
-    )
+    &r#"{ testResult(id:"2_0" ){ id barDerived{id value value2} bBarDerived{id value value2} } }"#.to_string()
 )
 .await
 .unwrap();
@@ -462,9 +456,9 @@ async fn end_block() -> anyhow::Result<()> {
             .collect::<Vec<_>>();
 
         if should_contain_addr {
-            assert!(addresses.contains(&addr));
+            assert!(addresses.contains(addr));
         } else {
-            assert!(!addresses.contains(&addr));
+            assert!(!addresses.contains(addr));
         };
     }
 
@@ -1176,14 +1170,14 @@ async fn arweave_file_data_sources() {
     assert_eq!(datasources.len(), 1);
     let ds = datasources.first().unwrap();
     assert_ne!(ds.causality_region, CausalityRegion::ONCHAIN);
-    assert_eq!(ds.done_at.is_some(), true);
+    assert!(ds.done_at.is_some());
     assert_eq!(
         ds.param.as_ref().unwrap(),
         &Bytes::from(Word::from(id).as_bytes())
     );
 
     let content_bytes = ctx.arweave_resolver.get(&Word::from(id)).await.unwrap();
-    let content = String::from_utf8(content_bytes.into()).unwrap();
+    let content = String::from_utf8(content_bytes).unwrap();
     let query_res = ctx
         .query(&format!(r#"{{ file(id: "{id}") {{ id, content }} }}"#,))
         .await

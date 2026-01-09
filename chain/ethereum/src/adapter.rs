@@ -1410,7 +1410,7 @@ mod tests {
             filter.event_signatures.sort();
         }
         assert_eq!(expected_log_filters, actual_log_filters);
-        assert_eq!(true, actual_send_all_block_headers);
+        assert!(actual_send_all_block_headers);
     }
 
     #[test]
@@ -1477,7 +1477,7 @@ mod tests {
         }
         assert_eq!(expected_log_filters, actual_log_filters);
 
-        assert_eq!(true, actual_send_all_block_headers);
+        assert!(actual_send_all_block_headers);
     }
 
     #[test]
@@ -1504,76 +1504,63 @@ mod tests {
             wildcard_signatures: HashSet::from_iter(vec![[11u8; 4]]),
         };
 
-        assert_eq!(
-            false,
-            filter.matches(&call(address(2), vec![])),
+        assert!(
+            !filter.matches(&call(address(2), vec![])),
             "call with empty bytes are always ignore, whatever the condition"
         );
 
-        assert_eq!(
-            false,
-            filter.matches(&call(address(4), vec![1; 36])),
+        assert!(
+            !filter.matches(&call(address(4), vec![1; 36])),
             "call with incorrect address should be ignored"
         );
 
-        assert_eq!(
-            true,
+        assert!(
             filter.matches(&call(address(1), vec![1; 36])),
             "call with correct address & signature should match"
         );
 
-        assert_eq!(
-            true,
+        assert!(
             filter.matches(&call(address(1), vec![1; 32])),
             "call with correct address & signature, but with incorrect input size should match"
         );
 
-        assert_eq!(
-            false,
-            filter.matches(&call(address(1), vec![4u8; 36])),
+        assert!(
+            !filter.matches(&call(address(1), vec![4u8; 36])),
             "call with correct address but incorrect signature for a specific contract filter (i.e. matches some signatures) should be ignored"
         );
 
-        assert_eq!(
-            false,
-            filter.matches(&call(address(0), vec![11u8; 36])),
+        assert!(
+            !filter.matches(&call(address(0), vec![11u8; 36])),
             "this signature should not match filter1, this avoid false passes if someone changes the code"
         );
-        assert_eq!(
-            false,
-            filter2.matches(&call(address(1), vec![10u8; 36])),
+        assert!(
+            !filter2.matches(&call(address(1), vec![10u8; 36])),
             "this signature should not match filter2 because the address is not the expected one"
         );
-        assert_eq!(
-            true,
+        assert!(
             filter2.matches(&call(address(0), vec![10u8; 36])),
             "this signature should match filter2 on the non wildcard clause"
         );
-        assert_eq!(
-            true,
+        assert!(
             filter2.matches(&call(address(0), vec![11u8; 36])),
             "this signature should match filter2 on the wildcard clause"
         );
 
         // extend filter1 and test the filter 2 stuff again
         filter.extend(filter2);
-        assert_eq!(
-            true,
+        assert!(
             filter.matches(&call(address(0), vec![11u8; 36])),
             "this signature should not match filter1, this avoid false passes if someone changes the code"
         );
-        assert_eq!(
-            false,
-            filter.matches(&call(address(1), vec![10u8; 36])),
+        assert!(
+            !filter.matches(&call(address(1), vec![10u8; 36])),
             "this signature should not match filter2 because the address is not the expected one"
         );
-        assert_eq!(
-            true,
+        assert!(
             filter.matches(&call(address(0), vec![10u8; 36])),
             "this signature should match filter2 on the non wildcard clause"
         );
-        assert_eq!(
-            true,
+        assert!(
             filter.matches(&call(address(0), vec![11u8; 36])),
             "this signature should match filter2 on the wildcard clause"
         );
@@ -1673,7 +1660,7 @@ mod tests {
 
         base.extend(extension);
 
-        assert_eq!(true, base.trigger_every_block);
+        assert!(base.trigger_every_block);
     }
 
     #[test]
@@ -1693,7 +1680,7 @@ mod tests {
 
         base.extend(extension);
 
-        assert_eq!(true, base.trigger_every_block);
+        assert!(base.trigger_every_block);
         assert_eq!(
             HashSet::from_iter(vec![(10, address(2))]),
             base.contract_addresses,
@@ -1717,7 +1704,7 @@ mod tests {
 
         base.extend(extension);
 
-        assert_eq!(true, base.trigger_every_block);
+        assert!(base.trigger_every_block);
         assert_eq!(
             HashSet::from_iter(vec![(10, address(2)), (10, address(1))]),
             base.contract_addresses,

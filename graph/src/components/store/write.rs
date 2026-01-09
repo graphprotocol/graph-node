@@ -1042,7 +1042,7 @@ mod test {
             })
             .collect::<Vec<_>>();
         let exp = Vec::from_iter(
-            exp.into_iter()
+            exp.iter()
                 .map(|(block, values)| (*block, Vec::from_iter(values.iter().map(as_id)))),
         );
         assert_eq!(exp, act);
@@ -1154,7 +1154,7 @@ mod test {
 
     impl PartialEq<&[Mod]> for Group {
         fn eq(&self, mods: &&[Mod]) -> bool {
-            let mods: Vec<_> = mods.iter().map(|m| EntityModification::from(m)).collect();
+            let mods: Vec<_> = mods.iter().map(EntityModification::from).collect();
             self.group.rows == mods
         }
     }

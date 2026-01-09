@@ -339,7 +339,7 @@ mod test {
         let firehose_filter = decode_filter(filter);
         assert_eq!(firehose_filter.accounts, vec![String::from("acc1"),],);
 
-        let expected_pairs = vec![
+        let expected_pairs = [
             PrefixSuffixPair {
                 prefix: "acc3".to_string(),
                 suffix: "acc4".to_string(),
@@ -356,8 +356,7 @@ mod test {
 
         let pairs = firehose_filter.prefix_and_suffix_pairs;
         assert_eq!(pairs.len(), 3);
-        assert_eq!(
-            true,
+        assert!(
             expected_pairs.iter().all(|x| pairs.contains(x)),
             "{:?}",
             pairs

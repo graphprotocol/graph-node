@@ -1349,7 +1349,7 @@ fn entity_hidden_vid() {
 
     // get returns nothing...
     assert_eq!(entity.get(VID_FIELD), None);
-    assert_eq!(entity.contains_key(VID_FIELD), false);
+    assert!(!entity.contains_key(VID_FIELD));
     // ...while vid is present
     assert_eq!(entity.vid(), 3i64);
 

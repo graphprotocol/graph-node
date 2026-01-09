@@ -2793,9 +2793,9 @@ mod validations {
                     BaseSchema::parse(&schema, DeploymentHash::new("dummy").unwrap()).unwrap();
                 let res = validate(&schema);
                 if ok {
-                    assert!(matches!(res, Ok(_)));
+                    assert!(res.is_ok());
                 } else {
-                    assert!(matches!(res, Err(_)));
+                    assert!(res.is_err());
                     assert!(matches!(
                         res.unwrap_err()[0],
                         SchemaValidationError::InterfaceImplementorsMixId(_, _)
@@ -3094,7 +3094,6 @@ type Gravatar @entity {
             let files = {
                 let mut files = std::fs::read_dir(dir)
                     .unwrap()
-                    .into_iter()
                     .filter_map(|entry| entry.ok())
                     .map(|entry| entry.path())
                     .filter(|path| path.extension() == Some(OsString::from("graphql").as_os_str()))

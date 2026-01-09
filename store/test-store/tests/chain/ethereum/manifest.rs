@@ -100,8 +100,7 @@ impl LinkResolver for TextResolver {
     async fn cat(&self, _ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
         self.texts
             .get(&link.link)
-            .ok_or(anyhow!("No text for {}", &link.link))
-            .map(Clone::clone)
+            .ok_or(anyhow!("No text for {}", &link.link)).cloned()
     }
 
     async fn get_block(
@@ -880,8 +879,8 @@ specVersion: 0.0.8
         .filter_map(|ds| ds.as_onchain().cloned())
         .collect::<Vec<_>>();
 
-    let data_source = onchain_data_sources.get(0).unwrap();
-    let validation_errors = data_source.validate(&LATEST_VERSION);
+    let data_source = onchain_data_sources.first().unwrap();
+    let validation_errors = data_source.validate(LATEST_VERSION);
     let filter = data_source.mapping.block_handlers[0].filter.clone();
 
     assert_eq!(0, validation_errors.len());
@@ -976,7 +975,7 @@ specVersion: 0.0.8
         .filter_map(|ds| ds.as_onchain().cloned())
         .collect::<Vec<_>>();
 
-    let data_source = onchain_data_sources.get(0).unwrap();
+    let data_source = onchain_data_sources.first().unwrap();
     let validation_errors = data_source.validate(LATEST_VERSION);
     let filters = data_source
         .mapping
@@ -1041,7 +1040,7 @@ specVersion: 0.0.8
         .filter_map(|ds| ds.as_onchain().cloned())
         .collect::<Vec<_>>();
 
-    let data_source = onchain_data_sources.get(0).unwrap();
+    let data_source = onchain_data_sources.first().unwrap();
     let validation_errors = data_source.validate(LATEST_VERSION);
     let filters = data_source
         .mapping
@@ -1103,12 +1102,12 @@ specVersion: 0.0.2
         .filter_map(|ds| ds.as_onchain().cloned())
         .collect::<Vec<_>>();
 
-    let data_source = onchain_data_sources.get(0).unwrap();
+    let data_source = onchain_data_sources.first().unwrap();
     let filter = data_source.mapping.block_handlers[0].filter.clone();
     let required_capabilities = NodeCapabilities::from_data_sources(&onchain_data_sources);
 
     assert_eq!(BlockHandlerFilter::Call, filter.unwrap());
-    assert_eq!(true, required_capabilities.traces);
+    assert!(required_capabilities.traces);
     assert_eq!("Qmmanifest", manifest.id.as_str());
 }
 
@@ -1151,12 +1150,12 @@ specVersion: 0.0.8
         .filter_map(|ds| ds.as_onchain().cloned())
         .collect::<Vec<_>>();
 
-    let data_source = onchain_data_sources.get(0).unwrap();
+    let data_source = onchain_data_sources.first().unwrap();
     let filter = data_source.mapping.block_handlers[0].filter.clone();
     let required_capabilities = NodeCapabilities::from_data_sources(&onchain_data_sources);
 
     assert_eq!(BlockHandlerFilter::Once, filter.unwrap());
-    assert_eq!(false, required_capabilities.traces);
+    assert!(!required_capabilities.traces);
     assert_eq!("Qmmanifest", manifest.id.as_str());
 }
 
@@ -1200,7 +1199,7 @@ specVersion: 0.0.2
     let required_capabilities = NodeCapabilities::from_data_sources(&onchain_data_sources);
 
     assert_eq!("Qmmanifest", manifest.id.as_str());
-    assert_eq!(true, required_capabilities.traces);
+    assert!(required_capabilities.traces);
 }
 
 #[test]

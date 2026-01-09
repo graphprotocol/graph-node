@@ -109,7 +109,7 @@ fn test_trigger_ordering() {
 
     let expected = vec![log1, log2, call1, log3, call2, call4, call3, block2, block1]
         .into_iter()
-        .map(|t| Trigger::Chain(t))
+        .map(Trigger::Chain)
         .collect::<Vec<_>>();
 
     assert_eq!(block_with_triggers.trigger_data, expected);
@@ -207,7 +207,7 @@ fn test_trigger_dedup() {
 
     let expected = vec![log1, log2, call1, log3, call2, call3, block2, block1]
         .into_iter()
-        .map(|t| Trigger::Chain(t))
+        .map(Trigger::Chain)
         .collect::<Vec<_>>();
 
     assert_eq!(block_with_triggers.trigger_data, expected);

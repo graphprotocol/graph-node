@@ -1319,7 +1319,7 @@ mod tests {
             TypeDefinition::Object(t) => ast::get_field(t, name),
             _ => None,
         }
-        .expect(&format!("Schema should contain a field named `{}`", name))
+        .unwrap_or_else(|| panic!("Schema should contain a field named `{}`", name))
     }
 
     #[test]
@@ -2291,7 +2291,7 @@ type Gravatar @entity {
                 TypeDefinition::Object(t) => ast::get_field(t, name),
                 _ => None,
             }
-            .expect(&format!("Schema should contain a field named `{}`", name))
+            .unwrap_or_else(|| panic!("Schema should contain a field named `{}`", name))
         }
 
         const SCHEMA: &str = r#"

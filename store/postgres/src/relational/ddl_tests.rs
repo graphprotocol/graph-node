@@ -418,7 +418,7 @@ fn postponed_indexes_with_block_column() {
         .indexes_for_table(
             &dst_nsp,
             &table.name.to_string(),
-            &table,
+            table,
             true,
             false,
             false,
@@ -432,7 +432,7 @@ fn postponed_indexes_with_block_column() {
         .indexes_for_table(
             &dst_nsp,
             &table.name.to_string(),
-            &table,
+            table,
             false,
             false,
             false,

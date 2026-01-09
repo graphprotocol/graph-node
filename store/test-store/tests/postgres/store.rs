@@ -187,7 +187,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
     let test_entity_1 = create_test_entity(
         "1",
-        &*USER_TYPE,
+        &USER_TYPE,
         "Johnton",
         "tonofjohn@email.com",
         67_i32,
@@ -207,7 +207,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
     let test_entity_2 = create_test_entity(
         "2",
-        &*USER_TYPE,
+        &USER_TYPE,
         "Cindini",
         "dinici@email.com",
         43_i32,
@@ -218,7 +218,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
     );
     let test_entity_3_1 = create_test_entity(
         "3",
-        &*USER_TYPE,
+        &USER_TYPE,
         "Shaqueeena",
         "queensha@email.com",
         28_i32,
@@ -238,7 +238,7 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
 
     let test_entity_3_2 = create_test_entity(
         "3",
-        &*USER_TYPE,
+        &USER_TYPE,
         "Shaqueeena",
         "teeko@email.com",
         28_i32,
@@ -389,7 +389,7 @@ fn insert_entity() {
         let entity_key = USER_TYPE.parse_key("7").unwrap();
         let test_entity = create_test_entity(
             "7",
-            &*USER_TYPE,
+            &USER_TYPE,
             "Wanjon",
             "wanawana@email.com",
             76_i32,
@@ -424,7 +424,7 @@ fn update_existing() {
 
         let op = create_test_entity(
             "1",
-            &*USER_TYPE,
+            &USER_TYPE,
             "Wanjon",
             "wanawana@email.com",
             76_i32,
@@ -1318,7 +1318,7 @@ fn handle_large_string_with_index() {
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
-                BlockTime::for_test(&*TEST_BLOCK_3_PTR),
+                BlockTime::for_test(&TEST_BLOCK_3_PTR),
                 FirehoseCursor::None,
                 vec![
                     make_insert_op(ONE, &long_text, &schema, block, 11),
@@ -1426,7 +1426,7 @@ fn handle_large_bytea_with_index() {
         writable
             .transact_block_operations(
                 TEST_BLOCK_3_PTR.clone(),
-                BlockTime::for_test(&*TEST_BLOCK_3_PTR),
+                BlockTime::for_test(&TEST_BLOCK_3_PTR),
                 FirehoseCursor::None,
                 vec![
                     make_insert_op(ONE, &long_bytea, &schema, block, 10),
@@ -1613,11 +1613,11 @@ fn window() {
     }
 
     fn make_user(id: &str, color: &str, age: i32, vid: i64) -> EntityOperation {
-        make_color_and_age(&*USER_TYPE, id, color, age, vid)
+        make_color_and_age(&USER_TYPE, id, color, age, vid)
     }
 
     fn make_person(id: &str, color: &str, age: i32, vid: i64) -> EntityOperation {
-        make_color_and_age(&*PERSON_TYPE, id, color, age, vid)
+        make_color_and_age(&PERSON_TYPE, id, color, age, vid)
     }
 
     let ops = vec![
@@ -1873,7 +1873,7 @@ fn parse_null_timestamp() {
             .expect("block_number to return correct number and timestamp")
             .unwrap();
         assert_eq!(number, 3);
-        assert_eq!(true, timestamp.is_none());
+        assert!(timestamp.is_none());
     })
 }
 #[test]
@@ -1887,7 +1887,7 @@ fn reorg_tracking() {
     ) {
         let test_entity_1 = create_test_entity(
             "1",
-            &*USER_TYPE,
+            &USER_TYPE,
             "Johnton",
             "tonofjohn@email.com",
             age,

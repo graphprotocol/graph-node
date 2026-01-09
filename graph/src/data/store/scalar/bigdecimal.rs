@@ -631,8 +631,7 @@ mod test {
 
     #[test]
     fn big_decimal_stable() {
-        let cases = vec![
-            (
+        let cases = [(
                 "28b09c9c3f3e2fe037631b7fbccdf65c37594073016d8bf4bb0708b3fda8066a",
                 "0.1",
             ),
@@ -651,8 +650,7 @@ mod test {
             (
                 "6b06b34cc714810072988dc46c493c66a6b6c2c2dd0030271aa3adf3b3f21c20",
                 "98765587998098786876.0",
-            ),
-        ];
+            )];
         for (hash, s) in cases.iter() {
             let dec = BigDecimal::from_str(s).unwrap();
             assert_eq!(*hash, hex::encode(crypto_stable_hash(dec)));

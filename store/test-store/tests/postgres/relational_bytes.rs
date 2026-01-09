@@ -280,12 +280,12 @@ async fn find() {
             layout
                 .find(conn, &key, BLOCK_NUMBER_MAX)
                 .await
-                .expect(&format!("Failed to read Thing[{}]", id))
+                .unwrap_or_else(|_| panic!("Failed to read Thing[{}]", id))
         }
 
         const ID: &str = "deadbeef";
         const NAME: &str = "Beef";
-        insert_thing(&mut conn, layout, ID, NAME, 0).await;
+        insert_thing(conn, layout, ID, NAME, 0).await;
 
         // Happy path: find existing entity
         let entity = find_entity(conn, layout, ID).await.unwrap();
@@ -306,8 +306,8 @@ async fn find_many() {
         const NAME: &str = "Beef";
         const ID2: &str = "0xdeadbeef02";
         const NAME2: &str = "Moo";
-        insert_thing(&mut conn, layout, ID, NAME, 0).await;
-        insert_thing(&mut conn, layout, ID2, NAME2, 1).await;
+        insert_thing(conn, layout, ID, NAME, 0).await;
+        insert_thing(conn, layout, ID2, NAME2, 1).await;
 
         let mut id_map = BTreeMap::default();
         let ids = IdList::try_from_iter(
@@ -336,7 +336,7 @@ async fn find_many() {
 #[graph::test]
 async fn update() {
     run_test(async |mut conn, layout| {
-        insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone()).await;
+        insert_entity(conn, layout, "Thing", BEEF_ENTITY.clone()).await;
 
         // Update the entity
         let mut entity = BEEF_ENTITY.clone();
@@ -369,11 +369,11 @@ async fn delete() {
     run_test(async |mut conn, layout| {
         const TWO_ID: &str = "deadbeef02";
 
-        insert_entity(&mut conn, layout, "Thing", BEEF_ENTITY.clone()).await;
+        insert_entity(conn, layout, "Thing", BEEF_ENTITY.clone()).await;
         let mut two = BEEF_ENTITY.clone();
         two.set("id", TWO_ID).unwrap();
         two.set("vid", 1i64).unwrap();
-        insert_entity(&mut conn, layout, "Thing", two).await;
+        insert_entity(conn, layout, "Thing", two).await;
 
         // Delete where nothing is getting deleted
         let key = THING_TYPE.parse_key("ffff").unwrap();
@@ -381,7 +381,7 @@ async fn delete() {
         let mut entity_keys = vec![key.clone()];
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
         let count = layout
-            .delete(&mut conn, &group, &MOCK_STOPWATCH)
+            .delete(conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to delete");
         assert_eq!(0, count);
@@ -393,7 +393,7 @@ async fn delete() {
             .expect("Failed to update entity types");
         let group = row_group_delete(&entity_type, 1, entity_keys);
         let count = layout
-            .delete(&mut conn, &group, &MOCK_STOPWATCH)
+            .delete(conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to delete");
         assert_eq!(1, count);
@@ -490,14 +490,14 @@ async fn query() {
         // Especially the multiplicity for type A and B queries is determined
         // by knowing whether there are one or many entities per parent
         // in the test data
-        make_thing_tree(&mut conn, layout).await;
+        make_thing_tree(conn, layout).await;
 
         // See https://graphprotocol.github.io/rfcs/engineering-plans/0001-graphql-query-prefetching.html#handling-parentchild-relationships
         // for a discussion of the various types of relationships and queries
 
         // EntityCollection::All
         let coll = EntityCollection::All(vec![(THING_TYPE.clone(), AttributeNames::All)]);
-        let things = fetch(&mut conn, layout, coll).await;
+        let things = fetch(conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2, ROOT, GRANDCHILD1, GRANDCHILD2], things);
 
         // EntityCollection::Window, type A, many
@@ -511,7 +511,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll).await;
+        let things = fetch(conn, layout, coll).await;
         assert_eq!(vec![ROOT], things);
 
         // EntityCollection::Window, type A, single
@@ -527,7 +527,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll).await;
+        let things = fetch(conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2], things);
 
         // EntityCollection::Window, type B, many
@@ -541,7 +541,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll).await;
+        let things = fetch(conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2], things);
 
         // EntityCollection::Window, type B, single
@@ -555,7 +555,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll).await;
+        let things = fetch(conn, layout, coll).await;
         assert_eq!(vec![GRANDCHILD1, GRANDCHILD2], things);
 
         // EntityCollection::Window, type C
@@ -570,7 +570,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll).await;
+        let things = fetch(conn, layout, coll).await;
         assert_eq!(vec![CHILD1, CHILD2], things);
 
         // EntityCollection::Window, type D
@@ -585,7 +585,7 @@ async fn query() {
             ),
             column_names: AttributeNames::All,
         }]);
-        let things = fetch(&mut conn, layout, coll).await;
+        let things = fetch(conn, layout, coll).await;
         assert_eq!(vec![ROOT, ROOT], things);
     })
     .await;

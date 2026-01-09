@@ -269,7 +269,7 @@ async fn insert_entity_at(
         "Failed to insert entities {}[{:?}]",
         entity_type, entities_with_keys
     );
-    let group = row_group_insert(&entity_type, block, entities_with_keys_owned.clone());
+    let group = row_group_insert(entity_type, block, entities_with_keys_owned.clone());
     layout
         .insert(&LOGGER, conn, &group, &MOCK_STOPWATCH)
         .await
@@ -312,7 +312,7 @@ async fn update_entity_at(
         "Failed to insert entities {}[{:?}]",
         entity_type, entities_with_keys
     );
-    let group = row_group_update(&entity_type, block, entities_with_keys_owned.clone());
+    let group = row_group_update(entity_type, block, entities_with_keys_owned.clone());
     let updated = layout
         .update(conn, &group, &MOCK_STOPWATCH)
         .await
@@ -394,7 +394,7 @@ async fn insert_users(conn: &mut AsyncPgConnection, layout: &Layout) {
         conn,
         layout,
         "1",
-        &*USER_TYPE,
+        &USER_TYPE,
         "Johnton",
         "tonofjohn@email.com",
         67_i32,
@@ -411,7 +411,7 @@ async fn insert_users(conn: &mut AsyncPgConnection, layout: &Layout) {
         conn,
         layout,
         "2",
-        &*USER_TYPE,
+        &USER_TYPE,
         "Cindini",
         "dinici@email.com",
         43_i32,
@@ -428,7 +428,7 @@ async fn insert_users(conn: &mut AsyncPgConnection, layout: &Layout) {
         conn,
         layout,
         "3",
-        &*USER_TYPE,
+        &USER_TYPE,
         "Shaqueeena",
         "teeko@email.com",
         28_i32,
@@ -493,8 +493,8 @@ async fn insert_pet(
 }
 
 async fn insert_pets(conn: &mut AsyncPgConnection, layout: &Layout) {
-    insert_pet(conn, layout, &*DOG_TYPE, "pluto", "Pluto", 0, 0).await;
-    insert_pet(conn, layout, &*CAT_TYPE, "garfield", "Garfield", 0, 1).await;
+    insert_pet(conn, layout, &DOG_TYPE, "pluto", "Pluto", 0, 0).await;
+    insert_pet(conn, layout, &CAT_TYPE, "garfield", "Garfield", 0, 1).await;
 }
 
 async fn create_schema(conn: &mut AsyncPgConnection) -> Layout {
@@ -571,7 +571,7 @@ where
 #[graph::test]
 async fn find() {
     run_test(async |conn, layout| {
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
+        insert_entity(conn, layout, &SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
 
         // Happy path: find existing entity
         let entity = layout
@@ -605,7 +605,7 @@ async fn insert_null_fulltext_fields() {
         insert_entity(
             conn,
             layout,
-            &*NULLABLE_STRINGS_TYPE,
+            &NULLABLE_STRINGS_TYPE,
             vec![EMPTY_NULLABLESTRINGS_ENTITY.clone()],
         )
         .await;
@@ -628,7 +628,7 @@ async fn insert_null_fulltext_fields() {
 #[graph::test]
 async fn update() {
     run_test(async |conn, layout| {
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
+        insert_entity(conn, layout, &SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -673,7 +673,7 @@ async fn update_many() {
         insert_entity(
             conn,
             layout,
-            &*SCALAR_TYPE,
+            &SCALAR_TYPE,
             vec![one.clone(), two.clone(), three.clone()],
         )
         .await;
@@ -762,7 +762,7 @@ async fn update_many() {
 #[graph::test]
 async fn serialize_bigdecimal() {
     run_test(async |conn, layout| {
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
+        insert_entity(conn, layout, &SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
@@ -857,11 +857,11 @@ async fn count_scalar_entities(conn: &mut AsyncPgConnection, layout: &Layout) ->
 #[graph::test]
 async fn delete() {
     run_test(async |conn, layout| {
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
+        insert_entity(conn, layout, &SCALAR_TYPE, vec![SCALAR_ENTITY.clone()]).await;
         let mut two = SCALAR_ENTITY.clone();
         two.set("id", "two").unwrap();
         two.set("vid", 1i64).unwrap();
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![two]).await;
+        insert_entity(conn, layout, &SCALAR_TYPE, vec![two]).await;
 
         // Delete where nothing is getting deleted
         let key = SCALAR_TYPE.parse_key("no such entity").unwrap();
@@ -902,7 +902,7 @@ async fn insert_many_and_delete_many() {
         let mut three = SCALAR_ENTITY.clone();
         three.set("id", "three").unwrap();
         three.set("vid", 2i64).unwrap();
-        insert_entity(conn, layout, &*SCALAR_TYPE, vec![one, two, three]).await;
+        insert_entity(conn, layout, &SCALAR_TYPE, vec![one, two, three]).await;
 
         // confidence test: there should be 3 scalar entities in store right now
         assert_eq!(3, count_scalar_entities(conn, layout).await);
@@ -912,7 +912,7 @@ async fn insert_many_and_delete_many() {
             .into_iter()
             .map(|key| SCALAR_TYPE.parse_key(key).unwrap())
             .collect();
-        let group = row_group_delete(&*SCALAR_TYPE, 1, entity_keys);
+        let group = row_group_delete(&SCALAR_TYPE, 1, entity_keys);
         let num_removed = layout
             .delete(conn, &group, &MOCK_STOPWATCH)
             .await
@@ -945,7 +945,7 @@ async fn layout_cache() {
             .await
             .expect("we can get the layout");
         let table = layout.table(&table_name).unwrap();
-        assert_eq!(false, table.is_account_like);
+        assert!(!table.is_account_like);
 
         set_account_like(conn, site.as_ref(), &table_name, true)
             .await
@@ -958,7 +958,7 @@ async fn layout_cache() {
             .await
             .expect("we can get the layout");
         let table = layout.table(&table_name).unwrap();
-        assert_eq!(true, table.is_account_like);
+        assert!(table.is_account_like);
 
         // Set it back to false
         set_account_like(conn, site.as_ref(), &table_name, false)
@@ -971,7 +971,7 @@ async fn layout_cache() {
             .await
             .expect("we can get the layout");
         let table = layout.table(&table_name).unwrap();
-        assert_eq!(false, table.is_account_like);
+        assert!(!table.is_account_like);
     })
     .await;
 }
@@ -1032,10 +1032,10 @@ async fn conflicting_entity() {
 
     run_test(async |mut conn, layout| {
         let id = Value::String("fred".to_string());
-        check(&mut conn, layout, id, "Cat", "Dog", "Ferret", 0).await;
+        check(conn, layout, id, "Cat", "Dog", "Ferret", 0).await;
 
         let id = Value::Bytes(scalar::Bytes::from_str("0xf1ed").unwrap());
-        check(&mut conn, layout, id, "ByteCat", "ByteDog", "ByteFerret", 1).await;
+        check(conn, layout, id, "ByteCat", "ByteDog", "ByteFerret", 1).await;
     })
     .await
 }
@@ -1052,9 +1052,9 @@ async fn revert_block() {
                 vid: block as i64,
             };
             if block == 0 {
-                insert_entity_at(conn, layout, &*CAT_TYPE, vec![fred], block).await;
+                insert_entity_at(conn, layout, &CAT_TYPE, vec![fred], block).await;
             } else {
-                update_entity_at(conn, layout, &*CAT_TYPE, vec![fred], block).await;
+                update_entity_at(conn, layout, &CAT_TYPE, vec![fred], block).await;
             }
         };
 
@@ -1092,7 +1092,7 @@ async fn revert_block() {
                     order: block,
                     vid: (block + 10) as i64
                 };
-                insert_entity_at(conn, layout, &*MINK_TYPE, vec![marty], block).await;
+                insert_entity_at(conn, layout, &MINK_TYPE, vec![marty], block).await;
             }
         };
 
@@ -1164,7 +1164,7 @@ impl<'a> QueryChecker<'a> {
             conn,
             layout,
             "1",
-            &*USER_TYPE,
+            &USER_TYPE,
             "Jono",
             "achangedemail@email.com",
             67_i32,
@@ -1221,7 +1221,7 @@ fn query(entity_types: &[&EntityType]) -> EntityQuery {
         BLOCK_NUMBER_MAX,
         EntityCollection::All(
             entity_types
-                .into_iter()
+                .iter()
                 .map(|entity_type| ((*entity_type).clone(), AttributeNames::All))
                 .collect(),
         ),
@@ -1229,7 +1229,7 @@ fn query(entity_types: &[&EntityType]) -> EntityQuery {
 }
 
 fn user_query() -> EntityQuery {
-    query(&vec![&*USER_TYPE])
+    query(&[&*USER_TYPE])
 }
 
 trait EasyOrder {
@@ -1260,7 +1260,7 @@ impl EasyOrder for EntityQuery {
 )]
 async fn check_fulltext_search_syntax_error() {
     run_test(async |mut conn, layout| {
-        QueryChecker::new(&mut conn, layout)
+        QueryChecker::new(conn, layout)
             .await
             .check(
                 vec!["1"],
@@ -1277,13 +1277,13 @@ async fn check_fulltext_search_syntax_error() {
 #[graph::test]
 async fn check_block_finds() {
     run_test(async |mut conn, layout| {
-        let checker = QueryChecker::new(&mut conn, layout).await;
+        let checker = QueryChecker::new(conn, layout).await;
 
         update_user_entity(
             checker.conn,
             layout,
             "1",
-            &*USER_TYPE,
+            &USER_TYPE,
             "Johnton",
             "tonofjohn@email.com",
             67_i32,
@@ -1325,7 +1325,7 @@ async fn check_find() {
     run_test(async |mut conn, layout| {
         // find with interfaces
         let types = vec![&*CAT_TYPE, &*DOG_TYPE];
-        let checker = QueryChecker::new(&mut conn, layout)
+        let checker = QueryChecker::new(conn, layout)
             .await
             .check(vec!["garfield", "pluto"], query(&types))
             .await
@@ -1920,10 +1920,10 @@ struct FilterChecker<'a> {
 impl<'a> FilterChecker<'a> {
     async fn new(conn: &'a mut AsyncPgConnection, layout: &'a Layout) -> Self {
         let (a1, a2, a2b, a3) = ferrets();
-        insert_pet(conn, layout, &*FERRET_TYPE, "a1", &a1, 0, 0).await;
-        insert_pet(conn, layout, &*FERRET_TYPE, "a2", &a2, 0, 1).await;
-        insert_pet(conn, layout, &*FERRET_TYPE, "a2b", &a2b, 0, 2).await;
-        insert_pet(conn, layout, &*FERRET_TYPE, "a3", &a3, 0, 3).await;
+        insert_pet(conn, layout, &FERRET_TYPE, "a1", &a1, 0, 0).await;
+        insert_pet(conn, layout, &FERRET_TYPE, "a2", &a2, 0, 1).await;
+        insert_pet(conn, layout, &FERRET_TYPE, "a2b", &a2b, 0, 2).await;
+        insert_pet(conn, layout, &FERRET_TYPE, "a3", &a3, 0, 3).await;
 
         Self { conn, layout }
     }
@@ -1936,7 +1936,7 @@ impl<'a> FilterChecker<'a> {
         let expected_entity_ids: Vec<String> =
             expected_entity_ids.into_iter().map(str::to_owned).collect();
 
-        let query = query(&vec![&*FERRET_TYPE]).filter(filter).asc("id");
+        let query = query(&[&*FERRET_TYPE]).filter(filter).asc("id");
 
         let entities = self
             .layout
@@ -2105,7 +2105,7 @@ async fn check_filters() {
         update_entity_at(
             checker.conn,
             layout,
-            &*FERRET_TYPE,
+            &FERRET_TYPE,
             vec![entity! { layout.input_schema =>
               id: "a1",
               name: "Test",

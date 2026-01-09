@@ -740,7 +740,7 @@ mod tests {
             field,
             std::u32::MAX,
             std::u32::MAX,
-            &*&INPUT_SCHEMA,
+            &INPUT_SCHEMA,
         )
         .unwrap()
     }
@@ -1044,7 +1044,7 @@ mod tests {
             &query_field,
             std::u32::MAX,
             std::u32::MAX,
-            &*INPUT_SCHEMA,
+            &INPUT_SCHEMA,
         );
 
         assert!(result.is_err());
@@ -1102,7 +1102,7 @@ mod tests {
             &query_field,
             std::u32::MAX,
             std::u32::MAX,
-            &*INPUT_SCHEMA,
+            &INPUT_SCHEMA,
         );
 
         assert!(result.is_err());
@@ -1196,7 +1196,7 @@ mod tests {
             &query_field,
             std::u32::MAX,
             std::u32::MAX,
-            &*INPUT_SCHEMA,
+            &INPUT_SCHEMA,
         );
 
         assert!(result.is_err());

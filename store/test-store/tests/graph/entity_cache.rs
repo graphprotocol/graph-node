@@ -335,7 +335,7 @@ async fn check_vid_sequence() {
 
     for n in 0..10 {
         let id = (10 - n).to_string();
-        let name = format!("Mogwai");
+        let name = "Mogwai".to_string();
         let mogwai_key = make_band_key(id.as_str());
         let mogwai_data = entity! { SCHEMA => id: id, name: name };
         cache
