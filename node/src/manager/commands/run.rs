@@ -201,6 +201,7 @@ pub async fn run(
     let subgraph_provider = Arc::new(graph_core::subgraph_provider::SubgraphProvider::new(
         &logger_factory,
         sg_metrics.cheap_clone(),
+        subgraph_store.clone(),
         link_resolver.cheap_clone(),
         cancel_token.clone(),
         subgraph_instance_managers,

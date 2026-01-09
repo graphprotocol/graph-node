@@ -1894,17 +1894,28 @@ impl DeploymentStore {
         deployment::health(&mut conn, id).await
     }
 
-    pub(crate) async fn set_manifest_raw_yaml(
-        &self,
-        site: Arc<Site>,
-        raw_yaml: String,
-    ) -> Result<(), StoreError> {
-        let mut conn = self.pool.get_permitted().await?;
-        deployment::set_manifest_raw_yaml(&mut conn, &site, &raw_yaml).await
-    }
-
     async fn is_source(&self, site: &Site) -> Result<bool, StoreError> {
         self.primary.is_source(site).await
+    }
+
+    /// Sets the raw subgraph manifest for the given `site`, if not previously set.
+    ///
+    /// Returns `Ok(())` regardless of whether the value was updated.
+    pub(crate) async fn set_raw_manifest_once(
+        &self,
+        site: Arc<Site>,
+        raw_manifest: String,
+    ) -> Result<(), StoreError> {
+        let mut conn = self.pool.get_permitted().await?;
+        deployment::set_raw_manifest_once(&mut conn, &site, &raw_manifest).await
+    }
+
+    /// Returns the raw subgraph manifest for the given `site`, if one exists.
+    ///
+    /// Returns `None` if no manifest is found for this `site`.
+    pub(crate) async fn raw_manifest(&self, site: Arc<Site>) -> Result<Option<String>, StoreError> {
+        let mut conn = self.pool.get_permitted().await?;
+        deployment::load_raw_manifest(&mut conn, &site).await
     }
 }
 

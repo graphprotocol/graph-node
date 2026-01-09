@@ -37,6 +37,7 @@ hex = "0.4.3"
 pretty_assertions = "1.4.1"
 sqlparser = { workspace = true }
 thiserror = { workspace = true }
+serde_yaml.workspace = true
 
 [dev-dependencies]
 clap.workspace = true

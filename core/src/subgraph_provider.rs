@@ -4,9 +4,9 @@ use graph::{
     amp,
     cheap_clone::CheapClone as _,
     components::{
-        link_resolver::{LinkResolver, LinkResolverContext},
+        link_resolver::LinkResolver,
         metrics::subgraph::SubgraphCountMetric,
-        store::DeploymentLocator,
+        store::{DeploymentLocator, SubgraphStore},
         subgraph::SubgraphInstanceManager,
     },
     log::factory::LoggerFactory,
@@ -15,6 +15,8 @@ use itertools::Itertools as _;
 use parking_lot::RwLock;
 use slog::{debug, error};
 use tokio_util::sync::CancellationToken;
+
+use super::subgraph_manifest;
 
 /// Starts and stops subgraph deployments.
 ///
@@ -27,6 +29,7 @@ use tokio_util::sync::CancellationToken;
 pub struct SubgraphProvider {
     logger_factory: LoggerFactory,
     count_metrics: Arc<SubgraphCountMetric>,
+    subgraph_store: Arc<dyn SubgraphStore>,
     link_resolver: Arc<dyn LinkResolver>,
 
     /// Stops active subgraph start request tasks.
@@ -54,12 +57,14 @@ impl SubgraphProvider {
     /// # Arguments
     /// - `logger_factory`: Creates loggers for each subgraph deployment start/stop request
     /// - `count_metrics`: Tracks the number of started subgraph deployments
+    /// - `subgraph_store`: Loads subgraph manifests to determine the subgraph processing kinds
     /// - `link_resolver`: Loads subgraph manifests to determine the subgraph processing kinds
     /// - `cancel_token`: Stops active subgraph start request tasks
     /// - `instance_managers`: Contains the enabled subgraph instance managers
     pub fn new(
         logger_factory: &LoggerFactory,
         count_metrics: Arc<SubgraphCountMetric>,
+        subgraph_store: Arc<dyn SubgraphStore>,
         link_resolver: Arc<dyn LinkResolver>,
         cancel_token: CancellationToken,
         instance_managers: SubgraphInstanceManagers,
@@ -74,6 +79,7 @@ impl SubgraphProvider {
         Self {
             logger_factory,
             count_metrics,
+            subgraph_store,
             link_resolver,
             cancel_token,
             instance_managers,
@@ -94,30 +100,17 @@ impl SubgraphProvider {
     ) -> Result<(), Error> {
         let logger = self.logger_factory.subgraph_logger(&loc);
 
-        let link_resolver = self
-            .link_resolver
-            .for_manifest(&loc.hash.to_string())
-            .map_err(|e| Error::CreateLinkResolver {
-                loc: loc.cheap_clone(),
-                source: e,
-            })?;
-
-        let file_bytes = link_resolver
-            .cat(
-                &LinkResolverContext::new(&loc.hash, &logger),
-                &loc.hash.to_ipfs_link(),
-            )
-            .await
-            .map_err(|e| Error::LoadManifest {
-                loc: loc.cheap_clone(),
-                source: e,
-            })?;
-
-        let raw_manifest: serde_yaml::Mapping =
-            serde_yaml::from_slice(&file_bytes).map_err(|e| Error::ParseManifest {
-                loc: loc.cheap_clone(),
-                source: e,
-            })?;
+        let raw_manifest = subgraph_manifest::load_raw_subgraph_manifest(
+            &logger,
+            &*self.subgraph_store,
+            &*self.link_resolver,
+            &loc.hash,
+        )
+        .await
+        .map_err(|e| Error::LoadManifest {
+            loc: loc.cheap_clone(),
+            source: e,
+        })?;
 
         let subgraph_kind = SubgraphProcessingKind::from_manifest(&raw_manifest);
         self.assignments.set_subgraph_kind(&loc, subgraph_kind);
@@ -220,22 +213,10 @@ impl SubgraphInstanceManager for SubgraphProvider {
 /// Enumerates all possible errors of the subgraph provider.
 #[derive(Debug, thiserror::Error)]
 enum Error {
-    #[error("failed to create link resolver for '{loc}': {source:#}")]
-    CreateLinkResolver {
-        loc: DeploymentLocator,
-        source: anyhow::Error,
-    },
-
     #[error("failed to load manifest for '{loc}': {source:#}")]
     LoadManifest {
         loc: DeploymentLocator,
-        source: anyhow::Error,
-    },
-
-    #[error("failed to parse manifest for '{loc}': {source:#}")]
-    ParseManifest {
-        loc: DeploymentLocator,
-        source: serde_yaml::Error,
+        source: subgraph_manifest::Error,
     },
 
     #[error("failed to get instance manager for '{loc}' with kind '{subgraph_kind}'")]
