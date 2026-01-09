@@ -63,21 +63,17 @@ impl OffchainDataSourceKind {
     }
 }
 
-impl ToString for OffchainDataSourceKind {
-    fn to_string(&self) -> String {
+impl fmt::Display for OffchainDataSourceKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // This is less performant than hardcoding the values but makes it more difficult
         // to be used incorrectly, since this map is quite small it should be fine.
-        OFFCHAIN_KINDS
+        let label = OFFCHAIN_KINDS
             .iter()
-            .find_map(|(str, kind)| {
-                if kind.eq(self) {
-                    Some(str.to_string())
-                } else {
-                    None
-                }
-            })
+            .find_map(|(str, kind)| if kind.eq(self) { Some(*str) } else { None })
             // the kind is validated based on OFFCHAIN_KINDS so it's guaranteed to exist
-            .unwrap()
+            .unwrap_or("<unknown offchain kind>");
+
+        write!(f, "{}", label)
     }
 }
 
