@@ -543,8 +543,10 @@ mod test {
             .collect();
         assert_eq!(errs.len(), 2, "{:?}", ds);
 
-        let expected_errors = ["partial account prefixes can't have empty values".to_string(),
-            "partial account suffixes can't have empty values".to_string()];
+        let expected_errors = [
+            "partial account prefixes can't have empty values".to_string(),
+            "partial account suffixes can't have empty values".to_string(),
+        ];
         assert!(
             expected_errors.iter().all(|err| errs.contains(err)),
             "{:?}",
@@ -882,7 +884,7 @@ mod test {
             .collect()
     }
 
-    fn new_success_block(height: u64, receiver_id: &String) -> codec::Block {
+    fn new_success_block(height: u64, receiver_id: &str) -> codec::Block {
         codec::Block {
             header: Some(BlockHeader {
                 height,
@@ -894,12 +896,12 @@ mod test {
                     receipt: Some(crate::codec::Receipt {
                         receipt: Some(receipt::Receipt::Action(ReceiptAction {
                             output_data_receivers: vec![DataReceiver {
-                                receiver_id: receiver_id.clone(),
+                                receiver_id: receiver_id.to_string(),
                                 ..Default::default()
                             }],
                             ..Default::default()
                         })),
-                        receiver_id: receiver_id.clone(),
+                        receiver_id: receiver_id.to_string(),
                         ..Default::default()
                     }),
                     execution_outcome: Some(ExecutionOutcomeWithId {
@@ -949,7 +951,7 @@ mod test {
         }
     }
 
-    fn new_receipt_with_outcome(receiver_id: &String, block: Arc<Block>) -> ReceiptWithOutcome {
+    fn new_receipt_with_outcome(receiver_id: &str, block: Arc<Block>) -> ReceiptWithOutcome {
         ReceiptWithOutcome {
             outcome: ExecutionOutcomeWithId {
                 outcome: Some(ExecutionOutcome {
@@ -964,12 +966,12 @@ mod test {
             receipt: codec::Receipt {
                 receipt: Some(receipt::Receipt::Action(ReceiptAction {
                     output_data_receivers: vec![DataReceiver {
-                        receiver_id: receiver_id.clone(),
+                        receiver_id: receiver_id.to_string(),
                         ..Default::default()
                     }],
                     ..Default::default()
                 })),
-                receiver_id: receiver_id.clone(),
+                receiver_id: receiver_id.to_string(),
                 ..Default::default()
             },
             block,
