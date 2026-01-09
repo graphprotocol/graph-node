@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::convert::TryInto;
 
 use async_trait::async_trait;
 use graph::data::query::Trace;
@@ -360,9 +359,7 @@ where
 
         let block_number: i32 = field
             .get_required::<i32>("blockNumber")
-            .expect("Valid blockNumber required")
-            .try_into()
-            .unwrap();
+            .expect("Valid blockNumber required");
 
         let block_hash = field
             .get_required::<BlockHash>("blockHash")
