@@ -2751,6 +2751,7 @@ mod tests {
             // transport.set_response(block_json);
             // transport.add_response(json_value);
 
+            #[allow(clippy::arc_with_non_send_sync)]
             let web3 = Arc::new(Web3::new(transport.clone()));
             let result = check_block_receipt_support(
                 web3.clone(),
