@@ -190,7 +190,7 @@ impl Eq for EntityType {}
 
 impl PartialOrd for EntityType {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.as_str().partial_cmp(other.as_str())
+        Some(self.cmp(other))
     }
 }
 

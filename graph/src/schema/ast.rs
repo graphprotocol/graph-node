@@ -94,7 +94,7 @@ impl Ord for ObjectType {
 
 impl PartialOrd for ObjectType {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.0.name.cmp(&other.0.name))
+        Some(self.cmp(other))
     }
 }
 
