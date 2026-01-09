@@ -59,12 +59,6 @@ jobs:
       - name: Setup just
         uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
 
-      - name: Install cargo-nextest
-        uses: baptiste0928/cargo-install@e38323ef017552d7f7af73a3f4db467f278310ed # v3
-        with:
-          crate: cargo-nextest
-          version: ^0.9
-
       - name: Run unit tests
         run: just test-unit --verbose
 
@@ -105,12 +99,6 @@ jobs:
 
       - name: Setup just
         uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
-
-      - name: Install cargo-nextest
-        uses: baptiste0928/cargo-install@e38323ef017552d7f7af73a3f4db467f278310ed # v3
-        with:
-          crate: cargo-nextest
-          version: ^0.9
 
       - name: Install pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
@@ -164,12 +152,6 @@ jobs:
 
       - name: Setup just
         uses: extractions/setup-just@e33e0265a09d6d736e2ee1e0eb685ef1de4669ff # v3
-
-      - name: Install cargo-nextest
-        uses: baptiste0928/cargo-install@e38323ef017552d7f7af73a3f4db467f278310ed # v3
-        with:
-          crate: cargo-nextest
-          version: ^0.9
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@82dee4ba654bd2146511f85f0d013af94670c4de # v1
