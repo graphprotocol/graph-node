@@ -192,7 +192,14 @@ impl TryFromValue for DeploymentHash {
 pub struct SubgraphName(String);
 
 impl SubgraphName {
-    pub fn new(s: impl Into<String>) -> Result<Self, ()> {
+    /// Construct a new `SubgraphName`, validating the name according to the rules:
+    /// - Length between 1 and 255 characters
+    /// - Contains only alphanumeric characters, dashes (`-`), underscores (`_`), and slashes (`/`)
+    /// - Each part (separated by `/`) must be non-empty, start and end with an alphanumeric character,
+    ///   contain at least one alphabetic character, and not be equal to "graphql"
+    ///
+    /// If the name is invalid, return s (as a `String`) as the error
+    pub fn new(s: impl Into<String>) -> Result<Self, String> {
         let s = s.into();
 
         // Note: these validation rules must be kept consistent with the validation rules
@@ -200,7 +207,7 @@ impl SubgraphName {
 
         // Enforce length limits
         if s.is_empty() || s.len() > 255 {
-            return Err(());
+            return Err(s);
         }
 
         // Check that the name contains only allowed characters.
@@ -208,19 +215,19 @@ impl SubgraphName {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '/')
         {
-            return Err(());
+            return Err(s);
         }
 
         // Parse into components and validate each
         for part in s.split('/') {
             // Each part must be non-empty
             if part.is_empty() {
-                return Err(());
+                return Err(s);
             }
 
             // To keep URLs unambiguous, reserve the token "graphql"
             if part == "graphql" {
-                return Err(());
+                return Err(s);
             }
 
             // Part should not start or end with a special character.
@@ -230,7 +237,7 @@ impl SubgraphName {
                 || !last_char.is_ascii_alphanumeric()
                 || !part.chars().any(|c| c.is_ascii_alphabetic())
             {
-                return Err(());
+                return Err(s);
             }
         }
 
@@ -270,7 +277,7 @@ impl<'de> de::Deserialize<'de> for SubgraphName {
     {
         let s: String = de::Deserialize::deserialize(deserializer)?;
         SubgraphName::new(s.clone())
-            .map_err(|()| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
+            .map_err(|s| de::Error::invalid_value(de::Unexpected::Str(&s), &"valid subgraph name"))
     }
 }
 

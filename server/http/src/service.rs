@@ -130,9 +130,8 @@ where
         request: Request<T>,
     ) -> ServerResult {
         let version = self.resolve_api_version(&request)?;
-        let subgraph_name = SubgraphName::new(subgraph_name.as_str()).map_err(|()| {
-            ServerError::ClientError(format!("Invalid subgraph name {:?}", subgraph_name))
-        })?;
+        let subgraph_name = SubgraphName::new(subgraph_name.as_str())
+            .map_err(|name| ServerError::ClientError(format!("Invalid subgraph name `{name}`")))?;
 
         self.handle_graphql_query(QueryTarget::Name(subgraph_name, version), request)
             .await

@@ -157,7 +157,7 @@ pub async fn provider(
 }
 
 pub fn setting(name: &str) -> Result<(), Error> {
-    let name = SubgraphName::new(name).map_err(|()| anyhow!("illegal subgraph name `{}`", name))?;
+    let name = SubgraphName::new(name).map_err(|name| anyhow!("illegal subgraph name `{name}`"))?;
     let env_vars = EnvVars::from_env().unwrap();
     if let Some(path) = &env_vars.subgraph_settings {
         let settings = Settings::from_file(path)
