@@ -148,11 +148,10 @@ mod tests {
             // Create a database which stores intermediate PoIs
             let mut db = HashMap::<Id, Vec<u8>>::new();
 
-            let mut block_count = 1;
-            for causality_region in case.data.causality_regions.values() {
-                block_count = causality_region.blocks.len();
-                break;
-            }
+            let block_count = match case.data.causality_regions.values().next() {
+                Some(causality_region) => causality_region.blocks.len(),
+                None => 1,
+            };
 
             for block_i in 0..block_count {
                 let mut stream = ProofOfIndexing::new(block_i.try_into().unwrap(), version);
