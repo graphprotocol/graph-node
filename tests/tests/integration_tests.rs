@@ -52,10 +52,7 @@ pub struct TestResult {
 
 impl TestResult {
     pub fn success(&self) -> bool {
-        match self.status {
-            TestStatus::Ok => true,
-            _ => false,
-        }
+        matches!(self.status, TestStatus::Ok)
     }
 
     fn print_subgraph(&self) {

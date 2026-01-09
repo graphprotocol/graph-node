@@ -1778,10 +1778,7 @@ mod tests {
         let change_block_filter = user_filter_type
             .fields
             .iter()
-            .find(move |p| match p.name.as_str() {
-                "_change_block" => true,
-                _ => false,
-            })
+            .find(|p| p.name == "_change_block")
             .expect("_change_block field is missing in User_filter");
 
         match &change_block_filter.value_type {
@@ -1904,10 +1901,7 @@ mod tests {
         let change_block_filter = user_filter_type
             .fields
             .iter()
-            .find(move |p| match p.name.as_str() {
-                "_change_block" => true,
-                _ => false,
-            })
+            .find(|p| p.name == "_change_block")
             .expect("_change_block field is missing in User_filter");
 
         match &change_block_filter.value_type {
