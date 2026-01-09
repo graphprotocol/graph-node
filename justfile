@@ -7,8 +7,8 @@ format *EXTRA_FLAGS:
     cargo fmt --all {{EXTRA_FLAGS}}
 
 # Run Clippy linting (cargo clippy)
-lint:
-    cargo clippy --no-deps -- --allow warnings
+lint *EXTRA_FLAGS:
+    cargo clippy {{EXTRA_FLAGS}}
 
 # Check Rust code (cargo check)
 check *EXTRA_FLAGS:
