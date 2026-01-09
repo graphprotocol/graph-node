@@ -76,8 +76,7 @@ impl FileLinkResolver {
         // Create a path to the manifest based on the current resolver's
         // base directory or default to using the deployment string as path
         // If the deployment string is an alias, use the aliased path
-        let manifest_path = if let Some(aliased) = self.aliases.get(&manifest_path_str.to_string())
-        {
+        let manifest_path = if let Some(aliased) = self.aliases.get(manifest_path_str) {
             aliased.clone()
         } else {
             match &resolver.base_dir {
