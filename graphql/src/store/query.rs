@@ -738,8 +738,8 @@ mod tests {
             &object,
             BLOCK_NUMBER_MAX,
             field,
-            std::u32::MAX,
-            std::u32::MAX,
+            u32::MAX,
+            u32::MAX,
             &INPUT_SCHEMA,
         )
         .unwrap()
@@ -1042,8 +1042,8 @@ mod tests {
             &object,
             BLOCK_NUMBER_MAX,
             &query_field,
-            std::u32::MAX,
-            std::u32::MAX,
+            u32::MAX,
+            u32::MAX,
             &INPUT_SCHEMA,
         );
 
@@ -1100,8 +1100,8 @@ mod tests {
             &object,
             BLOCK_NUMBER_MAX,
             &query_field,
-            std::u32::MAX,
-            std::u32::MAX,
+            u32::MAX,
+            u32::MAX,
             &INPUT_SCHEMA,
         );
 
@@ -1194,8 +1194,8 @@ mod tests {
             &object,
             BLOCK_NUMBER_MAX,
             &query_field,
-            std::u32::MAX,
-            std::u32::MAX,
+            u32::MAX,
+            u32::MAX,
             &INPUT_SCHEMA,
         );
 

@@ -122,8 +122,8 @@ async fn introspection_query(schema: Arc<ApiSchema>, query: &str) -> QueryResult
     let options = QueryExecutionOptions {
         resolver: MockResolver,
         deadline: None,
-        max_first: std::u32::MAX,
-        max_skip: std::u32::MAX,
+        max_first: u32::MAX,
+        max_skip: u32::MAX,
         trace: false,
     };
 

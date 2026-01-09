@@ -342,13 +342,13 @@ async fn test_abi_store_value(api_version: Version) {
     assert_eq!(new_value, Value::from(string));
 
     // Value::Int
-    let int = i32::min_value();
+    let int = i32::MIN;
     let new_value_ptr = instance.takes_val_returns_ptr("value_from_int", int).await;
     let new_value: Value = instance.asc_get(new_value_ptr).unwrap();
     assert_eq!(new_value, Value::Int(int));
 
     // Value::Int8
-    let int8 = i64::min_value();
+    let int8 = i64::MIN;
     let new_value_ptr = instance
         .takes_val_returns_ptr("value_from_int8", int8)
         .await;

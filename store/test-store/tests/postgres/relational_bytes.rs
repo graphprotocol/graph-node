@@ -43,7 +43,7 @@ lazy_static! {
     static ref THINGS_SCHEMA: InputSchema =
         InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone())
             .expect("Failed to parse THINGS_GQL");
-    static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17).unwrap();
+    static ref LARGE_INT: BigInt = BigInt::from(i64::MAX).pow(17).unwrap();
     static ref LARGE_DECIMAL: BigDecimal =
         BigDecimal::from(1) / BigDecimal::new(LARGE_INT.clone(), 1);
     static ref BYTES_VALUE: H256 = H256::from(hex!(

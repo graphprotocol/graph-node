@@ -182,7 +182,7 @@ lazy_static! {
         InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone())
             .expect("failed to parse schema");
     static ref NAMESPACE: Namespace = Namespace::new("sgd0815".to_string()).unwrap();
-    static ref LARGE_INT: BigInt = BigInt::from(std::i64::MAX).pow(17).unwrap();
+    static ref LARGE_INT: BigInt = BigInt::from(i64::MAX).pow(17).unwrap();
     static ref LARGE_DECIMAL: BigDecimal =
         BigDecimal::from(1) / BigDecimal::new(LARGE_INT.clone(), 1);
     static ref BYTES_VALUE: H256 = H256::from(hex!(
@@ -200,8 +200,8 @@ lazy_static! {
         entity! { THINGS_SCHEMA =>
             id: "one",
             bool: true,
-            int: std::i32::MAX,
-            int8: std::i64::MAX,
+            int: i32::MAX,
+            int8: i64::MAX,
             timestamp: Value::Timestamp(Timestamp::from_microseconds_since_epoch(1710837304040956).expect("failed to create timestamp")),
             bigDecimal: decimal.clone(),
             bigDecimalArray: vec![decimal.clone(), (decimal + 1.into())],
