@@ -71,7 +71,12 @@ fn canonical_serialization() {
     );
 
     // Value::Float
-    assert_resp!(r#"{"data":{"float":3.14159}}"#, object! { float: 3.14159 });
+    #[allow(clippy::approx_constant)]
+    let almost_pi = 3.14159_f64;
+    assert_resp!(
+        r#"{"data":{"float":3.14159}}"#,
+        object! { float: almost_pi }
+    );
 
     // Value::String
     assert_resp!(
