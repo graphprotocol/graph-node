@@ -1011,7 +1011,10 @@ impl DecoderHook {
         // We don't have time measurements for each call (though that would be nice)
         // Use the average time of all calls that we want to observe as the time for
         // each call
-        let to_observe = results.iter().map(|(_, source)| source.observe()).count() as f64;
+        let to_observe = results
+            .iter()
+            .filter(|(_, source)| source.observe())
+            .count() as f64;
         let elapsed = start.elapsed().as_secs_f64() / to_observe;
 
         results
