@@ -43,3 +43,6 @@ json-structural-diff = { version = "0.2", features = ["colorize"] }
 
 # Dependencies related to Amp subgraphs
 tokio-util.workspace = true
+
+[lints]
+workspace = true

@@ -10,3 +10,6 @@ protobuf = "3.0.2"
 protobuf-parse = "3.7.2"
 anyhow = "1"
 heck = "0.5"
+
+[lints]
+workspace = true

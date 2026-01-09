@@ -42,3 +42,6 @@ serde_yaml.workspace = true
 [dev-dependencies]
 clap.workspace = true
 graphql-parser = "0.4.1"
+
+[lints]
+workspace = true

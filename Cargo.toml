@@ -115,6 +115,9 @@ parking_lot = "0.12.4"
 sqlparser-latest = { version = "0.57.0", package = "sqlparser", features = ["visitor"] }
 tokio-util = "0.7.15"
 
+[workspace.lints.clippy]
+too_many_arguments = "allow"
+
 # Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
 [profile.test]
 incremental = false

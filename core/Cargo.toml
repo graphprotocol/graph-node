@@ -34,3 +34,6 @@ tokio-util.workspace = true
 [dev-dependencies]
 tower-test = { git = "https://github.com/tower-rs/tower.git" }
 wiremock = "0.6.5"
+
+[lints]
+workspace = true

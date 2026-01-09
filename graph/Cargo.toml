@@ -111,3 +111,6 @@ wiremock = "0.6.5"
 
 [build-dependencies]
 tonic-build = { workspace = true }
+
+[lints]
+workspace = true
