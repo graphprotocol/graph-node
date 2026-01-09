@@ -45,7 +45,7 @@ impl Settings {
         Self::from_str(&read_to_string(path)?)
     }
 
-    pub fn from_str(toml: &str) -> Result<Self, anyhow::Error> {
+    fn from_str(toml: &str) -> Result<Self, anyhow::Error> {
         toml::from_str::<Self>(toml).map_err(anyhow::Error::from)
     }
 

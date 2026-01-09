@@ -665,7 +665,7 @@ mod status {
     }
 
     impl Phase {
-        pub fn from_str(phase: &str) -> Self {
+        fn from_str(phase: &str) -> Self {
             use Phase::*;
             match phase {
                 "queued" => Queued,
