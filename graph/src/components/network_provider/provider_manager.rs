@@ -428,7 +428,7 @@ mod tests {
                 provider_name_calls,
             } = self;
 
-            assert!(provider_name_calls.lock().unwrap().is_empty());
+            assert!(provider_name_calls.get_mut().unwrap().is_empty());
         }
     }
 

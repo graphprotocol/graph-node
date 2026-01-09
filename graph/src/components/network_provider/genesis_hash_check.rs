@@ -185,8 +185,8 @@ mod tests {
                 update_identifier_calls,
             } = self;
 
-            assert!(validate_identifier_calls.lock().unwrap().is_empty());
-            assert!(update_identifier_calls.lock().unwrap().is_empty());
+            assert!(validate_identifier_calls.get_mut().unwrap().is_empty());
+            assert!(update_identifier_calls.get_mut().unwrap().is_empty());
         }
     }
 
@@ -226,7 +226,7 @@ mod tests {
                 chain_identifier_calls,
             } = self;
 
-            assert!(chain_identifier_calls.lock().unwrap().is_empty());
+            assert!(chain_identifier_calls.get_mut().unwrap().is_empty());
         }
     }
 
