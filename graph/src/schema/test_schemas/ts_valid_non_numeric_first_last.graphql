@@ -1,0 +1,43 @@
+# valid: Non-numeric first and last aggregations
+
+type EntityA @entity(immutable: true) {
+    id: ID!
+}
+
+type EntityB @entity(immutable: true) {
+    id: Int8!
+}
+
+type EntityC @entity(immutable: true) {
+    id: Bytes!
+}
+
+type Data @entity(timeseries: true) {
+    id: Int8!
+    timestamp: Timestamp!
+    fieldA: EntityA!
+    fieldB: EntityB!
+    fieldC: EntityC!
+    fieldD: String!
+    fieldE: Bytes!
+}
+
+type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
+    id: Int8!
+    timestamp: Timestamp!
+
+    firstA: EntityA! @aggregate(fn: "first", arg: "fieldA")
+    lastA: EntityA! @aggregate(fn: "last", arg: "fieldA")
+
+    firstB: EntityB! @aggregate(fn: "first", arg: "fieldB")
+    lastB: EntityB! @aggregate(fn: "last", arg: "fieldB")
+
+    firstC: EntityC! @aggregate(fn: "first", arg: "fieldC")
+    lastC: EntityC! @aggregate(fn: "last", arg: "fieldC")
+
+    firstD: String! @aggregate(fn: "first", arg: "fieldD")
+    lastD: String! @aggregate(fn: "last", arg: "fieldD")
+
+    firstE: Bytes! @aggregate(fn: "first", arg: "fieldE")
+    lastE: Bytes! @aggregate(fn: "last", arg: "fieldE")
+}

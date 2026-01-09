@@ -788,7 +788,7 @@ pub struct Aggregate {
 }
 
 impl Aggregate {
-    fn new(_schema: &Schema, name: &str, field_type: &s::Type, dir: &s::Directive) -> Self {
+    fn new(schema: &Schema, name: &str, field_type: &s::Type, dir: &s::Directive) -> Self {
         let func = dir
             .argument("fn")
             .unwrap()
@@ -818,7 +818,7 @@ impl Aggregate {
             arg,
             cumulative,
             field_type: field_type.clone(),
-            value_type: field_type.get_base_type().parse().unwrap(),
+            value_type: Field::scalar_value_type(schema, field_type),
         }
     }
 
@@ -2366,27 +2366,63 @@ mod validations {
                 }
             }
 
-            fn aggregate_fields_are_numbers(agg_type: &s::ObjectType, errors: &mut Vec<Err>) {
+            fn aggregate_field_types(
+                schema: &Schema,
+                agg_type: &s::ObjectType,
+                errors: &mut Vec<Err>,
+            ) {
+                fn is_first_last(agg_directive: &s::Directive) -> bool {
+                    match agg_directive.argument(kw::FUNC) {
+                        Some(s::Value::Enum(func) | s::Value::String(func)) => {
+                            func == AggregateFn::First.as_str()
+                                || func == AggregateFn::Last.as_str()
+                        }
+                        _ => false,
+                    }
+                }
+
                 let errs = agg_type
                     .fields
                     .iter()
-                    .filter(|field| field.find_directive(kw::AGGREGATE).is_some())
-                    .map(|field| match field.field_type.value_type() {
-                        Ok(vt) => {
-                            if vt.is_numeric() {
-                                Ok(())
-                            } else {
-                                Err(Err::NonNumericAggregate(
+                    .filter_map(|field| {
+                        field
+                            .find_directive(kw::AGGREGATE)
+                            .map(|agg_directive| (field, agg_directive))
+                    })
+                    .map(|(field, agg_directive)| {
+                        let is_first_last = is_first_last(agg_directive);
+
+                        match field.field_type.value_type() {
+                            Ok(value_type) if value_type.is_numeric() => Ok(()),
+                            Ok(ValueType::Bytes | ValueType::String) if is_first_last => Ok(()),
+                            Ok(_) if is_first_last => Err(Err::InvalidFirstLastAggregate(
+                                agg_type.name.clone(),
+                                field.name.clone(),
+                            )),
+                            Ok(_) => Err(Err::NonNumericAggregate(
+                                agg_type.name.to_owned(),
+                                field.name.to_owned(),
+                            )),
+                            Err(_) => {
+                                if is_first_last
+                                    && schema
+                                        .entity_types
+                                        .iter()
+                                        .find(|entity_type| {
+                                            entity_type.name.eq(field.field_type.get_base_type())
+                                        })
+                                        .is_some()
+                                {
+                                    return Ok(());
+                                }
+
+                                Err(Err::FieldTypeUnknown(
                                     agg_type.name.to_owned(),
                                     field.name.to_owned(),
+                                    field.field_type.get_base_type().to_owned(),
                                 ))
                             }
                         }
-                        Err(_) => Err(Err::FieldTypeUnknown(
-                            agg_type.name.to_owned(),
-                            field.name.to_owned(),
-                            field.field_type.get_base_type().to_owned(),
-                        )),
                     })
                     .filter_map(|err| err.err());
                 errors.extend(errs);
@@ -2519,16 +2555,10 @@ mod validations {
                                     continue;
                                 }
                             };
-                            let field_type = match field.field_type.value_type() {
-                                Ok(field_type) => field_type,
-                                Err(_) => {
-                                    errors.push(Err::NonNumericAggregate(
-                                        agg_type.name.to_owned(),
-                                        field.name.to_owned(),
-                                    ));
-                                    continue;
-                                }
-                            };
+
+                            let is_first_last =
+                                matches!(func, AggregateFn::First | AggregateFn::Last);
+
                             // It would be nicer to use a proper struct here
                             // and have that implement
                             // `sqlexpr::ExprVisitor` but we need access to
@@ -2539,6 +2569,18 @@ mod validations {
                                 let arg_type = match source.field(ident) {
                                     Some(arg_field) => match arg_field.field_type.value_type() {
                                         Ok(arg_type) if arg_type.is_numeric() => arg_type,
+                                        Ok(ValueType::Bytes | ValueType::String)
+                                            if is_first_last =>
+                                        {
+                                            return Ok(());
+                                        }
+                                        Err(_)
+                                            if is_first_last
+                                                && arg_field.field_type.get_base_type()
+                                                    == field.field_type.get_base_type() =>
+                                        {
+                                            return Ok(());
+                                        }
                                         Ok(_) | Err(_) => {
                                             return Err(Err::AggregationNonNumericArg(
                                                 agg_type.name.to_owned(),
@@ -2556,15 +2598,27 @@ mod validations {
                                         ));
                                     }
                                 };
-                                if arg_type > field_type {
-                                    return Err(Err::AggregationNonMatchingArg(
-                                        agg_type.name.to_owned(),
-                                        field.name.to_owned(),
-                                        arg.to_owned(),
-                                        arg_type.to_str().to_owned(),
-                                        field_type.to_str().to_owned(),
-                                    ));
+
+                                match field.field_type.value_type() {
+                                    Ok(field_type) if field_type.is_numeric() => {
+                                        if arg_type > field_type {
+                                            return Err(Err::AggregationNonMatchingArg(
+                                                agg_type.name.to_owned(),
+                                                field.name.to_owned(),
+                                                arg.to_owned(),
+                                                arg_type.to_str().to_owned(),
+                                                field_type.to_str().to_owned(),
+                                            ));
+                                        }
+                                    }
+                                    Ok(_) | Err(_) => {
+                                        return Err(Err::NonNumericAggregate(
+                                            agg_type.name.to_owned(),
+                                            field.name.to_owned(),
+                                        ));
+                                    }
                                 }
+
                                 Ok(())
                             };
                             if let Err(mut errs) = sqlexpr::parse(arg, check_ident) {
@@ -2661,7 +2715,7 @@ mod validations {
                     errors.push(err);
                 }
                 no_derived_fields(agg_type, &mut errors);
-                aggregate_fields_are_numbers(agg_type, &mut errors);
+                aggregate_field_types(self, agg_type, &mut errors);
                 aggregate_directive(self, agg_type, &mut errors);
                 // check timeseries directive has intervals and args
                 aggregation_intervals(agg_type, &mut errors);

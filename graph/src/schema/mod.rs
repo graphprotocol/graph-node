@@ -123,6 +123,8 @@ pub enum SchemaValidationError {
     TimestampFieldMissing(String),
     #[error("Aggregation {0}, field{1}: aggregates must use a numeric type, one of Int, Int8, BigInt, and BigDecimal")]
     NonNumericAggregate(String, String),
+    #[error("Aggregation '{0}', field '{1}': first/last aggregates must use a numeric, byte array, string or a reference type")]
+    InvalidFirstLastAggregate(String, String),
     #[error("Aggregation {0} is missing the `source` argument")]
     AggregationMissingSource(String),
     #[error(
