@@ -100,7 +100,8 @@ impl LinkResolver for TextResolver {
     async fn cat(&self, _ctx: &LinkResolverContext, link: &Link) -> Result<Vec<u8>, anyhow::Error> {
         self.texts
             .get(&link.link)
-            .ok_or(anyhow!("No text for {}", &link.link)).cloned()
+            .ok_or(anyhow!("No text for {}", &link.link))
+            .cloned()
     }
 
     async fn get_block(
@@ -1237,6 +1238,23 @@ graft:
     })
 }
 
+async fn has_feature_validation_error(
+    unvalidated: UnvalidatedSubgraphManifest<Chain>,
+    store: Arc<graph_store_postgres::SubgraphStore>,
+) -> bool {
+    unvalidated
+        .validate(store, true)
+        .await
+        .expect_err("Validation must fail")
+        .into_iter()
+        .any(|e| {
+            matches!(
+                e,
+                SubgraphManifestValidationError::FeatureValidationError(_)
+            )
+        })
+}
+
 #[test]
 fn declared_grafting_feature_causes_no_feature_validation_errors() {
     const YAML: &str = "
@@ -1254,18 +1272,8 @@ graft:
     test_store::run_test_sequentially(|store| async move {
         let store = store.subgraph_store();
         let unvalidated = resolve_unvalidated(YAML).await;
-        assert!(unvalidated
-            .validate(store.clone(), true)
-            .await
-            .expect_err("Validation must fail")
-            .into_iter()
-            .find(|e| {
-                matches!(
-                    e,
-                    SubgraphManifestValidationError::FeatureValidationError(_)
-                )
-            })
-            .is_none());
+        let has_error = has_feature_validation_error(unvalidated, store).await;
+        assert!(!has_error, "There must be no FeatureValidationError");
         let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
         assert!(manifest.features.contains(&SubgraphFeature::Grafting))
     })
@@ -1285,18 +1293,8 @@ schema:
     test_store::run_test_sequentially(|store| async move {
         let store = store.subgraph_store();
         let unvalidated = resolve_unvalidated(YAML).await;
-        assert!(unvalidated
-            .validate(store.clone(), true)
-            .await
-            .expect_err("Validation must fail")
-            .into_iter()
-            .find(|e| {
-                matches!(
-                    e,
-                    SubgraphManifestValidationError::FeatureValidationError(_)
-                )
-            })
-            .is_none());
+        let has_error = has_feature_validation_error(unvalidated, store).await;
+        assert!(!has_error, "There must be no FeatureValidationError");
 
         let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
         assert!(manifest.features.contains(&SubgraphFeature::NonFatalErrors))
@@ -1339,18 +1337,8 @@ schema:
             .expect("Parsing simple manifest works")
         };
 
-        assert!(unvalidated
-            .validate(store.clone(), true)
-            .await
-            .expect_err("Validation must fail")
-            .into_iter()
-            .find(|e| {
-                matches!(
-                    e,
-                    SubgraphManifestValidationError::FeatureValidationError(_)
-                )
-            })
-            .is_none());
+        let has_error = has_feature_validation_error(unvalidated, store).await;
+        assert!(!has_error, "There must be no FeatureValidationError");
 
         let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
         assert!(manifest.features.contains(&SubgraphFeature::FullTextSearch))
@@ -1548,18 +1536,8 @@ dataSources:
             .expect("Parsing simple manifest works")
         };
 
-        assert!(unvalidated
-            .validate(store.clone(), true)
-            .await
-            .expect_err("Validation must fail")
-            .into_iter()
-            .find(|e| {
-                matches!(
-                    e,
-                    SubgraphManifestValidationError::FeatureValidationError(_)
-                )
-            })
-            .is_none());
+        let has_error = has_feature_validation_error(unvalidated, store).await;
+        assert!(!has_error, "There must be no FeatureValidationError");
     });
 }
 
@@ -1577,18 +1555,8 @@ schema:
     test_store::run_test_sequentially(|store| async move {
         let store = store.subgraph_store();
         let unvalidated = resolve_unvalidated(YAML).await;
-        assert!(unvalidated
-            .validate(store.clone(), true)
-            .await
-            .expect_err("Validation must fail")
-            .into_iter()
-            .find(|e| {
-                matches!(
-                    e,
-                    SubgraphManifestValidationError::FeatureValidationError(_)
-                )
-            })
-            .is_none());
+        let has_error = has_feature_validation_error(unvalidated, store).await;
+        assert!(!has_error, "There must be no FeatureValidationError");
 
         let manifest = resolve_manifest(YAML, SPEC_VERSION_0_0_4).await;
         assert!(manifest.features.contains(&SubgraphFeature::NonFatalErrors))
