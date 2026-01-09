@@ -229,6 +229,7 @@ impl StopwatchInner {
                 .write(true)
                 .append(false)
                 .create(true)
+                .truncate(true)
                 .open(section_map)
                 .expect("can open file");
             serde_json::to_writer(&file, &entries).expect("can write json");
