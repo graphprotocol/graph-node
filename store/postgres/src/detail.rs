@@ -546,7 +546,7 @@ struct StoredSubgraphManifest {
 }
 
 impl StoredSubgraphManifest {
-    fn as_manifest(self, schema: &InputSchema) -> SubgraphManifestEntity {
+    fn into_manifest_entity(self, schema: &InputSchema) -> SubgraphManifestEntity {
         let e: Vec<_> = self
             .entities_with_causality_region
             .into_iter()
@@ -568,7 +568,7 @@ impl StoredSubgraphManifest {
 struct StoredDeploymentEntity(crate::detail::DeploymentDetail, StoredSubgraphManifest);
 
 impl StoredDeploymentEntity {
-    fn as_subgraph_deployment(
+    fn into_subgraph_deployment_entity(
         self,
         schema: &InputSchema,
     ) -> Result<SubgraphDeploymentEntity, StoreError> {
@@ -611,7 +611,7 @@ impl StoredDeploymentEntity {
             .map_err(|b| internal_error!("invalid debug fork `{}`", b))?;
 
         Ok(SubgraphDeploymentEntity {
-            manifest: manifest.as_manifest(schema),
+            manifest: manifest.into_manifest_entity(schema),
             failed: detail.failed,
             health: detail.health.into(),
             synced_at: detail.synced_at,
@@ -653,7 +653,7 @@ pub async fn deployment_entity(
         .await
         .map(DeploymentDetail::from)?;
 
-    StoredDeploymentEntity(detail, manifest).as_subgraph_deployment(schema)
+    StoredDeploymentEntity(detail, manifest).into_subgraph_deployment_entity(schema)
 }
 
 #[derive(Queryable, Identifiable, Insertable)]

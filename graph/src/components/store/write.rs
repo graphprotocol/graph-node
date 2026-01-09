@@ -207,7 +207,7 @@ impl EntityModification {
     }
 
     /// Turn an `Overwrite` into an `Insert`, return an error if this is a `Remove`
-    fn as_insert(self, entity_type: &EntityType) -> Result<Self, StoreError> {
+    fn into_insert(self, entity_type: &EntityType) -> Result<Self, StoreError> {
         use EntityModification::*;
 
         match self {
@@ -510,7 +510,7 @@ impl RowGroup {
                     Overwrite { block, .. },
                 ) => {
                     prev_row.clamp(*block)?;
-                    let row = row.as_insert(&self.entity_type)?;
+                    let row = row.into_insert(&self.entity_type)?;
                     self.push_row(row);
                 }
                 (Insert { end: None, .. } | Overwrite { end: None, .. }, Remove { block, .. }) => {

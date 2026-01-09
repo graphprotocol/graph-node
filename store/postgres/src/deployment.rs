@@ -110,7 +110,7 @@ impl OnSync {
         }
     }
 
-    pub fn to_str(&self) -> &str {
+    pub fn to_str(&self) -> &'static str {
         match self {
             OnSync::None => "none",
             OnSync::Activate => "activate",
@@ -118,7 +118,7 @@ impl OnSync {
         }
     }
 
-    fn to_sql(&self) -> Option<&str> {
+    fn to_sql(self) -> Option<&'static str> {
         match self {
             OnSync::None => None,
             OnSync::Activate | OnSync::Replace => Some(self.to_str()),
