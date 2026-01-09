@@ -37,14 +37,14 @@ fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
             || err.handler != expected.handler
             || err.deterministic != expected.deterministic
         {
-            false;
+            false
+        } else {
+            // Ignore any WASM backtrace in the error message
+            let split_err: Vec<&str> = err.message.split("\\twasm backtrace:").collect();
+            let split_expected: Vec<&str> = expected.message.split("\\twasm backtrace:").collect();
+
+            split_err.first() == split_expected.first()
         }
-
-        // Ignore any WASM backtrace in the error message
-        let split_err: Vec<&str> = err.message.split("\\twasm backtrace:").collect();
-        let split_expected: Vec<&str> = expected.message.split("\\twasm backtrace:").collect();
-
-        split_err.first() == split_expected.first()
     };
 
     if !equal {

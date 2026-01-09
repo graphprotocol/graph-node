@@ -6,7 +6,7 @@ schema:
 graft:
   # This can be overwritten by `updateAndDeploy.js`.
   # Please commit this file when this happens.
-  base: QmcAL39QSKZvRssr2ToCJrav7XK9ggajxvBR7M1NNUCqdh
+  base: QmRfaNu6ymQVUiJVTayqWuT8ftLtvn7iE8kQSSAtTPA2J2
   block: 3
 dataSources:
   - kind: ethereum/contract
