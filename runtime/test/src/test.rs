@@ -1641,8 +1641,8 @@ async fn generate_id() {
                 "bin2",
                 IdType::Bytes.parse("0x0000000c00000003".into()).unwrap(),
             ),
-            ("int1", Id::Int8(0x0000_000c__0000_0000)),
-            ("int2", Id::Int8(0x0000_000c__0000_0001)),
+            ("int1", Id::Int8(0x0000_000c_0000_0000)),
+            ("int2", Id::Int8(0x0000_000c_0000_0001)),
         ]
         .into_iter(),
     );
