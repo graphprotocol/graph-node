@@ -133,6 +133,7 @@ async fn process_record_batch_group<AC>(
         })?;
     }
 
+    let section = cx.metrics.stopwatch.start_section("as_modifications");
     let ModificationsAndCache {
         modifications,
         entity_lfu_cache,
@@ -142,7 +143,9 @@ async fn process_record_batch_group<AC>(
         .await
         .map_err(Error::from)
         .map_err(|e| e.context("failed to extract entity modifications from the state"))?;
+    section.end();
 
+    let _section = cx.metrics.stopwatch.start_section("transact_block");
     let is_close_to_chain_head = latest_block.saturating_sub(block_number) <= 100;
 
     cx.store

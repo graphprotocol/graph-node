@@ -7,6 +7,7 @@ use alloy::{
 use anyhow::anyhow;
 use arrow::{array::RecordBatch, datatypes::Schema};
 use futures03::future::try_join_all;
+use itertools::Itertools;
 use lazy_regex::regex_is_match;
 use semver::Version;
 use serde::Deserialize;
@@ -86,14 +87,7 @@ impl RawDataSource {
             .map_err(|e| e.source_context("invalid `source`"))?;
 
         let transformer = transformer
-            .resolve(
-                &logger,
-                link_resolver,
-                amp_client,
-                input_schema,
-                &network,
-                &source,
-            )
+            .resolve(&logger, link_resolver, amp_client, input_schema, &source)
             .await
             .map_err(|e| e.source_context("invalid `transformer`"))?;
 
@@ -158,6 +152,12 @@ impl RawSource {
             return Err(Error::InvalidValue(anyhow!("`dataset` cannot be empty")));
         }
         Self::validate_tables(&tables)?;
+
+        let dataset = normalize_sql_ident(&dataset);
+        let tables = tables
+            .into_iter()
+            .map(|table| normalize_sql_ident(&table))
+            .collect_vec();
 
         let address = address.unwrap_or(Address::ZERO);
         let start_block = start_block.unwrap_or(BlockNumber::MIN);
@@ -232,7 +232,6 @@ impl RawTransformer {
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
         input_schema: Option<&InputSchema>,
-        network: &str,
         source: &Source,
     ) -> Result<Transformer, Error> {
         let Self {
@@ -248,7 +247,6 @@ impl RawTransformer {
             link_resolver,
             amp_client,
             input_schema,
-            network,
             tables,
             source,
             &abis,
@@ -306,7 +304,6 @@ impl RawTransformer {
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
         input_schema: Option<&InputSchema>,
-        network: &str,
         tables: Vec<RawTable>,
         source: &Source,
         abis: &[Abi],
@@ -335,7 +332,6 @@ impl RawTransformer {
                     link_resolver,
                     amp_client,
                     input_schema,
-                    network,
                     source,
                     abis,
                 )
@@ -431,7 +427,6 @@ impl RawTable {
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
         input_schema: Option<&InputSchema>,
-        network: &str,
         source: &Source,
         abis: &[Abi],
     ) -> Result<Table, Error> {
@@ -459,7 +454,6 @@ impl RawTable {
             logger,
             amp_client,
             input_schema,
-            network,
             source,
             query,
             schema.clone(),
@@ -557,7 +551,6 @@ impl RawTable {
         logger: &Logger,
         amp_client: &impl amp::Client,
         input_schema: Option<&InputSchema>,
-        network: &str,
         source: &Source,
         query: ValidQuery,
         schema: Schema,
@@ -586,15 +579,7 @@ impl RawTable {
         let context_sources_iter = source
             .tables
             .iter()
-            .map(|table| (source.dataset.as_str(), table.as_str()))
-            // TODO: Replace hardcoded values with schema metadata sources when available
-            .chain(match network {
-                "ethereum-mainnet" => vec![("edgeandnode/ethereum_mainnet", "blocks")],
-                "base-mainnet" => vec![("edgeandnode/base_mainnet", "blocks")],
-                "base-sepolia" => vec![("edgeandnode/base_sepolia", "blocks")],
-                "arbitrum-one" => vec![("edgeandnode/arbitrum_one", "blocks")],
-                _ => vec![],
-            });
+            .map(|table| (source.dataset.as_str(), table.as_str()));
 
         for (dataset, table) in context_sources_iter {
             let context_logger = logger.new(slog::o!(
@@ -718,4 +703,11 @@ fn validate_ident(s: &str) -> Result<(), Error> {
         ));
     }
     Ok(())
+}
+
+fn normalize_sql_ident(s: &str) -> String {
+    match validate_ident(s) {
+        Ok(()) => s.to_lowercase(),
+        Err(_e) => sqlparser_latest::ast::Ident::with_quote('"', s).to_string(),
+    }
 }

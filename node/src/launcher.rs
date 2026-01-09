@@ -505,11 +505,16 @@ pub async fn run(
 
     let amp_client = match opt.amp_flight_service_address.as_deref() {
         Some(amp_flight_service_address) => {
-            let addr = amp_flight_service_address
+            let addr: graph::http::Uri = amp_flight_service_address
                 .parse()
                 .expect("Invalid Amp Flight service address");
 
-            let mut amp_client = amp::FlightClient::new(addr)
+            debug!(logger, "Connecting to Amp Flight service";
+                "host" => ?addr.host(),
+                "port" => ?addr.port()
+            );
+
+            let mut amp_client = amp::FlightClient::new(addr.clone())
                 .await
                 .expect("Failed to connect to Amp Flight service");
 
@@ -517,9 +522,16 @@ pub async fn run(
                 amp_client.set_auth_token(auth_token);
             }
 
+            info!(logger, "Amp-powered subgraphs enabled";
+                "amp_flight_service_host" => ?addr.host()
+            );
+
             Some(Arc::new(amp_client))
         }
-        None => None,
+        None => {
+            warn!(logger, "Amp-powered subgraphs disabled");
+            None
+        }
     };
 
     start_graphman_server(opt.graphman_port, graphman_server_config).await;

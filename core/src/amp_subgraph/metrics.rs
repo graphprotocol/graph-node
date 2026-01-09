@@ -35,7 +35,7 @@ impl Metrics {
         let stopwatch = StopwatchMetrics::new(
             logger.cheap_clone(),
             deployment.cheap_clone(),
-            "amp-process",
+            "process",
             metrics_registry.cheap_clone(),
             store.shard().to_string(),
         );
@@ -123,7 +123,11 @@ impl DeploymentHead {
             .new_int_gauge(
                 "deployment_head",
                 "Tracks the most recent block number processed by a deployment",
-                const_labels,
+                const_labels
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    // TODO: Pass the network from the Amp manifest
+                    .chain([("network".to_string(), "".to_string())]),
             )
             .expect("failed to register `deployment_head` gauge");
 
@@ -139,7 +143,7 @@ impl DeploymentHead {
     }
 }
 
-/// Tracks the target block number of a deployment.
+/// Tracks the maximum block number currently available for indexing within a deployment.
 pub(super) struct DeploymentTarget(IntGauge);
 
 impl DeploymentTarget {
@@ -149,8 +153,8 @@ impl DeploymentTarget {
     ) -> Self {
         let int_gauge = metrics_registry
             .new_int_gauge(
-                "amp_deployment_target",
-                "Tracks the target block number of a deployment",
+                "deployment_target",
+                "Tracks the maximum block number currently available for indexing within a deployment",
                 const_labels,
             )
             .expect("failed to register `amp_deployment_target` gauge");
@@ -217,7 +221,7 @@ impl IndexingDuration {
     ) -> Self {
         let int_counter = metrics_registry
             .new_int_counter(
-                "amp_deployment_indexing_duration_seconds",
+                "deployment_indexing_duration_seconds",
                 "Tracks the total duration in seconds of deployment indexing",
                 const_labels,
             )

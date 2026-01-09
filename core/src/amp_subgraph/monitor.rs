@@ -439,13 +439,6 @@ impl Monitor {
                         error!(logger, "Subgraph panicked";
                             "error" => ?e
                         );
-
-                        // TODO: Maybe abort the entire process on panic and require a full graph-node restart.
-                        //       Q: Should a bug that is triggered in a specific subgraph affect everything?
-                        //       Q: How to make this failure loud enough so it is not missed?
-                        //
-                        // println!("Subgraph panicked");
-                        // std::process::abort();
                     }
                     Err(e) => {
                         error!(logger, "Subgraph failed";

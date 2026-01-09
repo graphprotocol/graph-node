@@ -134,24 +134,25 @@ mod tests {
         let block_range_query = new_block_range_query(&query, block_number_column, &block_range);
 
         assert_eq!(
-            block_range_query,
+            block_range_query.to_string(),
             parse_query(
                 r#"
-                WITH block_range_1164572571450379730 AS (
-                    SELECT * FROM "d" WHERE _block_num BETWEEN 0 AND 1000000
+                WITH block_range_14621009630487609643 AS (
+                    SELECT * FROM d WHERE _block_num BETWEEN 0 AND 1000000
                 ),
-                source_1164572571450379730 AS (
-                    SELECT a, b, c FROM block_range_1164572571450379730 AS d
+                source_14621009630487609643 AS (
+                    SELECT a, b, c FROM block_range_14621009630487609643 AS d
                 )
                 SELECT
-                    source_1164572571450379730.*
+                    source_14621009630487609643.*
                 FROM
-                    source_1164572571450379730
+                    source_14621009630487609643
                 ORDER BY
-                    source_1164572571450379730.b
+                    source_14621009630487609643.b
                 "#
             )
-            .unwrap(),
+            .unwrap()
+            .to_string(),
         )
     }
 
@@ -163,27 +164,28 @@ mod tests {
         let block_range_query = new_block_range_query(&query, block_number_column, &block_range);
 
         assert_eq!(
-            block_range_query,
+            block_range_query.to_string(),
             parse_query(
                 r#"
-                WITH block_range_1164572571450379730 AS (
-                    SELECT * FROM "d" WHERE _block_num BETWEEN 0 AND 1000000
+                WITH block_range_14621009630487609643 AS (
+                    SELECT * FROM d WHERE _block_num BETWEEN 0 AND 1000000
                 ),
-                block_range_13063992259633584610 AS (
-                    SELECT * FROM "e" WHERE _block_num BETWEEN 0 AND 1000000
+                block_range_12377422807768256314 AS (
+                    SELECT * FROM e WHERE _block_num BETWEEN 0 AND 1000000
                 ),
-                source_13063992259633584610 AS (
-                    SELECT a, b, c FROM block_range_1164572571450379730 AS d JOIN block_range_13063992259633584610 AS e ON e.e = d.d
+                source_12377422807768256314 AS (
+                    SELECT a, b, c FROM block_range_14621009630487609643 AS d JOIN block_range_12377422807768256314 AS e ON e.e = d.d
                 )
                 SELECT
-                    source_13063992259633584610.*
+                    source_12377422807768256314.*
                 FROM
-                    source_13063992259633584610
+                    source_12377422807768256314
                 ORDER BY
-                    source_13063992259633584610.b
+                    source_12377422807768256314.b
                 "#
             )
-            .unwrap(),
+            .unwrap()
+            .to_string(),
         )
     }
 }

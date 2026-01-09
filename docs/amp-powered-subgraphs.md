@@ -553,7 +553,7 @@ Amp-powered subgraphs feature introduces the following new ENV variables:
 In addition to reporting updates to the existing `deployment_status`, `deployment_head`, `deployment_synced` and `deployment_blocks_processed_count`
 metrics, Amp-powered subgraphs feature introduces the following new metrics:
 
-- `amp_deployment_target` – Tracks the target block number of a deployment.
-- `amp_deployment_indexing_duration_seconds` – Tracks the total duration in seconds of deployment indexing.
+- `deployment_target` – Tracks the maximum block number currently available for indexing within a deployment.
+- `deployment_indexing_duration_seconds` – Tracks the total duration in seconds of deployment indexing.
 
-Additionally, the `deployment_sync_secs` is extended with a new `amp-process` stage and new sections specific to the Amp indexing process.
+Additionally, the `deployment_sync_secs` is extended with new sections specific to the Amp indexing process.
