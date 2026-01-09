@@ -29,3 +29,6 @@ tokio-util.workspace = true
 [dev-dependencies]
 anyhow = "1.0.100"
 tokio-stream = "0.1"
+
+[lints]
+workspace = true
