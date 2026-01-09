@@ -233,7 +233,7 @@ async fn api_version_0_0_7() {
     ctx.start_and_sync_to(stop_block).await;
 
     let query_res = ctx
-        .query(&r#"{ testResults{ id, message } }"#.to_string())
+        .query(r#"{ testResults{ id, message } }"#)
         .await
         .unwrap();
 
@@ -317,7 +317,7 @@ async fn derived_loaders() {
     // Where the test cases are documented in the code.
 
     let query_res = ctx
-    .query(&r#"{ testResult(id:"1_0", block: { number: 1 } ){ id barDerived{id value value2} bBarDerived{id value value2} } }"#.to_string())
+    .query(r#"{ testResult(id:"1_0", block: { number: 1 } ){ id barDerived{id value value2} bBarDerived{id value value2} } }"#)
     .await
     .unwrap();
 
@@ -365,7 +365,7 @@ async fn derived_loaders() {
     );
 
     let query_res = ctx
-    .query(&r#"{ testResult(id:"1_1", block: { number: 1 } ){ id barDerived{id value value2} bBarDerived{id value value2} } }"#.to_string())
+    .query(r#"{ testResult(id:"1_1", block: { number: 1 } ){ id barDerived{id value value2} bBarDerived{id value value2} } }"#)
     .await
     .unwrap();
 
@@ -403,7 +403,7 @@ async fn derived_loaders() {
     );
 
     let query_res = ctx.query(
-    &r#"{ testResult(id:"2_0" ){ id barDerived{id value value2} bBarDerived{id value value2} } }"#.to_string()
+    r#"{ testResult(id:"2_0" ){ id barDerived{id value value2} bBarDerived{id value value2} } }"#
 )
 .await
 .unwrap();
