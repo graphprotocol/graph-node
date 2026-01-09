@@ -169,6 +169,6 @@ impl<T: Clone> BoundedQueue<T> {
 
     /// Clear the queue by popping entries until there are none left
     pub fn clear(&self) {
-        while let Some(_) = self.try_pop() {}
+        while self.try_pop().is_some() {}
     }
 }

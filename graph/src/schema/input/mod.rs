@@ -2681,7 +2681,7 @@ mod validations {
                     return;
                 }
                 for interval in intervals {
-                    if let Err(_) = interval.parse::<AggregationInterval>() {
+                    if interval.parse::<AggregationInterval>().is_err() {
                         errors.push(Err::AggregationInvalidInterval(
                             agg_type.name.to_owned(),
                             interval.to_owned(),
