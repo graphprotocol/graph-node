@@ -8,7 +8,7 @@ format *EXTRA_FLAGS:
 
 # Run Clippy linting (cargo clippy)
 lint *EXTRA_FLAGS:
-    cargo clippy {{EXTRA_FLAGS}}
+    cargo clippy --all-targets {{EXTRA_FLAGS}}
 
 # Check Rust code (cargo check)
 check *EXTRA_FLAGS:
