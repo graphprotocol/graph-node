@@ -270,7 +270,7 @@ async fn bad_id() {
 
 #[graph::test]
 async fn find() {
-    run_test(async |mut conn, layout| {
+    run_test(async |conn, layout| {
         async fn find_entity(
             conn: &mut AsyncPgConnection,
             layout: &Layout,
@@ -301,7 +301,7 @@ async fn find() {
 
 #[graph::test]
 async fn find_many() {
-    run_test(async |mut conn, layout| {
+    run_test(async |conn, layout| {
         const ID: &str = "0xdeadbeef";
         const NAME: &str = "Beef";
         const ID2: &str = "0xdeadbeef02";
@@ -335,7 +335,7 @@ async fn find_many() {
 
 #[graph::test]
 async fn update() {
-    run_test(async |mut conn, layout| {
+    run_test(async |conn, layout| {
         insert_entity(conn, layout, "Thing", BEEF_ENTITY.clone()).await;
 
         // Update the entity
@@ -366,7 +366,7 @@ async fn update() {
 
 #[graph::test]
 async fn delete() {
-    run_test(async |mut conn, layout| {
+    run_test(async |conn, layout| {
         const TWO_ID: &str = "deadbeef02";
 
         insert_entity(conn, layout, "Thing", BEEF_ENTITY.clone()).await;
@@ -483,7 +483,7 @@ async fn query() {
             .collect::<Vec<_>>()
     }
 
-    run_test(async |mut conn, layout| {
+    run_test(async |conn, layout| {
         // This test exercises the different types of queries we generate;
         // the type of query is based on knowledge of what the test data
         // looks like, not on just an inference from the GraphQL model.

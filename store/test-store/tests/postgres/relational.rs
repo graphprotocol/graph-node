@@ -1030,7 +1030,7 @@ async fn conflicting_entity() {
         assert_eq!(None, conflict);
     }
 
-    run_test(async |mut conn, layout| {
+    run_test(async |conn, layout| {
         let id = Value::String("fred".to_string());
         check(conn, layout, id, "Cat", "Dog", "Ferret", 0).await;
 
@@ -1259,7 +1259,7 @@ impl EasyOrder for EntityQuery {
     expected = "layout.query failed to execute query: FulltextQueryInvalidSyntax(\"syntax error in tsquery: \\\"Jono 'a\\\"\")"
 )]
 async fn check_fulltext_search_syntax_error() {
-    run_test(async |mut conn, layout| {
+    run_test(async |conn, layout| {
         QueryChecker::new(conn, layout)
             .await
             .check(
@@ -1276,7 +1276,7 @@ async fn check_fulltext_search_syntax_error() {
 
 #[graph::test]
 async fn check_block_finds() {
-    run_test(async |mut conn, layout| {
+    run_test(async |conn, layout| {
         let checker = QueryChecker::new(conn, layout).await;
 
         update_user_entity(
@@ -1322,7 +1322,7 @@ async fn check_block_finds() {
 
 #[graph::test]
 async fn check_find() {
-    run_test(async |mut conn, layout| {
+    run_test(async |conn, layout| {
         // find with interfaces
         let types = vec![&*CAT_TYPE, &*DOG_TYPE];
         let checker = QueryChecker::new(conn, layout)
