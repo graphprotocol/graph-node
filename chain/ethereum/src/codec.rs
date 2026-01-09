@@ -526,14 +526,19 @@ mod test {
     #[test]
     fn ensure_block_serialization() {
         let now = Utc::now().timestamp();
-        let mut block = Block::default();
-        let mut header = BlockHeader::default();
-        header.timestamp = Some(Timestamp {
-            seconds: now,
-            nanos: 0,
-        });
 
-        block.header = Some(header);
+        let header = BlockHeader {
+            timestamp: Some(Timestamp {
+                seconds: now,
+                nanos: 0,
+            }),
+            ..Default::default()
+        };
+
+        let block = Block {
+            header: Some(header.clone()),
+            ..Default::default()
+        };
 
         let str_block = block.data().unwrap().to_string();
 

@@ -26,24 +26,31 @@ fn test_trigger_ordering() {
         EthereumBlockTriggerType::WithCallTo(Address::random()),
     );
 
-    let mut call1 = EthereumCall::default();
-    call1.transaction_index = 1;
+    let call1 = EthereumCall {
+        transaction_index: 1,
+        ..Default::default()
+    };
     let call1 = EthereumTrigger::Call(Arc::new(call1));
 
-    let mut call2 = EthereumCall::default();
-    call2.transaction_index = 2;
-    call2.input = Bytes(vec![0]);
+    let call2 = EthereumCall {
+        transaction_index: 2,
+        input: Bytes(vec![0]),
+        ..Default::default()
+    };
     let call2 = EthereumTrigger::Call(Arc::new(call2));
 
-    let mut call3 = EthereumCall::default();
-    call3.transaction_index = 3;
+    let call3 = EthereumCall {
+        transaction_index: 3,
+        ..Default::default()
+    };
     let call3 = EthereumTrigger::Call(Arc::new(call3));
 
     // Call with the same tx index as call2
-    let mut call4 = EthereumCall::default();
-    call4.transaction_index = 2;
-    // different than call2 so they don't get mistaken as the same
-    call4.input = Bytes(vec![1]);
+    let call4 = EthereumCall {
+        transaction_index: 2,
+        input: Bytes(vec![1]),
+        ..Default::default()
+    };
     let call4 = EthereumTrigger::Call(Arc::new(call4));
 
     fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
@@ -92,13 +99,14 @@ fn test_trigger_ordering() {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let mut b: LightEthereumBlock = Default::default();
-
-    // This is necessary because inside of BlockWithTriggers::new
-    // there's a log for both fields. So just using Default above
-    // gives None on them.
-    b.number = Some(Default::default());
-    b.hash = Some(Default::default());
+    // The field initializers are necessary because inside of
+    // BlockWithTriggers::new there's a log for both fields. So just using
+    // Default above gives None on them.
+    let b: LightEthereumBlock = LightEthereumBlock {
+        number: Some(Default::default()),
+        hash: Some(Default::default()),
+        ..Default::default()
+    };
 
     // Test that `BlockWithTriggers` sorts the triggers.
     let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(
@@ -130,21 +138,29 @@ fn test_trigger_dedup() {
     // duplicate block2
     let block3 = block2.clone();
 
-    let mut call1 = EthereumCall::default();
-    call1.transaction_index = 1;
+    let call1 = EthereumCall {
+        transaction_index: 1,
+        ..Default::default()
+    };
     let call1 = EthereumTrigger::Call(Arc::new(call1));
 
-    let mut call2 = EthereumCall::default();
-    call2.transaction_index = 2;
+    let call2 = EthereumCall {
+        transaction_index: 2,
+        ..Default::default()
+    };
     let call2 = EthereumTrigger::Call(Arc::new(call2));
 
-    let mut call3 = EthereumCall::default();
-    call3.transaction_index = 3;
+    let call3 = EthereumCall {
+        transaction_index: 3,
+        ..Default::default()
+    };
     let call3 = EthereumTrigger::Call(Arc::new(call3));
 
     // duplicate call2
-    let mut call4 = EthereumCall::default();
-    call4.transaction_index = 2;
+    let call4 = EthereumCall {
+        transaction_index: 2,
+        ..Default::default()
+    };
     let call4 = EthereumTrigger::Call(Arc::new(call4));
 
     fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
@@ -190,13 +206,14 @@ fn test_trigger_dedup() {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    let mut b: LightEthereumBlock = Default::default();
-
-    // This is necessary because inside of BlockWithTriggers::new
-    // there's a log for both fields. So just using Default above
-    // gives None on them.
-    b.number = Some(Default::default());
-    b.hash = Some(Default::default());
+    // The field initializers are necessary because inside of
+    // BlockWithTriggers::new there's a log for both fields. So just using
+    // Default above gives None on them.
+    let b: LightEthereumBlock = LightEthereumBlock {
+        number: Some(Default::default()),
+        hash: Some(Default::default()),
+        ..Default::default()
+    };
 
     // Test that `BlockWithTriggers` sorts the triggers.
     let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(
