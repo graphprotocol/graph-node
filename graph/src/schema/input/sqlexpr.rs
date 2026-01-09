@@ -46,7 +46,7 @@ pub trait ExprVisitor {
 }
 
 pub struct VisitExpr<'a> {
-    visitor: Box<&'a mut dyn ExprVisitor>,
+    visitor: &'a mut dyn ExprVisitor,
 }
 
 impl<'a> VisitExpr<'a> {
@@ -78,9 +78,7 @@ impl<'a> VisitExpr<'a> {
             .tokenize_with_location()
             .unwrap();
         parser = parser.with_tokens_with_locations(tokens);
-        let mut visit = VisitExpr {
-            visitor: Box::new(visitor),
-        };
+        let mut visit = VisitExpr { visitor };
         let mut expr = match parser.parse_expr() {
             Ok(expr) => expr,
             Err(e) => {
