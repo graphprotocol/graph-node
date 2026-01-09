@@ -31,12 +31,17 @@ pub(crate) fn parse<F: CheckIdentFn>(
 /// `store/postgres/src/relational/rollup.rs`. Note that the visitor can
 /// mutate both itself (e.g., to store errors) and the expression it is
 /// visiting.
+///
+/// The error type is `()`, as the visitor is expected to record any errors
+/// internally
 pub trait ExprVisitor {
     /// Visit an identifier (column name). Must return `Err` if the
     /// identifier is not allowed
+    #[allow(clippy::result_unit_err)]
     fn visit_ident(&mut self, ident: &mut p::Ident) -> Result<(), ()>;
     /// Visit a function name. Must return `Err` if the function is not
     /// allowed
+    #[allow(clippy::result_unit_err)]
     fn visit_func_name(&mut self, func: &mut p::ObjectNamePart) -> Result<(), ()>;
     /// Called when we encounter a construct that is not supported like a
     /// subquery
@@ -69,6 +74,7 @@ impl<'a> VisitExpr<'a> {
     /// return `Err(())`. The visitor will know the details of the error
     /// since this can only happen if `visit_ident` or `visit_func_name`
     /// returned an error, or `parse_error` or `not_supported` was called.
+    #[allow(clippy::result_unit_err)]
     pub fn visit(sql: &str, visitor: &'a mut dyn ExprVisitor) -> Result<p::Expr, ()> {
         let dialect = PostgreSqlDialect {};
 
