@@ -266,7 +266,7 @@ impl VisitorMut for Validator<'_> {
     ) -> ControlFlow<Self::Break> {
         /// Check whether `args` is a single string argument and return that
         /// string
-        fn extract_string_arg(args: &Vec<FunctionArg>) -> Option<String> {
+        fn extract_string_arg(args: &[FunctionArg]) -> Option<String> {
             if args.len() != 1 {
                 return None;
             }

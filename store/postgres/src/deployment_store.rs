@@ -1081,7 +1081,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         derived_query: &DerivedEntityQuery,
         block: BlockNumber,
-        excluded_keys: &Vec<EntityKey>,
+        excluded_keys: &[EntityKey],
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let mut conn = self.pool.get_permitted().await?;
         let layout = self.layout(&mut conn, site).await?;

@@ -71,7 +71,7 @@ impl EventSignatureWithTopics {
     /// If self.address is None, it's considered a wildcard match.
     /// Otherwise, it must match the provided address.
     /// It must also match the topics if they are Some
-    pub fn matches(&self, address: Option<&H160>, sig: H256, topics: &Vec<H256>) -> bool {
+    pub fn matches(&self, address: Option<&H160>, sig: H256, topics: &[H256]) -> bool {
         // If self.address is None, it's considered a wildcard match. Otherwise, it must match the provided address.
         let address_matches = match self.address {
             Some(ref self_addr) => address == Some(self_addr),
@@ -393,7 +393,7 @@ impl EthereumLogFilter {
         &self,
         event_signature: &H256,
         contract_address: Option<&Address>,
-        topics: &Vec<H256>,
+        topics: &[H256],
     ) -> bool {
         // Check for wildcard events first.
         if self.wildcard_events.get(event_signature) == Some(&true) {

@@ -16,7 +16,7 @@ use graph_store_postgres::{ConnectionPool, Store};
 async fn block_ptr(
     store: BlockStore,
     locators: &HashSet<(String, DeploymentLocator)>,
-    searches: &Vec<DeploymentSearch>,
+    searches: &[DeploymentSearch],
     hash: &str,
     number: BlockNumber,
     force: bool,

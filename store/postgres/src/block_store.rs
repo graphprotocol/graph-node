@@ -342,7 +342,7 @@ impl BlockStore {
 
     pub async fn allocate_chain(
         conn: &mut AsyncPgConnection,
-        name: &String,
+        name: &str,
         shard: &Shard,
         ident: &ChainIdentifier,
     ) -> Result<Chain, StoreError> {
@@ -366,7 +366,7 @@ impl BlockStore {
 
         let chain = Chain {
             id: next_val as i32,
-            name: name.clone(),
+            name: name.to_string(),
             shard: shard.clone(),
             net_version: ident.net_version.clone(),
             genesis_block: ident.genesis_block_hash.hash_hex(),

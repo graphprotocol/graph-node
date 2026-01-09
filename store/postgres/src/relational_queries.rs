@@ -710,7 +710,7 @@ impl<'a> QueryValue<'a> {
         Ok(Self { value, column_type })
     }
 
-    fn many(values: &'a Vec<Value>, column_type: &'a ColumnType) -> QueryResult<Vec<Self>> {
+    fn many(values: &'a [Value], column_type: &'a ColumnType) -> QueryResult<Vec<Self>> {
         values
             .iter()
             .map(|value| Self::new(value, column_type))
@@ -814,7 +814,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
 }
 
 fn process_vec_ast<'a, T: diesel::serialize::ToSql<Text, Pg>>(
-    values: &'a Vec<T>,
+    values: &'a [T],
     out: &mut AstPass<'_, 'a, Pg>,
     sql_language: &str,
 ) -> Result<(), DieselError> {
@@ -1004,7 +1004,7 @@ impl PrefixType {
     }
 }
 
-fn is_large_string(s: &String) -> Result<bool, ()> {
+fn is_large_string(s: &str) -> Result<bool, ()> {
     let len = if s.starts_with("0x") {
         (s.len() - 2) / 2
     } else {
@@ -1368,7 +1368,7 @@ impl<'a> Filter<'a> {
     ) -> Result<Self, StoreError> {
         fn column_and_value<'v>(
             table: dsl::Table<'v>,
-            attr: &String,
+            attr: &str,
             value: &'v Value,
         ) -> Result<(dsl::Column<'v>, QueryValue<'v>), StoreError> {
             let column = table.column_for_field(attr)?;
@@ -1379,7 +1379,7 @@ impl<'a> Filter<'a> {
 
         fn starts_or_ends_with<'s>(
             table: dsl::Table<'s>,
-            attr: &String,
+            attr: &str,
             value: &Value,
             op: &'static str,
             starts_with: bool,
@@ -1416,7 +1416,7 @@ impl<'a> Filter<'a> {
 
         fn cmp<'s>(
             table: dsl::Table<'s>,
-            attr: &String,
+            attr: &str,
             op: Comparison,
             value: &'s Value,
         ) -> Result<Filter<'s>, StoreError> {
@@ -1435,7 +1435,7 @@ impl<'a> Filter<'a> {
 
         fn contains<'s>(
             table: dsl::Table<'s>,
-            attr: &String,
+            attr: &str,
             op: ContainsOp,
             value: &'s Value,
         ) -> Result<Filter<'s>, StoreError> {
