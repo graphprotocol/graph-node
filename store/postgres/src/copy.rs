@@ -1060,9 +1060,7 @@ impl Connection {
         state: &mut CopyState,
         progress: &Arc<CopyProgress>,
     ) -> Option<WorkerFuture> {
-        let Some(conn) = self.conn.take() else {
-            return None;
-        };
+        let conn = self.conn.take()?;
         let Some(table) = state.unfinished.pop() else {
             self.conn = Some(conn);
             return None;
@@ -1084,16 +1082,11 @@ impl Connection {
     ) -> Option<WorkerFuture> {
         // It's important that we get the connection before the table since
         // we remove the table from the state and could drop it otherwise
-        let Some(conn) = self
+        let conn = self
             .pool
             .try_get_fdw(&self.logger, ENV_VARS.store.batch_worker_wait)
-            .await
-        else {
-            return None;
-        };
-        let Some(table) = state.unfinished.pop() else {
-            return None;
-        };
+            .await?;
+        let table = state.unfinished.pop()?;
         let conn = LockTrackingConnection::new(conn);
 
         let worker = CopyTableWorker::new(conn, table);
