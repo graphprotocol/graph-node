@@ -415,14 +415,7 @@ fn postponed_indexes_with_block_column() {
 
     let dst_nsp = Namespace::new("sgd2".to_string()).unwrap();
     let arr = index_list()
-        .indexes_for_table(
-            &dst_nsp,
-            &table.name.to_string(),
-            table,
-            true,
-            false,
-            false,
-        )
+        .indexes_for_table(&dst_nsp, &table.name.to_string(), table, true, false, false)
         .unwrap();
     assert_eq!(1, arr.len());
     assert!(!arr[0].1.contains(BLOCK_IDX));

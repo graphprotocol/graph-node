@@ -432,18 +432,16 @@ mod tests {
         let query = request.expect("Should accept valid queries");
 
         let expected_query = q::parse_query("{ user { name } }").unwrap().into_static();
-        let expected_variables = QueryVariables::new(HashMap::from_iter(
-            vec![
-                (String::from("string"), r::Value::String(String::from("s"))),
-                (
-                    String::from("map"),
-                    r::Value::Object(Object::from_iter(
-                        vec![(Word::from("k"), r::Value::String(String::from("v")))].into_iter(),
-                    )),
-                ),
-                (String::from("int"), r::Value::Int(5)),
-            ],
-        ));
+        let expected_variables = QueryVariables::new(HashMap::from_iter(vec![
+            (String::from("string"), r::Value::String(String::from("s"))),
+            (
+                String::from("map"),
+                r::Value::Object(Object::from_iter(
+                    vec![(Word::from("k"), r::Value::String(String::from("v")))].into_iter(),
+                )),
+            ),
+            (String::from("int"), r::Value::Int(5)),
+        ]));
 
         assert_eq!(query.document, expected_query);
         assert_eq!(query.variables, Some(expected_variables));

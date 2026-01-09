@@ -80,14 +80,16 @@ lazy_static! {
     static ref TEST_SUBGRAPH_SCHEMA: InputSchema =
         InputSchema::parse_latest(USER_GQL, TEST_SUBGRAPH_ID.clone())
             .expect("Failed to parse user schema");
-    static ref BLOCKS: Vec<BlockPtr> = ["bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
+    static ref BLOCKS: Vec<BlockPtr> = [
+        "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f",
         "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13",
         "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1",
         "7347afe69254df06729e123610b00b8b11f15cfae3241f9366fb113aec07489c",
         "f8ccbd3877eb98c958614f395dd351211afb9abba187bfc1fb4ac414b099c4a6",
         "7b0ea919e258eb2b119eb32de56b85d12d50ac6a9f7c5909f843d6172c8ba196",
         "6b834521bb753c132fdcf0e1034803ed9068e324112f8750ba93580b393a986b",
-        "7cce080f5a49c2997a6cc65fc1cee9910fd8fc3721b7010c0b5d0873e2ac785e"]
+        "7cce080f5a49c2997a6cc65fc1cee9910fd8fc3721b7010c0b5d0873e2ac785e"
+    ]
     .iter()
     .enumerate()
     .map(|(idx, hash)| BlockPtr::try_from((*hash, idx as i64)).unwrap())

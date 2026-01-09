@@ -22,7 +22,7 @@ mod test {
         let namespace = Namespace::new("sgd0815".to_string()).unwrap();
         let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
         let catalog = Catalog::for_tests(site.clone(), BTreeSet::new()).unwrap();
-        
+
         Layout::new(site, &schema, catalog).unwrap()
     }
 }

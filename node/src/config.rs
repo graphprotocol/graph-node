@@ -1344,11 +1344,7 @@ mod tests {
 
         assert!(actual.is_err());
         let err_str = actual.unwrap_err().to_string();
-        assert!(
-            err_str.contains("missing field `features`"),
-            "{}",
-            err_str
-        );
+        assert!(err_str.contains("missing field `features`"), "{}", err_str);
     }
 
     #[test]
@@ -1538,11 +1534,9 @@ mod tests {
         assert!(actual.is_err(), "{:?}", actual);
 
         if let Err(error) = actual {
-            assert!(
-                error
-                    .to_string()
-                    .starts_with("supported firehose endpoint filters are:")
-            )
+            assert!(error
+                .to_string()
+                .starts_with("supported firehose endpoint filters are:"))
         }
     }
 
@@ -1643,11 +1637,7 @@ mod tests {
         let err = actual.validate();
         assert!(err.is_err());
         let err = err.unwrap_err();
-        assert!(
-            err.to_string().contains("unique"),
-            "result: {:?}",
-            err
-        );
+        assert!(err.to_string().contains("unique"), "result: {:?}", err);
     }
 
     #[test]

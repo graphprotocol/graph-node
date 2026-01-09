@@ -972,12 +972,8 @@ mod test {
 
     #[test]
     fn available_capacity_ordering() {
-        assert!(
-            AvailableCapacity::Unavailable < AvailableCapacity::Low
-        );
-        assert!(
-            AvailableCapacity::Unavailable < AvailableCapacity::High
-        );
+        assert!(AvailableCapacity::Unavailable < AvailableCapacity::Low);
+        assert!(AvailableCapacity::Unavailable < AvailableCapacity::High);
         assert!(AvailableCapacity::Low < AvailableCapacity::High);
     }
 }
