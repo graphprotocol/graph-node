@@ -3,8 +3,7 @@ use crate::{
     prelude::{lazy_static, q, r, s, CacheWeight, QueryExecutionError},
     runtime::gas::{Gas, GasSizeOf},
     schema::{input::VID_FIELD, EntityKey},
-    util::intern::{self, AtomPool},
-    util::intern::{Error as InternError, NullValue, Object},
+    util::intern::{self, AtomPool, Error as InternError, NullValue, Object},
 };
 use anyhow::{anyhow, Error};
 use itertools::Itertools;
@@ -712,7 +711,117 @@ pub trait TryIntoEntityIterator<E>: IntoIterator<Item = Result<(Word, Value), E>
 impl<E, T: IntoIterator<Item = Result<(Word, Value), E>>> TryIntoEntityIterator<E> for T {}
 
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
-pub enum EntityValidationError {
+pub struct EntityValidationError(Box<EntityValidationErrorInner>);
+
+impl fmt::Display for EntityValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl EntityValidationError {
+    pub fn unknown_entity_type(key: &EntityKey) -> Self {
+        let entity = key.entity_type.to_string();
+        let id = key.entity_id.to_string();
+
+        EntityValidationError(Box::new(EntityValidationErrorInner::UnknownEntityType {
+            entity,
+            id,
+        }))
+    }
+
+    pub fn mismatched_element_type_in_list(
+        key: &EntityKey,
+        field: &crate::schema::Field,
+        value: &Value,
+        elt: &Value,
+        index: usize,
+    ) -> Self {
+        let entity = key.entity_type.to_string();
+        let entity_id = key.entity_id.to_string();
+        let expected_type = field.field_type.to_string();
+        let field = field.name.to_string();
+        let value = value.to_string();
+        let actual_type = elt.type_name();
+        EntityValidationError(Box::new(
+            EntityValidationErrorInner::MismatchedElementTypeInList {
+                entity,
+                entity_id,
+                field,
+                expected_type,
+                value,
+                actual_type,
+                index,
+            },
+        ))
+    }
+
+    pub fn invalid_field_type(
+        key: &EntityKey,
+        field: &crate::schema::Field,
+        value: &Value,
+    ) -> Self {
+        let entity = key.entity_type.to_string();
+        let entity_id = key.entity_id.to_string();
+        let expected_type = field.field_type.to_string();
+        let field = field.name.to_string();
+        let actual_type = value.type_name();
+        let value = value.to_string();
+
+        EntityValidationError(Box::new(EntityValidationErrorInner::InvalidFieldType {
+            entity,
+            entity_id,
+            value,
+            field,
+            expected_type,
+            actual_type,
+        }))
+    }
+
+    fn missing_value_for_non_nullable_field(key: &EntityKey, field: &crate::schema::Field) -> Self {
+        let entity = key.entity_type.to_string();
+        let entity_id = key.entity_id.to_string();
+        let field = field.name.to_string();
+        EntityValidationError(Box::new(
+            EntityValidationErrorInner::MissingValueForNonNullableField {
+                entity,
+                entity_id,
+                field,
+            },
+        ))
+    }
+
+    fn cannot_set_derived_field(key: &EntityKey, field: &crate::schema::Field) -> Self {
+        EntityValidationError(Box::new(
+            EntityValidationErrorInner::CannotSetDerivedField {
+                entity: key.entity_type.to_string(),
+                entity_id: key.entity_id.to_string(),
+                field: field.name.to_string(),
+            },
+        ))
+    }
+
+    fn unknown_key(not_interned: String) -> Self {
+        EntityValidationError(Box::new(EntityValidationErrorInner::UnknownKey(
+            not_interned,
+        )))
+    }
+
+    fn missing_id_attribute(entity: String) -> EntityValidationError {
+        EntityValidationError(Box::new(EntityValidationErrorInner::MissingIDAttribute {
+            entity,
+        }))
+    }
+
+    fn unsupported_type_for_id_attribute() -> EntityValidationError {
+        EntityValidationError(Box::new(
+            EntityValidationErrorInner::UnsupportedTypeForIDAttribute,
+        ))
+    }
+}
+
+#[derive(Debug, Error, PartialEq, Eq, Clone)]
+pub enum EntityValidationErrorInner {
     #[error("Entity {entity}[{id}]: unknown entity type `{entity}`")]
     UnknownEntityType { entity: String, id: String },
 
@@ -801,7 +910,7 @@ impl Entity {
         let mut obj = Object::new(pool);
         for (key, value) in iter {
             obj.insert(key, value)
-                .map_err(|e| EntityValidationError::UnknownKey(e.not_interned()))?;
+                .map_err(|e| EntityValidationError::unknown_key(e.not_interned()))?;
         }
         let entity = Entity(obj);
         entity.check_id()?;
@@ -858,11 +967,12 @@ impl Entity {
 
     fn check_id(&self) -> Result<(), EntityValidationError> {
         match self.get("id") {
-            None => Err(EntityValidationError::MissingIDAttribute {
-                entity: format!("{:?}", self.0),
-            }),
+            None => Err(EntityValidationError::missing_id_attribute(format!(
+                "{:?}",
+                self.0
+            ))),
             Some(Value::String(_)) | Some(Value::Bytes(_)) | Some(Value::Int8(_)) => Ok(()),
-            _ => Err(EntityValidationError::UnsupportedTypeForIDAttribute),
+            _ => Err(EntityValidationError::unsupported_type_for_id_attribute()),
         }
     }
 
@@ -943,12 +1053,10 @@ impl Entity {
             return Ok(());
         }
 
-        let object_type = key.entity_type.object_type().map_err(|_| {
-            EntityValidationError::UnknownEntityType {
-                entity: key.entity_type.to_string(),
-                id: key.entity_id.to_string(),
-            }
-        })?;
+        let object_type = key
+            .entity_type
+            .object_type()
+            .map_err(|_| EntityValidationError::unknown_entity_type(key))?;
 
         for field in object_type.fields.iter() {
             match (self.get(&field.name), field.is_derived()) {
@@ -962,46 +1070,27 @@ impl Entity {
                             for (index, elt) in elts.iter().enumerate() {
                                 if !elt.is_assignable(scalar_type, false) {
                                     return Err(
-                                        EntityValidationError::MismatchedElementTypeInList {
-                                            entity: key.entity_type.to_string(),
-                                            entity_id: key.entity_id.to_string(),
-                                            field: field.name.to_string(),
-                                            expected_type: field.field_type.to_string(),
-                                            value: value.to_string(),
-                                            actual_type: elt.type_name().to_string(),
-                                            index,
-                                        },
+                                        EntityValidationError::mismatched_element_type_in_list(
+                                            key, field, value, elt, index,
+                                        ),
                                     );
                                 }
                             }
                         }
                     }
                     if !value.is_assignable(scalar_type, field.field_type.is_list()) {
-                        return Err(EntityValidationError::InvalidFieldType {
-                            entity: key.entity_type.to_string(),
-                            entity_id: key.entity_id.to_string(),
-                            value: value.to_string(),
-                            field: field.name.to_string(),
-                            expected_type: field.field_type.to_string(),
-                            actual_type: value.type_name().to_string(),
-                        });
+                        return Err(EntityValidationError::invalid_field_type(key, field, value));
                     }
                 }
                 (None, false) => {
                     if field.field_type.is_non_null() {
-                        return Err(EntityValidationError::MissingValueForNonNullableField {
-                            entity: key.entity_type.to_string(),
-                            entity_id: key.entity_id.to_string(),
-                            field: field.name.to_string(),
-                        });
+                        return Err(EntityValidationError::missing_value_for_non_nullable_field(
+                            key, field,
+                        ));
                     }
                 }
                 (Some(_), true) => {
-                    return Err(EntityValidationError::CannotSetDerivedField {
-                        entity: key.entity_type.to_string(),
-                        entity_id: key.entity_id.to_string(),
-                        field: field.name.to_string(),
-                    });
+                    return Err(EntityValidationError::cannot_set_derived_field(key, field));
                 }
                 (None, true) => {
                     // derived fields should not be set
