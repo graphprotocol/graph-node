@@ -892,10 +892,9 @@ pub enum EntityValidationErrorInner {
 macro_rules! entity {
     ($schema:expr => $($name:ident: $value:expr,)*) => {
         {
-            let mut result = Vec::new();
-            $(
-                result.push(($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)));
-            )*
+            let result = vec![$(
+                ($crate::data::value::Word::from(stringify!($name)), $crate::data::store::Value::from($value)),
+            )*];
             $schema.make_entity(result).unwrap()
         }
     };
