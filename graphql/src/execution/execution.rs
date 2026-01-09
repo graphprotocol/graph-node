@@ -629,7 +629,6 @@ async fn resolve_field_value(
         s::Type::ListType(inner_type) => {
             resolve_field_value_for_list_type(
                 ctx,
-                object_type,
                 field_value,
                 field,
                 field_definition,
@@ -692,7 +691,6 @@ async fn resolve_field_value_for_named_type(
 #[async_recursion]
 async fn resolve_field_value_for_list_type(
     ctx: &ExecutionContext<impl Resolver>,
-    object_type: &s::ObjectType,
     field_value: Option<r::Value>,
     field: &a::Field,
     field_definition: &s::Field,
@@ -700,15 +698,8 @@ async fn resolve_field_value_for_list_type(
 ) -> Result<r::Value, Vec<QueryExecutionError>> {
     match inner_type {
         s::Type::NonNullType(inner_type) => {
-            resolve_field_value_for_list_type(
-                ctx,
-                object_type,
-                field_value,
-                field,
-                field_definition,
-                inner_type,
-            )
-            .await
+            resolve_field_value_for_list_type(ctx, field_value, field, field_definition, inner_type)
+                .await
         }
 
         s::Type::NamedType(ref type_name) => {
