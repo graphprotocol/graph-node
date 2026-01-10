@@ -1153,14 +1153,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             }
             ChainClient::Rpc(adapters) => {
                 match self
-                    .fetch_light_block_with_rpc(adapters, &block_ptr)
+                    .fetch_full_block_with_rpc(adapters, &block_ptr)
                     .await?
                 {
-                    Some(light_block) => {
-                        let ethereum_block = EthereumBlock {
-                            block: light_block,
-                            transaction_receipts: vec![],
-                        };
+                    Some(ethereum_block) => {
                         Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
                             ethereum_block,
                             calls: None,
@@ -1261,6 +1257,29 @@ impl TriggersAdapter {
             .await?;
 
         Ok(blocks.into_iter().next())
+    }
+
+    async fn fetch_full_block_with_rpc(
+        &self,
+        adapters: &EthereumNetworkAdapters,
+        block_ptr: &BlockPtr,
+    ) -> Result<Option<EthereumBlock>, Error> {
+        let adapter = adapters.cheapest_with(&self.capabilities).await?;
+
+        let block = adapter
+            .block_by_hash(&self.logger, block_ptr.hash.as_b256())
+            .await?;
+
+        match block {
+            Some(block) => {
+                let ethereum_block = adapter
+                    .load_full_block(&self.logger, block)
+                    .await
+                    .map_err(|e| anyhow!("Failed to load full block: {}", e))?;
+                Ok(Some(ethereum_block))
+            }
+            None => Ok(None),
+        }
     }
 }
 
