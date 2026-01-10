@@ -143,7 +143,7 @@ impl GraphNodeConfig {
         Self {
             bin,
             ports: GraphNodePorts::default(),
-            ipfs_uri: "http://localhost:3001".to_string(),
+            ipfs_uri: "http://localhost:5001".to_string(),
             log_file: TestFile::new("integration-tests/graph-node.log"),
         }
     }
@@ -157,7 +157,7 @@ impl Default for GraphNodeConfig {
         Self {
             bin,
             ports: GraphNodePorts::default(),
-            ipfs_uri: "http://localhost:3001".to_string(),
+            ipfs_uri: "http://localhost:5001".to_string(),
             log_file: TestFile::new("integration-tests/graph-node.log"),
         }
     }
@@ -219,7 +219,9 @@ impl Config {
             .stderr(stderr)
             .args(args.clone())
             .env("GRAPH_STORE_WRITE_BATCH_DURATION", "5")
-            .env("ETHEREUM_REORG_THRESHOLD", "0");
+            .env("ETHEREUM_REORG_THRESHOLD", "0")
+            .env("GRAPH_LOG_STORE_BACKEND", "file")
+            .env("GRAPH_LOG_STORE_FILE_DIR", "/tmp/integration-test-logs");
 
         status!(
             "graph-node",
@@ -287,14 +289,14 @@ impl Default for Config {
         Config {
             db: DbConfig {
                 host: "localhost".to_string(),
-                port: 3011,
+                port: 5432,
                 user: "graph-node".to_string(),
                 password: "let-me-in".to_string(),
                 name: "graph-node".to_string(),
             },
             eth: EthConfig {
                 network: "test".to_string(),
-                port: 3021,
+                port: 8545,
                 host: "localhost".to_string(),
             },
             graph_node: GraphNodeConfig::from_env(),

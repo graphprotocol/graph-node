@@ -109,7 +109,7 @@ pub struct LogQuery {
     pub level: Option<LogLevel>,
     pub from: Option<String>,
     pub to: Option<String>,
-    pub text: Option<String>,
+    pub search: Option<String>,
     pub first: u32,
     pub skip: u32,
 }

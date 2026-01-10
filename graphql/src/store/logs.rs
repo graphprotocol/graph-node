@@ -61,7 +61,7 @@ pub fn build_log_query(
     let mut level = None;
     let mut from = None;
     let mut to = None;
-    let mut text = None;
+    let mut search = None;
     let mut first = 100; // default
     let mut skip = 0; // default
 
@@ -103,16 +103,16 @@ pub fn build_log_query(
                     to = Some(to_str.clone());
                 }
             }
-            "text" => {
-                if let r::Value::String(text_str) = value {
-                    validate_text_input(text_str).map_err(|e| {
+            "search" => {
+                if let r::Value::String(search_str) = value {
+                    validate_text_input(search_str).map_err(|e| {
                         QueryExecutionError::InvalidArgumentError(
                             field.position.clone(),
-                            "text".to_string(),
-                            q::Value::String(format!("Invalid text: {}", e)),
+                            "search".to_string(),
+                            q::Value::String(format!("Invalid search text: {}", e)),
                         )
                     })?;
-                    text = Some(text_str.clone());
+                    search = Some(search_str.clone());
                 }
             }
             "first" => {
@@ -168,7 +168,7 @@ pub fn build_log_query(
         level,
         from,
         to,
-        text,
+        search,
         first,
         skip,
     })

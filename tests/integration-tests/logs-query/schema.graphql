@@ -1,0 +1,4 @@
+type Trigger @entity {
+  id: ID!
+  x: Int!
+}

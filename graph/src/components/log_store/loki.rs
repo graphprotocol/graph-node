@@ -40,8 +40,8 @@ impl LokiLogStore {
         let selector = format!("{{{}}}", selectors.join(","));
 
         // Add line filter for text search if specified
-        let query_str = if let Some(text) = &query.text {
-            format!("{} |~ \"(?i){}\"", selector, regex::escape(text))
+        let query_str = if let Some(search) = &query.search {
+            format!("{} |~ \"(?i){}\"", selector, regex::escape(search))
         } else {
             selector
         };
@@ -183,6 +183,8 @@ struct LokiResponse {
 
 #[derive(Debug, Deserialize)]
 struct LokiData {
+    // Part of Loki API response, required for deserialization
+    #[allow(dead_code)]
     #[serde(rename = "resultType")]
     result_type: String,
     result: Vec<LokiStream>,
@@ -196,8 +198,10 @@ struct LokiStream {
 
 #[derive(Debug, Deserialize)]
 struct LokiValue(
-    String, // timestamp (nanoseconds since epoch as string)
-    String, // log line
+    // Timestamp in nanoseconds since epoch (part of Loki API, not currently used)
+    #[allow(dead_code)] String,
+    // Log line (JSON document)
+    String,
 );
 
 #[derive(Debug, Deserialize)]
@@ -231,7 +235,7 @@ mod tests {
             level: None,
             from: None,
             to: None,
-            text: None,
+            search: None,
             first: 100,
             skip: 0,
         };
@@ -248,7 +252,7 @@ mod tests {
             level: Some(LogLevel::Error),
             from: None,
             to: None,
-            text: None,
+            search: None,
             first: 100,
             skip: 0,
         };
@@ -265,7 +269,7 @@ mod tests {
             level: None,
             from: None,
             to: None,
-            text: Some("transaction failed".to_string()),
+            search: Some("transaction failed".to_string()),
             first: 100,
             skip: 0,
         };

@@ -10,7 +10,11 @@ use super::{LogEntry, LogLevel, LogMeta, LogQuery, LogStore, LogStoreError};
 
 pub struct FileLogStore {
     directory: PathBuf,
+    // TODO: Implement log rotation when file exceeds max_file_size
+    #[allow(dead_code)]
     max_file_size: u64,
+    // TODO: Implement automatic cleanup of logs older than retention_days
+    #[allow(dead_code)]
     retention_days: u32,
 }
 
@@ -81,8 +85,8 @@ impl FileLogStore {
         }
 
         // Text search (case-insensitive)
-        if let Some(ref text) = query.text {
-            if !entry.text.to_lowercase().contains(&text.to_lowercase()) {
+        if let Some(ref search) = query.search {
+            if !entry.text.to_lowercase().contains(&search.to_lowercase()) {
                 return false;
             }
         }
@@ -204,7 +208,7 @@ mod tests {
             level: None,
             from: None,
             to: None,
-            text: None,
+            search: None,
             first: 100,
             skip: 0,
         };
@@ -245,7 +249,7 @@ mod tests {
             level: None,
             from: None,
             to: None,
-            text: None,
+            search: None,
             first: 100,
             skip: 0,
         };
@@ -293,7 +297,7 @@ mod tests {
             level: Some(LogLevel::Error),
             from: None,
             to: None,
-            text: None,
+            search: None,
             first: 100,
             skip: 0,
         };

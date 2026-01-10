@@ -65,10 +65,10 @@ impl ElasticsearchLogStore {
         }
 
         // Filter by text search
-        if let Some(text) = &query.text {
+        if let Some(search) = &query.search {
             must_clauses.push(json!({
                 "match": {
-                    "text": text
+                    "text": search
                 }
             }));
         }

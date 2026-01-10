@@ -1332,7 +1332,7 @@ fn logs_field() -> s::Field {
                     default_value: None,
                     directives: vec![],
                 },
-                // text: String (full-text search)
+                // search: String (full-text search)
                 s::InputValue {
                     position: Pos::default(),
                     description: Some(
@@ -1340,7 +1340,7 @@ fn logs_field() -> s::Field {
                         Case-insensitive substring match. Maximum length: 1000 characters."
                         .to_string()
                     ),
-                    name: String::from("text"),
+                    name: String::from("search"),
                     value_type: s::Type::NamedType(String::from("String")),
                     default_value: None,
                     directives: vec![],

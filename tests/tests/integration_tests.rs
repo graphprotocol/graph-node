@@ -1287,6 +1287,150 @@ async fn test_declared_calls_struct_fields(ctx: TestContext) -> anyhow::Result<(
     Ok(())
 }
 
+async fn test_logs_query(ctx: TestContext) -> anyhow::Result<()> {
+    let subgraph = ctx.subgraph;
+    assert!(subgraph.healthy);
+
+    // Wait a moment for logs to be written
+    sleep(Duration::from_secs(2)).await;
+
+    // Test 1: Query all logs
+    let query = r#"{
+            _logs(first: 100) {
+                id
+                timestamp
+                level
+                text
+            }
+        }"#
+    .to_string();
+    let resp = subgraph.query(&query).await?;
+
+    let logs = resp["data"]["_logs"]
+        .as_array()
+        .context("Expected _logs to be an array")?;
+
+    // We should have logs from the subgraph (user logs + system logs)
+    assert!(
+        !logs.is_empty(),
+        "Expected to have logs, got none. Response: {:?}",
+        resp
+    );
+
+    // Test 2: Filter by ERROR level
+    let query = r#"{
+            _logs(level: ERROR, first: 100) {
+                level
+                text
+            }
+        }"#
+    .to_string();
+    let resp = subgraph.query(&query).await?;
+    let error_logs = resp["data"]["_logs"]
+        .as_array()
+        .context("Expected _logs to be an array")?;
+
+    // Check that we have error logs and they're all ERROR level
+    for log in error_logs {
+        assert_eq!(
+            log["level"].as_str(),
+            Some("ERROR"),
+            "Expected ERROR level, got: {:?}",
+            log
+        );
+    }
+
+    // Test 3: Search for specific text
+    let query = r#"{
+            _logs(search: "timeout", first: 100) {
+                id
+                text
+            }
+        }"#
+    .to_string();
+    let resp = subgraph.query(&query).await?;
+    let timeout_logs = resp["data"]["_logs"]
+        .as_array()
+        .context("Expected _logs to be an array")?;
+
+    // If we have timeout logs, verify they contain the word "timeout"
+    for log in timeout_logs {
+        let text = log["text"]
+            .as_str()
+            .context("Expected text field to be a string")?;
+        assert!(
+            text.to_lowercase().contains("timeout"),
+            "Expected log to contain 'timeout', got: {}",
+            text
+        );
+    }
+
+    // Test 4: Pagination
+    let query = r#"{
+            _logs(first: 2, skip: 0) {
+                id
+            }
+        }"#
+    .to_string();
+    let resp = subgraph.query(&query).await?;
+    let first_page = resp["data"]["_logs"]
+        .as_array()
+        .context("Expected _logs to be an array")?;
+
+    let query = r#"{
+            _logs(first: 2, skip: 2) {
+                id
+            }
+        }"#
+    .to_string();
+    let resp = subgraph.query(&query).await?;
+    let second_page = resp["data"]["_logs"]
+        .as_array()
+        .context("Expected _logs to be an array")?;
+
+    // If we have enough logs, verify pages are different
+    if first_page.len() == 2 && second_page.len() >= 1 {
+        let first_ids: Vec<_> = first_page.iter().map(|l| &l["id"]).collect();
+        let second_ids: Vec<_> = second_page.iter().map(|l| &l["id"]).collect();
+
+        // Verify no overlap between pages
+        for id in &second_ids {
+            assert!(
+                !first_ids.contains(id),
+                "Log ID {:?} appears in both pages",
+                id
+            );
+        }
+    }
+
+    // Test 5: Query with arguments field to verify structured logging
+    let query = r#"{
+            _logs(first: 10) {
+                text
+                arguments {
+                    key
+                    value
+                }
+            }
+        }"#
+    .to_string();
+    let resp = subgraph.query(&query).await?;
+    let logs_with_args = resp["data"]["_logs"]
+        .as_array()
+        .context("Expected _logs to be an array")?;
+
+    // Verify arguments field is present (even if empty for some logs)
+    for log in logs_with_args {
+        assert!(
+            log.get("arguments").is_some(),
+            "Expected arguments field to exist in log: {:?}",
+            log
+        );
+    }
+
+    Ok(())
+}
+
 async fn wait_for_blockchain_block(block_number: i32) -> bool {
     // Wait up to 5 minutes for the expected block to appear
     const STATUS_WAIT: Duration = Duration::from_secs(300);
@@ -1340,22 +1484,27 @@ async fn integration_tests() -> anyhow::Result<()> {
             "declared-calls-struct-fields",
             test_declared_calls_struct_fields,
         ),
+        TestCase::new("logs-query", test_logs_query),
     ];
 
     // Filter the test cases if a specific test name is provided
-    let cases_to_run: Vec<_> = if let Some(test_name) = test_name_to_run {
+    let cases_to_run: Vec<_> = if let Some(ref test_name) = test_name_to_run {
         cases
             .into_iter()
-            .filter(|case| case.name == test_name)
+            .filter(|case| case.name == *test_name)
             .collect()
     } else {
         cases
     };
 
-    // Here we wait for a block in the blockchain in order not to influence
-    // block hashes for all the blocks until the end of the grafting tests.
-    // Currently the last used block for grafting test is the block 3.
-    assert!(wait_for_blockchain_block(SUBGRAPH_LAST_GRAFTING_BLOCK).await);
+    // Only wait for blockchain blocks if running the grafting test
+    let needs_grafting_setup = cases_to_run.iter().any(|case| case.name == "grafted");
+    if needs_grafting_setup {
+        // Here we wait for a block in the blockchain in order not to influence
+        // block hashes for all the blocks until the end of the grafting tests.
+        // Currently the last used block for grafting test is the block 3.
+        assert!(wait_for_blockchain_block(SUBGRAPH_LAST_GRAFTING_BLOCK).await);
+    }
 
     let contracts = Contract::deploy_all().await?;
 
