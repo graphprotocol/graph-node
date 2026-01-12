@@ -16,16 +16,18 @@ pub struct ElasticsearchLogStore {
     password: Option<String>,
     client: Client,
     index: String,
+    timeout: Duration,
 }
 
 impl ElasticsearchLogStore {
-    pub fn new(config: ElasticLoggingConfig, index: String) -> Self {
+    pub fn new(config: ElasticLoggingConfig, index: String, timeout: Duration) -> Self {
         Self {
             endpoint: config.endpoint,
             username: config.username,
             password: config.password,
             client: config.client,
             index,
+            timeout,
         }
     }
 
@@ -97,7 +99,7 @@ impl ElasticsearchLogStore {
             .client
             .post(&url)
             .json(&query_body)
-            .timeout(Duration::from_secs(10));
+            .timeout(self.timeout);
 
         // Add basic auth if credentials provided
         if let (Some(username), Some(password)) = (&self.username, &self.password) {
@@ -112,12 +114,17 @@ impl ElasticsearchLogStore {
 
         if !response.status().is_success() {
             let status = response.status();
-            // Do not include the response body in the error to avoid leaking
-            // sensitive Elasticsearch internals
-            return Err(LogStoreError::QueryFailed(anyhow::anyhow!(
-                "Elasticsearch query failed with status {}",
-                status
-            )));
+            // Include response body in error context for debugging
+            // The body is part of the error chain but not the main error message to avoid
+            // leaking sensitive Elasticsearch internals in logs
+            let body_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<failed to read response body>".to_string());
+            return Err(LogStoreError::QueryFailed(
+                anyhow::anyhow!("Elasticsearch query failed with status {}", status)
+                    .context(format!("Response body: {}", body_text)),
+            ));
         }
 
         let response_body: ElasticsearchResponse = response.json().await.map_err(|e| {

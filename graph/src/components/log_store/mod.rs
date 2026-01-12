@@ -37,6 +37,7 @@ pub enum LogStoreConfig {
         username: Option<String>,
         password: Option<String>,
         index: String,
+        timeout_secs: u64,
     },
 
     /// Loki (Grafana's log aggregation system)
@@ -134,9 +135,11 @@ impl LogStoreFactory {
                 username,
                 password,
                 index,
+                timeout_secs,
             } => {
+                let timeout = std::time::Duration::from_secs(timeout_secs);
                 let client = reqwest::Client::builder()
-                    .timeout(std::time::Duration::from_secs(10))
+                    .timeout(timeout)
                     .build()
                     .map_err(|e| LogStoreError::InitializationFailed(e.into()))?;
 
@@ -148,7 +151,7 @@ impl LogStoreFactory {
                 };
 
                 Ok(Arc::new(elasticsearch::ElasticsearchLogStore::new(
-                    config, index,
+                    config, index, timeout,
                 )))
             }
 
@@ -219,11 +222,21 @@ impl LogStoreFactory {
                     "subgraph",
                 );
 
+                // Default: 10 seconds query timeout
+                // Configurable via GRAPH_LOG_STORE_ELASTICSEARCH_TIMEOUT environment variable
+                let timeout_secs = config::read_u64_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_ELASTICSEARCH_TIMEOUT",
+                    "GRAPH_ELASTICSEARCH_TIMEOUT",
+                    10,
+                );
+
                 Ok(LogStoreConfig::Elasticsearch {
                     endpoint,
                     username,
                     password,
                     index,
+                    timeout_secs,
                 })
             }
 
@@ -264,13 +277,17 @@ impl LogStoreFactory {
                 })
                 .map(PathBuf::from)?;
 
+                // Default: 100MB per file (104857600 bytes)
+                // Configurable via GRAPH_LOG_STORE_FILE_MAX_SIZE environment variable
                 let max_file_size = config::read_u64_with_fallback(
                     &logger,
                     "GRAPH_LOG_STORE_FILE_MAX_SIZE",
                     "GRAPH_LOG_FILE_MAX_SIZE",
-                    100 * 1024 * 1024, // 100MB default
+                    100 * 1024 * 1024,
                 );
 
+                // Default: 30 days retention
+                // Configurable via GRAPH_LOG_STORE_FILE_RETENTION_DAYS environment variable
                 let retention_days = config::read_u32_with_fallback(
                     &logger,
                     "GRAPH_LOG_STORE_FILE_RETENTION_DAYS",

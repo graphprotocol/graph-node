@@ -122,6 +122,7 @@ impl LoggerFactory {
                 username,
                 password,
                 index,
+                ..
             }) => {
                 // Build ElasticLoggingConfig on-demand
                 let elastic_config = ElasticLoggingConfig {

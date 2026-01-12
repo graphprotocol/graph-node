@@ -567,7 +567,6 @@ query {
 ```graphql
 query {
   _logs(
-    subgraphId: "QmYourSubgraphDeploymentHash"
     level: ERROR
     from: "2024-01-01T00:00:00Z"
     to: "2024-01-31T23:59:59Z"

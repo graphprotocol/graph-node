@@ -431,6 +431,12 @@ pub async fn run(
                         .or_else(|| std::env::var("GRAPH_ELASTIC_SEARCH_INDEX").ok())
                         .unwrap_or_else(|| "subgraph".to_string());
 
+                    let timeout_secs = std::env::var("GRAPH_LOG_STORE_ELASTICSEARCH_TIMEOUT")
+                        .or_else(|_| std::env::var("GRAPH_ELASTICSEARCH_TIMEOUT"))
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(10);
+
                     graph::components::log_store::LogStoreConfig::Elasticsearch {
                         endpoint,
                         username: opt
@@ -442,6 +448,7 @@ pub async fn run(
                             .clone()
                             .or_else(|| opt.elasticsearch_password.clone()),
                         index,
+                        timeout_secs,
                     }
                 })
             }
@@ -483,12 +490,19 @@ pub async fn run(
             .or_else(|| std::env::var("GRAPH_ELASTIC_SEARCH_INDEX").ok())
             .unwrap_or_else(|| "subgraph".to_string());
 
+        let timeout_secs = std::env::var("GRAPH_LOG_STORE_ELASTICSEARCH_TIMEOUT")
+            .or_else(|_| std::env::var("GRAPH_ELASTICSEARCH_TIMEOUT"))
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(10);
+
         Some(
             graph::components::log_store::LogStoreConfig::Elasticsearch {
                 endpoint: opt.elasticsearch_url.clone().unwrap(),
                 username: opt.elasticsearch_user.clone(),
                 password: opt.elasticsearch_password.clone(),
                 index,
+                timeout_secs,
             },
         )
     } else {

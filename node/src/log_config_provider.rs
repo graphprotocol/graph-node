@@ -147,6 +147,7 @@ mod tests {
             username: Some("user".to_string()),
             password: Some("pass".to_string()),
             index: "test-index".to_string(),
+            timeout_secs: 10,
         };
 
         let provider = LogStoreConfigProvider::new(LogStoreConfigSources {
@@ -161,6 +162,7 @@ mod tests {
             username,
             password,
             index,
+            ..
         }) = config
         {
             assert_eq!(endpoint, "http://localhost:9200");
@@ -182,6 +184,7 @@ mod tests {
             username: None,
             password: None,
             index: "test-index".to_string(),
+            timeout_secs: 10,
         };
 
         let provider = LogStoreConfigProvider::new(LogStoreConfigSources {
