@@ -67,7 +67,7 @@ graphman-store = { path = "./core/graphman_store" }
 itertools = "0.14.0"
 lazy_static = "1.5.0"
 prost = "0.13"
-prost-types = "0.13"
+prost-types = "0.14"
 redis = { version = "0.31.0", features = [
     "aio",
     "connection-manager",
