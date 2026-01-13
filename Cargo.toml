@@ -69,8 +69,8 @@ graphman-store = { path = "./core/graphman_store" }
 graphql-tools = "0.5.0"
 itertools = "0.14.0"
 lazy_static = "1.5.0"
-prost = "0.13"
-prost-types = "0.13"
+prost = "0.14"
+prost-types = "0.14"
 redis = { version = "1.0.2", features = [
     "aio",
     "connection-manager",
@@ -94,8 +94,9 @@ tokio = { version = "1.49.0", features = ["full"] }
 tokio-stream = { version = "0.1.18", features = ["sync"] }
 tokio-retry = "0.3.0"
 
-tonic = { version = "0.12.3", features = ["tls-roots", "gzip"] }
-tonic-build = { version = "0.12.3", features = ["prost"] }
+tonic = { version = "0.14", features = ["tls-native-roots", "gzip"] }
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
 tower-http = { version = "0.6.8", features = ["cors"] }
 tower = { version = "0.5.1", features = ["full"] }
 wasmparser = "0.118.1"
@@ -105,8 +106,8 @@ prometheus = "0.14.0"
 
 # Dependencies related to Amp subgraphs
 ahash = "0.8.11"
-arrow = { version = "=55.0.0" }
-arrow-flight = { version = "=55.0.0", features = ["flight-sql-experimental"] }
+arrow = { version = "=57.0.0" }
+arrow-flight = { version = "=57.0.0", features = ["flight-sql-experimental"] }
 futures = "0.3.31"
 half = "2.7.1"
 indoc = "2.0.7"

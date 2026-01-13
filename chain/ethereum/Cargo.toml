@@ -29,7 +29,7 @@ graph-runtime-derive = { path = "../../runtime/derive" }
 base64 = "0"
 
 [build-dependencies]
-tonic-build = { workspace = true }
+tonic-prost-build = { workspace = true }
 
 [lints]
 workspace = true

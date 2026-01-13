@@ -73,6 +73,7 @@ url = "2.5.8"
 prometheus = "0.14.0"
 priority-queue = "2.7.0"
 tonic = { workspace = true }
+tonic-prost = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 
@@ -105,7 +106,7 @@ hex-literal = "1.1"
 wiremock = "0.6.5"
 
 [build-dependencies]
-tonic-build = { workspace = true }
+tonic-prost-build = { workspace = true }
 
 [lints]
 workspace = true

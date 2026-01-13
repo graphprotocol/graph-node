@@ -44,6 +44,16 @@ const LOW_VALUE_THRESHOLD: usize = 10;
 const LOW_VALUE_USED_PERCENTAGE: usize = 50;
 const HIGH_VALUE_USED_PERCENTAGE: usize = 80;
 
+pub trait BlockChainBlockMessage:
+    prost::Message + BlockchainBlock + Default + std::fmt::Debug + 'static
+{
+}
+
+impl<T> BlockChainBlockMessage for T where
+    T: prost::Message + BlockchainBlock + Default + std::fmt::Debug + 'static
+{
+}
+
 #[derive(Debug)]
 pub struct FirehoseEndpoint {
     pub provider: ProviderName,
@@ -411,7 +421,7 @@ impl FirehoseEndpoint {
         logger: &Logger,
     ) -> Result<M, anyhow::Error>
     where
-        M: prost::Message + BlockchainBlock + Default + 'static,
+        M: BlockChainBlockMessage,
     {
         let retry_log_message = format!("get_block_by_ptr for block {}", ptr);
         let endpoint = self.cheap_clone();
@@ -473,7 +483,7 @@ impl FirehoseEndpoint {
         logger: &Logger,
     ) -> Result<M, anyhow::Error>
     where
-        M: prost::Message + BlockchainBlock + Default + 'static,
+        M: BlockChainBlockMessage,
     {
         let retry_log_message = format!("get_block_by_number for block {}", number);
         let endpoint = self.cheap_clone();
@@ -511,7 +521,7 @@ impl FirehoseEndpoint {
         logger: &Logger,
     ) -> Result<Vec<M>, anyhow::Error>
     where
-        M: prost::Message + BlockchainBlock + Default + 'static,
+        M: BlockChainBlockMessage,
     {
         let logger = logger.clone();
         let logger_for_error = logger.clone();
