@@ -1,5 +1,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
@@ -95,6 +97,32 @@ impl FileLogStore {
     }
 }
 
+/// Helper struct to enable timestamp-based comparisons for BinaryHeap
+/// Implements Ord based on timestamp field for maintaining a min-heap of recent entries
+struct TimestampedEntry {
+    entry: LogEntry,
+}
+
+impl PartialEq for TimestampedEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.entry.timestamp == other.entry.timestamp
+    }
+}
+
+impl Eq for TimestampedEntry {}
+
+impl PartialOrd for TimestampedEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TimestampedEntry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.entry.timestamp.cmp(&other.entry.timestamp)
+    }
+}
+
 #[async_trait]
 impl LogStore for FileLogStore {
     async fn query_logs(&self, query: LogQuery) -> Result<Vec<LogEntry>, LogStoreError> {
@@ -105,45 +133,67 @@ impl LogStore for FileLogStore {
         }
 
         let file = File::open(&file_path).map_err(|e| LogStoreError::QueryFailed(e.into()))?;
-
         let reader = BufReader::new(file);
-        let mut entries = Vec::new();
-        let mut skipped = 0;
 
-        // Read all lines and collect matching entries
-        // Note: For large files, this loads everything into memory
-        // A production implementation would use reverse iteration or indexing
-        let all_entries: Vec<LogEntry> = reader
-            .lines()
-            .filter_map(|line| line.ok())
-            .filter_map(|line| self.parse_line(&line))
-            .collect();
+        // Calculate how many entries we need to keep in memory
+        // We need skip + first entries to handle pagination
+        let needed_entries = (query.skip + query.first) as usize;
 
-        // Sort by timestamp descending (most recent first)
-        let mut sorted_entries = all_entries;
-        sorted_entries.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        // Use a min-heap (via Reverse) to maintain only the top N most recent entries
+        // This bounds memory usage to O(skip + first) instead of O(total_log_entries)
+        let mut top_entries: BinaryHeap<Reverse<TimestampedEntry>> =
+            BinaryHeap::with_capacity(needed_entries + 1);
 
-        // Apply filters and pagination
-        for entry in sorted_entries {
+        // Stream through the file line-by-line, applying filters and maintaining bounded collection
+        for line in reader.lines() {
+            // Skip malformed lines
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => continue,
+            };
+
+            // Parse the line into a LogEntry
+            let entry = match self.parse_line(&line) {
+                Some(e) => e,
+                None => continue,
+            };
+
+            // Apply filters early to avoid keeping filtered-out entries in memory
             if !self.matches_filters(&entry, &query) {
                 continue;
             }
 
-            // Skip the first N entries
-            if skipped < query.skip {
-                skipped += 1;
-                continue;
-            }
+            let timestamped = TimestampedEntry { entry };
 
-            entries.push(entry);
-
-            // Stop once we have enough entries
-            if entries.len() >= query.first as usize {
-                break;
+            // Maintain only the top N most recent entries by timestamp
+            // BinaryHeap with Reverse creates a min-heap, so we can efficiently
+            // keep the N largest (most recent) timestamps
+            if top_entries.len() < needed_entries {
+                top_entries.push(Reverse(timestamped));
+            } else if let Some(Reverse(oldest)) = top_entries.peek() {
+                // If this entry is more recent than the oldest in our heap, replace it
+                if timestamped.entry.timestamp > oldest.entry.timestamp {
+                    top_entries.pop();
+                    top_entries.push(Reverse(timestamped));
+                }
             }
         }
 
-        Ok(entries)
+        // Convert heap to sorted vector (most recent first)
+        let mut result: Vec<LogEntry> = top_entries
+            .into_iter()
+            .map(|Reverse(te)| te.entry)
+            .collect();
+
+        // Sort by timestamp descending (most recent first)
+        result.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+        // Apply skip and take to get the final page
+        Ok(result
+            .into_iter()
+            .skip(query.skip as usize)
+            .take(query.first as usize)
+            .collect())
     }
 
     fn is_available(&self) -> bool {
