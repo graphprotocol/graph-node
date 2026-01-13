@@ -754,7 +754,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "strum 0.27.2",
+ "strum",
  "syn 2.0.114",
  "thiserror 2.0.17",
 ]
@@ -2894,7 +2894,7 @@ dependencies = [
  "sqlparser 0.60.0",
  "stable-hash 0.3.4",
  "stable-hash 0.4.4",
- "strum_macros 0.27.2",
+ "strum_macros",
  "thiserror 2.0.17",
  "tiny-keccak 1.5.0",
  "tokio",
@@ -2983,7 +2983,7 @@ dependencies = [
  "prometheus",
  "serde_yaml",
  "slog",
- "strum 0.26.3",
+ "strum",
  "thiserror 2.0.17",
  "tokio",
  "tokio-retry",
@@ -3250,7 +3250,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "diesel",
- "strum 0.26.3",
+ "strum",
 ]
 
 [[package]]
@@ -5319,7 +5319,7 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.5.0",
+ "heck 0.4.1",
  "itertools",
  "log",
  "multimap",
@@ -6616,33 +6616,11 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
 name = "strum"
-version = "0.26.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
-dependencies = [
- "strum_macros 0.26.4",
-]
-
-[[package]]
-name = "strum"
 version = "0.27.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
 dependencies = [
- "strum_macros 0.27.2",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.26.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
-dependencies = [
- "heck 0.5.0",
- "proc-macro2",
- "quote",
- "rustversion",
- "syn 2.0.114",
+ "strum_macros",
 ]
 
 [[package]]

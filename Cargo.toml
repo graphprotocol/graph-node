@@ -82,7 +82,7 @@ serde_regex = "1.1.0"
 serde_yaml = "0.9.21"
 slog = { version = "2.8.2", features = ["release_max_level_trace", "max_level_trace"] }
 sqlparser = { version = "0.60.0", features = ["visitor"] }
-strum = { version = "0.26", features = ["derive"] }
+strum = { version = "0.27", features = ["derive"] }
 syn = { version = "2.0.114", features = ["full"] }
 test-store = { path = "./store/test-store" }
 thiserror = "2.0.17"
