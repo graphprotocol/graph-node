@@ -33,8 +33,8 @@ impl RedisClient {
         let env = &ENV_VARS.mappings;
         let client = redis::Client::open(path)?;
         let cfg = ConnectionManagerConfig::default()
-            .set_connection_timeout(env.ipfs_timeout)
-            .set_response_timeout(env.ipfs_timeout);
+            .set_connection_timeout(Some(env.ipfs_timeout))
+            .set_response_timeout(Some(env.ipfs_timeout));
         info!(logger, "Connecting to Redis for IPFS caching"; "url" => path);
         // Try to connect once synchronously to check if the server is reachable.
         let _ = client.get_connection()?;
