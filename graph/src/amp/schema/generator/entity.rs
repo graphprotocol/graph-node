@@ -161,8 +161,9 @@ fn arrow_data_type_to_value_type(
         Struct(_) => return type_not_supported(),
         Union(_, _) => return type_not_supported(),
         Dictionary(_, _) => return type_not_supported(),
-        Decimal128(_, _) => ValueType::BigDecimal,
-        Decimal256(_, _) => ValueType::BigDecimal,
+        Decimal32(_, _) | Decimal64(_, _) | Decimal128(_, _) | Decimal256(_, _) => {
+            ValueType::BigDecimal
+        }
         Map(_, _) => return type_not_supported(),
         RunEndEncoded(_, _) => return type_not_supported(),
     };

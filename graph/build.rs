@@ -1,6 +1,6 @@
 fn main() {
     println!("cargo:rerun-if-changed=proto");
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .out_dir("src/firehose")
         .compile_protos(
             &[
