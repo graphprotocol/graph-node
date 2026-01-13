@@ -27,7 +27,7 @@ serde = { workspace = true }
 notify = "8.2.0"
 globset = "0.4.18"
 pq-sys = { version = "0.7.5", features = ["bundled"] }
-openssl-sys = { version = "0.9.100", features = ["vendored"] }
+openssl-sys = { version = "0.9.111", features = ["vendored"] }
 
 [target.'cfg(unix)'.dependencies]
 pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
