@@ -18,12 +18,11 @@ use crate::{
 pub type AnyTransaction = AnyRpcTransaction;
 pub type AnyBlock = AnyRpcBlock;
 
-// BlockWrapper wraps AnyBlock
 #[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
-pub struct BlockWrapper(AnyBlock);
+pub struct LightEthereumBlock(AnyBlock);
 
-impl Default for BlockWrapper {
+impl Default for LightEthereumBlock {
     fn default() -> Self {
         use alloy::rpc::types::{Block, BlockTransactions};
         use alloy::serde::WithOtherFields;
@@ -38,7 +37,7 @@ impl Default for BlockWrapper {
     }
 }
 
-impl BlockWrapper {
+impl LightEthereumBlock {
     pub fn new(block: AnyBlock) -> Self {
         Self(block)
     }
@@ -68,8 +67,6 @@ impl BlockWrapper {
     }
 }
 
-pub type LightEthereumBlock = BlockWrapper;
-
 pub trait LightEthereumBlockExt {
     fn number(&self) -> BlockNumber;
     fn transaction_for_log(&self, log: &Log) -> Option<AnyTransaction>;
@@ -82,7 +79,7 @@ pub trait LightEthereumBlockExt {
 
 impl LightEthereumBlockExt for AnyBlock {
     fn number(&self) -> BlockNumber {
-        self.header.number as BlockNumber
+        BlockNumber::try_from(self.header.number).unwrap()
     }
 
     fn timestamp(&self) -> BlockTime {
@@ -124,7 +121,7 @@ impl LightEthereumBlockExt for AnyBlock {
     }
 
     fn block_ptr(&self) -> BlockPtr {
-        BlockPtr::new(self.header.hash.into(), self.header.number as i32)
+        BlockPtr::from((self.header.hash, self.header.number))
     }
 }
 

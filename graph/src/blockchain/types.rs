@@ -11,7 +11,7 @@ use std::convert::TryFrom;
 use std::time::Duration;
 use std::{fmt, str::FromStr};
 
-use crate::components::ethereum::BlockWrapper;
+use crate::components::ethereum::LightEthereumBlock;
 
 use crate::cheap_clone::CheapClone;
 use crate::components::store::BlockNumber;
@@ -200,14 +200,14 @@ impl slog::Value for BlockPtr {
     }
 }
 
-impl From<BlockWrapper> for BlockPtr {
-    fn from(b: BlockWrapper) -> BlockPtr {
+impl From<LightEthereumBlock> for BlockPtr {
+    fn from(b: LightEthereumBlock) -> BlockPtr {
         BlockPtr::from((b.hash(), b.number_u64()))
     }
 }
 
-impl From<&BlockWrapper> for BlockPtr {
-    fn from(b: &BlockWrapper) -> BlockPtr {
+impl From<&LightEthereumBlock> for BlockPtr {
+    fn from(b: &LightEthereumBlock) -> BlockPtr {
         BlockPtr::from((b.hash(), b.number_u64()))
     }
 }
