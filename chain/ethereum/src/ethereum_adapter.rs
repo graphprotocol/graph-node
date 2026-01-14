@@ -1627,7 +1627,19 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|value| json::from_value(value).ok())
+            .filter_map(|value| {
+                json::from_value(value.clone())
+                    .map_err(|e| {
+                        warn!(
+                            &logger,
+                            "Failed to deserialize cached block: {}. \
+                         This may indicate stale cache data from a previous version. \
+                         Block will be re-fetched from RPC.",
+                            e
+                        );
+                    })
+                    .ok()
+            })
             .map(|b| Arc::new(LightEthereumBlock::new(b)))
             .collect();
 
