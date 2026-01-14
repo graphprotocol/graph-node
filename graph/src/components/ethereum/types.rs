@@ -246,8 +246,15 @@ impl EthereumCall {
             gas_used: gas_used,
             input: call.input.clone(),
             output: output,
-            block_number: trace.block_number? as BlockNumber,
-            block_hash: trace.block_hash?,
+            block_number: BlockNumber::try_from(
+                trace
+                    .block_number
+                    .expect("localized trace must have block_number"),
+            )
+            .unwrap(),
+            block_hash: trace
+                .block_hash
+                .expect("localized trace must have block_hash"),
             transaction_hash: trace.transaction_hash,
             transaction_index,
         })
