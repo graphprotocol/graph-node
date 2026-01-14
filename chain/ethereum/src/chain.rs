@@ -1152,10 +1152,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 Ok(Some(BlockFinality::NonFinal(ethereum_block)))
             }
             ChainClient::Rpc(adapters) => {
-                match self
-                    .fetch_full_block_with_rpc(adapters, &block_ptr)
-                    .await?
-                {
+                match self.fetch_full_block_with_rpc(adapters, &block_ptr).await? {
                     Some(ethereum_block) => {
                         Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
                             ethereum_block,

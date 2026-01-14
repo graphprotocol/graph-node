@@ -202,13 +202,13 @@ impl slog::Value for BlockPtr {
 
 impl From<BlockWrapper> for BlockPtr {
     fn from(b: BlockWrapper) -> BlockPtr {
-        BlockPtr::from((b.hash(), b.number_u64() as i32))
+        BlockPtr::from((b.hash(), b.number_u64()))
     }
 }
 
 impl From<&BlockWrapper> for BlockPtr {
     fn from(b: &BlockWrapper) -> BlockPtr {
-        BlockPtr::from((b.hash(), b.number_u64() as i32))
+        BlockPtr::from((b.hash(), b.number_u64()))
     }
 }
 
