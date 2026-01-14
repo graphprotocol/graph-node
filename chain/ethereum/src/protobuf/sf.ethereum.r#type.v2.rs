@@ -31,7 +31,7 @@ pub struct Block {
 ///
 /// WARN: this is a client-side optimization pattern and should be moved in the
 /// consuming code.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct HeaderOnlyBlock {
     #[prost(message, optional, tag = "5")]
     pub header: ::core::option::Option<BlockHeader>,
@@ -50,7 +50,7 @@ pub struct BlockWithRefs {
     #[prost(bool, tag = "4")]
     pub irreversible: bool,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct TransactionRefs {
     #[prost(bytes = "vec", repeated, tag = "1")]
     pub hashes: ::prost::alloc::vec::Vec<::prost::alloc::vec::Vec<u8>>,
@@ -60,19 +60,18 @@ pub struct UnclesHeaders {
     #[prost(message, repeated, tag = "1")]
     pub uncles: ::prost::alloc::vec::Vec<BlockHeader>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct BlockRef {
     #[prost(bytes = "vec", tag = "1")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
     #[prost(uint64, tag = "2")]
     pub number: u64,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct BlockHeader {
     #[prost(bytes = "vec", tag = "1")]
     pub parent_hash: ::prost::alloc::vec::Vec<u8>,
-    /// Uncle hash of the block, some reference it as `sha3Uncles`, but `sha3`` is badly worded, so we prefer `uncle_hash`, also
-    /// referred as `ommers` in EIP specification.
+    /// Uncle hash of the block, some reference it as `sha3Uncles`, but ```sha3`` is badly worded, so we prefer ```uncle_hash`, also  referred as `ommers\` in EIP specification.
     ///
     /// If the Block containing this `BlockHeader` has been produced using the Proof of Stake
     /// consensus algorithm, this field will actually be constant and set to `0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347`.
@@ -115,7 +114,7 @@ pub struct BlockHeader {
     /// forks are using bigger values to carry special consensus data.
     ///
     /// If the Block containing this `BlockHeader` has been produced using the Proof of Stake
-    /// consensus algorithm, this field is strictly enforced to be <= 32 bytes.
+    /// consensus algorithm, this field is strictly enforced to be \<= 32 bytes.
     #[prost(bytes = "vec", tag = "13")]
     pub extra_data: ::prost::alloc::vec::Vec<u8>,
     /// MixHash is used to prove, when combined with the `nonce` that sufficient amount of computation has been
@@ -131,32 +130,31 @@ pub struct BlockHeader {
     pub nonce: u64,
     /// Hash is the hash of the block which is actually the computation:
     ///
-    ///   Keccak256(rlp([
-    ///     parent_hash,
-    ///     uncle_hash,
-    ///     coinbase,
-    ///     state_root,
-    ///     transactions_root,
-    ///     receipt_root,
-    ///     logs_bloom,
-    ///     difficulty,
-    ///     number,
-    ///     gas_limit,
-    ///     gas_used,
-    ///     timestamp,
-    ///     extra_data,
-    ///     mix_hash,
-    ///     nonce,
-    ///     base_fee_per_gas
-    ///   ]))
-    ///
+    /// Keccak256(rlp(\[
+    /// parent_hash,
+    /// uncle_hash,
+    /// coinbase,
+    /// state_root,
+    /// transactions_root,
+    /// receipt_root,
+    /// logs_bloom,
+    /// difficulty,
+    /// number,
+    /// gas_limit,
+    /// gas_used,
+    /// timestamp,
+    /// extra_data,
+    /// mix_hash,
+    /// nonce,
+    /// base_fee_per_gas
+    /// \]))
     #[prost(bytes = "vec", tag = "16")]
     pub hash: ::prost::alloc::vec::Vec<u8>,
     /// Base fee per gas according to EIP-1559 (e.g. London Fork) rules, only set if London is present/active on the chain.
     #[prost(message, optional, tag = "18")]
     pub base_fee_per_gas: ::core::option::Option<BigInt>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct BigInt {
     #[prost(bytes = "vec", tag = "1")]
     pub bytes: ::prost::alloc::vec::Vec<u8>,
@@ -299,7 +297,7 @@ pub mod transaction_trace {
 }
 /// AccessTuple represents a list of storage keys for a given contract's address and is used
 /// for AccessList construction.
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct AccessTuple {
     #[prost(bytes = "vec", tag = "1")]
     pub address: ::prost::alloc::vec::Vec<u8>,
@@ -318,14 +316,14 @@ pub struct TransactionTraceWithBlockRef {
 pub struct TransactionReceipt {
     /// State root is an intermediate state_root hash, computed in-between transactions to make
     /// **sure** you could build a proof and point to state in the middle of a block. Geth client
-    /// uses `PostState + root + PostStateOrStatus`` while Parity used `status_code, root...`` this piles
+    /// uses ```PostState + root + PostStateOrStatus`` while Parity used ```status_code, root...\`` this piles
     /// hardforks, see (read the EIPs first):
-    /// - <https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L147>
-    /// - <https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L50-L86>
-    /// - <https://github.com/ethereum/EIPs/blob/master/EIPS/eip-658.md>
     ///
-    /// Moreover, the notion of `Outcome`` in parity, which segregates the two concepts, which are
-    /// stored in the same field `status_code`` can be computed based on such a hack of the `state_root`
+    /// * <https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L147>
+    /// * <https://github.com/eoscanada/go-ethereum-private/blob/deep-mind/core/types/receipt.go#L50-L86>
+    /// * <https://github.com/ethereum/EIPs/blob/master/EIPS/eip-658.md>
+    ///
+    /// Moreover, the notion of ```Outcome`` in parity, which segregates the two concepts, which are  stored in the same field ```status_code\`` can be computed based on such a hack of the `state_root`
     /// field, following `EIP-658`.
     ///
     /// Before Byzantinium hard fork, this field is always empty.
@@ -338,7 +336,7 @@ pub struct TransactionReceipt {
     #[prost(message, repeated, tag = "4")]
     pub logs: ::prost::alloc::vec::Vec<Log>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct Log {
     #[prost(bytes = "vec", tag = "1")]
     pub address: ::prost::alloc::vec::Vec<u8>,
@@ -357,8 +355,9 @@ pub struct Log {
     /// that emitted the log has been reverted by the chain.
     ///
     /// Currently, there are two locations where a Log can be obtained:
-    /// - block.transaction_traces\[\].receipt.logs\[\]
-    /// - block.transaction_traces\[\].calls\[\].logs\[\]
+    ///
+    /// * block.transaction_traces\[\].receipt.logs\[\]
+    /// * block.transaction_traces\[\].calls\[\].logs\[\]
     ///
     /// In the `receipt` case, the logs will be populated only when the call
     /// that emitted them has not been reverted by the chain and when in this
@@ -418,9 +417,10 @@ pub struct Call {
     #[prost(message, repeated, tag = "28")]
     pub gas_changes: ::prost::alloc::vec::Vec<GasChange>,
     /// In Ethereum, a call can be either:
-    /// - Successful, execution passes without any problem encountered
-    /// - Failed, execution failed, and remaining gas should be consumed
-    /// - Reverted, execution failed, but only gas consumed so far is billed, remaining gas is refunded
+    ///
+    /// * Successful, execution passes without any problem encountered
+    /// * Failed, execution failed, and remaining gas should be consumed
+    /// * Reverted, execution failed, but only gas consumed so far is billed, remaining gas is refunded
     ///
     /// When a call is either `failed` or `reverted`, the `status_failed` field
     /// below is set to `true`. If the status is `reverted`, then both `status_failed`
@@ -443,13 +443,13 @@ pub struct Call {
     /// has a status of `SUCCESS`, the chain might have reverted all the state
     /// changes it performed.
     ///
-    /// ```text
-    ///    Trx 1
-    ///     Call #1 <Failed>
-    ///       Call #2 <Execution Success>
-    ///       Call #3 <Execution Success>
-    ///       |--- Failure here
-    ///     Call #4
+    /// ```text,text
+    ///   Trx 1
+    ///    Call #1 <Failed>
+    ///      Call #2 <Execution Success>
+    ///      Call #3 <Execution Success>
+    ///      |--- Failure here
+    ///    Call #4
     /// ```
     ///
     /// In the transaction above, while Call #2 and Call #3 would have the
@@ -463,7 +463,7 @@ pub struct Call {
     #[prost(message, repeated, tag = "33")]
     pub account_creations: ::prost::alloc::vec::Vec<AccountCreation>,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct StorageChange {
     #[prost(bytes = "vec", tag = "1")]
     pub address: ::prost::alloc::vec::Vec<u8>,
@@ -476,7 +476,7 @@ pub struct StorageChange {
     #[prost(uint64, tag = "5")]
     pub ordinal: u64,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct BalanceChange {
     #[prost(bytes = "vec", tag = "1")]
     pub address: ::prost::alloc::vec::Vec<u8>,
@@ -493,7 +493,7 @@ pub struct BalanceChange {
 pub mod balance_change {
     /// Obtain all balance change reasons under deep mind repository:
     ///
-    /// ```shell
+    /// ```text,shell
     /// ack -ho 'BalanceChangeReason\(".*"\)' | grep -Eo '".*"' | sort | uniq
     /// ```
     #[derive(
@@ -576,7 +576,7 @@ pub mod balance_change {
         }
     }
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct NonceChange {
     #[prost(bytes = "vec", tag = "1")]
     pub address: ::prost::alloc::vec::Vec<u8>,
@@ -587,14 +587,14 @@ pub struct NonceChange {
     #[prost(uint64, tag = "4")]
     pub ordinal: u64,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct AccountCreation {
     #[prost(bytes = "vec", tag = "1")]
     pub account: ::prost::alloc::vec::Vec<u8>,
     #[prost(uint64, tag = "2")]
     pub ordinal: u64,
 }
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct CodeChange {
     #[prost(bytes = "vec", tag = "1")]
     pub address: ::prost::alloc::vec::Vec<u8>,
@@ -615,7 +615,7 @@ pub struct CodeChange {
 ///
 /// Hence, we only index some of them, those that are costly like all the calls
 /// one, log events, return data, etc.
-#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GasChange {
     #[prost(uint64, tag = "1")]
     pub old_value: u64,
@@ -630,7 +630,7 @@ pub struct GasChange {
 pub mod gas_change {
     /// Obtain all gas change reasons under deep mind repository:
     ///
-    /// ```shell
+    /// ```text,shell
     /// ack -ho 'GasChangeReason\(".*"\)' | grep -Eo '".*"' | sort | uniq
     /// ```
     #[derive(
