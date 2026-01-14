@@ -160,8 +160,7 @@ pub struct EnvVarsStore {
     /// Set by the environment variable `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`
     /// Defines the maximum share of unique entities (e.g. 0.01 for a 1:100 entity-to-version ratio).
     pub account_like_max_unique_ratio: Option<f64>,
-    /// Disables the store call cache entirely. Graph node will skip writing and reading from the
-    /// call cache. The buffered block call cache will still be enabled.
+    /// Disables storing or reading `eth_call` results from the store call cache.
     /// Set by `GRAPH_STORE_DISABLE_CALL_CACHE`. Defaults to false.
     pub disable_call_cache: bool,
 }
