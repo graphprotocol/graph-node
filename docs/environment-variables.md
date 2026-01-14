@@ -290,11 +290,15 @@ those.
 - `GRAPH_STORE_ACCOUNT_LIKE_SCAN_INTERVAL_HOURS`: If set, enables an experimental job that
   periodically scans for entity tables that may benefit from an [account-like optimization](https://thegraph.com/docs/en/indexing/tooling/graph-node/#account-like-optimisation) and marks them with an
   account-like flag. The value is the interval in hours at which the job
-  should run. The job reads data from the `info.table_stats` materialized view, which refreshes every six hours. Expects an integer value, e.g., 24. Requires also setting
+  should run. The job reads data from the `info.table_stats` materialized view, which refreshes every six hours.
+  Expects an integer value, e.g., 24. Requires also setting
   `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT` and `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`.
-- `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT`: Sets the minimum total number of versions a table must have to be considered for account-like flagging. Expects a positive integer value. No default value.
-- `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`: Sets the maximum unique entities to version ratio (e.g., 0.01 ≈ 1:100 entity-to-version ratio).
-- `GRAPH_STORE_DISABLE_CALL_CACHE`: Disables the store call cache entirely. Graph node will skip writing and reading from the
-  call cache. The buffered block call cache will still be enabled. This option may be useful
-  for indexers who are running their own RPC nodes. Disabling the store call cache may have
-  significant performance impact. (default: false)
+- `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT`: Sets the minimum total number of versions a table must have
+  to be considered for account-like flagging. Expects a positive integer value. No default value.
+- `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`: Sets the maximum unique entities to version ratio
+  (e.g., 0.01 ≈ 1:100 entity-to-version ratio).
+- `GRAPH_STORE_DISABLE_CALL_CACHE`: Disables storing or reading `eth_call` results from the store call cache.
+  This option may be useful for indexers who are running their own RPC nodes.
+  Disabling the store call cache may significantly impact performance; the actual impact depends on
+  the average execution time of an `eth_call` compared to the cost of a database lookup for a cached result.
+  (default: false)
