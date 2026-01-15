@@ -1,0 +1,333 @@
+pub mod config;
+pub mod elasticsearch;
+pub mod file;
+pub mod loki;
+
+use async_trait::async_trait;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::Arc;
+use thiserror::Error;
+
+use crate::prelude::DeploymentHash;
+
+#[derive(Error, Debug)]
+pub enum LogStoreError {
+    #[error("log store query failed: {0}")]
+    QueryFailed(#[from] anyhow::Error),
+
+    #[error("log store is unavailable")]
+    Unavailable,
+
+    #[error("log store initialization failed: {0}")]
+    InitializationFailed(anyhow::Error),
+
+    #[error("log store configuration error: {0}")]
+    ConfigurationError(anyhow::Error),
+}
+
+/// Configuration for different log store backends
+#[derive(Debug, Clone)]
+pub enum LogStoreConfig {
+    /// No logging - returns empty results
+    Disabled,
+
+    /// Elasticsearch backend
+    Elasticsearch {
+        endpoint: String,
+        username: Option<String>,
+        password: Option<String>,
+        index: String,
+        timeout_secs: u64,
+    },
+
+    /// Loki (Grafana's log aggregation system)
+    Loki {
+        endpoint: String,
+        tenant_id: Option<String>,
+    },
+
+    /// File-based logs (JSON lines format)
+    File {
+        directory: PathBuf,
+        max_file_size: u64,
+        retention_days: u32,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogLevel {
+    Critical,
+    Error,
+    Warning,
+    Info,
+    Debug,
+}
+
+impl LogLevel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LogLevel::Critical => "critical",
+            LogLevel::Error => "error",
+            LogLevel::Warning => "warning",
+            LogLevel::Info => "info",
+            LogLevel::Debug => "debug",
+        }
+    }
+}
+
+impl FromStr for LogLevel {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "critical" => Ok(LogLevel::Critical),
+            "error" => Ok(LogLevel::Error),
+            "warning" => Ok(LogLevel::Warning),
+            "info" => Ok(LogLevel::Info),
+            "debug" => Ok(LogLevel::Debug),
+            _ => Err(format!("Invalid log level: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LogMeta {
+    pub module: String,
+    pub line: i64,
+    pub column: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct LogEntry {
+    pub id: String,
+    pub subgraph_id: DeploymentHash,
+    pub timestamp: String,
+    pub level: LogLevel,
+    pub text: String,
+    pub arguments: Vec<(String, String)>,
+    pub meta: LogMeta,
+}
+
+#[derive(Debug, Clone)]
+pub struct LogQuery {
+    pub subgraph_id: DeploymentHash,
+    pub level: Option<LogLevel>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub search: Option<String>,
+    pub first: u32,
+    pub skip: u32,
+}
+
+#[async_trait]
+pub trait LogStore: Send + Sync + 'static {
+    async fn query_logs(&self, query: LogQuery) -> Result<Vec<LogEntry>, LogStoreError>;
+    fn is_available(&self) -> bool;
+}
+
+/// Factory for creating LogStore instances from configuration
+pub struct LogStoreFactory;
+
+impl LogStoreFactory {
+    /// Create a LogStore from configuration
+    pub fn from_config(config: LogStoreConfig) -> Result<Arc<dyn LogStore>, LogStoreError> {
+        match config {
+            LogStoreConfig::Disabled => Ok(Arc::new(NoOpLogStore)),
+
+            LogStoreConfig::Elasticsearch {
+                endpoint,
+                username,
+                password,
+                index,
+                timeout_secs,
+            } => {
+                let timeout = std::time::Duration::from_secs(timeout_secs);
+                let client = reqwest::Client::builder()
+                    .timeout(timeout)
+                    .build()
+                    .map_err(|e| LogStoreError::InitializationFailed(e.into()))?;
+
+                let config = crate::log::elastic::ElasticLoggingConfig {
+                    endpoint,
+                    username,
+                    password,
+                    client,
+                };
+
+                Ok(Arc::new(elasticsearch::ElasticsearchLogStore::new(
+                    config, index, timeout,
+                )))
+            }
+
+            LogStoreConfig::Loki {
+                endpoint,
+                tenant_id,
+            } => Ok(Arc::new(loki::LokiLogStore::new(endpoint, tenant_id)?)),
+
+            LogStoreConfig::File {
+                directory,
+                max_file_size,
+                retention_days,
+            } => Ok(Arc::new(file::FileLogStore::new(
+                directory,
+                max_file_size,
+                retention_days,
+            )?)),
+        }
+    }
+
+    /// Parse configuration from environment variables
+    ///
+    /// Supports both new (GRAPH_LOG_STORE_*) and old (deprecated) environment variable names
+    /// for backward compatibility. The new keys take precedence when both are set.
+    pub fn from_env() -> Result<LogStoreConfig, LogStoreError> {
+        // Logger for deprecation warnings
+        let logger = crate::log::logger(false);
+
+        // Read backend selector with backward compatibility
+        let backend = config::read_env_with_default(
+            &logger,
+            "GRAPH_LOG_STORE_BACKEND",
+            "GRAPH_LOG_STORE",
+            "disabled",
+        );
+
+        match backend.to_lowercase().as_str() {
+            "disabled" | "none" => Ok(LogStoreConfig::Disabled),
+
+            "elasticsearch" | "elastic" | "es" => {
+                let endpoint = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_ELASTICSEARCH_URL",
+                    "GRAPH_ELASTICSEARCH_URL",
+                )
+                .ok_or_else(|| {
+                    LogStoreError::ConfigurationError(anyhow::anyhow!(
+                        "Elasticsearch endpoint not set. Use GRAPH_LOG_STORE_ELASTICSEARCH_URL environment variable"
+                    ))
+                })?;
+
+                let username = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_ELASTICSEARCH_USER",
+                    "GRAPH_ELASTICSEARCH_USER",
+                );
+
+                let password = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_ELASTICSEARCH_PASSWORD",
+                    "GRAPH_ELASTICSEARCH_PASSWORD",
+                );
+
+                let index = config::read_env_with_default(
+                    &logger,
+                    "GRAPH_LOG_STORE_ELASTICSEARCH_INDEX",
+                    "GRAPH_ELASTIC_SEARCH_INDEX",
+                    "subgraph",
+                );
+
+                // Default: 10 seconds query timeout
+                // Configurable via GRAPH_LOG_STORE_ELASTICSEARCH_TIMEOUT environment variable
+                let timeout_secs = config::read_u64_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_ELASTICSEARCH_TIMEOUT",
+                    "GRAPH_ELASTICSEARCH_TIMEOUT",
+                    10,
+                );
+
+                Ok(LogStoreConfig::Elasticsearch {
+                    endpoint,
+                    username,
+                    password,
+                    index,
+                    timeout_secs,
+                })
+            }
+
+            "loki" => {
+                let endpoint = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_LOKI_URL",
+                    "GRAPH_LOG_LOKI_ENDPOINT",
+                )
+                .ok_or_else(|| {
+                    LogStoreError::ConfigurationError(anyhow::anyhow!(
+                        "Loki endpoint not set. Use GRAPH_LOG_STORE_LOKI_URL environment variable"
+                    ))
+                })?;
+
+                let tenant_id = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_LOKI_TENANT_ID",
+                    "GRAPH_LOG_LOKI_TENANT",
+                );
+
+                Ok(LogStoreConfig::Loki {
+                    endpoint,
+                    tenant_id,
+                })
+            }
+
+            "file" | "files" => {
+                let directory = config::read_env_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_FILE_DIR",
+                    "GRAPH_LOG_FILE_DIR",
+                )
+                .ok_or_else(|| {
+                    LogStoreError::ConfigurationError(anyhow::anyhow!(
+                        "File log directory not set. Use GRAPH_LOG_STORE_FILE_DIR environment variable"
+                    ))
+                })
+                .map(PathBuf::from)?;
+
+                // Default: 100MB per file (104857600 bytes)
+                // Configurable via GRAPH_LOG_STORE_FILE_MAX_SIZE environment variable
+                let max_file_size = config::read_u64_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_FILE_MAX_SIZE",
+                    "GRAPH_LOG_FILE_MAX_SIZE",
+                    100 * 1024 * 1024,
+                );
+
+                // Default: 30 days retention
+                // Configurable via GRAPH_LOG_STORE_FILE_RETENTION_DAYS environment variable
+                let retention_days = config::read_u32_with_fallback(
+                    &logger,
+                    "GRAPH_LOG_STORE_FILE_RETENTION_DAYS",
+                    "GRAPH_LOG_FILE_RETENTION_DAYS",
+                    30,
+                );
+
+                Ok(LogStoreConfig::File {
+                    directory,
+                    max_file_size,
+                    retention_days,
+                })
+            }
+
+            _ => Err(LogStoreError::ConfigurationError(anyhow::anyhow!(
+                "Unknown log store backend: {}. Valid options: disabled, elasticsearch, loki, file",
+                backend
+            ))),
+        }
+    }
+}
+
+/// A no-op LogStore that returns empty results.
+///
+/// Used when log storage is disabled (the default). Note that subgraph logs
+/// still appear in stdout/stderr - they're just not stored in a queryable format.
+pub struct NoOpLogStore;
+
+#[async_trait]
+impl LogStore for NoOpLogStore {
+    async fn query_logs(&self, _query: LogQuery) -> Result<Vec<LogEntry>, LogStoreError> {
+        Ok(vec![])
+    }
+
+    fn is_available(&self) -> bool {
+        false
+    }
+}
