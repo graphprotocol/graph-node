@@ -42,6 +42,9 @@ pub const INTROSPECTION_SCHEMA_FIELD_NAME: &str = "__schema";
 pub const META_FIELD_TYPE: &str = "_Meta_";
 pub const META_FIELD_NAME: &str = "_meta";
 
+pub const LOGS_FIELD_TYPE: &str = "_Log_";
+pub const LOGS_FIELD_NAME: &str = "_logs";
+
 pub const INTROSPECTION_TYPE_FIELD_NAME: &str = "__type";
 
 pub const BLOCK_FIELD_TYPE: &str = "_Block_";
