@@ -98,6 +98,9 @@ TEST_CASE=grafted just test-integration
 
 # (Optional) Use graph-cli instead of gnd for compatibility testing
 GRAPH_CLI=node_modules/.bin/graph just test-integration
+
+# Override ports if using different service ports (e.g., for local development)
+POSTGRES_TEST_PORT=5432 ETHEREUM_TEST_PORT=8545 IPFS_TEST_PORT=5001 just test-integration
 ```
 
 **⚠️ Test Verification Requirements:**
