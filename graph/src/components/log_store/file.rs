@@ -1,0 +1,363 @@
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::path::PathBuf;
+
+use crate::prelude::DeploymentHash;
+
+use super::{LogEntry, LogMeta, LogQuery, LogStore, LogStoreError};
+
+pub struct FileLogStore {
+    directory: PathBuf,
+    // TODO: Implement log rotation when file exceeds max_file_size
+    #[allow(dead_code)]
+    max_file_size: u64,
+    // TODO: Implement automatic cleanup of logs older than retention_days
+    #[allow(dead_code)]
+    retention_days: u32,
+}
+
+impl FileLogStore {
+    pub fn new(
+        directory: PathBuf,
+        max_file_size: u64,
+        retention_days: u32,
+    ) -> Result<Self, LogStoreError> {
+        // Create directory if it doesn't exist
+        std::fs::create_dir_all(&directory)
+            .map_err(|e| LogStoreError::InitializationFailed(e.into()))?;
+
+        Ok(Self {
+            directory,
+            max_file_size,
+            retention_days,
+        })
+    }
+
+    /// Get log file path for a subgraph
+    fn log_file_path(&self, subgraph_id: &DeploymentHash) -> PathBuf {
+        self.directory.join(format!("{}.jsonl", subgraph_id))
+    }
+
+    /// Parse a JSON line into a LogEntry
+    fn parse_line(&self, line: &str) -> Option<LogEntry> {
+        let doc: FileLogDocument = serde_json::from_str(line).ok()?;
+
+        let level = doc.level.parse().ok()?;
+        let subgraph_id = DeploymentHash::new(&doc.subgraph_id).ok()?;
+
+        Some(LogEntry {
+            id: doc.id,
+            subgraph_id,
+            timestamp: doc.timestamp,
+            level,
+            text: doc.text,
+            arguments: doc.arguments,
+            meta: LogMeta {
+                module: doc.meta.module,
+                line: doc.meta.line,
+                column: doc.meta.column,
+            },
+        })
+    }
+
+    /// Check if an entry matches the query filters
+    fn matches_filters(&self, entry: &LogEntry, query: &LogQuery) -> bool {
+        // Level filter
+        if let Some(level) = query.level {
+            if entry.level != level {
+                return false;
+            }
+        }
+
+        // Time range filters
+        if let Some(ref from) = query.from {
+            if entry.timestamp < *from {
+                return false;
+            }
+        }
+
+        if let Some(ref to) = query.to {
+            if entry.timestamp > *to {
+                return false;
+            }
+        }
+
+        // Text search (case-insensitive)
+        if let Some(ref search) = query.search {
+            if !entry.text.to_lowercase().contains(&search.to_lowercase()) {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+/// Helper struct to enable timestamp-based comparisons for BinaryHeap
+/// Implements Ord based on timestamp field for maintaining a min-heap of recent entries
+struct TimestampedEntry {
+    entry: LogEntry,
+}
+
+impl PartialEq for TimestampedEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.entry.timestamp == other.entry.timestamp
+    }
+}
+
+impl Eq for TimestampedEntry {}
+
+impl PartialOrd for TimestampedEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for TimestampedEntry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.entry.timestamp.cmp(&other.entry.timestamp)
+    }
+}
+
+#[async_trait]
+impl LogStore for FileLogStore {
+    async fn query_logs(&self, query: LogQuery) -> Result<Vec<LogEntry>, LogStoreError> {
+        let file_path = self.log_file_path(&query.subgraph_id);
+
+        if !file_path.exists() {
+            return Ok(vec![]);
+        }
+
+        let file = File::open(&file_path).map_err(|e| LogStoreError::QueryFailed(e.into()))?;
+        let reader = BufReader::new(file);
+
+        // Calculate how many entries we need to keep in memory
+        // We need skip + first entries to handle pagination
+        let needed_entries = (query.skip + query.first) as usize;
+
+        // Use a min-heap (via Reverse) to maintain only the top N most recent entries
+        // This bounds memory usage to O(skip + first) instead of O(total_log_entries)
+        let mut top_entries: BinaryHeap<Reverse<TimestampedEntry>> =
+            BinaryHeap::with_capacity(needed_entries + 1);
+
+        // Stream through the file line-by-line, applying filters and maintaining bounded collection
+        for line in reader.lines() {
+            // Skip malformed lines
+            let line = match line {
+                Ok(l) => l,
+                Err(_) => continue,
+            };
+
+            // Parse the line into a LogEntry
+            let entry = match self.parse_line(&line) {
+                Some(e) => e,
+                None => continue,
+            };
+
+            // Apply filters early to avoid keeping filtered-out entries in memory
+            if !self.matches_filters(&entry, &query) {
+                continue;
+            }
+
+            let timestamped = TimestampedEntry { entry };
+
+            // Maintain only the top N most recent entries by timestamp
+            // BinaryHeap with Reverse creates a min-heap, so we can efficiently
+            // keep the N largest (most recent) timestamps
+            if top_entries.len() < needed_entries {
+                top_entries.push(Reverse(timestamped));
+            } else if let Some(Reverse(oldest)) = top_entries.peek() {
+                // If this entry is more recent than the oldest in our heap, replace it
+                if timestamped.entry.timestamp > oldest.entry.timestamp {
+                    top_entries.pop();
+                    top_entries.push(Reverse(timestamped));
+                }
+            }
+        }
+
+        // Convert heap to sorted vector (most recent first)
+        let mut result: Vec<LogEntry> = top_entries
+            .into_iter()
+            .map(|Reverse(te)| te.entry)
+            .collect();
+
+        // Sort by timestamp descending (most recent first)
+        result.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+        // Apply skip and take to get the final page
+        Ok(result
+            .into_iter()
+            .skip(query.skip as usize)
+            .take(query.first as usize)
+            .collect())
+    }
+
+    fn is_available(&self) -> bool {
+        self.directory.exists() && self.directory.is_dir()
+    }
+}
+
+// File log document format (JSON Lines)
+#[derive(Debug, Serialize, Deserialize)]
+struct FileLogDocument {
+    id: String,
+    #[serde(rename = "subgraphId")]
+    subgraph_id: String,
+    timestamp: String,
+    level: String,
+    text: String,
+    arguments: Vec<(String, String)>,
+    meta: FileLogMeta,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FileLogMeta {
+    module: String,
+    line: i64,
+    column: i64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::LogLevel;
+    use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_file_log_store_initialization() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 1024 * 1024, 30);
+        assert!(store.is_ok());
+
+        let store = store.unwrap();
+        assert!(store.is_available());
+    }
+
+    #[test]
+    fn test_log_file_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 1024 * 1024, 30).unwrap();
+
+        let subgraph_id = DeploymentHash::new("QmTest").unwrap();
+        let path = store.log_file_path(&subgraph_id);
+
+        assert_eq!(path, temp_dir.path().join("QmTest.jsonl"));
+    }
+
+    #[tokio::test]
+    async fn test_query_nonexistent_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 1024 * 1024, 30).unwrap();
+
+        let query = LogQuery {
+            subgraph_id: DeploymentHash::new("QmNonexistent").unwrap(),
+            level: None,
+            from: None,
+            to: None,
+            search: None,
+            first: 100,
+            skip: 0,
+        };
+
+        let result = store.query_logs(query).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_sample_data() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 1024 * 1024, 30).unwrap();
+
+        let subgraph_id = DeploymentHash::new("QmTest").unwrap();
+        let file_path = store.log_file_path(&subgraph_id);
+
+        // Write some test data
+        let mut file = File::create(&file_path).unwrap();
+        let log_entry = FileLogDocument {
+            id: "log-1".to_string(),
+            subgraph_id: "QmTest".to_string(),
+            timestamp: "2024-01-15T10:30:00Z".to_string(),
+            level: "error".to_string(),
+            text: "Test error message".to_string(),
+            arguments: vec![],
+            meta: FileLogMeta {
+                module: "test.ts".to_string(),
+                line: 42,
+                column: 10,
+            },
+        };
+        writeln!(file, "{}", serde_json::to_string(&log_entry).unwrap()).unwrap();
+
+        // Query
+        let query = LogQuery {
+            subgraph_id,
+            level: None,
+            from: None,
+            to: None,
+            search: None,
+            first: 100,
+            skip: 0,
+        };
+
+        let result = store.query_logs(query).await;
+        assert!(result.is_ok());
+
+        let entries = result.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "log-1");
+        assert_eq!(entries[0].text, "Test error message");
+        assert_eq!(entries[0].level, LogLevel::Error);
+    }
+
+    #[tokio::test]
+    async fn test_query_with_level_filter() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 1024 * 1024, 30).unwrap();
+
+        let subgraph_id = DeploymentHash::new("QmTest").unwrap();
+        let file_path = store.log_file_path(&subgraph_id);
+
+        // Write test data with different levels
+        let mut file = File::create(&file_path).unwrap();
+        for (id, level) in [("log-1", "error"), ("log-2", "info"), ("log-3", "error")] {
+            let log_entry = FileLogDocument {
+                id: id.to_string(),
+                subgraph_id: "QmTest".to_string(),
+                timestamp: format!("2024-01-15T10:30:{}Z", id),
+                level: level.to_string(),
+                text: format!("Test {} message", level),
+                arguments: vec![],
+                meta: FileLogMeta {
+                    module: "test.ts".to_string(),
+                    line: 42,
+                    column: 10,
+                },
+            };
+            writeln!(file, "{}", serde_json::to_string(&log_entry).unwrap()).unwrap();
+        }
+
+        // Query for errors only
+        let query = LogQuery {
+            subgraph_id,
+            level: Some(LogLevel::Error),
+            from: None,
+            to: None,
+            search: None,
+            first: 100,
+            skip: 0,
+        };
+
+        let result = store.query_logs(query).await;
+        assert!(result.is_ok());
+
+        let entries = result.unwrap();
+        assert_eq!(entries.len(), 2);
+        assert!(entries.iter().all(|e| e.level == LogLevel::Error));
+    }
+}
