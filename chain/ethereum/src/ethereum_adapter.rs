@@ -142,7 +142,7 @@ impl EthereumAdapter {
         call_only: bool,
     ) -> Self {
         let alloy = match &transport {
-            Transport::RPC { client, .. } => Arc::new(
+            Transport::RPC(client) => Arc::new(
                 alloy::providers::ProviderBuilder::<_, _, AnyNetwork>::default()
                     .network::<AnyNetwork>()
                     .with_recommended_fillers()
@@ -795,7 +795,7 @@ impl EthereumAdapter {
                                 Ok(Some(block)) => {
                                     let ptr = ExtendedBlockPtr::try_from((
                                         block.header.hash,
-                                        block.header.number as i32,
+                                        i32::try_from(block.header.number).unwrap(),
                                         block.header.parent_hash,
                                         block.header.timestamp,
                                     ))
@@ -868,7 +868,7 @@ impl EthereumAdapter {
         }))
         .buffered(ENV_VARS.block_batch_size)
         .filter_map(|b| b)
-        .map(|b| BlockPtr::from((b.header.hash, b.header.number as i32)))
+        .map(|b| BlockPtr::from((b.header.hash, b.header.number)))
     }
 
     /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
@@ -1245,10 +1245,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     let block = block_opt
                         .ok_or_else(|| anyhow!("no latest block returned from Ethereum"))?;
 
-                    Ok(BlockPtr::from((
-                        block.header.hash,
-                        block.header.number as i32,
-                    )))
+                    Ok(BlockPtr::from((block.header.hash, block.header.number)))
                 }
             })
             .map_err(move |e| {
@@ -1630,11 +1627,15 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .filter_map(|value| {
                 json::from_value(value.clone())
                     .map_err(|e| {
+                        let block_num = value.get("number").and_then(|n| n.as_u64());
+                        let block_hash = value.get("hash").and_then(|h| h.as_str());
                         warn!(
                             &logger,
-                            "Failed to deserialize cached block: {}. \
+                            "Failed to deserialize cached block #{:?} {:?}: {}. \
                          This may indicate stale cache data from a previous version. \
                          Block will be re-fetched from RPC.",
+                            block_num,
+                            block_hash,
                             e
                         );
                     })

@@ -14,12 +14,7 @@ use graph::prelude::alloy::transports::{http::Http, ipc::IpcConnect, ws::WsConne
 /// Abstraction over different transport types for Alloy providers.
 #[derive(Clone, Debug)]
 pub enum Transport {
-    RPC {
-        client: alloy::rpc::client::RpcClient,
-        metrics: Arc<EndpointMetrics>,
-        provider: ProviderName,
-        url: String,
-    },
+    RPC(alloy::rpc::client::RpcClient),
     IPC(IpcConnect<String>),
     WS(WsConnect),
 }
@@ -52,26 +47,16 @@ impl Transport {
         metrics: Arc<EndpointMetrics>,
         provider: impl AsRef<str>,
     ) -> Self {
-        // Unwrap: This only fails if something is wrong with the system's TLS config.
         let client = reqwest::Client::builder()
             .default_headers(headers)
             .build()
-            .unwrap();
+            .expect("Failed to build HTTP client");
 
-        let rpc_url = rpc.to_string();
-
-        // Create HTTP transport with metrics collection
         let http_transport = Http::with_client(client, rpc);
-        let metrics_transport =
-            MetricsHttp::new(http_transport, metrics.clone(), provider.as_ref().into());
+        let metrics_transport = MetricsHttp::new(http_transport, metrics, provider.as_ref().into());
         let rpc_client = alloy::rpc::client::RpcClient::new(metrics_transport, false);
 
-        Transport::RPC {
-            client: rpc_client,
-            metrics,
-            provider: provider.as_ref().into(),
-            url: rpc_url,
-        }
+        Transport::RPC(rpc_client)
     }
 }
 

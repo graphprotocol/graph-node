@@ -1105,12 +1105,13 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                         // Cache hit but deserialization failed
                         warn!(
                             self.logger,
-                            "Failed to deserialize cached ancestor block {} (offset {} from {}): {}. \
+                            "Failed to deserialize cached ancestor block #{} {} (offset {} from #{}): {}. \
                              This may indicate stale cache data from a previous version. \
                              Falling back to Firehose/RPC.",
+                            ptr.number,
                             ptr.hash_hex(),
                             offset,
-                            ptr_for_log.hash_hex(),
+                            ptr_for_log.number,
                             e
                         );
                         ptr
@@ -1181,9 +1182,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                             Err(e) => {
                                 warn!(
                                     self.logger,
-                                    "Failed to deserialize cached block {}: {}. \
+                                    "Failed to deserialize cached block #{} {}: {}. \
                                      This may indicate stale cache data from a previous version. \
                                      Falling back to Firehose.",
+                                    block.number,
                                     block.hash_hex(),
                                     e
                                 );
