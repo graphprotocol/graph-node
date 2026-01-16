@@ -19,11 +19,13 @@ use graph::slog::warn;
 use graph::util::timed_rw_lock::TimedMutex;
 use tokio::sync::OwnedSemaphorePermit;
 
+use std::collections::HashMap;
 use std::fmt::{self};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{collections::HashMap, sync::RwLock};
+
+use graph::parking_lot::RwLock;
 
 use crate::catalog;
 use crate::pool::manager::{ConnectionManager, WaitMeter};
@@ -720,7 +722,6 @@ impl PoolInner {
         let permit = self.query_semaphore.cheap_clone().acquire_owned().await;
         self.semaphore_wait_stats
             .write()
-            .unwrap()
             .add_and_register(start.elapsed(), &self.semaphore_wait_gauge);
         permit.unwrap()
     }
@@ -734,7 +735,6 @@ impl PoolInner {
         let elapsed = start.elapsed();
         self.indexing_semaphore_wait_stats
             .write()
-            .unwrap()
             .add_and_register(elapsed, &self.indexing_semaphore_wait_gauge);
         (permit.unwrap(), elapsed)
     }
