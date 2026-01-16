@@ -299,6 +299,15 @@ pub(crate) async fn execute_root_selection_set_uncached(
         }
     }
 
+    // Validate that _logs queries cannot be combined with regular entity queries
+    if !logs_fields.is_empty() && !data_set.is_empty() {
+        return Err(vec![QueryExecutionError::ValidationError(
+            None,
+            "The _logs query cannot be combined with other entity queries in the same request"
+                .to_string(),
+        )]);
+    }
+
     // If we are getting regular data, prefetch it from the database
     let (mut values, trace) = if data_set.is_empty() && meta_items.is_empty() {
         (Object::default(), Trace::None)

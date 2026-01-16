@@ -1425,6 +1425,45 @@ async fn test_logs_query(ctx: TestContext) -> anyhow::Result<()> {
         );
     }
 
+    // Test 6: Verify that combining _logs with regular entity queries returns a validation error
+    let query = r#"{
+            _logs(first: 10) {
+                id
+                text
+            }
+            triggers {
+                id
+                x
+            }
+        }"#
+    .to_string();
+    let resp = subgraph.query(&query).await?;
+
+    // Should have errors, not data
+    assert!(
+        resp.get("errors").is_some(),
+        "Expected errors when combining _logs with entity queries, got: {:?}",
+        resp
+    );
+
+    // Verify the error message mentions the validation issue
+    let errors = resp["errors"]
+        .as_array()
+        .context("Expected errors to be an array")?;
+    assert!(
+        !errors.is_empty(),
+        "Expected at least one error in response"
+    );
+
+    let error_msg = errors[0]["message"]
+        .as_str()
+        .context("Expected error message to be a string")?;
+    assert!(
+        error_msg.contains("_logs") && error_msg.contains("cannot be combined"),
+        "Expected validation error about _logs combination, got: {}",
+        error_msg
+    );
+
     Ok(())
 }
 
