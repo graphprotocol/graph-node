@@ -23,7 +23,9 @@ use graph::{
     slog::Logger,
 };
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+
+use graph::parking_lot::RwLock;
 use tokio::sync::mpsc;
 
 use self::instance::SubgraphInstance;
@@ -44,18 +46,18 @@ impl SubgraphKeepAlive {
     }
 
     pub fn remove(&self, deployment_id: &DeploymentId) {
-        self.alive_map.write().unwrap().remove(deployment_id);
+        self.alive_map.write().remove(deployment_id);
         self.sg_metrics.running_count.dec();
     }
     pub fn insert(&self, deployment_id: DeploymentId, guard: CancelGuard) {
-        let old = self.alive_map.write().unwrap().insert(deployment_id, guard);
+        let old = self.alive_map.write().insert(deployment_id, guard);
         if old.is_none() {
             self.sg_metrics.running_count.inc();
         }
     }
 
     pub fn contains(&self, deployment_id: &DeploymentId) -> bool {
-        self.alive_map.read().unwrap().contains_key(deployment_id)
+        self.alive_map.read().contains_key(deployment_id)
     }
 }
 
