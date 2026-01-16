@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+
+use crate::parking_lot::RwLock;
 
 use prometheus::{labels, Histogram, IntCounterVec};
 use prometheus::{IntCounter, IntGauge};
@@ -109,14 +111,13 @@ impl MetricsRegistry {
         };
         let counters = CounterVec::new(opts, variable_labels)?;
         let id = counters.desc().first().unwrap().id;
-        let maybe_counter = self.global_counter_vecs.read().unwrap().get(&id).cloned();
+        let maybe_counter = self.global_counter_vecs.read().get(&id).cloned();
         if let Some(counters) = maybe_counter {
             Ok(counters)
         } else {
             self.register(name, Box::new(counters.clone()));
             self.global_counter_vecs
                 .write()
-                .unwrap()
                 .insert(id, counters.clone());
             Ok(counters)
         }
@@ -161,15 +162,12 @@ impl MetricsRegistry {
     ) -> Result<Counter, PrometheusError> {
         let counter = counter_with_labels(name, help, const_labels)?;
         let id = counter.desc().first().unwrap().id;
-        let maybe_counter = self.global_counters.read().unwrap().get(&id).cloned();
+        let maybe_counter = self.global_counters.read().get(&id).cloned();
         if let Some(counter) = maybe_counter {
             Ok(counter)
         } else {
             self.register(name, Box::new(counter.clone()));
-            self.global_counters
-                .write()
-                .unwrap()
-                .insert(id, counter.clone());
+            self.global_counters.write().insert(id, counter.clone());
             Ok(counter)
         }
     }
@@ -210,15 +208,12 @@ impl MetricsRegistry {
     ) -> Result<Gauge, PrometheusError> {
         let gauge = gauge_with_labels(name, help, const_labels)?;
         let id = gauge.desc().first().unwrap().id;
-        let maybe_gauge = self.global_gauges.read().unwrap().get(&id).cloned();
+        let maybe_gauge = self.global_gauges.read().get(&id).cloned();
         if let Some(gauge) = maybe_gauge {
             Ok(gauge)
         } else {
             self.register(name, Box::new(gauge.clone()));
-            self.global_gauges
-                .write()
-                .unwrap()
-                .insert(id, gauge.clone());
+            self.global_gauges.write().insert(id, gauge.clone());
             Ok(gauge)
         }
     }
@@ -232,15 +227,12 @@ impl MetricsRegistry {
         let opts = Opts::new(name, help);
         let gauges = GaugeVec::new(opts, variable_labels)?;
         let id = gauges.desc().first().unwrap().id;
-        let maybe_gauge = self.global_gauge_vecs.read().unwrap().get(&id).cloned();
+        let maybe_gauge = self.global_gauge_vecs.read().get(&id).cloned();
         if let Some(gauges) = maybe_gauge {
             Ok(gauges)
         } else {
             self.register(name, Box::new(gauges.clone()));
-            self.global_gauge_vecs
-                .write()
-                .unwrap()
-                .insert(id, gauges.clone());
+            self.global_gauge_vecs.write().insert(id, gauges.clone());
             Ok(gauges)
         }
     }
@@ -254,14 +246,13 @@ impl MetricsRegistry {
         let opts = HistogramOpts::new(name, help);
         let histograms = HistogramVec::new(opts, variable_labels)?;
         let id = histograms.desc().first().unwrap().id;
-        let maybe_histogram = self.global_histogram_vecs.read().unwrap().get(&id).cloned();
+        let maybe_histogram = self.global_histogram_vecs.read().get(&id).cloned();
         if let Some(histograms) = maybe_histogram {
             Ok(histograms)
         } else {
             self.register(name, Box::new(histograms.clone()));
             self.global_histogram_vecs
                 .write()
-                .unwrap()
                 .insert(id, histograms.clone());
             Ok(histograms)
         }
