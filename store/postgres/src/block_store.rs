@@ -1,8 +1,6 @@
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{collections::HashMap, sync::Arc, time::Duration};
+
+use graph::parking_lot::RwLock;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -321,7 +319,6 @@ impl BlockStore {
         let configured_chains = block_store
             .stores
             .read()
-            .unwrap()
             .keys()
             .cloned()
             .collect::<Vec<_>>();
@@ -410,7 +407,6 @@ impl BlockStore {
         let store = Arc::new(store);
         self.stores
             .write()
-            .unwrap()
             .insert(chain.name.clone(), store.clone());
         Ok(store)
     }
@@ -475,12 +471,7 @@ impl BlockStore {
     }
 
     async fn store(&self, chain: &str) -> Option<Arc<ChainStore>> {
-        let store = self
-            .stores
-            .read()
-            .unwrap()
-            .get(chain)
-            .map(CheapClone::cheap_clone);
+        let store = self.stores.read().get(chain).map(CheapClone::cheap_clone);
         if store.is_some() {
             return store;
         }
@@ -506,7 +497,7 @@ impl BlockStore {
 
         chain_store.drop_chain().await?;
 
-        self.stores.write().unwrap().remove(chain);
+        self.stores.write().remove(chain);
 
         Ok(())
     }
@@ -516,7 +507,6 @@ impl BlockStore {
     fn stores(&self) -> Vec<Arc<ChainStore>> {
         self.stores
             .read()
-            .unwrap()
             .values()
             .map(CheapClone::cheap_clone)
             .collect()
