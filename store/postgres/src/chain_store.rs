@@ -17,6 +17,8 @@ use graph::util::herd_cache::HerdCache;
 
 use std::collections::BTreeMap;
 use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -1873,6 +1875,10 @@ pub struct ChainStoreMetrics {
     chain_head_cache_latest_block_num: Box<GaugeVec>,
     chain_head_cache_hits: Box<CounterVec>,
     chain_head_cache_misses: Box<CounterVec>,
+    // Metrics for chain_head_ptr() cache
+    chain_head_ptr_cache_hits: Box<CounterVec>,
+    chain_head_ptr_cache_misses: Box<CounterVec>,
+    chain_head_ptr_cache_block_time_ms: Box<GaugeVec>,
 }
 
 impl ChainStoreMetrics {
@@ -1914,12 +1920,37 @@ impl ChainStoreMetrics {
             )
             .expect("Can't register the counter");
 
+        let chain_head_ptr_cache_hits = registry
+            .new_counter_vec(
+                "chain_head_ptr_cache_hits",
+                "Number of times the chain_head_ptr cache was hit",
+                vec!["network".to_string()],
+            )
+            .expect("Can't register the counter");
+        let chain_head_ptr_cache_misses = registry
+            .new_counter_vec(
+                "chain_head_ptr_cache_misses",
+                "Number of times the chain_head_ptr cache was missed",
+                vec!["network".to_string()],
+            )
+            .expect("Can't register the counter");
+        let chain_head_ptr_cache_block_time_ms = registry
+            .new_gauge_vec(
+                "chain_head_ptr_cache_block_time_ms",
+                "Estimated block time in milliseconds used for adaptive cache TTL",
+                vec!["network".to_string()],
+            )
+            .expect("Can't register the gauge");
+
         Self {
             chain_head_cache_size,
             chain_head_cache_oldest_block_num,
             chain_head_cache_latest_block_num,
             chain_head_cache_hits,
             chain_head_cache_misses,
+            chain_head_ptr_cache_hits,
+            chain_head_ptr_cache_misses,
+            chain_head_ptr_cache_block_time_ms,
         }
     }
 
@@ -1959,6 +1990,143 @@ impl ChainStoreMetrics {
             .unwrap()
             .inc_by(misses as f64);
     }
+
+    pub fn record_chain_head_ptr_cache_hit(&self, network: &str) {
+        self.chain_head_ptr_cache_hits
+            .with_label_values(&[network])
+            .inc();
+    }
+
+    pub fn record_chain_head_ptr_cache_miss(&self, network: &str) {
+        self.chain_head_ptr_cache_misses
+            .with_label_values(&[network])
+            .inc();
+    }
+
+    pub fn set_chain_head_ptr_block_time(&self, network: &str, block_time_ms: u64) {
+        self.chain_head_ptr_cache_block_time_ms
+            .with_label_values(&[network])
+            .set(block_time_ms as f64);
+    }
+}
+
+const MIN_TTL_MS: u64 = 20;
+const MAX_TTL_MS: u64 = 2000;
+const MIN_OBSERVATIONS: u64 = 5;
+
+/// Adaptive cache for chain_head_ptr() that learns optimal TTL from block frequency.
+struct ChainHeadPtrCache {
+    /// Cached value and when it expires
+    entry: RwLock<Option<(BlockPtr, Instant)>>,
+    /// Estimated milliseconds between blocks (EWMA)
+    estimated_block_time_ms: AtomicU64,
+    /// When we last observed the chain head change
+    last_change: RwLock<Instant>,
+    /// Number of block changes observed (for warmup)
+    observations: AtomicU64,
+    /// Metrics for recording cache hits/misses
+    metrics: Arc<ChainStoreMetrics>,
+    /// Chain name for metric labels
+    chain: String,
+}
+
+impl ChainHeadPtrCache {
+    fn new(metrics: Arc<ChainStoreMetrics>, chain: String) -> Self {
+        Self {
+            entry: RwLock::new(None),
+            estimated_block_time_ms: AtomicU64::new(0),
+            last_change: RwLock::new(Instant::now()),
+            observations: AtomicU64::new(0),
+            metrics,
+            chain,
+        }
+    }
+
+    /// Returns cached value if still valid, or None if cache is disabled/missed.
+    /// Records hit/miss metrics automatically.
+    fn get(&self) -> Option<BlockPtr> {
+        if ENV_VARS.store.disable_chain_head_ptr_cache {
+            return None;
+        }
+        let guard = self.entry.read();
+        if let Some((value, expires)) = guard.as_ref() {
+            if Instant::now() < *expires {
+                self.metrics.record_chain_head_ptr_cache_hit(&self.chain);
+                return Some(value.clone());
+            }
+        }
+        self.metrics.record_chain_head_ptr_cache_miss(&self.chain);
+        None
+    }
+
+    /// Compute current TTL - MIN_TTL during warmup, then 1/4 of estimated block time
+    fn current_ttl(&self) -> Duration {
+        let obs = AtomicU64::load(&self.observations, Ordering::Relaxed);
+        if obs < MIN_OBSERVATIONS {
+            return Duration::from_millis(MIN_TTL_MS);
+        }
+
+        let block_time = AtomicU64::load(&self.estimated_block_time_ms, Ordering::Relaxed);
+        let ttl_ms = (block_time / 4).clamp(MIN_TTL_MS, MAX_TTL_MS);
+        Duration::from_millis(ttl_ms)
+    }
+
+    /// Cache a new value, updating block time estimate if value changed.
+    /// Does nothing if cache is disabled.
+    fn set(&self, new_value: BlockPtr) {
+        if ENV_VARS.store.disable_chain_head_ptr_cache {
+            return;
+        }
+        let now = Instant::now();
+
+        // Check if block changed
+        let old_value = {
+            let guard = self.entry.read();
+            guard.as_ref().map(|(v, _)| v.clone())
+        };
+
+        // Only update estimate if we have a previous value and block number advanced
+        // (skip reorgs where new block number <= old)
+        if let Some(old_ptr) = old_value.as_ref() {
+            if new_value.number > old_ptr.number {
+                let mut last_change = self.last_change.write();
+                let delta_ms = now.duration_since(*last_change).as_millis() as u64;
+                *last_change = now;
+
+                let blocks_advanced = (new_value.number - old_ptr.number) as u64;
+
+                // Increment observation count
+                let obs = AtomicU64::fetch_add(&self.observations, 1, Ordering::Relaxed);
+
+                // Ignore unreasonable deltas (> 60s)
+                if delta_ms > 0 && delta_ms < 60_000 {
+                    let per_block_ms = delta_ms / blocks_advanced;
+                    let new_estimate = if obs == 0 {
+                        // First observation - use as initial estimate
+                        per_block_ms
+                    } else {
+                        // EWMA: new = 0.8 * old + 0.2 * observed
+                        let old_estimate =
+                            AtomicU64::load(&self.estimated_block_time_ms, Ordering::Relaxed);
+                        (old_estimate * 4 + per_block_ms) / 5
+                    };
+                    AtomicU64::store(
+                        &self.estimated_block_time_ms,
+                        new_estimate,
+                        Ordering::Relaxed,
+                    );
+
+                    // Update metric gauge
+                    self.metrics
+                        .set_chain_head_ptr_block_time(&self.chain, new_estimate);
+                }
+            }
+        }
+
+        // Compute TTL and store with expiry
+        let ttl = self.current_ttl();
+        *self.entry.write() = Some((new_value, now + ttl));
+    }
 }
 
 pub struct ChainStore {
@@ -1980,6 +2148,8 @@ pub struct ChainStore {
     blocks_by_number_cache:
         HerdCache<Arc<Result<BTreeMap<BlockNumber, Vec<JsonBlock>>, StoreError>>>,
     ancestor_cache: HerdCache<Arc<Result<Option<(json::Value, BlockPtr)>, StoreError>>>,
+    /// Adaptive cache for chain_head_ptr()
+    chain_head_ptr_cache: ChainHeadPtrCache,
 }
 
 impl ChainStore {
@@ -1994,10 +2164,11 @@ impl ChainStore {
         metrics: Arc<ChainStoreMetrics>,
     ) -> Self {
         let recent_blocks_cache =
-            RecentBlocksCache::new(recent_blocks_cache_capacity, chain.clone(), metrics);
+            RecentBlocksCache::new(recent_blocks_cache_capacity, chain.clone(), metrics.clone());
         let blocks_by_hash_cache = HerdCache::new(format!("chain_{}_blocks_by_hash", chain));
         let blocks_by_number_cache = HerdCache::new(format!("chain_{}_blocks_by_number", chain));
         let ancestor_cache = HerdCache::new(format!("chain_{}_ancestor", chain));
+        let chain_head_ptr_cache = ChainHeadPtrCache::new(metrics, chain.clone());
         ChainStore {
             logger,
             pool,
@@ -2009,6 +2180,7 @@ impl ChainStore {
             blocks_by_hash_cache,
             blocks_by_number_cache,
             ancestor_cache,
+            chain_head_ptr_cache,
         }
     }
 
@@ -2351,8 +2523,14 @@ impl ChainHeadStore for ChainStore {
     async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
         use public::ethereum_networks::dsl::*;
 
+        // Check cache first (handles disabled check and metrics internally)
+        if let Some(cached) = self.chain_head_ptr_cache.get() {
+            return Ok(Some(cached));
+        }
+
+        // Query database
         let mut conn = self.pool.get_permitted().await?;
-        Ok(ethereum_networks
+        let result = ethereum_networks
             .select((head_block_hash, head_block_number))
             .filter(name.eq(&self.chain))
             .load::<(Option<String>, Option<i64>)>(&mut conn)
@@ -2375,7 +2553,14 @@ impl ChainHeadStore for ChainStore {
                         _ => unreachable!(),
                     })
                     .and_then(|opt: Option<BlockPtr>| opt)
-            })?)
+            })?;
+
+        // Cache the result (set() handles disabled check internally)
+        if let Some(ref ptr) = result {
+            self.chain_head_ptr_cache.set(ptr.clone());
+        }
+
+        Ok(result)
     }
 
     async fn chain_head_cursor(&self) -> Result<Option<String>, Error> {

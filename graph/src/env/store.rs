@@ -163,6 +163,9 @@ pub struct EnvVarsStore {
     /// Disables storing or reading `eth_call` results from the store call cache.
     /// Set by `GRAPH_STORE_DISABLE_CALL_CACHE`. Defaults to false.
     pub disable_call_cache: bool,
+    /// Set by `GRAPH_STORE_DISABLE_CHAIN_HEAD_PTR_CACHE`. Default is false.
+    /// Set to true to disable chain_head_ptr caching (safety escape hatch).
+    pub disable_chain_head_ptr_cache: bool,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -224,6 +227,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             account_like_min_versions_count: x.account_like_min_versions_count,
             account_like_max_unique_ratio: x.account_like_max_unique_ratio.map(|r| r.0),
             disable_call_cache: x.disable_call_cache,
+            disable_chain_head_ptr_cache: x.disable_chain_head_ptr_cache,
         };
         if let Some(timeout) = vars.batch_timeout {
             if timeout < 2 * vars.batch_target_duration {
@@ -331,6 +335,8 @@ pub struct InnerStore {
     account_like_max_unique_ratio: Option<ZeroToOneF64>,
     #[envconfig(from = "GRAPH_STORE_DISABLE_CALL_CACHE", default = "false")]
     disable_call_cache: bool,
+    #[envconfig(from = "GRAPH_STORE_DISABLE_CHAIN_HEAD_PTR_CACHE", default = "false")]
+    disable_chain_head_ptr_cache: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
