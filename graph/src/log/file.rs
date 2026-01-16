@@ -1,5 +1,3 @@
-use std::fmt;
-use std::fmt::Write as FmtWrite;
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
@@ -8,6 +6,8 @@ use std::sync::{Arc, Mutex};
 use chrono::prelude::{SecondsFormat, Utc};
 use serde::Serialize;
 use slog::*;
+
+use super::common::{create_async_logger, LogEntryBuilder, LogMeta};
 
 /// Configuration for `FileDrain`.
 #[derive(Clone, Debug)]
@@ -35,64 +35,7 @@ struct FileLogDocument {
     meta: FileLogMeta,
 }
 
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct FileLogMeta {
-    module: String,
-    line: i64,
-    column: i64,
-}
-
-/// Serializer for extracting key-value pairs into a Vec
-struct VecKVSerializer {
-    kvs: Vec<(String, String)>,
-}
-
-impl VecKVSerializer {
-    fn new() -> Self {
-        Self { kvs: Vec::new() }
-    }
-
-    fn finish(self) -> Vec<(String, String)> {
-        self.kvs
-    }
-}
-
-impl Serializer for VecKVSerializer {
-    fn emit_arguments(&mut self, key: Key, val: &fmt::Arguments) -> slog::Result {
-        self.kvs.push((key.into(), val.to_string()));
-        Ok(())
-    }
-}
-
-/// Serializer for concatenating key-value arguments into a string
-struct SimpleKVSerializer {
-    kvs: Vec<(String, String)>,
-}
-
-impl SimpleKVSerializer {
-    fn new() -> Self {
-        Self { kvs: Vec::new() }
-    }
-
-    fn finish(self) -> (usize, String) {
-        (
-            self.kvs.len(),
-            self.kvs
-                .iter()
-                .map(|(k, v)| format!("{}: {}", k, v))
-                .collect::<Vec<_>>()
-                .join(", "),
-        )
-    }
-}
-
-impl Serializer for SimpleKVSerializer {
-    fn emit_arguments(&mut self, key: Key, val: &fmt::Arguments) -> slog::Result {
-        self.kvs.push((key.into(), val.to_string()));
-        Ok(())
-    }
-}
+type FileLogMeta = LogMeta;
 
 /// An slog `Drain` for logging to local files in JSON Lines format.
 ///
@@ -136,62 +79,18 @@ impl Drain for FileDrain {
         }
 
         let timestamp = Utc::now().to_rfc3339_opts(SecondsFormat::Nanos, true);
-        let id = format!("{}-{}", self.config.subgraph_id, timestamp);
-
-        let level = match record.level() {
-            Level::Critical => "critical",
-            Level::Error => "error",
-            Level::Warning => "warning",
-            Level::Info => "info",
-            Level::Debug => "debug",
-            Level::Trace => "trace",
-        };
-
-        // Serialize logger arguments
-        let mut serializer = SimpleKVSerializer::new();
-        record
-            .kv()
-            .serialize(record, &mut serializer)
-            .expect("failed to serialize logger arguments");
-        let (n_logger_kvs, logger_kvs) = serializer.finish();
-
-        // Serialize log message arguments
-        let mut serializer = SimpleKVSerializer::new();
-        values
-            .serialize(record, &mut serializer)
-            .expect("failed to serialize log message arguments");
-        let (n_value_kvs, value_kvs) = serializer.finish();
-
-        // Serialize arguments into vec for storage
-        let mut serializer = VecKVSerializer::new();
-        record
-            .kv()
-            .serialize(record, &mut serializer)
-            .expect("failed to serialize log message arguments into vec");
-        let arguments = serializer.finish();
-
-        // Build text with all key-value pairs
-        let mut text = format!("{}", record.msg());
-        if n_logger_kvs > 0 {
-            write!(text, ", {}", logger_kvs).unwrap();
-        }
-        if n_value_kvs > 0 {
-            write!(text, ", {}", value_kvs).unwrap();
-        }
+        let builder =
+            LogEntryBuilder::new(record, values, self.config.subgraph_id.clone(), timestamp);
 
         // Build log document
         let log_doc = FileLogDocument {
-            id,
-            subgraph_id: self.config.subgraph_id.clone(),
-            timestamp,
-            level: level.to_string(),
-            text,
-            arguments,
-            meta: FileLogMeta {
-                module: record.module().into(),
-                line: record.line() as i64,
-                column: record.column() as i64,
-            },
+            id: builder.build_id(),
+            subgraph_id: builder.subgraph_id().to_string(),
+            timestamp: builder.timestamp().to_string(),
+            level: builder.level_str().to_string(),
+            text: builder.build_text(),
+            arguments: builder.build_arguments_vec(),
+            meta: builder.build_meta(),
         };
 
         // Write JSON line (synchronous, buffered)
@@ -229,12 +128,7 @@ pub fn file_logger(config: FileDrainConfig, error_logger: Logger) -> Logger {
         }
     };
 
-    let async_drain = slog_async::Async::new(file_drain.fuse())
-        .chan_size(20000)
-        .overflow_strategy(slog_async::OverflowStrategy::Block)
-        .build()
-        .fuse();
-    Logger::root(async_drain, o!())
+    create_async_logger(file_drain, 20000, true)
 }
 
 #[cfg(test)]
