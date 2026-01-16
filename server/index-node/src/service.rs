@@ -153,6 +153,7 @@ where
                 max_first: u32::MAX,
                 max_skip: u32::MAX,
                 trace: false,
+                log_store: Arc::new(graph::components::log_store::NoOpLogStore),
             };
             let (result, _) = execute_query(query_clone.cheap_clone(), None, None, options).await;
             query_clone.log_execution(0);

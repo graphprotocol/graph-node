@@ -1,0 +1,26 @@
+specVersion: 0.0.5
+description: Logs Query Test Subgraph
+repository: https://github.com/graphprotocol/graph-node
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Contract
+    network: test
+    source:
+      address: "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      abi: Contract
+      startBlock: 0
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      entities:
+        - Trigger
+      abis:
+        - name: Contract
+          file: ./abis/Contract.abi
+      eventHandlers:
+        - event: Trigger(uint16)
+          handler: handleTrigger
+      file: ./src/mapping.ts

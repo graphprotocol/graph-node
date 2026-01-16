@@ -140,10 +140,17 @@ impl GraphNodeConfig {
         let bin = fs::canonicalize("../target/debug/gnd")
             .expect("failed to infer `graph-node` program location. (Was it built already?)");
 
+        // Allow overriding IPFS port via environment variable
+        let ipfs_port = std::env::var("IPFS_TEST_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3001);
+        let ipfs_uri = format!("http://localhost:{}", ipfs_port);
+
         Self {
             bin,
             ports: GraphNodePorts::default(),
-            ipfs_uri: "http://localhost:3001".to_string(),
+            ipfs_uri,
             log_file: TestFile::new("integration-tests/graph-node.log"),
         }
     }
@@ -154,10 +161,17 @@ impl Default for GraphNodeConfig {
         let bin = fs::canonicalize("../target/debug/graph-node")
             .expect("failed to infer `graph-node` program location. (Was it built already?)");
 
+        // Allow overriding IPFS port via environment variable
+        let ipfs_port = std::env::var("IPFS_TEST_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3001);
+        let ipfs_uri = format!("http://localhost:{}", ipfs_port);
+
         Self {
             bin,
             ports: GraphNodePorts::default(),
-            ipfs_uri: "http://localhost:3001".to_string(),
+            ipfs_uri,
             log_file: TestFile::new("integration-tests/graph-node.log"),
         }
     }
@@ -219,7 +233,9 @@ impl Config {
             .stderr(stderr)
             .args(args.clone())
             .env("GRAPH_STORE_WRITE_BATCH_DURATION", "5")
-            .env("ETHEREUM_REORG_THRESHOLD", "0");
+            .env("ETHEREUM_REORG_THRESHOLD", "0")
+            .env("GRAPH_LOG_STORE_BACKEND", "file")
+            .env("GRAPH_LOG_STORE_FILE_DIR", "/tmp/integration-test-logs");
 
         status!(
             "graph-node",
@@ -284,17 +300,28 @@ impl Default for Config {
         let num_parallel_tests = std::env::var("N_CONCURRENT_TESTS")
             .map(|x| x.parse().expect("N_CONCURRENT_TESTS must be a number"))
             .unwrap_or(1000);
+
+        // Allow overriding ports via environment variables
+        let postgres_port = std::env::var("POSTGRES_TEST_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3011);
+        let eth_port = std::env::var("ETHEREUM_TEST_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3021);
+
         Config {
             db: DbConfig {
                 host: "localhost".to_string(),
-                port: 3011,
+                port: postgres_port,
                 user: "graph-node".to_string(),
                 password: "let-me-in".to_string(),
                 name: "graph-node".to_string(),
             },
             eth: EthConfig {
                 network: "test".to_string(),
-                port: 3021,
+                port: eth_port,
                 host: "localhost".to_string(),
             },
             graph_node: GraphNodeConfig::from_env(),

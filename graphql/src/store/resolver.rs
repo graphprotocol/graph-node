@@ -12,8 +12,8 @@ use graph::data::value::{Object, Word};
 use graph::derive::CheapClone;
 use graph::prelude::*;
 use graph::schema::{
-    ast as sast, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME, META_FIELD_NAME,
-    META_FIELD_TYPE,
+    ast as sast, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME, LOGS_FIELD_NAME,
+    META_FIELD_NAME, META_FIELD_TYPE,
 };
 use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
 
@@ -353,6 +353,23 @@ impl Resolver for StoreResolver {
             return Ok(());
         }
 
+        // Check if the query only contains debugging fields (_meta, _logs).
+        // If so, don't add indexing errors - these queries are specifically for debugging
+        // failed subgraphs and should work without errors.
+        // Introspection queries (__schema, __type) still get the indexing_error to inform
+        // users the subgraph has issues, but they return data.
+        let only_debugging_fields = result
+            .data()
+            .map(|data| {
+                data.iter()
+                    .all(|(key, _)| key == META_FIELD_NAME || key == LOGS_FIELD_NAME)
+            })
+            .unwrap_or(false);
+
+        if only_debugging_fields {
+            return Ok(());
+        }
+
         // Add the "indexing_error" to the response.
         assert!(result.errors_mut().is_empty());
         *result.errors_mut() = vec![QueryError::IndexingError];
@@ -364,9 +381,10 @@ impl Resolver for StoreResolver {
             ErrorPolicy::Deny => {
                 let mut data = result.take_data();
 
-                // Only keep the _meta, __schema and __type fields from the data
+                // Only keep the _meta, _logs, __schema and __type fields from the data
                 let meta_fields = data.as_mut().and_then(|d| {
                     let meta_field = d.remove(META_FIELD_NAME);
+                    let logs_field = d.remove(LOGS_FIELD_NAME);
                     let schema_field = d.remove(INTROSPECTION_SCHEMA_FIELD_NAME);
                     let type_field = d.remove(INTROSPECTION_TYPE_FIELD_NAME);
 
@@ -375,6 +393,9 @@ impl Resolver for StoreResolver {
 
                     if let Some(meta_field) = meta_field {
                         meta_fields.push((Word::from(META_FIELD_NAME), meta_field));
+                    }
+                    if let Some(logs_field) = logs_field {
+                        meta_fields.push((Word::from(LOGS_FIELD_NAME), logs_field));
                     }
                     if let Some(schema_field) = schema_field {
                         meta_fields

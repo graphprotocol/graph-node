@@ -1033,7 +1033,13 @@ impl Context {
 
         let load_manager = Arc::new(LoadManager::new(&logger, vec![], vec![], registry.clone()));
 
-        Arc::new(GraphQlRunner::new(&logger, store, load_manager, registry))
+        Arc::new(GraphQlRunner::new(
+            &logger,
+            store,
+            load_manager,
+            registry,
+            Arc::new(graph::components::log_store::NoOpLogStore),
+        ))
     }
 
     async fn networks(&self) -> anyhow::Result<Networks> {

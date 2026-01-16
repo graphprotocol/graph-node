@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::fmt;
-use std::fmt::Write;
 use std::result::Result;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -15,9 +13,10 @@ use serde::ser::Serializer as SerdeSerializer;
 use serde::Serialize;
 use serde_json::json;
 use slog::*;
-use slog_async;
 
 use crate::util::futures::retry;
+
+use super::common::{create_async_logger, LogEntryBuilder, LogMeta};
 
 /// General configuration parameters for Elasticsearch logging.
 #[derive(Clone, Debug)]
@@ -33,28 +32,14 @@ pub struct ElasticLoggingConfig {
 }
 
 /// Serializes an slog log level using a serde Serializer.
-fn serialize_log_level<S>(level: &Level, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_log_level<S>(level: &str, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: SerdeSerializer,
 {
-    serializer.serialize_str(match level {
-        Level::Critical => "critical",
-        Level::Error => "error",
-        Level::Warning => "warning",
-        Level::Info => "info",
-        Level::Debug => "debug",
-        Level::Trace => "trace",
-    })
+    serializer.serialize_str(level)
 }
 
-// Log message meta data.
-#[derive(Clone, Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ElasticLogMeta {
-    module: String,
-    line: i64,
-    column: i64,
-}
+type ElasticLogMeta = LogMeta;
 
 // Log message to be written to Elasticsearch.
 #[derive(Clone, Debug, Serialize)]
@@ -67,69 +52,8 @@ struct ElasticLog {
     timestamp: String,
     text: String,
     #[serde(serialize_with = "serialize_log_level")]
-    level: Level,
+    level: String,
     meta: ElasticLogMeta,
-}
-
-struct HashMapKVSerializer {
-    kvs: Vec<(String, String)>,
-}
-
-impl HashMapKVSerializer {
-    fn new() -> Self {
-        HashMapKVSerializer {
-            kvs: Default::default(),
-        }
-    }
-
-    fn finish(self) -> HashMap<String, String> {
-        let mut map = HashMap::new();
-        self.kvs.into_iter().for_each(|(k, v)| {
-            map.insert(k, v);
-        });
-        map
-    }
-}
-
-impl Serializer for HashMapKVSerializer {
-    fn emit_arguments(&mut self, key: Key, val: &fmt::Arguments) -> slog::Result {
-        self.kvs.push((key.into(), format!("{}", val)));
-        Ok(())
-    }
-}
-
-/// A super-simple slog Serializer for concatenating key/value arguments.
-struct SimpleKVSerializer {
-    kvs: Vec<(String, String)>,
-}
-
-impl SimpleKVSerializer {
-    /// Creates a new `SimpleKVSerializer`.
-    fn new() -> Self {
-        SimpleKVSerializer {
-            kvs: Default::default(),
-        }
-    }
-
-    /// Collects all key/value arguments into a single, comma-separated string.
-    /// Returns the number of key/value pairs and the string itself.
-    fn finish(self) -> (usize, String) {
-        (
-            self.kvs.len(),
-            self.kvs
-                .iter()
-                .map(|(k, v)| format!("{}: {}", k, v))
-                .collect::<Vec<_>>()
-                .join(", "),
-        )
-    }
-}
-
-impl Serializer for SimpleKVSerializer {
-    fn emit_arguments(&mut self, key: Key, val: &fmt::Arguments) -> slog::Result {
-        self.kvs.push((key.into(), format!("{}", val)));
-        Ok(())
-    }
 }
 
 /// Configuration for `ElasticDrain`.
@@ -309,43 +233,18 @@ impl Drain for ElasticDrain {
     type Err = ();
 
     fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
-        // Don't sent `trace` logs to ElasticSearch.
+        // Don't send `trace` logs to ElasticSearch.
         if record.level() == Level::Trace {
             return Ok(());
         }
+
         let timestamp = Utc::now().to_rfc3339_opts(SecondsFormat::Nanos, true);
-        let id = format!("{}-{}", self.config.custom_id_value, timestamp);
-
-        // Serialize logger arguments
-        let mut serializer = SimpleKVSerializer::new();
-        record
-            .kv()
-            .serialize(record, &mut serializer)
-            .expect("failed to serializer logger arguments");
-        let (n_logger_kvs, logger_kvs) = serializer.finish();
-
-        // Serialize log message arguments
-        let mut serializer = SimpleKVSerializer::new();
-        values
-            .serialize(record, &mut serializer)
-            .expect("failed to serialize log message arguments");
-        let (n_value_kvs, value_kvs) = serializer.finish();
-
-        // Serialize log message arguments into hash map
-        let mut serializer = HashMapKVSerializer::new();
-        record
-            .kv()
-            .serialize(record, &mut serializer)
-            .expect("failed to serialize log message arguments into hash map");
-        let arguments = serializer.finish();
-
-        let mut text = format!("{}", record.msg());
-        if n_logger_kvs > 0 {
-            write!(text, ", {}", logger_kvs).unwrap();
-        }
-        if n_value_kvs > 0 {
-            write!(text, ", {}", value_kvs).unwrap();
-        }
+        let builder = LogEntryBuilder::new(
+            record,
+            values,
+            self.config.custom_id_value.clone(),
+            timestamp.clone(),
+        );
 
         // Prepare custom id for log document
         let mut custom_id = HashMap::new();
@@ -356,17 +255,13 @@ impl Drain for ElasticDrain {
 
         // Prepare log document
         let log = ElasticLog {
-            id,
+            id: builder.build_id(),
             custom_id,
-            arguments,
+            arguments: builder.build_arguments_map(),
             timestamp,
-            text,
-            level: record.level(),
-            meta: ElasticLogMeta {
-                module: record.module().into(),
-                line: record.line() as i64,
-                column: record.column() as i64,
-            },
+            text: builder.build_text(),
+            level: builder.level_str().to_string(),
+            meta: builder.build_meta(),
         };
 
         // Push the log into the queue
@@ -386,10 +281,6 @@ pub fn elastic_logger(
     error_logger: Logger,
     logs_sent_counter: Counter,
 ) -> Logger {
-    let elastic_drain = ElasticDrain::new(config, error_logger, logs_sent_counter).fuse();
-    let async_drain = slog_async::Async::new(elastic_drain)
-        .chan_size(20000)
-        .build()
-        .fuse();
-    Logger::root(async_drain, o!())
+    let elastic_drain = ElasticDrain::new(config, error_logger, logs_sent_counter);
+    create_async_logger(elastic_drain, 20000, false)
 }
