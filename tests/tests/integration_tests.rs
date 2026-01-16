@@ -1028,6 +1028,71 @@ async fn test_poi_for_failed_subgraph(ctx: TestContext) -> anyhow::Result<()> {
     let resp = Subgraph::query_with_vars(FETCH_POI, vars).await?;
     assert_eq!(None, resp.get("errors"));
     assert!(resp["data"]["proofOfIndexing"].is_string());
+
+    // Test that _logs query works on failed subgraphs (critical for debugging!)
+    // Wait a moment for logs to be written
+    sleep(Duration::from_secs(2)).await;
+
+    let query = r#"{
+            _logs(first: 100) {
+                id
+                timestamp
+                level
+                text
+            }
+        }"#
+    .to_string();
+
+    let resp = subgraph.query(&query).await?;
+
+    // Should not have GraphQL errors when querying logs on failed subgraph
+    assert!(
+        resp.get("errors").is_none(),
+        "Expected no errors when querying _logs on failed subgraph, got: {:?}",
+        resp.get("errors")
+    );
+
+    let logs = resp["data"]["_logs"]
+        .as_array()
+        .context("Expected _logs to be an array")?;
+
+    // The critical assertion: _logs query works on failed subgraphs
+    // This enables debugging even when the subgraph has crashed
+    println!(
+        "Successfully queried _logs on failed subgraph, found {} log entries",
+        logs.len()
+    );
+
+    // Print a sample of logs to see what's available (for documentation/debugging)
+    if !logs.is_empty() {
+        println!("Sample logs from failed subgraph:");
+        for (i, log) in logs.iter().take(5).enumerate() {
+            println!(
+                "  Log {}: level={:?}, text={:?}",
+                i + 1,
+                log["level"].as_str(),
+                log["text"].as_str()
+            );
+        }
+    }
+
+    // Verify we can also filter by level on failed subgraphs
+    let query = r#"{
+            _logs(level: ERROR, first: 100) {
+                level
+                text
+            }
+        }"#
+    .to_string();
+
+    let resp = subgraph.query(&query).await?;
+    assert!(
+        resp.get("errors").is_none(),
+        "Expected no errors when filtering _logs by level on failed subgraph"
+    );
+
+    println!("✓ _logs query works on failed subgraphs - critical for debugging!");
+
     Ok(())
 }
 
