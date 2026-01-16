@@ -3,9 +3,11 @@ use std::{
     cmp::Eq,
     collections::HashMap,
     hash::Hash,
-    sync::{Arc, RwLock},
+    sync::Arc,
     time::{Duration, Instant},
 };
+
+use crate::parking_lot::RwLock;
 
 /// Caching of values for a specified amount of time
 #[derive(Debug)]
@@ -49,7 +51,7 @@ impl<K, V> TimedCache<K, V> {
         K: Borrow<Q> + Eq + Hash,
         Q: Hash + Eq + ?Sized,
     {
-        match self.entries.read().unwrap().get(key) {
+        match self.entries.read().get(key) {
             Some(CacheEntry { value, expires }) if expires >= &now => Some(value.clone()),
             _ => None,
         }
@@ -72,11 +74,11 @@ impl<K, V> TimedCache<K, V> {
             value,
             expires: now + self.ttl,
         };
-        self.entries.write().unwrap().insert(key, entry);
+        self.entries.write().insert(key, entry);
     }
 
     pub fn clear(&self) {
-        self.entries.write().unwrap().clear();
+        self.entries.write().clear();
     }
 
     pub fn find<F>(&self, pred: F) -> Option<Arc<V>>
@@ -85,7 +87,6 @@ impl<K, V> TimedCache<K, V> {
     {
         self.entries
             .read()
-            .unwrap()
             .values()
             .find(move |entry| pred(entry.value.as_ref()))
             .map(|entry| entry.value.clone())
@@ -101,7 +102,6 @@ impl<K, V> TimedCache<K, V> {
     {
         self.entries
             .write()
-            .unwrap()
             .remove(key)
             .map(|CacheEntry { value, expires }| (value, expires >= Instant::now()))
     }
