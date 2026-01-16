@@ -22,8 +22,9 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::RwLock;
 use std::time::{Duration, Instant};
+
+use graph::parking_lot::RwLock;
 
 use crate::pool::AsyncPool;
 
@@ -308,7 +309,6 @@ impl WaitMeter {
     pub(crate) fn add_conn_wait_time(&self, duration: Duration) {
         self.wait_stats
             .write()
-            .unwrap()
             .add_and_register(duration, &self.wait_gauge);
     }
 }

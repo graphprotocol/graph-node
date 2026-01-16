@@ -2,7 +2,9 @@ use graph::futures01::Stream;
 use graph::futures03::compat::Stream01CompatExt;
 use graph::futures03::stream::StreamExt;
 use graph::futures03::TryStreamExt;
-use std::sync::{atomic::Ordering, Arc, RwLock};
+use std::sync::{atomic::Ordering, Arc};
+
+use graph::parking_lot::RwLock;
 use std::{collections::HashMap, sync::atomic::AtomicUsize};
 use tokio::sync::mpsc::{channel, Sender};
 use tokio_stream::wrappers::ReceiverStream;
@@ -127,7 +129,7 @@ impl SubscriptionManager {
 
         // Send to `subscriptions`.
         {
-            let senders = subscriptions.read().unwrap().clone();
+            let senders = subscriptions.read().clone();
 
             // Write change to all matching subscription streams; remove subscriptions
             // whose receiving end has been dropped
@@ -138,7 +140,7 @@ impl SubscriptionManager {
                         "Failed to send store event to subscriber {}: {}", id, e
                     );
                     // Receiver was dropped
-                    subscriptions.write().unwrap().remove(&id);
+                    subscriptions.write().remove(&id);
                 }
             }
         }
@@ -187,7 +189,7 @@ impl SubscriptionManager {
 
                 // Cleanup `subscriptions`.
                 {
-                    let mut subscriptions = subscriptions.write().unwrap();
+                    let mut subscriptions = subscriptions.write();
 
                     // Obtain IDs of subscriptions whose receiving end has gone
                     let stale_ids = subscriptions
@@ -218,7 +220,7 @@ impl SubscriptionManagerTrait for SubscriptionManager {
         let (sender, receiver) = channel(100);
 
         // Add the new subscription
-        self.subscriptions.write().unwrap().insert(id, sender);
+        self.subscriptions.write().insert(id, sender);
 
         // Return the subscription ID and entity change stream
         ReceiverStream::new(receiver)

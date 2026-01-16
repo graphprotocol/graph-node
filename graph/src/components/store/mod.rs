@@ -25,8 +25,10 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 use std::fmt::Display;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
+
+use crate::parking_lot::RwLock;
 
 use async_trait::async_trait;
 
