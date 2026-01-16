@@ -9,6 +9,12 @@ pub struct SimpleKVSerializer {
     kvs: Vec<(String, String)>,
 }
 
+impl Default for SimpleKVSerializer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SimpleKVSerializer {
     pub fn new() -> Self {
         Self { kvs: Vec::new() }
@@ -39,6 +45,12 @@ pub struct VecKVSerializer {
     kvs: Vec<(String, String)>,
 }
 
+impl Default for VecKVSerializer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VecKVSerializer {
     pub fn new() -> Self {
         Self { kvs: Vec::new() }
@@ -59,6 +71,12 @@ impl Serializer for VecKVSerializer {
 /// Serializer for extracting key-value pairs into a HashMap
 pub struct HashMapKVSerializer {
     kvs: Vec<(String, String)>,
+}
+
+impl Default for HashMapKVSerializer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl HashMapKVSerializer {
