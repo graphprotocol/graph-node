@@ -345,43 +345,75 @@ pub(crate) async fn execute_root_selection_set_uncached(
             )]
         })?;
 
-        // Convert log entries to GraphQL values
+        // Get _Log_ type from schema for field selection
+        let log_type_def = ctx.query.schema.get_named_type("_Log_").ok_or_else(|| {
+            vec![QueryExecutionError::AbstractTypeError(
+                "_Log_ type not found in schema".to_string(),
+            )]
+        })?;
+        let log_object_type = match log_type_def {
+            s::TypeDefinition::Object(obj) => sast::ObjectType::from(Arc::new(obj.clone())),
+            _ => {
+                return Err(vec![QueryExecutionError::AbstractTypeError(
+                    "_Log_ is not an object type".to_string(),
+                )])
+            }
+        };
+
+        // Convert log entries to GraphQL values, respecting field selection
         let log_values: Vec<r::Value> = log_entries
             .into_iter()
             .map(|entry| {
-                // Convert arguments Vec<(String, String)> to GraphQL objects
-                let arguments: Vec<r::Value> = entry
-                    .arguments
-                    .into_iter()
-                    .map(|(key, value)| {
-                        object! {
-                            key: key,
-                            value: value,
-                            __typename: "_LogArgument_"
-                        }
-                    })
-                    .collect();
-
-                // Convert log level to string
+                // Convert log level to string (needed by multiple fields)
                 let level_str = entry.level.as_str().to_uppercase();
+                let mut results = Vec::new();
 
-                object! {
-                    id: entry.id,
-                    subgraphId: entry.subgraph_id.to_string(),
-                    timestamp: entry.timestamp,
-                    level: level_str,
-                    text: entry.text,
-                    arguments: arguments,
-                    meta: object! {
-                        module: entry.meta.module,
-                        line: r::Value::Int(entry.meta.line),
-                        column: r::Value::Int(entry.meta.column),
-                        __typename: "_LogMeta_"
-                    },
-                    __typename: "_Log_"
+                // Iterate over requested fields (same pattern as entity queries)
+                for log_field in field
+                    .selection_set
+                    .fields_for(&log_object_type)
+                    .map_err(|e| vec![e])?
+                {
+                    let response_key = log_field.response_key();
+
+                    // Map field name to LogEntry value (replaces prefetched_object lookup)
+                    let value = match log_field.name.as_str() {
+                        "id" => entry.id.clone().into_value(),
+                        "subgraphId" => entry.subgraph_id.to_string().into_value(),
+                        "timestamp" => entry.timestamp.clone().into_value(),
+                        "level" => level_str.clone().into_value(),
+                        "text" => entry.text.clone().into_value(),
+                        "arguments" => {
+                            // Convert arguments Vec<(String, String)> to GraphQL objects
+                            let args: Vec<r::Value> = entry
+                                .arguments
+                                .iter()
+                                .map(|(key, value)| {
+                                    object! {
+                                        key: key.clone(),
+                                        value: value.clone(),
+                                        __typename: "_LogArgument_"
+                                    }
+                                })
+                                .collect();
+                            r::Value::List(args)
+                        }
+                        "meta" => object! {
+                            module: entry.meta.module.clone(),
+                            line: r::Value::Int(entry.meta.line),
+                            column: r::Value::Int(entry.meta.column),
+                            __typename: "_LogMeta_"
+                        },
+                        "__typename" => "_Log_".into_value(),
+                        _ => continue, // Unknown field, skip it
+                    };
+
+                    results.push((Word::from(response_key), value));
                 }
+
+                Ok(r::Value::Object(Object::from_iter(results)))
             })
-            .collect();
+            .collect::<Result<Vec<_>, Vec<QueryExecutionError>>>()?;
 
         let response_key = Word::from(field.response_key());
         let logs_object = Object::from_iter(vec![(response_key, r::Value::List(log_values))]);

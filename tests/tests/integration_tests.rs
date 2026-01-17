@@ -1529,6 +1529,55 @@ async fn test_logs_query(ctx: TestContext) -> anyhow::Result<()> {
         error_msg
     );
 
+    // Test 7: Field selection - verify only requested fields are returned
+    let query = r#"{
+            _logs(first: 1) {
+                id
+                timestamp
+            }
+        }"#
+    .to_string();
+    let resp = subgraph.query(&query).await?;
+
+    let logs = resp["data"]["_logs"]
+        .as_array()
+        .context("Expected _logs to be an array")?;
+
+    if !logs.is_empty() {
+        let log = &logs[0];
+
+        // Verify requested fields are present
+        assert!(log.get("id").is_some(), "Expected id field to be present");
+        assert!(
+            log.get("timestamp").is_some(),
+            "Expected timestamp field to be present"
+        );
+
+        // Verify non-requested fields are NOT present
+        assert!(
+            log.get("text").is_none(),
+            "Expected text field to NOT be present (field selection bug)"
+        );
+        assert!(
+            log.get("level").is_none(),
+            "Expected level field to NOT be present (field selection bug)"
+        );
+        assert!(
+            log.get("subgraphId").is_none(),
+            "Expected subgraphId field to NOT be present (field selection bug)"
+        );
+        assert!(
+            log.get("arguments").is_none(),
+            "Expected arguments field to NOT be present (field selection bug)"
+        );
+        assert!(
+            log.get("meta").is_none(),
+            "Expected meta field to NOT be present (field selection bug)"
+        );
+
+        println!("✓ Field selection works correctly - only requested fields returned");
+    }
+
     Ok(())
 }
 
