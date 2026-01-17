@@ -170,7 +170,7 @@ pub mod prelude {
     pub use crate::log::split::split_logger;
     pub use crate::util::cache_weight::CacheWeight;
     pub use crate::util::futures::{retry, TimeoutError};
-    pub use crate::util::stats::MovingStats;
+    pub use crate::util::stats::{AtomicMovingStats, MovingStats};
 
     macro_rules! static_graphql {
         ($m:ident, $m2:ident, {$($n:ident,)*}) => {

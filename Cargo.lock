@@ -2870,6 +2870,7 @@ dependencies = [
  "object_store",
  "parking_lot",
  "petgraph 0.8.3",
+ "portable-atomic",
  "priority-queue",
  "prometheus",
  "prost",

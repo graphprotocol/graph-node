@@ -10,10 +10,10 @@ use diesel_async::pooled_connection::{PoolError as DieselPoolError, PoolableConn
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use graph::env::ENV_VARS;
 use graph::prelude::error;
+use graph::prelude::AtomicMovingStats;
 use graph::prelude::Counter;
 use graph::prelude::Gauge;
 use graph::prelude::MetricsRegistry;
-use graph::prelude::MovingStats;
 use graph::prelude::PoolWaitStats;
 use graph::slog::info;
 use graph::slog::Logger;
@@ -23,8 +23,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-
-use graph::parking_lot::RwLock;
 
 use crate::pool::AsyncPool;
 
@@ -298,7 +296,7 @@ impl WaitMeter {
                 const_labels,
             )
             .expect("failed to create `store_connection_wait_time_ms` counter");
-        let wait_stats = Arc::new(RwLock::new(MovingStats::default()));
+        let wait_stats = Arc::new(AtomicMovingStats::default());
 
         Self {
             wait_gauge,
@@ -307,8 +305,6 @@ impl WaitMeter {
     }
 
     pub(crate) fn add_conn_wait_time(&self, duration: Duration) {
-        self.wait_stats
-            .write()
-            .add_and_register(duration, &self.wait_gauge);
+        self.wait_stats.add_and_register(duration, &self.wait_gauge);
     }
 }

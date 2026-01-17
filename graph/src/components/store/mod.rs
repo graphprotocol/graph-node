@@ -28,8 +28,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::parking_lot::RwLock;
-
 use async_trait::async_trait;
 
 use crate::blockchain::{Block, BlockHash, BlockPtr};
@@ -44,7 +42,7 @@ use crate::env::ENV_VARS;
 use crate::internal_error;
 use crate::prelude::{s, Attribute, DeploymentHash, ValueType};
 use crate::schema::{ast as sast, EntityKey, EntityType, InputSchema};
-use crate::util::stats::MovingStats;
+use crate::util::stats::AtomicMovingStats;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct EntityFilterDerivative(bool);
@@ -744,8 +742,8 @@ impl Display for DeploymentLocator {
 }
 
 // The type that the connection pool uses to track wait times for
-// connection checkouts
-pub type PoolWaitStats = Arc<RwLock<MovingStats>>;
+// connection checkouts. Uses lock-free atomic operations internally.
+pub type PoolWaitStats = Arc<AtomicMovingStats>;
 
 /// Determines which columns should be selected in a table.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

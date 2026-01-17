@@ -459,7 +459,7 @@ impl LoadManager {
     }
 
     fn overloaded(&self, wait_stats: &PoolWaitStats) -> (bool, Duration) {
-        let store_avg = wait_stats.read().average();
+        let store_avg = wait_stats.average();
         let overloaded = store_avg
             .map(|average| average > ENV_VARS.load_threshold)
             .unwrap_or(false);

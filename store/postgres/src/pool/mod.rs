@@ -11,7 +11,7 @@ use graph::derive::CheapClone;
 use graph::internal_error;
 use graph::prelude::tokio::time::Instant;
 use graph::prelude::{
-    anyhow::anyhow, crit, debug, error, info, o, Gauge, Logger, MovingStats, PoolWaitStats,
+    anyhow::anyhow, crit, debug, error, info, o, AtomicMovingStats, Gauge, Logger, PoolWaitStats,
     StoreError, ENV_VARS,
 };
 use graph::prelude::{tokio, MetricsRegistry};
@@ -24,8 +24,6 @@ use std::fmt::{self};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::time::Duration;
-
-use graph::parking_lot::RwLock;
 
 use crate::catalog;
 use crate::pool::manager::{ConnectionManager, WaitMeter};
@@ -435,7 +433,7 @@ pub struct PoolInner {
     // that waiting queries consume few resources. Still this is placed here because the semaphore
     // is sized acording to the DB connection pool size.
     query_semaphore: Arc<tokio::sync::Semaphore>,
-    semaphore_wait_stats: Arc<RwLock<MovingStats>>,
+    semaphore_wait_stats: Arc<AtomicMovingStats>,
     semaphore_wait_gauge: Box<Gauge>,
 
     // Limits concurrent indexing operations to prevent pool exhaustion
@@ -444,7 +442,7 @@ pub struct PoolInner {
     // during diesel-async migration. It also avoids timeouts because of
     // pool exhaustion when getting a connection.
     indexing_semaphore: Arc<tokio::sync::Semaphore>,
-    indexing_semaphore_wait_stats: Arc<RwLock<MovingStats>>,
+    indexing_semaphore_wait_stats: Arc<AtomicMovingStats>,
     indexing_semaphore_wait_gauge: Box<Gauge>,
 }
 
@@ -560,11 +558,11 @@ impl PoolInner {
             fdw_pool,
             wait_meter,
             state_tracker,
-            semaphore_wait_stats: Arc::new(RwLock::new(MovingStats::default())),
+            semaphore_wait_stats: Arc::new(AtomicMovingStats::default()),
             query_semaphore,
             semaphore_wait_gauge,
             indexing_semaphore,
-            indexing_semaphore_wait_stats: Arc::new(RwLock::new(MovingStats::default())),
+            indexing_semaphore_wait_stats: Arc::new(AtomicMovingStats::default()),
             indexing_semaphore_wait_gauge,
         }
     }
@@ -721,7 +719,6 @@ impl PoolInner {
         let start = Instant::now();
         let permit = self.query_semaphore.cheap_clone().acquire_owned().await;
         self.semaphore_wait_stats
-            .write()
             .add_and_register(start.elapsed(), &self.semaphore_wait_gauge);
         permit.unwrap()
     }
@@ -734,7 +731,6 @@ impl PoolInner {
         let permit = self.indexing_semaphore.cheap_clone().acquire_owned().await;
         let elapsed = start.elapsed();
         self.indexing_semaphore_wait_stats
-            .write()
             .add_and_register(elapsed, &self.indexing_semaphore_wait_gauge);
         (permit.unwrap(), elapsed)
     }
