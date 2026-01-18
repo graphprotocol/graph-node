@@ -63,6 +63,7 @@ pub fn build_log_query(
     let mut search = None;
     let mut first = 100;
     let mut skip = 0;
+    let mut order_direction = graph::components::log_store::OrderDirection::Desc;
 
     // Parse arguments
     for (name, value) in &field.arguments {
@@ -156,6 +157,17 @@ pub fn build_log_query(
                     skip = skip_u32;
                 }
             }
+            "orderDirection" => {
+                if let r::Value::Enum(order_str) = value {
+                    order_direction = order_str.parse().map_err(|e: String| {
+                        QueryExecutionError::InvalidArgumentError(
+                            field.position,
+                            "orderDirection".to_string(),
+                            q::Value::String(e),
+                        )
+                    })?;
+                }
+            }
             _ => {
                 // Unknown argument, ignore
             }
@@ -170,5 +182,6 @@ pub fn build_log_query(
         search,
         first,
         skip,
+        order_direction,
     })
 }

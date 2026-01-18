@@ -1578,6 +1578,64 @@ async fn test_logs_query(ctx: TestContext) -> anyhow::Result<()> {
         println!("✓ Field selection works correctly - only requested fields returned");
     }
 
+    // Test 8: Order direction - ascending
+    let query = r#"{
+            _logs(first: 10, orderDirection: asc) {
+                id
+                timestamp
+            }
+        }"#
+    .to_string();
+    let resp = subgraph.query(&query).await?;
+
+    let logs = resp["data"]["_logs"]
+        .as_array()
+        .context("Expected _logs to be an array")?;
+
+    // Verify ascending order (each timestamp >= previous)
+    if logs.len() > 1 {
+        for i in 1..logs.len() {
+            let prev_ts = logs[i - 1]["timestamp"].as_str().unwrap();
+            let curr_ts = logs[i]["timestamp"].as_str().unwrap();
+            assert!(
+                curr_ts >= prev_ts,
+                "Expected ascending order, but {} came before {}",
+                prev_ts,
+                curr_ts
+            );
+        }
+        println!("✓ Ascending order works correctly");
+    }
+
+    // Test 9: Order direction - descending (explicit)
+    let query = r#"{
+            _logs(first: 10, orderDirection: desc) {
+                id
+                timestamp
+            }
+        }"#
+    .to_string();
+    let resp = subgraph.query(&query).await?;
+
+    let logs = resp["data"]["_logs"]
+        .as_array()
+        .context("Expected _logs to be an array")?;
+
+    // Verify descending order (each timestamp <= previous)
+    if logs.len() > 1 {
+        for i in 1..logs.len() {
+            let prev_ts = logs[i - 1]["timestamp"].as_str().unwrap();
+            let curr_ts = logs[i]["timestamp"].as_str().unwrap();
+            assert!(
+                curr_ts <= prev_ts,
+                "Expected descending order, but {} came before {}",
+                prev_ts,
+                curr_ts
+            );
+        }
+        println!("✓ Descending order works correctly");
+    }
+
     Ok(())
 }
 

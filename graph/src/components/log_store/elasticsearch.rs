@@ -84,7 +84,7 @@ impl ElasticsearchLogStore {
             "from": query.skip,
             "size": query.first,
             "sort": [
-                { "timestamp": { "order": "desc" } }
+                { "timestamp": { "order": query.order_direction.as_str() } }
             ]
         })
     }

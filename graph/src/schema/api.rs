@@ -1371,6 +1371,18 @@ fn logs_field() -> s::Field {
                     default_value: Some(s::Value::Int(0.into())),
                     directives: vec![],
                 },
+                // orderDirection: OrderDirection (default desc)
+                s::InputValue {
+                    position: Pos::default(),
+                    description: Some(
+                        "Sort direction for results. Default: desc (newest first)."
+                        .to_string()
+                    ),
+                    name: String::from("orderDirection"),
+                    value_type: s::Type::NamedType(String::from("OrderDirection")),
+                    default_value: Some(s::Value::Enum(String::from("desc"))),
+                    directives: vec![],
+                },
             ],
             field_type: s::Type::NonNullType(Box::new(s::Type::ListType(Box::new(
                 s::Type::NonNullType(Box::new(s::Type::NamedType(String::from("_Log_")))),
