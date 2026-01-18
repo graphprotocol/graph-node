@@ -166,16 +166,14 @@ impl LoggerFactory {
 
             Some(LogStoreConfig::File {
                 directory,
-                max_file_size,
-                retention_days,
+                retention_hours: _,
             }) => {
                 // Use File
+                // Note: Cleanup is handled by FileLogStore on startup based on retention_hours
                 Some(file_logger(
                     FileDrainConfig {
                         directory: directory.clone(),
                         subgraph_id: loc.hash.to_string(),
-                        max_file_size: *max_file_size,
-                        retention_days: *retention_days,
                     },
                     term_logger.clone(),
                 ))

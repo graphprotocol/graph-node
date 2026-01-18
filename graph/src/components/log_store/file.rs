@@ -12,29 +12,38 @@ use super::{LogEntry, LogMeta, LogQuery, LogStore, LogStoreError};
 
 pub struct FileLogStore {
     directory: PathBuf,
-    // TODO: Implement log rotation when file exceeds max_file_size
-    #[allow(dead_code)]
-    max_file_size: u64,
-    // TODO: Implement automatic cleanup of logs older than retention_days
-    #[allow(dead_code)]
-    retention_days: u32,
+    retention_hours: u32,
 }
 
 impl FileLogStore {
-    pub fn new(
-        directory: PathBuf,
-        max_file_size: u64,
-        retention_days: u32,
-    ) -> Result<Self, LogStoreError> {
+    pub fn new(directory: PathBuf, retention_hours: u32) -> Result<Self, LogStoreError> {
         // Create directory if it doesn't exist
         std::fs::create_dir_all(&directory)
             .map_err(|e| LogStoreError::InitializationFailed(e.into()))?;
 
-        Ok(Self {
+        let store = Self {
             directory,
-            max_file_size,
-            retention_days,
-        })
+            retention_hours,
+        };
+
+        // Run cleanup on startup for all existing log files
+        if retention_hours > 0 {
+            if let Ok(entries) = std::fs::read_dir(&store.directory) {
+                for entry in entries.filter_map(Result::ok) {
+                    let path = entry.path();
+
+                    // Only process .jsonl files
+                    if path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                        // Run cleanup, but don't fail initialization if cleanup fails
+                        if let Err(e) = store.cleanup_old_logs(&path) {
+                            eprintln!("Warning: Failed to cleanup old logs for {:?}: {}", path, e);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(store)
     }
 
     /// Get log file path for a subgraph
@@ -94,6 +103,57 @@ impl FileLogStore {
         }
 
         true
+    }
+
+    /// Delete log entries older than retention_hours
+    fn cleanup_old_logs(&self, file_path: &std::path::Path) -> Result<(), LogStoreError> {
+        if self.retention_hours == 0 {
+            return Ok(()); // Cleanup disabled, keep all logs
+        }
+
+        use chrono::{DateTime, Duration, Utc};
+        use std::io::Write;
+
+        // Calculate cutoff time
+        let cutoff = Utc::now() - Duration::hours(self.retention_hours as i64);
+
+        // Read all log entries
+        let file = File::open(file_path).map_err(|e| LogStoreError::QueryFailed(e.into()))?;
+        let reader = BufReader::new(file);
+
+        let kept_entries: Vec<String> = reader
+            .lines()
+            .filter_map(|line| line.ok())
+            .filter(|line| {
+                // Parse timestamp from log entry
+                if let Some(entry) = self.parse_line(line) {
+                    // Parse RFC3339 timestamp
+                    if let Ok(timestamp) = DateTime::parse_from_rfc3339(&entry.timestamp) {
+                        return timestamp.with_timezone(&Utc) >= cutoff;
+                    }
+                }
+                // Keep if we can't parse (don't delete on error)
+                true
+            })
+            .collect();
+
+        // Write filtered file atomically
+        let temp_path = file_path.with_extension("jsonl.tmp");
+        let mut temp_file =
+            File::create(&temp_path).map_err(|e| LogStoreError::QueryFailed(e.into()))?;
+
+        for entry in kept_entries {
+            writeln!(temp_file, "{}", entry).map_err(|e| LogStoreError::QueryFailed(e.into()))?;
+        }
+
+        temp_file
+            .sync_all()
+            .map_err(|e| LogStoreError::QueryFailed(e.into()))?;
+
+        // Atomic rename
+        std::fs::rename(&temp_path, file_path).map_err(|e| LogStoreError::QueryFailed(e.into()))?;
+
+        Ok(())
     }
 }
 
@@ -185,8 +245,11 @@ impl LogStore for FileLogStore {
             .map(|Reverse(te)| te.entry)
             .collect();
 
-        // Sort by timestamp descending (most recent first)
-        result.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        // Sort by timestamp (direction based on query)
+        match query.order_direction {
+            super::OrderDirection::Desc => result.sort_by(|a, b| b.timestamp.cmp(&a.timestamp)),
+            super::OrderDirection::Asc => result.sort_by(|a, b| a.timestamp.cmp(&b.timestamp)),
+        }
 
         // Apply skip and take to get the final page
         Ok(result
@@ -231,7 +294,7 @@ mod tests {
     #[test]
     fn test_file_log_store_initialization() {
         let temp_dir = TempDir::new().unwrap();
-        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 1024 * 1024, 30);
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 0);
         assert!(store.is_ok());
 
         let store = store.unwrap();
@@ -241,7 +304,7 @@ mod tests {
     #[test]
     fn test_log_file_path() {
         let temp_dir = TempDir::new().unwrap();
-        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 1024 * 1024, 30).unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 0).unwrap();
 
         let subgraph_id = DeploymentHash::new("QmTest").unwrap();
         let path = store.log_file_path(&subgraph_id);
@@ -252,7 +315,7 @@ mod tests {
     #[tokio::test]
     async fn test_query_nonexistent_file() {
         let temp_dir = TempDir::new().unwrap();
-        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 1024 * 1024, 30).unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 0).unwrap();
 
         let query = LogQuery {
             subgraph_id: DeploymentHash::new("QmNonexistent").unwrap(),
@@ -262,6 +325,7 @@ mod tests {
             search: None,
             first: 100,
             skip: 0,
+            order_direction: super::super::OrderDirection::Desc,
         };
 
         let result = store.query_logs(query).await;
@@ -272,7 +336,7 @@ mod tests {
     #[tokio::test]
     async fn test_query_with_sample_data() {
         let temp_dir = TempDir::new().unwrap();
-        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 1024 * 1024, 30).unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 0).unwrap();
 
         let subgraph_id = DeploymentHash::new("QmTest").unwrap();
         let file_path = store.log_file_path(&subgraph_id);
@@ -303,6 +367,7 @@ mod tests {
             search: None,
             first: 100,
             skip: 0,
+            order_direction: super::super::OrderDirection::Desc,
         };
 
         let result = store.query_logs(query).await;
@@ -318,7 +383,7 @@ mod tests {
     #[tokio::test]
     async fn test_query_with_level_filter() {
         let temp_dir = TempDir::new().unwrap();
-        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 1024 * 1024, 30).unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 0).unwrap();
 
         let subgraph_id = DeploymentHash::new("QmTest").unwrap();
         let file_path = store.log_file_path(&subgraph_id);
@@ -351,6 +416,7 @@ mod tests {
             search: None,
             first: 100,
             skip: 0,
+            order_direction: super::super::OrderDirection::Desc,
         };
 
         let result = store.query_logs(query).await;
@@ -359,5 +425,191 @@ mod tests {
         let entries = result.unwrap();
         assert_eq!(entries.len(), 2);
         assert!(entries.iter().all(|e| e.level == LogLevel::Error));
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_old_logs() {
+        use chrono::{Duration, Utc};
+
+        let temp_dir = TempDir::new().unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 24).unwrap();
+
+        let subgraph_id = DeploymentHash::new("QmTest").unwrap();
+        let file_path = store.log_file_path(&subgraph_id);
+
+        // Create test data with old and new entries
+        let mut file = File::create(&file_path).unwrap();
+
+        // Old entry (48 hours ago)
+        let old_timestamp =
+            (Utc::now() - Duration::hours(48)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let old_entry = FileLogDocument {
+            id: "log-old".to_string(),
+            subgraph_id: "QmTest".to_string(),
+            timestamp: old_timestamp,
+            level: "info".to_string(),
+            text: "Old log entry".to_string(),
+            arguments: vec![],
+            meta: FileLogMeta {
+                module: "test.ts".to_string(),
+                line: 1,
+                column: 1,
+            },
+        };
+        writeln!(file, "{}", serde_json::to_string(&old_entry).unwrap()).unwrap();
+
+        // New entry (12 hours ago)
+        let new_timestamp =
+            (Utc::now() - Duration::hours(12)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let new_entry = FileLogDocument {
+            id: "log-new".to_string(),
+            subgraph_id: "QmTest".to_string(),
+            timestamp: new_timestamp,
+            level: "info".to_string(),
+            text: "New log entry".to_string(),
+            arguments: vec![],
+            meta: FileLogMeta {
+                module: "test.ts".to_string(),
+                line: 2,
+                column: 1,
+            },
+        };
+        writeln!(file, "{}", serde_json::to_string(&new_entry).unwrap()).unwrap();
+        drop(file);
+
+        // Run cleanup
+        store.cleanup_old_logs(&file_path).unwrap();
+
+        // Query to verify only new entry remains
+        let query = LogQuery {
+            subgraph_id,
+            level: None,
+            from: None,
+            to: None,
+            search: None,
+            first: 100,
+            skip: 0,
+            order_direction: super::super::OrderDirection::Desc,
+        };
+
+        let result = store.query_logs(query).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "log-new");
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_keeps_unparseable_entries() {
+        let temp_dir = TempDir::new().unwrap();
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 24).unwrap();
+
+        let subgraph_id = DeploymentHash::new("QmTest").unwrap();
+        let file_path = store.log_file_path(&subgraph_id);
+
+        // Create test data with valid and unparseable entries
+        let mut file = File::create(&file_path).unwrap();
+
+        // Valid entry
+        let valid_entry = FileLogDocument {
+            id: "log-valid".to_string(),
+            subgraph_id: "QmTest".to_string(),
+            timestamp: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            level: "info".to_string(),
+            text: "Valid entry".to_string(),
+            arguments: vec![],
+            meta: FileLogMeta {
+                module: "test.ts".to_string(),
+                line: 1,
+                column: 1,
+            },
+        };
+        writeln!(file, "{}", serde_json::to_string(&valid_entry).unwrap()).unwrap();
+
+        // Unparseable entry (invalid JSON)
+        writeln!(file, "{{invalid json}}").unwrap();
+
+        // Entry with invalid timestamp
+        writeln!(
+            file,
+            r#"{{"id":"log-bad-time","subgraphId":"QmTest","timestamp":"not-a-timestamp","level":"info","text":"Bad timestamp","arguments":[],"meta":{{"module":"test.ts","line":2,"column":1}}}}"#
+        )
+        .unwrap();
+        drop(file);
+
+        // Run cleanup
+        store.cleanup_old_logs(&file_path).unwrap();
+
+        // Read file contents directly
+        let file_contents = std::fs::read_to_string(&file_path).unwrap();
+        let lines: Vec<&str> = file_contents.lines().collect();
+
+        // All 3 entries should be kept (don't delete on error)
+        assert_eq!(lines.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_startup_cleanup() {
+        use chrono::{Duration, Utc};
+
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create a log file with old entries before initializing the store
+        let file_path = temp_dir.path().join("QmTestStartup.jsonl");
+        let mut file = File::create(&file_path).unwrap();
+
+        // Old entry (48 hours ago)
+        let old_timestamp =
+            (Utc::now() - Duration::hours(48)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let old_entry = FileLogDocument {
+            id: "log-old".to_string(),
+            subgraph_id: "QmTestStartup".to_string(),
+            timestamp: old_timestamp,
+            level: "info".to_string(),
+            text: "Old log entry".to_string(),
+            arguments: vec![],
+            meta: FileLogMeta {
+                module: "test.ts".to_string(),
+                line: 1,
+                column: 1,
+            },
+        };
+        writeln!(file, "{}", serde_json::to_string(&old_entry).unwrap()).unwrap();
+
+        // New entry (12 hours ago)
+        let new_timestamp =
+            (Utc::now() - Duration::hours(12)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let new_entry = FileLogDocument {
+            id: "log-new".to_string(),
+            subgraph_id: "QmTestStartup".to_string(),
+            timestamp: new_timestamp,
+            level: "info".to_string(),
+            text: "New log entry".to_string(),
+            arguments: vec![],
+            meta: FileLogMeta {
+                module: "test.ts".to_string(),
+                line: 2,
+                column: 1,
+            },
+        };
+        writeln!(file, "{}", serde_json::to_string(&new_entry).unwrap()).unwrap();
+        drop(file);
+
+        // Initialize store with 24-hour retention - should cleanup on startup
+        let store = FileLogStore::new(temp_dir.path().to_path_buf(), 24).unwrap();
+
+        // Verify old entry was cleaned up
+        let query = LogQuery {
+            subgraph_id: DeploymentHash::new("QmTestStartup").unwrap(),
+            level: None,
+            from: None,
+            to: None,
+            search: None,
+            first: 100,
+            skip: 0,
+            order_direction: super::super::OrderDirection::Desc,
+        };
+
+        let result = store.query_logs(query).await.unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "log-new");
     }
 }
