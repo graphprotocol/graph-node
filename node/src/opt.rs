@@ -224,17 +224,11 @@ pub struct Opt {
     )]
     pub log_store_file_dir: Option<String>,
     #[clap(
-        long = "log-store-file-max-size",
-        value_name = "BYTES",
-        help = "Maximum log file size in bytes (default: 104857600 = 100MB)"
+        long = "log-store-file-retention-hours",
+        value_name = "HOURS",
+        help = "Number of hours to retain log files (0 = disabled, keep all logs; default: 0)"
     )]
-    pub log_store_file_max_size: Option<u64>,
-    #[clap(
-        long = "log-store-file-retention-days",
-        value_name = "DAYS",
-        help = "Number of days to retain log files (default: 30)"
-    )]
-    pub log_store_file_retention_days: Option<u32>,
+    pub log_store_file_retention_hours: Option<u32>,
 
     // ================================================
     // DEPRECATED - OLD ELASTICSEARCH-SPECIFIC ARGS

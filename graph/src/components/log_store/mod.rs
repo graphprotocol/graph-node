@@ -4,6 +4,7 @@ pub mod file;
 pub mod loki;
 
 use async_trait::async_trait;
+use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -50,8 +51,7 @@ pub enum LogStoreConfig {
     /// File-based logs (JSON lines format)
     File {
         directory: PathBuf,
-        max_file_size: u64,
-        retention_days: u32,
+        retention_hours: u32,
     },
 }
 
@@ -91,6 +91,39 @@ impl FromStr for LogLevel {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderDirection {
+    Asc,
+    Desc,
+}
+
+impl OrderDirection {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OrderDirection::Asc => "asc",
+            OrderDirection::Desc => "desc",
+        }
+    }
+}
+
+impl FromStr for OrderDirection {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "asc" | "ascending" => Ok(OrderDirection::Asc),
+            "desc" | "descending" => Ok(OrderDirection::Desc),
+            _ => Err(format!("Invalid order direction: {}", s)),
+        }
+    }
+}
+
+impl fmt::Display for OrderDirection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct LogMeta {
     pub module: String,
@@ -118,6 +151,7 @@ pub struct LogQuery {
     pub search: Option<String>,
     pub first: u32,
     pub skip: u32,
+    pub order_direction: OrderDirection,
 }
 
 #[async_trait]
@@ -167,12 +201,10 @@ impl LogStoreFactory {
 
             LogStoreConfig::File {
                 directory,
-                max_file_size,
-                retention_days,
+                retention_hours,
             } => Ok(Arc::new(file::FileLogStore::new(
                 directory,
-                max_file_size,
-                retention_days,
+                retention_hours,
             )?)),
         }
     }
@@ -282,28 +314,18 @@ impl LogStoreFactory {
                 })
                 .map(PathBuf::from)?;
 
-                // Default: 100MB per file (104857600 bytes)
-                // Configurable via GRAPH_LOG_STORE_FILE_MAX_SIZE environment variable
-                let max_file_size = config::read_u64_with_fallback(
+                // Default: 0 hours (disabled, keep all logs)
+                // Configurable via GRAPH_LOG_STORE_FILE_RETENTION_HOURS environment variable
+                let retention_hours = config::read_u32_with_fallback(
                     &logger,
-                    "GRAPH_LOG_STORE_FILE_MAX_SIZE",
-                    "GRAPH_LOG_FILE_MAX_SIZE",
-                    100 * 1024 * 1024,
-                );
-
-                // Default: 30 days retention
-                // Configurable via GRAPH_LOG_STORE_FILE_RETENTION_DAYS environment variable
-                let retention_days = config::read_u32_with_fallback(
-                    &logger,
-                    "GRAPH_LOG_STORE_FILE_RETENTION_DAYS",
-                    "GRAPH_LOG_FILE_RETENTION_DAYS",
-                    30,
+                    "GRAPH_LOG_STORE_FILE_RETENTION_HOURS",
+                    "GRAPH_LOG_FILE_RETENTION_HOURS",
+                    0,
                 );
 
                 Ok(LogStoreConfig::File {
                     directory,
-                    max_file_size,
-                    retention_days,
+                    retention_hours,
                 })
             }
 

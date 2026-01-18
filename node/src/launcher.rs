@@ -502,8 +502,7 @@ pub async fn run(
             "file" | "files" => opt.log_store_file_dir.clone().map(|directory| {
                 graph::components::log_store::LogStoreConfig::File {
                     directory: std::path::PathBuf::from(directory),
-                    max_file_size: opt.log_store_file_max_size.unwrap_or(100 * 1024 * 1024),
-                    retention_days: opt.log_store_file_retention_days.unwrap_or(30),
+                    retention_hours: opt.log_store_file_retention_hours.unwrap_or(0),
                 }
             }),
 

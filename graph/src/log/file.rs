@@ -16,10 +16,6 @@ pub struct FileDrainConfig {
     pub directory: PathBuf,
     /// The subgraph ID used for the log filename
     pub subgraph_id: String,
-    /// Maximum file size in bytes
-    pub max_file_size: u64,
-    /// Retention period in days
-    pub retention_days: u32,
 }
 
 /// Log document structure for JSON Lines format
@@ -144,8 +140,6 @@ mod tests {
         let config = FileDrainConfig {
             directory: temp_dir.path().to_path_buf(),
             subgraph_id: "QmTest".to_string(),
-            max_file_size: 1024 * 1024,
-            retention_days: 30,
         };
 
         let drain = FileDrain::new(config, error_logger);
@@ -195,8 +189,6 @@ mod tests {
         let config = FileDrainConfig {
             directory: temp_dir.path().to_path_buf(),
             subgraph_id: "QmTest".to_string(),
-            max_file_size: 1024 * 1024,
-            retention_days: 30,
         };
 
         let drain = FileDrain::new(config.clone(), error_logger).unwrap();
