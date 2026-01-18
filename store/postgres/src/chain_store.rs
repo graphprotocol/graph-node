@@ -2150,6 +2150,8 @@ pub struct ChainStore {
     ancestor_cache: HerdCache<Arc<Result<Option<(json::Value, BlockPtr)>, StoreError>>>,
     /// Adaptive cache for chain_head_ptr()
     chain_head_ptr_cache: ChainHeadPtrCache,
+    /// Herd cache to prevent thundering herd on chain_head_ptr() lookups
+    chain_head_ptr_herd: HerdCache<Arc<Result<Option<BlockPtr>, StoreError>>>,
 }
 
 impl ChainStore {
@@ -2169,6 +2171,7 @@ impl ChainStore {
         let blocks_by_number_cache = HerdCache::new(format!("chain_{}_blocks_by_number", chain));
         let ancestor_cache = HerdCache::new(format!("chain_{}_ancestor", chain));
         let chain_head_ptr_cache = ChainHeadPtrCache::new(metrics, chain.clone());
+        let chain_head_ptr_herd = HerdCache::new(format!("chain_{}_head_ptr", chain));
         ChainStore {
             logger,
             pool,
@@ -2181,6 +2184,7 @@ impl ChainStore {
             blocks_by_number_cache,
             ancestor_cache,
             chain_head_ptr_cache,
+            chain_head_ptr_herd,
         }
     }
 
@@ -2523,44 +2527,55 @@ impl ChainHeadStore for ChainStore {
     async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
         use public::ethereum_networks::dsl::*;
 
-        // Check cache first (handles disabled check and metrics internally)
+        // Check TTL cache first (handles disabled check and metrics internally)
         if let Some(cached) = self.chain_head_ptr_cache.get() {
             return Ok(Some(cached));
         }
 
-        // Query database
-        let mut conn = self.pool.get_permitted().await?;
-        let result = ethereum_networks
-            .select((head_block_hash, head_block_number))
-            .filter(name.eq(&self.chain))
-            .load::<(Option<String>, Option<i64>)>(&mut conn)
-            .await
-            .map(|rows| {
-                rows.as_slice()
-                    .first()
-                    .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
-                        (Some(hash), Some(number)) => Some(
-                            (
-                                // FIXME:
-                                //
-                                // workaround for arweave
-                                H256::from_slice(&hex::decode(hash).unwrap()[..32]),
-                                *number,
-                            )
-                                .into(),
-                        ),
-                        (None, None) => None,
-                        _ => unreachable!(),
-                    })
-                    .and_then(|opt: Option<BlockPtr>| opt)
-            })?;
+        // Use HerdCache to ensure only one caller does the DB lookup
+        // when cache is expired. Other callers await the in-flight query.
+        let pool = self.pool.clone();
+        let chain = self.chain.clone();
+        let lookup = async move {
+            let mut conn = pool.get_permitted().await?;
+            ethereum_networks
+                .select((head_block_hash, head_block_number))
+                .filter(name.eq(&chain))
+                .load::<(Option<String>, Option<i64>)>(&mut conn)
+                .await
+                .map(|rows| {
+                    rows.as_slice()
+                        .first()
+                        .map(|(hash_opt, number_opt)| match (hash_opt, number_opt) {
+                            (Some(hash), Some(number)) => Some(
+                                (
+                                    // FIXME:
+                                    //
+                                    // workaround for arweave
+                                    H256::from_slice(&hex::decode(hash).unwrap()[..32]),
+                                    *number,
+                                )
+                                    .into(),
+                            ),
+                            (None, None) => None,
+                            _ => unreachable!(),
+                        })
+                        .and_then(|opt: Option<BlockPtr>| opt)
+                })
+                .map_err(StoreError::from)
+        };
 
-        // Cache the result (set() handles disabled check internally)
-        if let Some(ref ptr) = result {
+        let (result, _cached) = self
+            .cached_lookup(&self.chain_head_ptr_herd, &self.chain, lookup)
+            .await;
+
+        // Update TTL cache with the result
+        // (set() handles disabled check internally)
+        if let Ok(Some(ref ptr)) = result {
             self.chain_head_ptr_cache.set(ptr.clone());
         }
 
-        Ok(result)
+        result.map_err(Error::from)
     }
 
     async fn chain_head_cursor(&self) -> Result<Option<String>, Error> {
