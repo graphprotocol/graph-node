@@ -106,6 +106,8 @@ POSTGRES_TEST_PORT=5432 ETHEREUM_TEST_PORT=8545 IPFS_TEST_PORT=5001 just test-in
 - Integration tests take significant time (several minutes)
 - Tests automatically reset the database between runs
 - Logs are written to `tests/integration-tests/graph-node.log`
+- **If a test hangs for >10 minutes**, it's likely stuck - kill with `pkill -9 integration_tests` and check logs
+- CI uses the default ports (3011, 3021, 3001) - local development can override with environment variables
 
 ### Code Quality
 ```bash
