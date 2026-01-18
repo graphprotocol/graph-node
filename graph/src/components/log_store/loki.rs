@@ -55,8 +55,15 @@ impl LokiLogStore {
         from: &str,
         to: &str,
         limit: u32,
+        order_direction: super::OrderDirection,
     ) -> Result<Vec<LogEntry>, LogStoreError> {
         let url = format!("{}/loki/api/v1/query_range", self.endpoint);
+
+        // Map order direction to Loki's direction parameter
+        let direction = match order_direction {
+            super::OrderDirection::Desc => "backward", // Most recent first
+            super::OrderDirection::Asc => "forward",   // Oldest first
+        };
 
         let mut request = self
             .client
@@ -66,7 +73,7 @@ impl LokiLogStore {
                 ("start", from),
                 ("end", to),
                 ("limit", &limit.to_string()),
-                ("direction", "backward"), // Most recent first
+                ("direction", direction),
             ])
             .timeout(Duration::from_secs(10));
 
@@ -158,7 +165,9 @@ impl LogStore for LokiLogStore {
         // Execute query with limit + skip to handle pagination
         let limit = query.first + query.skip;
 
-        let mut entries = self.execute_query(&logql_query, from, to, limit).await?;
+        let mut entries = self
+            .execute_query(&logql_query, from, to, limit, query.order_direction)
+            .await?;
 
         // Apply skip/first pagination
         if query.skip > 0 {
@@ -239,6 +248,7 @@ mod tests {
             search: None,
             first: 100,
             skip: 0,
+            order_direction: crate::components::log_store::OrderDirection::Desc,
         };
 
         let logql = store.build_logql_query(&query);
@@ -256,6 +266,7 @@ mod tests {
             search: None,
             first: 100,
             skip: 0,
+            order_direction: crate::components::log_store::OrderDirection::Desc,
         };
 
         let logql = store.build_logql_query(&query);
@@ -273,6 +284,7 @@ mod tests {
             search: Some("transaction failed".to_string()),
             first: 100,
             skip: 0,
+            order_direction: crate::components::log_store::OrderDirection::Desc,
         };
 
         let logql = store.build_logql_query(&query);
