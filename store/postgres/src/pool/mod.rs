@@ -476,6 +476,7 @@ impl PoolInner {
             state_tracker.clone(),
             &registry,
             const_labels.clone(),
+            ENV_VARS.store.connection_validation_idle_secs,
         );
 
         let timeouts = Timeouts {

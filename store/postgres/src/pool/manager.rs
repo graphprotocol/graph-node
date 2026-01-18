@@ -35,6 +35,8 @@ pub struct ConnectionManager {
     connection_url: String,
     state_tracker: StateTracker,
     error_counter: Counter,
+    /// Connections idle for less than this threshold skip the SELECT 67 health check
+    validation_idle_threshold: Duration,
 }
 
 impl ConnectionManager {
@@ -44,6 +46,7 @@ impl ConnectionManager {
         state_tracker: StateTracker,
         registry: &MetricsRegistry,
         const_labels: HashMap<String, String>,
+        validation_idle_threshold: Duration,
     ) -> Self {
         let error_counter = registry
             .global_counter(
@@ -58,6 +61,7 @@ impl ConnectionManager {
             connection_url,
             state_tracker,
             error_counter,
+            validation_idle_threshold,
         }
     }
 
@@ -105,11 +109,20 @@ impl deadpool::managed::Manager for ConnectionManager {
     async fn recycle(
         &self,
         obj: &mut Self::Type,
-        _metrics: &deadpool::managed::Metrics,
+        metrics: &deadpool::managed::Metrics,
     ) -> RecycleResult<Self::Error> {
         if std::thread::panicking() || obj.is_broken() {
             return Err(RecycleError::Message("Broken connection".into()));
         }
+
+        // Skip health check if connection was used recently
+        if self.validation_idle_threshold > Duration::ZERO
+            && metrics.last_used() < self.validation_idle_threshold
+        {
+            return Ok(());
+        }
+
+        // Run SELECT 67 only for idle connections
         let res = diesel::select(67_i32.into_sql::<diesel::sql_types::Integer>())
             .execute(obj)
             .await
