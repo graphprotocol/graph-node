@@ -2,6 +2,7 @@
 //!
 //! Generates AssemblyScript entity classes from GraphQL schemas.
 
+use anyhow::{anyhow, Result};
 use graphql_parser::schema::{Definition, Document, Field, ObjectType, Type, TypeDefinition};
 
 use super::types::{asc_type_for_value, value_from_asc, value_to_asc};
@@ -165,6 +166,20 @@ fn list_depth(ty: &Type<'_, String>) -> u8 {
     }
 }
 
+/// Check if the innermost list members are nullable.
+/// For `[String]` returns true, for `[String!]` returns false.
+/// For non-list types, returns false.
+fn is_list_member_nullable(ty: &Type<'_, String>) -> bool {
+    match ty {
+        Type::ListType(inner) => {
+            // Check the immediate inner type
+            is_nullable(inner)
+        }
+        Type::NonNullType(inner) => is_list_member_nullable(inner),
+        Type::NamedType(_) => false,
+    }
+}
+
 /// Check if a field has the @derivedFrom directive.
 fn is_derived_field(field: &Field<'_, String>) -> bool {
     field.directives.iter().any(|d| d.name == "derivedFrom")
@@ -190,6 +205,8 @@ struct FieldInfo {
     is_nullable: bool,
     /// The nesting depth of list wrappers. 0 = scalar, 1 = [T], 2 = [[T]], etc.
     list_depth: u8,
+    /// Whether list members are nullable. Only meaningful when list_depth > 0.
+    member_nullable: bool,
 }
 
 /// Schema code generator.
@@ -200,7 +217,10 @@ pub struct SchemaCodeGenerator {
 
 impl SchemaCodeGenerator {
     /// Create a new schema code generator from a parsed GraphQL document.
-    pub fn new(document: &Document<'_, String>) -> Self {
+    ///
+    /// Returns an error if the schema contains invalid patterns like non-nullable
+    /// lists with nullable members (e.g., `[Something]!`).
+    pub fn new(document: &Document<'_, String>) -> Result<Self> {
         let mut entities = Vec::new();
         let mut entity_names = std::collections::HashSet::new();
 
@@ -235,6 +255,7 @@ impl SchemaCodeGenerator {
                             base_type: get_base_type_name(&f.field_type),
                             is_nullable: is_nullable(&f.field_type),
                             list_depth: list_depth(&f.field_type),
+                            member_nullable: is_list_member_nullable(&f.field_type),
                         })
                         .collect();
 
@@ -247,10 +268,25 @@ impl SchemaCodeGenerator {
             }
         }
 
-        Self {
+        // Validate: non-nullable lists must have non-nullable members
+        for entity in &entities {
+            for field in &entity.fields {
+                if field.list_depth > 0 && !field.is_nullable && field.member_nullable {
+                    return Err(anyhow!(
+                        "Codegen can't generate code for GraphQL field '{}' of type '[{}]!' since the inner type is nullable.\n\
+                         Suggestion: add an '!' to the inner type, e.g., '[{}!]!'",
+                        field.name,
+                        field.base_type,
+                        field.base_type
+                    ));
+                }
+            }
+        }
+
+        Ok(Self {
             entities,
             entity_names,
-        }
+        })
     }
 
     /// Generate module imports for the schema file.
@@ -632,7 +668,7 @@ mod tests {
             }
         "#;
         let doc = parse_schema::<String>(schema).unwrap();
-        let gen = SchemaCodeGenerator::new(&doc);
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
 
         let classes = gen.generate_types(true);
         assert_eq!(classes.len(), 1);
@@ -653,7 +689,7 @@ mod tests {
             }
         "#;
         let doc = parse_schema::<String>(schema).unwrap();
-        let gen = SchemaCodeGenerator::new(&doc);
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
 
         let classes = gen.generate_types(true);
         assert_eq!(classes.len(), 1);
@@ -687,7 +723,7 @@ mod tests {
             }
         "#;
         let doc = parse_schema::<String>(schema).unwrap();
-        let gen = SchemaCodeGenerator::new(&doc);
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
 
         // The Post.author field should be treated as a string (entity ID reference)
         assert!(gen.entity_names.contains("User"));
@@ -703,7 +739,7 @@ mod tests {
             }
         "#;
         let doc = parse_schema::<String>(schema).unwrap();
-        let gen = SchemaCodeGenerator::new(&doc);
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
 
         let classes = gen.generate_types(true);
         assert_eq!(classes.len(), 1);
@@ -739,7 +775,7 @@ mod tests {
             }
         "#;
         let doc = parse_schema::<String>(schema).unwrap();
-        let gen = SchemaCodeGenerator::new(&doc);
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
 
         let classes = gen.generate_types(true);
         assert_eq!(classes.len(), 1);
@@ -850,7 +886,7 @@ mod tests {
             }
         "#;
         let doc = parse_schema::<String>(schema).unwrap();
-        let gen = SchemaCodeGenerator::new(&doc);
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
 
         // Find the entity
         let entity = &gen.entities[0];

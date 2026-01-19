@@ -173,7 +173,7 @@ fn generate_types(opt: &CodegenOpt) -> Result<()> {
     // Generate schema types
     if let Some(schema_path) = manifest.schema.as_ref() {
         let schema_path = resolve_path(&opt.manifest, schema_path);
-        generate_schema_types(&schema_path, &opt.output_dir)?;
+        let _ = generate_schema_types(&schema_path, &opt.output_dir)?;
     }
 
     // Generate ABI types for each data source
@@ -189,6 +189,16 @@ fn generate_types(opt: &CodegenOpt) -> Result<()> {
     // Generate template types
     if !manifest.templates.is_empty() {
         generate_template_types(&manifest.templates, &opt.output_dir)?;
+
+        // Generate ABI types for templates
+        for template in &manifest.templates {
+            for abi in &template.abis {
+                let abi_path = resolve_path(&opt.manifest, &abi.file);
+                // Output to: <output_dir>/templates/<TemplateName>/<AbiName>.ts
+                let template_output_dir = opt.output_dir.join("templates").join(&template.name);
+                generate_abi_types(&abi.name, &abi_path, &template_output_dir)?;
+            }
+        }
     }
 
     step(Step::Done, "Types generated successfully");
@@ -196,7 +206,10 @@ fn generate_types(opt: &CodegenOpt) -> Result<()> {
 }
 
 /// Generate types from the GraphQL schema.
-fn generate_schema_types(schema_path: &Path, output_dir: &Path) -> Result<()> {
+///
+/// Returns Ok(true) if types were generated successfully, Ok(false) if schema
+/// validation failed and schema.ts was skipped.
+fn generate_schema_types(schema_path: &Path, output_dir: &Path) -> Result<bool> {
     step(
         Step::Load,
         &format!("Load GraphQL schema from {}", schema_path.display()),
@@ -210,11 +223,22 @@ fn generate_schema_types(schema_path: &Path, output_dir: &Path) -> Result<()> {
 
     step(Step::Generate, "Generate types for GraphQL schema");
 
-    let generator = SchemaCodeGenerator::new(&ast);
+    let generator = match SchemaCodeGenerator::new(&ast) {
+        Ok(gen) => gen,
+        Err(e) => {
+            // Schema validation failed - skip schema.ts generation but don't fail
+            eprintln!("Warning: {}", e);
+            return Ok(false);
+        }
+    };
     let imports = generator.generate_module_imports();
-    let classes = generator.generate_types(true);
+    let entity_classes = generator.generate_types(true);
+    let derived_loaders = generator.generate_derived_loaders();
 
-    let code = generate_file(&imports, &classes);
+    // Combine entity classes with derived loaders
+    let all_classes: Vec<Class> = entity_classes.into_iter().chain(derived_loaders).collect();
+
+    let code = generate_file(&imports, &all_classes);
     let formatted = try_format_typescript(&code);
 
     let output_file = output_dir.join("schema.ts");
@@ -225,7 +249,7 @@ fn generate_schema_types(schema_path: &Path, output_dir: &Path) -> Result<()> {
     fs::write(&output_file, formatted)
         .with_context(|| format!("Failed to write schema types: {:?}", output_file))?;
 
-    Ok(())
+    Ok(true)
 }
 
 /// Preprocess ABI JSON to add default names for unnamed parameters.
@@ -429,6 +453,7 @@ struct Abi {
 struct ManifestTemplate {
     name: String,
     kind: String,
+    abis: Vec<Abi>,
 }
 
 /// Load a subgraph manifest from a YAML file.
@@ -488,7 +513,21 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
                 .filter_map(|t| {
                     let name = t.get("name")?.as_str()?.to_string();
                     let kind = t.get("kind")?.as_str()?.to_string();
-                    Some(ManifestTemplate { name, kind })
+                    let abis = t
+                        .get("mapping")
+                        .and_then(|m| m.get("abis"))
+                        .and_then(|a| a.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|abi| {
+                                    let name = abi.get("name")?.as_str()?.to_string();
+                                    let file = abi.get("file")?.as_str()?.to_string();
+                                    Some(Abi { name, file })
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    Some(ManifestTemplate { name, kind, abis })
                 })
                 .collect()
         })
