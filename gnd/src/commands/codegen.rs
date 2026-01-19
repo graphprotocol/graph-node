@@ -21,6 +21,7 @@ use crate::codegen::{
     TemplateKind, GENERATED_FILE_NOTE,
 };
 use crate::formatter::try_format_typescript;
+use crate::migrations;
 use crate::output::{step, Step};
 
 /// Default IPFS URL.
@@ -157,6 +158,11 @@ fn get_files_to_watch(manifest_path: &Path, manifest: &Manifest) -> Vec<PathBuf>
 
 /// Generate all types for the subgraph.
 fn generate_types(opt: &CodegenOpt) -> Result<()> {
+    // Apply migrations unless skipped
+    if !opt.skip_migrations {
+        migrations::apply_migrations(&opt.manifest)?;
+    }
+
     // Load the subgraph manifest
     let manifest = load_manifest(&opt.manifest)?;
 

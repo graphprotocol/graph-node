@@ -13,6 +13,10 @@ pub enum Step {
     Generate,
     /// Writing a file
     Write,
+    /// Skipping a step
+    Skip,
+    /// Deploying a subgraph
+    Deploy,
     /// Done with all steps
     Done,
 }
@@ -26,6 +30,8 @@ pub fn step(step_type: Step, message: &str) {
         Step::Load => style("→").cyan(),
         Step::Generate => style("→").cyan(),
         Step::Write => style("→").cyan(),
+        Step::Skip => style("→").dim(),
+        Step::Deploy => style("→").cyan(),
         Step::Done => style("✔").green(),
     };
     println!("{} {}", symbol, message);
