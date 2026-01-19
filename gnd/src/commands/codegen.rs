@@ -7,11 +7,14 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use ethabi::Contract;
 use graphql_parser::schema as gql;
+use notify::{recommended_watcher, RecursiveMode, Watcher};
 
 use crate::codegen::{
     AbiCodeGenerator, Class, ModuleImports, SchemaCodeGenerator, Template, TemplateCodeGenerator,
@@ -22,6 +25,9 @@ use crate::output::{step, Step};
 
 /// Default IPFS URL.
 const DEFAULT_IPFS_URL: &str = "https://api.thegraph.com/ipfs/api/v0";
+
+/// Delay between file change detection and regeneration to batch multiple events.
+const WATCH_DEBOUNCE: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Debug, Parser)]
 #[clap(about = "Generate AssemblyScript types for a subgraph")]
@@ -50,11 +56,103 @@ pub struct CodegenOpt {
 /// Run the codegen command.
 pub fn run_codegen(opt: CodegenOpt) -> Result<()> {
     if opt.watch {
-        // TODO: Implement watch mode
-        anyhow::bail!("Watch mode not yet implemented");
+        watch_and_generate(&opt)
+    } else {
+        generate_types(&opt)
+    }
+}
+
+/// Watch subgraph files and regenerate types on changes.
+fn watch_and_generate(opt: &CodegenOpt) -> Result<()> {
+    // Do initial generation
+    if let Err(e) = generate_types(opt) {
+        eprintln!("Error during initial generation: {}", e);
     }
 
-    generate_types(&opt)
+    // Get files to watch
+    let manifest = load_manifest(&opt.manifest)?;
+    let files_to_watch = get_files_to_watch(&opt.manifest, &manifest);
+
+    println!("\nWatching subgraph files for changes...");
+    println!("Press Ctrl+C to stop.\n");
+
+    // Set up file watcher
+    let (tx, rx) = mpsc::channel();
+
+    let mut watcher = recommended_watcher(move |res| {
+        if let Ok(event) = res {
+            let _ = tx.send(event);
+        }
+    })
+    .map_err(|e| anyhow!("Failed to create file watcher: {}", e))?;
+
+    // Watch directories containing the files
+    let mut watched_dirs = std::collections::HashSet::new();
+    for file in &files_to_watch {
+        if let Some(dir) = file.parent() {
+            if watched_dirs.insert(dir.to_path_buf()) {
+                watcher
+                    .watch(dir, RecursiveMode::NonRecursive)
+                    .map_err(|e| anyhow!("Failed to watch {}: {}", dir.display(), e))?;
+            }
+        }
+    }
+
+    // Event loop
+    loop {
+        match rx.recv() {
+            Ok(event) => {
+                // Check if the event is for a file we care about
+                let relevant = event.paths.iter().any(|p| {
+                    files_to_watch.iter().any(|f| {
+                        p.file_name() == f.file_name()
+                            || p.ends_with(f.file_name().unwrap_or_default())
+                    })
+                });
+
+                if relevant {
+                    // Debounce: wait a bit and drain any pending events
+                    std::thread::sleep(WATCH_DEBOUNCE);
+                    while rx.try_recv().is_ok() {}
+
+                    // Get the changed file for logging
+                    let changed = event
+                        .paths
+                        .first()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    println!("\nFile change detected: {}\n", changed);
+
+                    if let Err(e) = generate_types(opt) {
+                        eprintln!("Error during regeneration: {}", e);
+                    }
+                }
+            }
+            Err(_) => {
+                return Err(anyhow!("File watcher channel closed"));
+            }
+        }
+    }
+}
+
+/// Get the list of files to watch for changes.
+fn get_files_to_watch(manifest_path: &Path, manifest: &Manifest) -> Vec<PathBuf> {
+    let mut files = vec![manifest_path.to_path_buf()];
+
+    // Add schema file
+    if let Some(schema_path) = &manifest.schema {
+        files.push(resolve_path(manifest_path, schema_path));
+    }
+
+    // Add ABI files
+    for ds in &manifest.data_sources {
+        for abi in &ds.abis {
+            files.push(resolve_path(manifest_path, &abi.file));
+        }
+    }
+
+    files
 }
 
 /// Generate all types for the subgraph.
