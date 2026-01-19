@@ -3574,6 +3574,7 @@ version = "0.36.0"
 dependencies = [
  "anyhow",
  "clap",
+ "dirs",
  "env_logger",
  "git-testament",
  "globset",
@@ -3584,9 +3585,11 @@ dependencies = [
  "notify",
  "pgtemp",
  "pq-sys",
+ "serde_json",
  "tempfile",
  "tokio",
  "tokio-util",
+ "url",
 ]
 
 [[package]]

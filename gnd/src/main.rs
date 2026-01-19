@@ -5,7 +5,7 @@ use graph::{log::logger, slog::info};
 use lazy_static::lazy_static;
 use tokio_util::sync::CancellationToken;
 
-use gnd::commands::{run_clean, run_dev, CleanOpt, DevOpt};
+use gnd::commands::{run_auth, run_clean, run_dev, AuthOpt, CleanOpt, DevOpt};
 
 git_testament!(TESTAMENT);
 lazy_static! {
@@ -65,7 +65,7 @@ enum Commands {
     Remove,
 
     /// Set the deploy key for a Graph Node
-    Auth,
+    Auth(AuthOpt),
 
     /// Publish subgraph to The Graph's decentralized network
     Publish,
@@ -156,10 +156,7 @@ async fn main() -> Result<()> {
             info!(logger, "remove command not yet implemented");
             std::process::exit(1);
         }
-        Commands::Auth => {
-            info!(logger, "auth command not yet implemented");
-            std::process::exit(1);
-        }
+        Commands::Auth(auth_opt) => run_auth(auth_opt),
         Commands::Publish => {
             info!(logger, "publish command not yet implemented");
             std::process::exit(1);
