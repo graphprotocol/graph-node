@@ -268,7 +268,11 @@ pub async fn create_subgraph_name(name: &str) -> Result<(), StoreError> {
 
 pub async fn remove_subgraph(id: &DeploymentHash) {
     let name = SubgraphName::new_unchecked(id.to_string());
-    SUBGRAPH_STORE.remove_subgraph(name).await.unwrap();
+    // Ignore SubgraphNotFound errors during cleanup
+    match SUBGRAPH_STORE.remove_subgraph(name).await {
+        Ok(_) | Err(StoreError::SubgraphNotFound(_)) => {}
+        Err(e) => panic!("unexpected error removing subgraph: {}", e),
+    }
     let locs = SUBGRAPH_STORE.locators(id.as_str()).await.unwrap();
     let mut conn = primary_connection().await;
     for loc in locs {
