@@ -165,7 +165,7 @@ pub enum Command {
     /// Remove a named subgraph
     Remove {
         /// The name of the subgraph to remove
-        name: String,
+        name: DeploymentSearch,
     },
     /// Create a subgraph name
     Create {
@@ -1745,7 +1745,7 @@ fn make_deployment_selector(
     use graphman::deployment::DeploymentSelector::*;
 
     match deployment {
-        DeploymentSearch::Name { name } => Name(name),
+        DeploymentSearch::Name { name } => Name(name.to_string()),
         DeploymentSearch::Hash { hash, shard } => Subgraph { hash, shard },
         DeploymentSearch::All => All,
         DeploymentSearch::Deployment { namespace } => Schema(namespace),
