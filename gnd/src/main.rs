@@ -5,7 +5,7 @@ use graph::{log::logger, slog::info};
 use lazy_static::lazy_static;
 use tokio_util::sync::CancellationToken;
 
-use gnd::commands::{run_dev, DevOpt};
+use gnd::commands::{run_clean, run_dev, CleanOpt, DevOpt};
 
 git_testament!(TESTAMENT);
 lazy_static! {
@@ -74,7 +74,7 @@ enum Commands {
     Test,
 
     /// Remove build artifacts and generated files
-    Clean,
+    Clean(CleanOpt),
 }
 
 fn shutdown_token() -> CancellationToken {
@@ -123,9 +123,10 @@ async fn main() -> Result<()> {
     let logger = logger(true);
     let cancel_token = shutdown_token();
 
-    match cli.command {
+    let res = match cli.command {
         Commands::Dev(dev_opt) => {
             run_dev(dev_opt, logger, cancel_token).await?;
+            Ok(())
         }
         Commands::Codegen => {
             info!(logger, "codegen command not yet implemented");
@@ -167,10 +168,12 @@ async fn main() -> Result<()> {
             info!(logger, "test command not yet implemented");
             std::process::exit(1);
         }
-        Commands::Clean => {
-            info!(logger, "clean command not yet implemented");
-            std::process::exit(1);
-        }
+        Commands::Clean(clean_opt) => run_clean(clean_opt),
+    };
+
+    if let Err(e) = res {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
     }
 
     Ok(())
