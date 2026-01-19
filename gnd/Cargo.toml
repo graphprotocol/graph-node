@@ -37,6 +37,10 @@ pq-sys = { version = "0.7.5", features = ["bundled"] }
 reqwest = { workspace = true }
 thiserror = { workspace = true }
 
+# Console output
+indicatif = "0.17"
+console = "0.15"
+
 [target.'cfg(unix)'.dependencies]
 pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
 
