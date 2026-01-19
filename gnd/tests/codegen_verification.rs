@@ -1,9 +1,11 @@
 //! Integration tests that verify `gnd codegen` produces compatible output
 //! to `graph-cli codegen` using golden test fixtures.
 //!
-//! Fixtures are sourced from graph-cli's validation test directory.
-//! Set `GRAPH_CLI_PATH` environment variable to specify the graph-cli repository path,
-//! or it defaults to `../graph-cli` relative to the graph-node repository.
+//! Fixtures are stored locally in `tests/fixtures/codegen_verification/`.
+//! To regenerate fixtures after graph-cli changes, run:
+//! ```sh
+//! ./tests/fixtures/regenerate.sh
+//! ```
 //!
 //! # Known Differences
 //!
@@ -41,31 +43,12 @@ const FIXTURES: &[&str] = &[
     "topic0-is-valid",
 ];
 
-/// Get the path to the graph-cli repository
-fn graph_cli_path() -> PathBuf {
-    if let Ok(path) = std::env::var("GRAPH_CLI_PATH") {
-        PathBuf::from(path)
-    } else {
-        // Default: assume graph-cli is at ../graph-cli relative to graph-node repo
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        PathBuf::from(manifest_dir)
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("subgraphs")
-            .join("graph-cli")
-    }
-}
-
 /// Get the path to the fixtures directory
 fn fixtures_path() -> PathBuf {
-    graph_cli_path()
-        .join("packages")
-        .join("cli")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
-        .join("cli")
-        .join("validation")
+        .join("fixtures")
+        .join("codegen_verification")
 }
 
 /// Get the path to the gnd binary
