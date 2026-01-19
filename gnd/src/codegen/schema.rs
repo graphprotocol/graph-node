@@ -155,12 +155,13 @@ fn is_nullable(ty: &Type<'_, String>) -> bool {
     !matches!(ty, Type::NonNullType(_))
 }
 
-/// Check if a type is a list.
-fn is_list(ty: &Type<'_, String>) -> bool {
+/// Count the list nesting depth of a type.
+/// `String` -> 0, `[String]` -> 1, `[[String]]` -> 2, etc.
+fn list_depth(ty: &Type<'_, String>) -> u8 {
     match ty {
-        Type::ListType(_) => true,
-        Type::NonNullType(inner) => is_list(inner),
-        Type::NamedType(_) => false,
+        Type::ListType(inner) => 1 + list_depth(inner),
+        Type::NonNullType(inner) => list_depth(inner),
+        Type::NamedType(_) => 0,
     }
 }
 
@@ -187,7 +188,8 @@ struct FieldInfo {
     is_derived: bool,
     base_type: String,
     is_nullable: bool,
-    is_list: bool,
+    /// The nesting depth of list wrappers. 0 = scalar, 1 = [T], 2 = [[T]], etc.
+    list_depth: u8,
 }
 
 /// Schema code generator.
@@ -232,7 +234,7 @@ impl SchemaCodeGenerator {
                             is_derived: is_derived_field(f),
                             base_type: get_base_type_name(&f.field_type),
                             is_nullable: is_nullable(&f.field_type),
-                            is_list: is_list(&f.field_type),
+                            list_depth: list_depth(&f.field_type),
                         })
                         .collect();
 
@@ -557,24 +559,33 @@ impl SchemaCodeGenerator {
     }
 
     /// Get the value type string for a field.
+    ///
+    /// Returns the GraphQL-style value type string:
+    /// - Scalars: `String`, `Int`, `BigInt`, etc.
+    /// - Arrays: `[String]`, `[Int]`, etc.
+    /// - Nested arrays: `[[String]]`, `[[Int]]`, etc.
+    /// - Entity references are converted to `String` (their ID type)
     fn value_type_from_field(&self, field: &FieldInfo) -> String {
-        if field.is_list {
-            format!(
-                "[{}]",
-                if self.entity_names.contains(&field.base_type) {
-                    "String".to_string()
-                } else {
-                    field.base_type.clone()
-                }
-            )
-        } else if self.entity_names.contains(&field.base_type) {
-            "String".to_string()
+        let base = if self.entity_names.contains(&field.base_type) {
+            "String".to_string() // Entity references are stored as string IDs
         } else {
             field.base_type.clone()
+        };
+
+        // Wrap with brackets for each level of list nesting
+        let mut result = base;
+        for _ in 0..field.list_depth {
+            result = format!("[{}]", result);
         }
+        result
     }
 
     /// Convert field info to an AssemblyScript TypeExpr.
+    ///
+    /// Creates the correct type expression including nested arrays:
+    /// - Scalars: `string`, `i32`, `BigInt`, etc.
+    /// - Arrays: `Array<string>`, `Array<i32>`, etc.
+    /// - Nested arrays: `Array<Array<string>>`, etc.
     fn type_from_field(&self, field: &FieldInfo) -> TypeExpr {
         let type_name = if self.entity_names.contains(&field.base_type) {
             "string" // Entity references are stored as string IDs
@@ -584,12 +595,13 @@ impl SchemaCodeGenerator {
 
         let named = NamedType::new(type_name);
 
-        if field.is_list {
-            let array = ArrayType::new(named);
+        if field.list_depth > 0 {
+            // Use ArrayType::with_depth to create nested array types
+            let array_type = ArrayType::with_depth(named, field.list_depth);
             if field.is_nullable {
-                NullableType::new(array).into()
+                NullableType::new(array_type).into()
             } else {
-                array.into()
+                array_type
             }
         } else if field.is_nullable && !named.is_primitive() {
             NullableType::new(named).into()
@@ -714,5 +726,142 @@ mod tests {
             output.contains("Array<string>"),
             "Array field should use Array<string> type"
         );
+    }
+
+    #[test]
+    fn test_nested_array_field() {
+        let schema = r#"
+            type Matrix @entity {
+                id: ID!
+                stringMatrix: [[String!]!]!
+                intMatrix: [[Int!]!]
+                bigIntMatrix: [[BigInt!]!]!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc);
+
+        let classes = gen.generate_types(true);
+        assert_eq!(classes.len(), 1);
+
+        let matrix = &classes[0];
+        let output = matrix.to_string();
+
+        // Verify nested array field getter/setter are generated
+        assert!(
+            output.contains("get stringMatrix()"),
+            "Should have stringMatrix getter"
+        );
+        assert!(
+            output.contains("set stringMatrix("),
+            "Should have stringMatrix setter"
+        );
+
+        // Check the type is Array<Array<string>>
+        assert!(
+            output.contains("Array<Array<string>>"),
+            "Nested array field should use Array<Array<string>> type, got: {}",
+            output
+        );
+
+        // Check that toStringMatrix() and fromStringMatrix() are used
+        assert!(
+            output.contains("toStringMatrix()"),
+            "Should use toStringMatrix() for nested string arrays"
+        );
+        assert!(
+            output.contains("fromStringMatrix("),
+            "Should use Value.fromStringMatrix() for nested string arrays"
+        );
+
+        // Check BigInt matrix uses correct methods
+        assert!(
+            output.contains("Array<Array<BigInt>>"),
+            "BigInt matrix should use Array<Array<BigInt>> type"
+        );
+        assert!(
+            output.contains("toBigIntMatrix()"),
+            "Should use toBigIntMatrix() for nested BigInt arrays"
+        );
+        assert!(
+            output.contains("fromBigIntMatrix("),
+            "Should use Value.fromBigIntMatrix() for nested BigInt arrays"
+        );
+
+        // Check nullable nested array has correct type
+        assert!(
+            output.contains("Array<Array<i32>> | null"),
+            "Nullable nested array should be Array<Array<i32>> | null"
+        );
+    }
+
+    #[test]
+    fn test_list_depth() {
+        use graphql_parser::parse_schema;
+
+        // Helper to get list depth from schema field type
+        fn get_field_list_depth(schema_str: &str) -> u8 {
+            let doc = parse_schema::<String>(schema_str).unwrap();
+            for def in &doc.definitions {
+                if let Definition::TypeDefinition(TypeDefinition::Object(obj)) = def {
+                    for field in &obj.fields {
+                        if field.name == "field" {
+                            return list_depth(&field.field_type);
+                        }
+                    }
+                }
+            }
+            panic!("Field not found");
+        }
+
+        // Scalar
+        assert_eq!(
+            get_field_list_depth("type T @entity { id: ID!, field: String! }"),
+            0
+        );
+
+        // Simple array
+        assert_eq!(
+            get_field_list_depth("type T @entity { id: ID!, field: [String!]! }"),
+            1
+        );
+
+        // Nested array (matrix)
+        assert_eq!(
+            get_field_list_depth("type T @entity { id: ID!, field: [[String!]!]! }"),
+            2
+        );
+
+        // Triple nested array
+        assert_eq!(
+            get_field_list_depth("type T @entity { id: ID!, field: [[[String!]!]!]! }"),
+            3
+        );
+    }
+
+    #[test]
+    fn test_value_type_from_field_nested() {
+        let schema = r#"
+            type Test @entity {
+                id: ID!
+                scalar: String!
+                array: [String!]!
+                matrix: [[String!]!]!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc);
+
+        // Find the entity
+        let entity = &gen.entities[0];
+
+        // Find each field and check its value type
+        let scalar_field = entity.fields.iter().find(|f| f.name == "scalar").unwrap();
+        let array_field = entity.fields.iter().find(|f| f.name == "array").unwrap();
+        let matrix_field = entity.fields.iter().find(|f| f.name == "matrix").unwrap();
+
+        assert_eq!(gen.value_type_from_field(scalar_field), "String");
+        assert_eq!(gen.value_type_from_field(array_field), "[String]");
+        assert_eq!(gen.value_type_from_field(matrix_field), "[[String]]");
     }
 }
