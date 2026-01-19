@@ -6,9 +6,9 @@ use lazy_static::lazy_static;
 use tokio_util::sync::CancellationToken;
 
 use gnd::commands::{
-    run_auth, run_build, run_clean, run_codegen, run_create, run_deploy, run_dev, run_remove,
-    run_test, AuthOpt, BuildOpt, CleanOpt, CodegenOpt, CreateOpt, DeployOpt, DevOpt, RemoveOpt,
-    TestOpt,
+    run_auth, run_build, run_clean, run_codegen, run_create, run_deploy, run_dev, run_init,
+    run_remove, run_test, AuthOpt, BuildOpt, CleanOpt, CodegenOpt, CreateOpt, DeployOpt, DevOpt,
+    InitOpt, RemoveOpt, TestOpt,
 };
 
 git_testament!(TESTAMENT);
@@ -57,7 +57,7 @@ enum Commands {
     Deploy(DeployOpt),
 
     /// Scaffold a new subgraph project
-    Init,
+    Init(InitOpt),
 
     /// Add a datasource to an existing subgraph
     Add,
@@ -135,10 +135,7 @@ async fn main() -> Result<()> {
         Commands::Codegen(codegen_opt) => run_codegen(codegen_opt),
         Commands::Build(build_opt) => run_build(build_opt).await.map(|_| ()),
         Commands::Deploy(deploy_opt) => run_deploy(deploy_opt).await,
-        Commands::Init => {
-            info!(logger, "init command not yet implemented");
-            std::process::exit(1);
-        }
+        Commands::Init(init_opt) => run_init(init_opt),
         Commands::Add => {
             info!(logger, "add command not yet implemented");
             std::process::exit(1);
