@@ -260,6 +260,12 @@ pub async fn create_test_subgraph_with_features(
     locator
 }
 
+pub async fn create_subgraph_name(name: &str) -> Result<(), StoreError> {
+    let subgraph_name = SubgraphName::new_unchecked(name.to_string());
+    SUBGRAPH_STORE.create_subgraph(subgraph_name).await?;
+    Ok(())
+}
+
 pub async fn remove_subgraph(id: &DeploymentHash) {
     let name = SubgraphName::new_unchecked(id.to_string());
     SUBGRAPH_STORE.remove_subgraph(name).await.unwrap();
