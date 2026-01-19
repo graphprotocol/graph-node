@@ -681,4 +681,38 @@ mod tests {
         assert!(gen.entity_names.contains("User"));
         assert!(gen.entity_names.contains("Post"));
     }
+
+    #[test]
+    fn test_simple_array_field() {
+        let schema = r#"
+            type Token @entity {
+                id: ID!
+                holders: [String!]!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc);
+
+        let classes = gen.generate_types(true);
+        assert_eq!(classes.len(), 1);
+
+        let token = &classes[0];
+        let output = token.to_string();
+
+        // Verify array field getter/setter are generated
+        assert!(
+            output.contains("get holders()"),
+            "Should have holders getter"
+        );
+        assert!(
+            output.contains("set holders("),
+            "Should have holders setter"
+        );
+
+        // Check the type is Array<string>
+        assert!(
+            output.contains("Array<string>"),
+            "Array field should use Array<string> type"
+        );
+    }
 }
