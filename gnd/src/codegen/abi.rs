@@ -187,8 +187,9 @@ impl AbiCodeGenerator {
             format!("return new {}('{}', address)", contract_name, contract_name),
         ));
 
-        // Get callable functions
-        let functions = self.get_callable_functions();
+        // Get callable functions and sort alphabetically for deterministic output
+        let mut functions = self.get_callable_functions();
+        functions.sort_by(|a, b| a.name.cmp(&b.name));
         let disambiguated = self.disambiguate_functions(&functions);
 
         for (func, alias) in disambiguated {
@@ -205,7 +206,8 @@ impl AbiCodeGenerator {
     /// Generate call type classes.
     fn generate_call_types(&self) -> Vec<Class> {
         let mut classes = Vec::new();
-        let functions = self.get_call_functions();
+        let mut functions = self.get_call_functions();
+        functions.sort_by(|a, b| a.name.cmp(&b.name));
         let disambiguated = self.disambiguate_call_functions(&functions);
 
         for (func, alias) in disambiguated {
@@ -746,20 +748,26 @@ impl AbiCodeGenerator {
             klass.add_member(ClassMember::new(format!("value{}", index), param_type));
         }
 
-        // Add getters for named outputs
+        // Add getters for outputs
+        // If an output has a name, generate a getter like getName()
+        // If an output has no name (empty or just whitespace), generate getValue{index}()
         for (index, (param, _)) in outputs.iter().enumerate() {
-            if !param.name.is_empty() {
+            let getter_name = if param.name.trim().is_empty() {
+                // Unnamed output: getValue0(), getValue1(), etc.
+                format!("getValue{}", index)
+            } else {
+                // Named output: getOwner(), getDisplayName(), etc.
                 let cap = capitalize(&param.name);
-                let getter_name = format!("get{}", cap);
-                let param_type =
-                    self.get_param_type_for_input(&param.kind, index, tuple_result_parent_type);
-                klass.add_method(Method::new(
-                    getter_name,
-                    vec![],
-                    Some(ts::TypeExpr::Raw(param_type)),
-                    format!("return this.value{}", index),
-                ));
-            }
+                format!("get{}", cap)
+            };
+            let param_type =
+                self.get_param_type_for_input(&param.kind, index, tuple_result_parent_type);
+            klass.add_method(Method::new(
+                getter_name,
+                vec![],
+                Some(ts::TypeExpr::Raw(param_type)),
+                format!("return this.value{}", index),
+            ));
         }
 
         // Generate tuple classes for outputs
@@ -899,9 +907,17 @@ impl AbiCodeGenerator {
             .collect()
     }
 
-    /// Get functions that can be used as calls.
+    /// Get functions that can be used as calls (non-view, non-pure functions).
     fn get_call_functions(&self) -> Vec<&Function> {
-        self.contract.functions().collect()
+        self.contract
+            .functions()
+            .filter(|f| {
+                matches!(
+                    f.state_mutability,
+                    StateMutability::NonPayable | StateMutability::Payable
+                )
+            })
+            .collect()
     }
 
     /// Disambiguate events with duplicate names.
@@ -1042,12 +1058,15 @@ impl AbiCodeGenerator {
             .collect()
     }
 
-    /// Get function signature.
+    /// Get function signature with return types.
+    /// Format: `name(input_types):(output_types)`
     fn function_signature(&self, func: &Function) -> String {
-        let param_types: Vec<String> = func.inputs.iter().map(|p| p.kind.to_string()).collect();
+        let input_types: Vec<String> = func.inputs.iter().map(|p| p.kind.to_string()).collect();
+        let output_types: Vec<String> = func.outputs.iter().map(|p| p.kind.to_string()).collect();
         let name = &func.name;
-        let types = param_types.join(",");
-        format!("{}({})", name, types)
+        let inputs = input_types.join(",");
+        let outputs = output_types.join(",");
+        format!("{}({}):({})", name, inputs, outputs)
     }
 
     /// Get AssemblyScript type for an Ethereum type.
