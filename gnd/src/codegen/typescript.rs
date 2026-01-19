@@ -142,15 +142,28 @@ impl Display for NamedType {
     }
 }
 
-/// An array type (e.g., `Array<string>`).
+/// An array type (e.g., `Array<string>` or `Array<Array<string>>`).
 #[derive(Debug, Clone)]
 pub struct ArrayType {
-    pub inner: NamedType,
+    pub inner: Box<TypeExpr>,
 }
 
 impl ArrayType {
-    pub fn new(inner: NamedType) -> Self {
-        Self { inner }
+    /// Create a new array type from any inner type expression.
+    pub fn new(inner: impl Into<TypeExpr>) -> Self {
+        Self {
+            inner: Box::new(inner.into()),
+        }
+    }
+
+    /// Create a nested array type with the specified nesting depth.
+    /// depth=1 creates `Array<T>`, depth=2 creates `Array<Array<T>>`, etc.
+    pub fn with_depth(inner: impl Into<TypeExpr>, depth: u8) -> TypeExpr {
+        let mut result = inner.into();
+        for _ in 0..depth {
+            result = ArrayType::new(result).into();
+        }
+        result
     }
 }
 
