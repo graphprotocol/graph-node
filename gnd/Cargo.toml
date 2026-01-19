@@ -44,6 +44,7 @@ console = "0.15"
 # Code generation
 graphql-parser = "0.4"
 regex = "1"
+ethabi = "17.2"
 
 [target.'cfg(unix)'.dependencies]
 pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
