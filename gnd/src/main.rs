@@ -1,14 +1,14 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use git_testament::{git_testament, render_testament};
-use graph::{log::logger, slog::info};
+use graph::log::logger;
 use lazy_static::lazy_static;
 use tokio_util::sync::CancellationToken;
 
 use gnd::commands::{
     run_add, run_auth, run_build, run_clean, run_codegen, run_create, run_deploy, run_dev,
-    run_init, run_remove, run_test, AddOpt, AuthOpt, BuildOpt, CleanOpt, CodegenOpt, CreateOpt,
-    DeployOpt, DevOpt, InitOpt, RemoveOpt, TestOpt,
+    run_init, run_publish, run_remove, run_test, AddOpt, AuthOpt, BuildOpt, CleanOpt, CodegenOpt,
+    CreateOpt, DeployOpt, DevOpt, InitOpt, PublishOpt, RemoveOpt, TestOpt,
 };
 
 git_testament!(TESTAMENT);
@@ -72,7 +72,7 @@ enum Commands {
     Auth(AuthOpt),
 
     /// Publish subgraph to The Graph's decentralized network
-    Publish,
+    Publish(PublishOpt),
 
     /// Run Matchstick tests
     Test(TestOpt),
@@ -140,10 +140,7 @@ async fn main() -> Result<()> {
         Commands::Create(create_opt) => run_create(create_opt).await,
         Commands::Remove(remove_opt) => run_remove(remove_opt).await,
         Commands::Auth(auth_opt) => run_auth(auth_opt),
-        Commands::Publish => {
-            info!(logger, "publish command not yet implemented");
-            std::process::exit(1);
-        }
+        Commands::Publish(publish_opt) => run_publish(publish_opt),
         Commands::Test(test_opt) => run_test(test_opt),
         Commands::Clean(clean_opt) => run_clean(clean_opt),
     };

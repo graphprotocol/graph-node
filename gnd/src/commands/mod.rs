@@ -7,6 +7,7 @@ mod create;
 mod deploy;
 mod dev;
 mod init;
+mod publish;
 mod remove;
 mod test;
 
@@ -19,5 +20,6 @@ pub use create::{run_create, CreateOpt};
 pub use deploy::{run_deploy, DeployOpt};
 pub use dev::{run_dev, DevOpt};
 pub use init::{run_init, InitOpt};
+pub use publish::{run_publish, PublishOpt};
 pub use remove::{run_remove, RemoveOpt};
 pub use test::{run_test, TestOpt};
