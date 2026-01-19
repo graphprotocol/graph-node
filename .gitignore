@@ -37,3 +37,4 @@ logfile
 
 # Local claude settings
 .claude/settings.local.json
+.claude/ralph-loop.local.md
