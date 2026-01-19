@@ -136,7 +136,7 @@ async fn main() -> Result<()> {
         Commands::Build(build_opt) => run_build(build_opt).await.map(|_| ()),
         Commands::Deploy(deploy_opt) => run_deploy(deploy_opt).await,
         Commands::Init(init_opt) => run_init(init_opt).await,
-        Commands::Add(add_opt) => run_add(add_opt),
+        Commands::Add(add_opt) => run_add(add_opt).await,
         Commands::Create(create_opt) => run_create(create_opt).await,
         Commands::Remove(remove_opt) => run_remove(remove_opt).await,
         Commands::Auth(auth_opt) => run_auth(auth_opt),
