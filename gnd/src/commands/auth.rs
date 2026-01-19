@@ -95,16 +95,21 @@ pub fn run_auth(opt: AuthOpt) -> Result<()> {
     Ok(())
 }
 
+/// Get the deploy key for a node, if one is saved (uses default config path)
+pub fn get_deploy_key(node: &str) -> Result<Option<String>> {
+    get_deploy_key_from(&config_path(), node)
+}
+
+/// Get the deploy key for a node from a specific config file
+fn get_deploy_key_from(config_file: &PathBuf, node: &str) -> Result<Option<String>> {
+    let normalized_node = normalize_node_url(node)?;
+    let config = load_config_from(config_file)?;
+    Ok(config.get(&normalized_node).cloned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Get the deploy key for a node from a specific config file
-    fn get_deploy_key_from(config_file: &PathBuf, node: &str) -> Result<Option<String>> {
-        let normalized_node = normalize_node_url(node)?;
-        let config = load_config_from(config_file)?;
-        Ok(config.get(&normalized_node).cloned())
-    }
 
     #[test]
     fn test_normalize_node_url() {
