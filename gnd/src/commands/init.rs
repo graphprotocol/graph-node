@@ -497,6 +497,9 @@ mod tests {
     fn test_protocol_display() {
         assert_eq!(Protocol::Ethereum.to_string(), "ethereum");
         assert_eq!(Protocol::Near.to_string(), "near");
+        assert_eq!(Protocol::Cosmos.to_string(), "cosmos");
+        assert_eq!(Protocol::Arweave.to_string(), "arweave");
+        assert_eq!(Protocol::Substreams.to_string(), "substreams");
     }
 
     #[test]
@@ -526,5 +529,33 @@ mod tests {
         // No source should be interactive
         let opt = InitOpt::default();
         assert!(should_run_interactive(&opt));
+
+        // from_subgraph should not be interactive (will error)
+        let opt = InitOpt {
+            from_subgraph: Some("Qm123".to_string()),
+            ..Default::default()
+        };
+        assert!(!should_run_interactive(&opt));
+    }
+
+    #[test]
+    fn test_init_opt_default() {
+        let opt = InitOpt::default();
+        assert!(opt.subgraph_name.is_none());
+        assert!(opt.directory.is_none());
+        assert!(opt.protocol.is_none());
+        assert!(opt.node.is_none());
+        assert!(opt.from_contract.is_none());
+        assert!(opt.from_example.is_none());
+        assert!(opt.from_subgraph.is_none());
+        assert!(opt.contract_name.is_none());
+        assert!(!opt.index_events);
+        assert!(!opt.skip_install);
+        assert!(!opt.skip_git);
+        assert!(opt.start_block.is_none());
+        assert!(opt.abi.is_none());
+        assert!(opt.spkg.is_none());
+        assert!(opt.network.is_none());
+        assert!(opt.ipfs.is_none());
     }
 }
