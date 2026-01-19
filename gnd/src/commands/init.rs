@@ -5,16 +5,21 @@
 //! - From an example subgraph template
 //! - From an existing contract (fetch ABI from Etherscan/Sourcify)
 //! - From an existing deployed subgraph
+//!
+//! When required options are not provided, the command runs in interactive mode,
+//! prompting the user for necessary information.
 
 use std::fs;
+use std::io::{self, IsTerminal};
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
 
 use crate::output::{step, Step};
+use crate::prompt::{InitForm, SourceType};
 use crate::scaffold::{generate_scaffold, init_git, install_dependencies, ScaffoldOptions};
-use crate::services::{ContractInfo, ContractService};
+use crate::services::{ContractInfo, ContractService, NetworksRegistry};
 
 /// Available protocols for subgraph development.
 #[derive(Clone, Debug, ValueEnum)]
@@ -38,7 +43,7 @@ impl std::fmt::Display for Protocol {
     }
 }
 
-#[derive(Clone, Debug, Parser)]
+#[derive(Clone, Debug, Parser, Default)]
 #[clap(about = "Create a new subgraph with basic scaffolding")]
 pub struct InitOpt {
     /// Name of the subgraph (e.g., "user/my-subgraph")
@@ -108,7 +113,24 @@ pub struct InitOpt {
 
 /// Run the init command.
 pub async fn run_init(opt: InitOpt) -> Result<()> {
-    // Determine the scaffold source
+    // Check if we need interactive mode
+    let needs_interactive = should_run_interactive(&opt);
+
+    if needs_interactive {
+        // Check if we're in a terminal
+        if !io::stdin().is_terminal() {
+            return Err(anyhow!(
+                "Interactive mode requires a terminal. \
+                 Please provide required options via command line flags.\n\n\
+                 Required: --from-contract <address> --network <network>\n\
+                 Or use: --from-example to create from an example"
+            ));
+        }
+
+        return run_interactive(opt).await;
+    }
+
+    // Non-interactive mode - determine the scaffold source
     let source = if opt.from_contract.is_some() {
         ScaffoldSource::Contract
     } else if opt.from_example.is_some() {
@@ -124,6 +146,90 @@ pub async fn run_init(opt: InitOpt) -> Result<()> {
         ScaffoldSource::Contract => init_from_contract(&opt).await,
         ScaffoldSource::Example => init_from_example(&opt),
         ScaffoldSource::Subgraph => init_from_subgraph(&opt),
+    }
+}
+
+/// Check if we should run in interactive mode.
+fn should_run_interactive(opt: &InitOpt) -> bool {
+    // If --from-example is specified, we can run non-interactively
+    if opt.from_example.is_some() {
+        return false;
+    }
+
+    // If --from-subgraph is specified, we can run non-interactively (will error)
+    if opt.from_subgraph.is_some() {
+        return false;
+    }
+
+    // If --from-contract is specified with network, we can run non-interactively
+    if opt.from_contract.is_some() && opt.network.is_some() {
+        return false;
+    }
+
+    // If --from-contract is specified without network, need interactive
+    if opt.from_contract.is_some() && opt.network.is_none() {
+        return true;
+    }
+
+    // If no source specified, we need interactive mode
+    true
+}
+
+/// Run in interactive mode.
+async fn run_interactive(opt: InitOpt) -> Result<()> {
+    println!("Creating a new subgraph...\n");
+
+    // Load the networks registry
+    let registry = NetworksRegistry::load().await?;
+
+    // Parse start block if provided
+    let start_block = opt.start_block.as_ref().and_then(|s| s.parse::<u64>().ok());
+
+    // Run the interactive form
+    let form = InitForm::run_interactive(
+        &registry,
+        opt.network.clone(),
+        opt.subgraph_name.clone(),
+        opt.directory
+            .clone()
+            .map(|p| p.to_string_lossy().to_string()),
+        opt.from_contract.clone(),
+        opt.from_example.is_some(),
+        opt.contract_name.clone(),
+        start_block,
+        opt.index_events,
+        opt.abi.clone().map(|p| p.to_string_lossy().to_string()),
+    )?;
+
+    // Execute based on source type
+    match form.source_type {
+        SourceType::Example => {
+            let example_opt = InitOpt {
+                subgraph_name: Some(form.subgraph_name),
+                directory: Some(PathBuf::from(&form.directory)),
+                from_example: Some("ethereum-gravatar".to_string()),
+                skip_install: opt.skip_install,
+                skip_git: opt.skip_git,
+                ..Default::default()
+            };
+            init_from_example(&example_opt)
+        }
+        SourceType::Contract => {
+            let contract_opt = InitOpt {
+                subgraph_name: Some(form.subgraph_name),
+                directory: Some(PathBuf::from(&form.directory)),
+                from_contract: form.contract_address,
+                contract_name: Some(form.contract_name),
+                network: Some(form.network),
+                start_block: form.start_block.map(|b| b.to_string()),
+                index_events: form.index_events,
+                abi: form.abi_path.map(PathBuf::from),
+                skip_install: opt.skip_install,
+                skip_git: opt.skip_git,
+                ..Default::default()
+            };
+            init_from_contract(&contract_opt).await
+        }
     }
 }
 
@@ -391,5 +497,34 @@ mod tests {
     fn test_protocol_display() {
         assert_eq!(Protocol::Ethereum.to_string(), "ethereum");
         assert_eq!(Protocol::Near.to_string(), "near");
+    }
+
+    #[test]
+    fn test_should_run_interactive() {
+        // Example mode should not be interactive
+        let opt = InitOpt {
+            from_example: Some("gravatar".to_string()),
+            ..Default::default()
+        };
+        assert!(!should_run_interactive(&opt));
+
+        // Contract with network should not be interactive
+        let opt = InitOpt {
+            from_contract: Some("0x1234567890123456789012345678901234567890".to_string()),
+            network: Some("mainnet".to_string()),
+            ..Default::default()
+        };
+        assert!(!should_run_interactive(&opt));
+
+        // Contract without network should be interactive
+        let opt = InitOpt {
+            from_contract: Some("0x1234567890123456789012345678901234567890".to_string()),
+            ..Default::default()
+        };
+        assert!(should_run_interactive(&opt));
+
+        // No source should be interactive
+        let opt = InitOpt::default();
+        assert!(should_run_interactive(&opt));
     }
 }

@@ -17,6 +17,9 @@ use crate::services::GraphNodeClient;
 /// Default IPFS URL used by The Graph
 const DEFAULT_IPFS_URL: &str = "https://api.thegraph.com/ipfs/api/v0";
 
+/// Default deploy URL for Subgraph Studio
+const SUBGRAPH_STUDIO_URL: &str = "https://api.studio.thegraph.com/deploy/";
+
 #[derive(Clone, Debug, Parser)]
 #[clap(about = "Deploy a subgraph to a Graph Node")]
 pub struct DeployOpt {
@@ -28,9 +31,9 @@ pub struct DeployOpt {
     #[clap(default_value = "subgraph.yaml")]
     pub manifest: PathBuf,
 
-    /// Graph Node admin URL (e.g., http://localhost:8020)
+    /// Graph Node admin URL. Defaults to Subgraph Studio if not provided.
     #[clap(short = 'g', long)]
-    pub node: String,
+    pub node: Option<String>,
 
     /// IPFS node URL to upload build results to
     #[clap(short = 'i', long, default_value = DEFAULT_IPFS_URL)]
@@ -75,14 +78,17 @@ pub struct DeployOpt {
 
 /// Run the deploy command.
 pub async fn run_deploy(opt: DeployOpt) -> Result<()> {
+    // Use Subgraph Studio URL if no node is provided
+    let node = opt.node.as_deref().unwrap_or(SUBGRAPH_STUDIO_URL);
+
     // Validate URLs
-    validate_url(&opt.node, "node")?;
+    validate_url(node, "node")?;
     validate_url(&opt.ipfs, "IPFS")?;
 
     // Get deploy key (from flag or stored auth)
     let deploy_key = match &opt.deploy_key {
         Some(key) => Some(key.clone()),
-        None => get_deploy_key(&opt.node)?,
+        None => get_deploy_key(node)?,
     };
 
     // Get or build the IPFS hash
@@ -98,7 +104,7 @@ pub async fn run_deploy(opt: DeployOpt) -> Result<()> {
     };
 
     // Deploy to Graph Node
-    deploy_to_node(&opt, &ipfs_hash, deploy_key.as_deref()).await
+    deploy_to_node(&opt, node, &ipfs_hash, deploy_key.as_deref()).await
 }
 
 /// Validate that a URL is well-formed.
@@ -145,13 +151,15 @@ async fn build_and_upload(opt: &DeployOpt) -> Result<String> {
 }
 
 /// Deploy the subgraph to the Graph Node.
-async fn deploy_to_node(opt: &DeployOpt, ipfs_hash: &str, deploy_key: Option<&str>) -> Result<()> {
-    step(
-        Step::Deploy,
-        &format!("Deploying to Graph Node {}", opt.node),
-    );
+async fn deploy_to_node(
+    opt: &DeployOpt,
+    node: &str,
+    ipfs_hash: &str,
+    deploy_key: Option<&str>,
+) -> Result<()> {
+    step(Step::Deploy, &format!("Deploying to {}", node));
 
-    let client = GraphNodeClient::new(&opt.node, deploy_key)?;
+    let client = GraphNodeClient::new(node, deploy_key)?;
 
     let result = client
         .deploy_subgraph(
@@ -164,12 +172,12 @@ async fn deploy_to_node(opt: &DeployOpt, ipfs_hash: &str, deploy_key: Option<&st
         .with_context(|| {
             format!(
                 "Failed to deploy subgraph '{}' to {}",
-                opt.subgraph_name, opt.node
+                opt.subgraph_name, node
             )
         })?;
 
     // Normalize URLs if they're relative (start with ':')
-    let base = Url::parse(&opt.node)?;
+    let base = Url::parse(node)?;
     let base_str = format!(
         "{}://{}",
         base.scheme(),
@@ -219,5 +227,17 @@ mod tests {
     #[test]
     fn test_validate_url_unsupported_protocol() {
         assert!(validate_url("ftp://example.com", "test").is_err());
+    }
+
+    #[test]
+    fn test_subgraph_studio_url() {
+        // Verify the default URL is valid
+        assert!(validate_url(SUBGRAPH_STUDIO_URL, "node").is_ok());
+    }
+
+    #[test]
+    fn test_default_ipfs_url() {
+        // Verify the default IPFS URL is valid
+        assert!(validate_url(DEFAULT_IPFS_URL, "IPFS").is_ok());
     }
 }
