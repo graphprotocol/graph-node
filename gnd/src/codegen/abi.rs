@@ -1424,4 +1424,113 @@ mod tests {
             ParamType::Uint(256)
         );
     }
+
+    /// Test that overloaded events (same name, different inputs) are disambiguated.
+    /// The TS CLI generates unique names like Transfer, Transfer1, Transfer2.
+    #[test]
+    fn test_overloaded_events() {
+        let abi_json = r#"[
+            {
+                "type": "event",
+                "name": "Transfer",
+                "inputs": [],
+                "anonymous": false
+            },
+            {
+                "type": "event",
+                "name": "Transfer",
+                "inputs": [{"name": "to", "type": "address", "indexed": false}],
+                "anonymous": false
+            },
+            {
+                "type": "event",
+                "name": "Transfer",
+                "inputs": [
+                    {"name": "from", "type": "address", "indexed": false},
+                    {"name": "to", "type": "address", "indexed": false}
+                ],
+                "anonymous": false
+            }
+        ]"#;
+
+        let contract = parse_abi(abi_json);
+        let gen = AbiCodeGenerator::new(contract, "Token");
+        let types = gen.generate_types();
+
+        // Get all event class names
+        let event_names: Vec<&str> = types
+            .iter()
+            .filter(|c| c.extends == Some("ethereum.Event".to_string()))
+            .map(|c| c.name.as_str())
+            .collect();
+
+        // Verify we have 3 distinct Transfer events with disambiguation
+        assert_eq!(
+            event_names.len(),
+            3,
+            "Should have 3 Transfer event variants"
+        );
+
+        // Check that Transfer (with no suffix) exists
+        assert!(
+            event_names.contains(&"Transfer"),
+            "Should have base Transfer event"
+        );
+
+        // Check that numbered variants exist (Transfer1, Transfer2)
+        assert!(
+            event_names.contains(&"Transfer1"),
+            "Should have Transfer1 event"
+        );
+        assert!(
+            event_names.contains(&"Transfer2"),
+            "Should have Transfer2 event"
+        );
+    }
+
+    /// Test that overloaded functions are disambiguated.
+    #[test]
+    fn test_overloaded_functions() {
+        let abi_json = r#"[
+            {
+                "type": "function",
+                "name": "getSomething",
+                "inputs": [],
+                "outputs": [{"name": "result", "type": "bytes32"}],
+                "stateMutability": "view"
+            },
+            {
+                "type": "function",
+                "name": "getSomething",
+                "inputs": [{"name": "owner", "type": "address"}],
+                "outputs": [{"name": "result", "type": "bytes32"}],
+                "stateMutability": "view"
+            }
+        ]"#;
+
+        let contract = parse_abi(abi_json);
+        let gen = AbiCodeGenerator::new(contract, "Token");
+        let types = gen.generate_types();
+
+        // Find the Token contract class
+        let token_class = types.iter().find(|c| c.name == "Token").unwrap();
+
+        // Get all method names (excluding try_ variants and bind)
+        let method_names: Vec<&str> = token_class
+            .methods
+            .iter()
+            .map(|m| m.name.as_str())
+            .filter(|n| !n.starts_with("try_") && *n != "bind")
+            .collect();
+
+        // Verify we have disambiguated getSomething variants
+        assert!(
+            method_names.contains(&"getSomething"),
+            "Should have base getSomething method"
+        );
+        assert!(
+            method_names.contains(&"getSomething1"),
+            "Should have getSomething1 method"
+        );
+    }
 }
