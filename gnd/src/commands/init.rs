@@ -6,12 +6,15 @@
 //! - From an existing contract (fetch ABI from Etherscan/Sourcify)
 //! - From an existing deployed subgraph
 
+use std::fs;
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
 
 use crate::output::{step, Step};
+use crate::scaffold::{generate_scaffold, init_git, install_dependencies, ScaffoldOptions};
+use crate::services::{ContractInfo, ContractService};
 
 /// Available protocols for subgraph development.
 #[derive(Clone, Debug, ValueEnum)]
@@ -104,7 +107,7 @@ pub struct InitOpt {
 }
 
 /// Run the init command.
-pub fn run_init(opt: InitOpt) -> Result<()> {
+pub async fn run_init(opt: InitOpt) -> Result<()> {
     // Determine the scaffold source
     let source = if opt.from_contract.is_some() {
         ScaffoldSource::Contract
@@ -118,7 +121,7 @@ pub fn run_init(opt: InitOpt) -> Result<()> {
     };
 
     match source {
-        ScaffoldSource::Contract => init_from_contract(&opt),
+        ScaffoldSource::Contract => init_from_contract(&opt).await,
         ScaffoldSource::Example => init_from_example(&opt),
         ScaffoldSource::Subgraph => init_from_subgraph(&opt),
     }
@@ -131,14 +134,148 @@ enum ScaffoldSource {
 }
 
 /// Initialize a subgraph from a contract address.
-fn init_from_contract(_opt: &InitOpt) -> Result<()> {
-    Err(anyhow!(
-        "Init from contract is not yet implemented.\n\
-         This feature requires:\n\
-         - Etherscan/Sourcify API integration for ABI fetching\n\
-         - ABI parsing and code generation\n\n\
-         Please use --from-example instead, or use the TypeScript graph-cli."
-    ))
+async fn init_from_contract(opt: &InitOpt) -> Result<()> {
+    let address = opt
+        .from_contract
+        .as_ref()
+        .ok_or_else(|| anyhow!("Contract address is required"))?;
+
+    // Validate address format
+    if !address.starts_with("0x") || address.len() != 42 {
+        return Err(anyhow!(
+            "Invalid contract address '{}'. Expected format: 0x followed by 40 hex characters.",
+            address
+        ));
+    }
+
+    let network = opt.network.as_deref().unwrap_or("mainnet");
+
+    step(
+        Step::Load,
+        &format!("Fetching contract info from {} on {}", address, network),
+    );
+
+    let contract_info = {
+        // Load ABI from file if provided
+        if let Some(abi_path) = &opt.abi {
+            let abi_str = fs::read_to_string(abi_path)
+                .with_context(|| format!("Failed to read ABI file: {}", abi_path.display()))?;
+            let abi: serde_json::Value = serde_json::from_str(&abi_str)
+                .with_context(|| format!("Failed to parse ABI file: {}", abi_path.display()))?;
+
+            // Try to get start block from API if not provided
+            let start_block = if let Some(block) = &opt.start_block {
+                block.parse::<u64>().ok()
+            } else {
+                // Try to fetch from API
+                match ContractService::load().await {
+                    Ok(service) => service.get_start_block(network, address).await.ok(),
+                    Err(_) => None,
+                }
+            };
+
+            let name = opt
+                .contract_name
+                .clone()
+                .unwrap_or_else(|| "Contract".to_string());
+
+            ContractInfo {
+                abi,
+                name,
+                start_block,
+            }
+        } else {
+            // Fetch ABI from Etherscan/Sourcify
+            let service = ContractService::load()
+                .await
+                .context("Failed to load contract service")?;
+
+            service
+                .get_contract_info(network, address)
+                .await
+                .context("Failed to fetch contract info")?
+        }
+    };
+
+    step(
+        Step::Done,
+        &format!("Found contract: {}", contract_info.name),
+    );
+
+    // Determine contract name
+    let contract_name = opt
+        .contract_name
+        .clone()
+        .unwrap_or_else(|| contract_info.name.clone());
+
+    // Determine subgraph name
+    let subgraph_name = opt
+        .subgraph_name
+        .clone()
+        .unwrap_or_else(|| format!("user/{}", contract_name.to_lowercase()));
+
+    // Determine directory
+    let directory = opt.directory.clone().unwrap_or_else(|| {
+        PathBuf::from(
+            subgraph_name
+                .split('/')
+                .next_back()
+                .unwrap_or(&contract_name),
+        )
+    });
+
+    // Check if directory already exists
+    if directory.exists() {
+        return Err(anyhow!(
+            "Directory '{}' already exists. Please choose a different name or remove the existing directory.",
+            directory.display()
+        ));
+    }
+
+    // Determine start block
+    let start_block = opt
+        .start_block
+        .as_ref()
+        .and_then(|s| s.parse::<u64>().ok())
+        .or(contract_info.start_block);
+
+    // Generate scaffold
+    let scaffold_options = ScaffoldOptions {
+        address: Some(address.clone()),
+        network: network.to_string(),
+        contract_name: contract_name.clone(),
+        subgraph_name: subgraph_name.clone(),
+        start_block,
+        abi: Some(contract_info.abi),
+        index_events: opt.index_events,
+    };
+
+    generate_scaffold(&directory, &scaffold_options)?;
+
+    // Initialize git unless skipped
+    if !opt.skip_git {
+        let _ = init_git(&directory);
+    }
+
+    // Install dependencies unless skipped
+    if !opt.skip_install {
+        if let Err(e) = install_dependencies(&directory) {
+            eprintln!("Warning: {}", e);
+        }
+    }
+
+    step(
+        Step::Done,
+        &format!("Subgraph created at {}", directory.display()),
+    );
+
+    println!();
+    println!("Next steps:");
+    println!("  cd {}", directory.display());
+    println!("  gnd codegen");
+    println!("  gnd build");
+
+    Ok(())
 }
 
 /// Initialize a subgraph from an example template.
