@@ -1,0 +1,441 @@
+//! Interactive prompt utilities for CLI commands.
+//!
+//! This module provides wrappers around the `inquire` crate to provide
+//! consistent prompting behavior similar to the TypeScript graph-cli.
+
+use anyhow::Result;
+use inquire::validator::Validation;
+use inquire::{Autocomplete, Confirm, CustomUserError, Select, Text};
+
+use crate::services::{Network, NetworksRegistry};
+
+/// Format a network for display.
+fn format_network(network: &Network) -> String {
+    let full_name = network.full_name.as_deref().unwrap_or(&network.id);
+    format!("{} ({})", full_name, network.id)
+}
+
+/// A network autocompleter that works with owned data.
+#[derive(Clone)]
+struct SimpleNetworkCompleter {
+    entries: Vec<NetworkEntry>,
+}
+
+#[derive(Clone)]
+struct NetworkEntry {
+    display: String,
+    search_terms: String,
+}
+
+impl SimpleNetworkCompleter {
+    fn new(registry: &NetworksRegistry) -> Self {
+        let entries: Vec<NetworkEntry> = registry
+            .networks
+            .iter()
+            .map(|n| {
+                let display = format_network(n);
+                let search_terms = format!(
+                    "{} {} {} {}",
+                    n.id,
+                    n.full_name.as_deref().unwrap_or(""),
+                    n.short_name.as_deref().unwrap_or(""),
+                    n.aliases.join(" ")
+                )
+                .to_lowercase();
+                NetworkEntry {
+                    display,
+                    search_terms,
+                }
+            })
+            .collect();
+        Self { entries }
+    }
+}
+
+impl Autocomplete for SimpleNetworkCompleter {
+    fn get_suggestions(&mut self, input: &str) -> Result<Vec<String>, CustomUserError> {
+        let input_lower = input.to_lowercase();
+        let matches: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|e| {
+                e.search_terms.contains(&input_lower)
+                    || e.display.to_lowercase().contains(&input_lower)
+            })
+            .take(15)
+            .map(|e| e.display.clone())
+            .collect();
+        Ok(matches)
+    }
+
+    fn get_completion(
+        &mut self,
+        _input: &str,
+        highlighted_suggestion: Option<String>,
+    ) -> Result<inquire::autocompletion::Replacement, CustomUserError> {
+        Ok(highlighted_suggestion)
+    }
+}
+
+/// Prompt for the subgraph slug/name.
+pub fn prompt_subgraph_name(default: Option<&str>) -> Result<String> {
+    let mut prompt = Text::new("Subgraph slug:")
+        .with_help_message("e.g., my-subgraph or myorg/my-subgraph")
+        .with_validator(|input: &str| {
+            if input.trim().is_empty() {
+                Ok(Validation::Invalid("Subgraph slug cannot be empty".into()))
+            } else {
+                Ok(Validation::Valid)
+            }
+        });
+
+    if let Some(d) = default {
+        prompt = prompt.with_default(d);
+    }
+
+    let name = prompt.prompt()?;
+    Ok(format_subgraph_name(&name))
+}
+
+/// Prompt for the directory to create the subgraph in.
+pub fn prompt_directory(default: Option<&str>) -> Result<String> {
+    let mut prompt = Text::new("Directory:")
+        .with_help_message("Directory to create the subgraph in")
+        .with_validator(|input: &str| {
+            if input.trim().is_empty() {
+                Ok(Validation::Invalid("Directory cannot be empty".into()))
+            } else {
+                Ok(Validation::Valid)
+            }
+        });
+
+    if let Some(d) = default {
+        prompt = prompt.with_default(d);
+    }
+
+    Ok(prompt.prompt()?)
+}
+
+/// Prompt for a contract address.
+pub fn prompt_contract_address() -> Result<String> {
+    Text::new("Contract address:")
+        .with_help_message("0x... address of the contract")
+        .with_validator(|input: &str| {
+            if !input.starts_with("0x") || input.len() != 42 {
+                Ok(Validation::Invalid(
+                    "Address must start with 0x and be 42 characters".into(),
+                ))
+            } else if !input[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+                Ok(Validation::Invalid(
+                    "Address must contain only hex characters".into(),
+                ))
+            } else {
+                Ok(Validation::Valid)
+            }
+        })
+        .prompt()
+        .map_err(Into::into)
+}
+
+/// Prompt for the contract name.
+pub fn prompt_contract_name(default: Option<&str>) -> Result<String> {
+    let mut prompt = Text::new("Contract name:")
+        .with_help_message("Name for the contract (used in generated code)")
+        .with_validator(|input: &str| {
+            if input.trim().is_empty() {
+                Ok(Validation::Invalid("Contract name cannot be empty".into()))
+            } else {
+                Ok(Validation::Valid)
+            }
+        });
+
+    if let Some(d) = default {
+        prompt = prompt.with_default(d);
+    } else {
+        prompt = prompt.with_default("Contract");
+    }
+
+    Ok(prompt.prompt()?)
+}
+
+/// Prompt for the start block.
+pub fn prompt_start_block(default: Option<u64>) -> Result<Option<u64>> {
+    let default_str = default
+        .map(|b| b.to_string())
+        .unwrap_or_else(|| "0".to_string());
+
+    let input = Text::new("Start block:")
+        .with_help_message("Block number to start indexing from")
+        .with_default(&default_str)
+        .with_validator(|input: &str| {
+            if input.trim().is_empty() {
+                Ok(Validation::Valid)
+            } else if input.parse::<u64>().is_err() {
+                Ok(Validation::Invalid("Must be a valid block number".into()))
+            } else {
+                Ok(Validation::Valid)
+            }
+        })
+        .prompt()?;
+
+    if input.trim().is_empty() {
+        Ok(None)
+    } else {
+        Ok(input.parse().ok())
+    }
+}
+
+/// Prompt for whether to index events.
+pub fn prompt_index_events() -> Result<bool> {
+    Confirm::new("Index contract events as entities?")
+        .with_default(true)
+        .with_help_message("Generate entities for each event in the contract ABI")
+        .prompt()
+        .map_err(Into::into)
+}
+
+/// Prompt for the source type (contract, example, subgraph).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SourceType {
+    Contract,
+    Example,
+    // Subgraph support is not yet implemented
+}
+
+impl std::fmt::Display for SourceType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SourceType::Contract => write!(f, "Smart contract"),
+            SourceType::Example => write!(f, "Example subgraph"),
+        }
+    }
+}
+
+/// Prompt for the scaffold source type.
+pub fn prompt_source_type() -> Result<SourceType> {
+    let options = vec![SourceType::Contract, SourceType::Example];
+
+    Select::new("Source:", options)
+        .with_help_message("How to initialize the subgraph")
+        .prompt()
+        .map_err(Into::into)
+}
+
+/// Prompt for ABI file path.
+pub fn prompt_abi_path() -> Result<Option<String>> {
+    let has_abi = Confirm::new("Do you have an ABI file?")
+        .with_default(false)
+        .with_help_message("If not, we'll try to fetch it from Etherscan/Sourcify")
+        .prompt()?;
+
+    if has_abi {
+        let path = Text::new("ABI file path:")
+            .with_help_message("Path to the contract ABI JSON file")
+            .prompt()?;
+        Ok(Some(path))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Format a subgraph name to be valid.
+fn format_subgraph_name(name: &str) -> String {
+    name.trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '/' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+/// Extract the directory name from a subgraph name.
+pub fn get_subgraph_basename(name: &str) -> String {
+    name.split('/').next_back().unwrap_or(name).to_string()
+}
+
+/// Interactive init form for when options are not fully provided.
+pub struct InitForm {
+    pub network: String,
+    pub subgraph_name: String,
+    pub directory: String,
+    pub source_type: SourceType,
+    pub contract_address: Option<String>,
+    pub contract_name: String,
+    pub start_block: Option<u64>,
+    pub index_events: bool,
+    pub abi_path: Option<String>,
+}
+
+impl InitForm {
+    /// Run the interactive form, filling in missing values.
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_interactive(
+        registry: &NetworksRegistry,
+        // Pre-filled values from CLI args
+        network: Option<String>,
+        subgraph_name: Option<String>,
+        directory: Option<String>,
+        from_contract: Option<String>,
+        from_example: bool,
+        contract_name: Option<String>,
+        start_block: Option<u64>,
+        index_events: bool,
+        abi_path: Option<String>,
+    ) -> Result<Self> {
+        // Determine source type from flags or prompt
+        let source_type = if from_contract.is_some() {
+            SourceType::Contract
+        } else if from_example {
+            SourceType::Example
+        } else {
+            prompt_source_type()?
+        };
+
+        // For example mode, we only need subgraph name and directory
+        if source_type == SourceType::Example {
+            let subgraph_name = match subgraph_name {
+                Some(n) => n,
+                None => prompt_subgraph_name(None)?,
+            };
+
+            let default_dir = get_subgraph_basename(&subgraph_name);
+            let directory = match directory {
+                Some(d) => d,
+                None => prompt_directory(Some(&default_dir))?,
+            };
+
+            return Ok(Self {
+                network: "mainnet".to_string(), // Not used for example
+                subgraph_name,
+                directory,
+                source_type,
+                contract_address: None,
+                contract_name: "Contract".to_string(),
+                start_block: None,
+                index_events: false,
+                abi_path: None,
+            });
+        }
+
+        // For contract mode, we need network, address, etc.
+
+        // Network
+        let network = match network {
+            Some(n) => n,
+            None => prompt_network_interactive(registry)?,
+        };
+
+        // Contract address
+        let contract_address = match from_contract {
+            Some(addr) => addr,
+            None => prompt_contract_address()?,
+        };
+
+        // Contract name
+        let contract_name = match contract_name {
+            Some(n) => n,
+            None => prompt_contract_name(None)?,
+        };
+
+        // Subgraph name
+        let default_subgraph_name = contract_name.to_lowercase();
+        let subgraph_name = match subgraph_name {
+            Some(n) => n,
+            None => prompt_subgraph_name(Some(&default_subgraph_name))?,
+        };
+
+        // Directory
+        let default_dir = get_subgraph_basename(&subgraph_name);
+        let directory = match directory {
+            Some(d) => d,
+            None => prompt_directory(Some(&default_dir))?,
+        };
+
+        // ABI path (optional)
+        let abi_path = match abi_path {
+            Some(p) => Some(p),
+            None => prompt_abi_path()?,
+        };
+
+        // Start block
+        let start_block = if start_block.is_some() {
+            start_block
+        } else {
+            prompt_start_block(None)?
+        };
+
+        // Index events
+        let index_events = if index_events {
+            true
+        } else {
+            prompt_index_events()?
+        };
+
+        Ok(Self {
+            network,
+            subgraph_name,
+            directory,
+            source_type,
+            contract_address: Some(contract_address),
+            contract_name,
+            start_block,
+            index_events,
+            abi_path,
+        })
+    }
+}
+
+/// Prompt for network selection using the simple completer.
+fn prompt_network_interactive(registry: &NetworksRegistry) -> Result<String> {
+    let completer = SimpleNetworkCompleter::new(registry);
+
+    let input = Text::new("Network:")
+        .with_autocomplete(completer)
+        .with_help_message("Type to search (mainnet, polygon, arbitrum-one, etc.)")
+        .prompt()?;
+
+    // Extract network ID from the selection
+    // Format is "Full Name (id)"
+    if let Some(start) = input.rfind('(') {
+        if let Some(end) = input.rfind(')') {
+            let id = &input[start + 1..end];
+            if registry.get_network(id).is_some() {
+                return Ok(id.to_string());
+            }
+        }
+    }
+
+    // Try the input as-is
+    if registry.get_network(&input).is_some() {
+        return Ok(input);
+    }
+
+    anyhow::bail!(
+        "Network '{}' not found in registry. Check available networks at https://thegraph.com/docs/en/supported-networks/",
+        input
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_subgraph_name() {
+        assert_eq!(format_subgraph_name("My Subgraph"), "my-subgraph");
+        assert_eq!(format_subgraph_name("org/my-subgraph"), "org/my-subgraph");
+        assert_eq!(format_subgraph_name("  test  "), "test");
+    }
+
+    #[test]
+    fn test_get_subgraph_basename() {
+        assert_eq!(get_subgraph_basename("my-subgraph"), "my-subgraph");
+        assert_eq!(get_subgraph_basename("org/my-subgraph"), "my-subgraph");
+        assert_eq!(get_subgraph_basename("a/b/c"), "c");
+    }
+}
