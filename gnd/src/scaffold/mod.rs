@@ -3,11 +3,11 @@
 //! This module provides functionality to generate the scaffolding files for a new
 //! subgraph project, including manifest, schema, mappings, and configuration files.
 
-mod manifest;
+pub mod manifest;
 mod mapping;
 mod schema;
 
-pub use manifest::generate_manifest;
+pub use manifest::{extract_events_from_abi, generate_manifest, EventInfo, EventInput};
 pub use mapping::generate_mapping;
 pub use schema::generate_schema;
 
