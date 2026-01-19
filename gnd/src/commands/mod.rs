@@ -1,3 +1,4 @@
+mod add;
 mod auth;
 mod build;
 mod clean;
@@ -9,6 +10,7 @@ mod init;
 mod remove;
 mod test;
 
+pub use add::{run_add, AddOpt};
 pub use auth::{get_deploy_key, run_auth, AuthOpt};
 pub use build::{run_build, BuildOpt};
 pub use clean::{run_clean, CleanOpt};
