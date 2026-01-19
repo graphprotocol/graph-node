@@ -1,5 +1,8 @@
+use std::io;
+
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap_complete::{generate, Shell};
 use git_testament::{git_testament, render_testament};
 use graph::log::logger;
 use lazy_static::lazy_static;
@@ -79,6 +82,27 @@ enum Commands {
 
     /// Remove build artifacts and generated files
     Clean(CleanOpt),
+
+    /// Generate shell completions
+    Completions(CompletionsOpt),
+}
+
+/// Options for shell completion generation.
+#[derive(Parser, Debug)]
+pub struct CompletionsOpt {
+    /// Shell to generate completions for
+    #[clap(value_enum)]
+    pub shell: CompletionShell,
+}
+
+/// Supported shells for completion generation.
+#[derive(Copy, Clone, Debug, ValueEnum)]
+pub enum CompletionShell {
+    Bash,
+    Elvish,
+    Fish,
+    PowerShell,
+    Zsh,
 }
 
 fn shutdown_token() -> CancellationToken {
@@ -117,6 +141,18 @@ fn shutdown_token() -> CancellationToken {
     cancel_token
 }
 
+fn generate_completions(completions_opt: CompletionsOpt) -> Result<()> {
+    let shell = match completions_opt.shell {
+        CompletionShell::Bash => Shell::Bash,
+        CompletionShell::Elvish => Shell::Elvish,
+        CompletionShell::Fish => Shell::Fish,
+        CompletionShell::PowerShell => Shell::PowerShell,
+        CompletionShell::Zsh => Shell::Zsh,
+    };
+    generate(shell, &mut Cli::command(), "gnd", &mut io::stdout());
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     std::env::set_var("ETHEREUM_REORG_THRESHOLD", "10");
@@ -143,6 +179,7 @@ async fn main() -> Result<()> {
         Commands::Publish(publish_opt) => run_publish(publish_opt),
         Commands::Test(test_opt) => run_test(test_opt),
         Commands::Clean(clean_opt) => run_clean(clean_opt),
+        Commands::Completions(completions_opt) => generate_completions(completions_opt),
     };
 
     if let Err(e) = res {
