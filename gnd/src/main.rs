@@ -6,8 +6,8 @@ use lazy_static::lazy_static;
 use tokio_util::sync::CancellationToken;
 
 use gnd::commands::{
-    run_auth, run_clean, run_create, run_dev, run_remove, AuthOpt, CleanOpt, CreateOpt, DevOpt,
-    RemoveOpt,
+    run_auth, run_clean, run_codegen, run_create, run_dev, run_remove, AuthOpt, CleanOpt,
+    CodegenOpt, CreateOpt, DevOpt, RemoveOpt,
 };
 
 git_testament!(TESTAMENT);
@@ -47,7 +47,7 @@ enum Commands {
     Dev(DevOpt),
 
     /// Generate AssemblyScript types from subgraph manifest
-    Codegen,
+    Codegen(CodegenOpt),
 
     /// Compile subgraph to WASM
     Build,
@@ -131,10 +131,7 @@ async fn main() -> Result<()> {
             run_dev(dev_opt, logger, cancel_token).await?;
             Ok(())
         }
-        Commands::Codegen => {
-            info!(logger, "codegen command not yet implemented");
-            std::process::exit(1);
-        }
+        Commands::Codegen(codegen_opt) => run_codegen(codegen_opt),
         Commands::Build => {
             info!(logger, "build command not yet implemented");
             std::process::exit(1);
