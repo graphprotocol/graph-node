@@ -600,6 +600,7 @@ fn update_manifest(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scaffold::manifest::{EventInfo, EventInput};
 
     #[tokio::test]
     async fn test_invalid_address() {
@@ -619,5 +620,155 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Invalid contract address"));
+    }
+
+    #[test]
+    fn test_solidity_to_graphql() {
+        assert_eq!(solidity_to_graphql("address"), "Bytes");
+        assert_eq!(solidity_to_graphql("bool"), "Boolean");
+        assert_eq!(solidity_to_graphql("string"), "String");
+        assert_eq!(solidity_to_graphql("bytes"), "Bytes");
+        assert_eq!(solidity_to_graphql("bytes32"), "Bytes");
+        assert_eq!(solidity_to_graphql("uint256"), "BigInt");
+        assert_eq!(solidity_to_graphql("int128"), "BigInt");
+        assert_eq!(solidity_to_graphql("uint8"), "BigInt");
+        // Array types
+        assert_eq!(solidity_to_graphql("address[]"), "[Bytes!]");
+        assert_eq!(solidity_to_graphql("uint256[]"), "[BigInt!]");
+        assert_eq!(solidity_to_graphql("bool[]"), "[Boolean!]");
+        assert_eq!(solidity_to_graphql("string[]"), "[String!]");
+    }
+
+    #[test]
+    fn test_sanitize_field_name() {
+        assert_eq!(sanitize_field_name("owner"), "owner");
+        assert_eq!(sanitize_field_name("Owner"), "owner");
+        assert_eq!(sanitize_field_name(""), "value");
+        // Reserved words
+        assert_eq!(sanitize_field_name("id"), "eventId");
+        assert_eq!(sanitize_field_name("type"), "eventType");
+    }
+
+    #[test]
+    fn test_to_kebab_case() {
+        assert_eq!(to_kebab_case("MyContract"), "my-contract");
+        assert_eq!(to_kebab_case("SimpleToken"), "simple-token");
+        assert_eq!(to_kebab_case("Contract"), "contract");
+        assert_eq!(to_kebab_case("contract"), "contract");
+        assert_eq!(to_kebab_case("ERC20Token"), "e-r-c20-token");
+    }
+
+    #[test]
+    fn test_generate_event_entity() {
+        let event = EventInfo {
+            name: "Transfer".to_string(),
+            signature: "Transfer(address,address,uint256)".to_string(),
+            inputs: vec![
+                EventInput {
+                    name: "from".to_string(),
+                    solidity_type: "address".to_string(),
+                    indexed: true,
+                },
+                EventInput {
+                    name: "to".to_string(),
+                    solidity_type: "address".to_string(),
+                    indexed: true,
+                },
+                EventInput {
+                    name: "value".to_string(),
+                    solidity_type: "uint256".to_string(),
+                    indexed: false,
+                },
+            ],
+        };
+
+        let entity = generate_event_entity(&event);
+        assert!(entity.contains("type Transfer @entity"));
+        assert!(entity.contains("id: Bytes!"));
+        assert!(entity.contains("from: Bytes!"));
+        assert!(entity.contains("to: Bytes!"));
+        assert!(entity.contains("value: BigInt!"));
+        assert!(entity.contains("blockNumber: BigInt!"));
+        assert!(entity.contains("blockTimestamp: BigInt!"));
+        assert!(entity.contains("transactionHash: Bytes!"));
+    }
+
+    #[test]
+    fn test_generate_event_handler() {
+        let event = EventInfo {
+            name: "Approval".to_string(),
+            signature: "Approval(address,address,uint256)".to_string(),
+            inputs: vec![
+                EventInput {
+                    name: "owner".to_string(),
+                    solidity_type: "address".to_string(),
+                    indexed: true,
+                },
+                EventInput {
+                    name: "spender".to_string(),
+                    solidity_type: "address".to_string(),
+                    indexed: true,
+                },
+                EventInput {
+                    name: "value".to_string(),
+                    solidity_type: "uint256".to_string(),
+                    indexed: false,
+                },
+            ],
+        };
+
+        let handler = generate_event_handler(&event);
+        assert!(handler.contains("export function handleApproval"));
+        assert!(handler.contains("event: ApprovalEvent"));
+        assert!(handler.contains("new Approval("));
+        assert!(handler.contains("entity.owner = event.params.owner"));
+        assert!(handler.contains("entity.spender = event.params.spender"));
+        assert!(handler.contains("entity.value = event.params.value"));
+        assert!(handler.contains("entity.save()"));
+    }
+
+    #[test]
+    fn test_generate_mapping() {
+        let events = vec![EventInfo {
+            name: "Transfer".to_string(),
+            signature: "Transfer(address,address,uint256)".to_string(),
+            inputs: vec![EventInput {
+                name: "from".to_string(),
+                solidity_type: "address".to_string(),
+                indexed: true,
+            }],
+        }];
+
+        let mapping = generate_mapping("Token", &events);
+        assert!(mapping.contains("import { BigInt, Bytes }"));
+        assert!(mapping.contains("Transfer as TransferEvent"));
+        assert!(mapping.contains("../generated/Token/Token"));
+        assert!(mapping.contains("import { Transfer }"));
+        assert!(mapping.contains("../generated/schema"));
+    }
+
+    #[test]
+    fn test_generate_mapping_empty_events() {
+        let events: Vec<EventInfo> = vec![];
+        let mapping = generate_mapping("Empty", &events);
+        assert!(mapping.contains("import { BigInt, Bytes }"));
+        assert!(!mapping.contains("export function handle"));
+    }
+
+    #[tokio::test]
+    async fn test_missing_manifest() {
+        let opt = AddOpt {
+            address: "0x1234567890123456789012345678901234567890".to_string(),
+            manifest: PathBuf::from("nonexistent.yaml"),
+            abi: None,
+            contract_name: None,
+            merge_entities: false,
+            network: None,
+            start_block: None,
+        };
+
+        let result = run_add(opt).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Manifest file"));
     }
 }
