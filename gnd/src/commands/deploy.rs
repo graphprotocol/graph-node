@@ -123,7 +123,7 @@ fn validate_url(url: &str, name: &str) -> Result<()> {
 
 /// Build the subgraph and upload to IPFS.
 async fn build_and_upload(opt: &DeployOpt) -> Result<String> {
-    // First, run the build command
+    // Run the build command with IPFS upload enabled
     let build_opt = BuildOpt {
         manifest: opt.manifest.clone(),
         output_dir: opt.output_dir.clone(),
@@ -136,14 +136,12 @@ async fn build_and_upload(opt: &DeployOpt) -> Result<String> {
         skip_asc_version_check: opt.skip_asc_version_check,
     };
 
-    run_build(build_opt)?;
-
-    // TODO: Implement IPFS upload and return the hash
-    // For now, the build command doesn't return the IPFS hash
-    // We need to implement IPFS upload functionality
-    Err(anyhow!(
-        "IPFS upload is not yet implemented. Please use --ipfs-hash to provide a pre-uploaded manifest hash."
-    ))
+    match run_build(build_opt).await? {
+        Some(ipfs_hash) => Ok(ipfs_hash),
+        None => Err(anyhow!(
+            "Build succeeded but no IPFS hash was returned. This is unexpected."
+        )),
+    }
 }
 
 /// Deploy the subgraph to the Graph Node.

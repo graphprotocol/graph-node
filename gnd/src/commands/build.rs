@@ -4,7 +4,7 @@
 //! copies all required files to the build directory, and optionally uploads
 //! the result to IPFS.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -18,6 +18,7 @@ use sha1::{Digest, Sha1};
 use crate::compiler::{compile_mapping, find_graph_ts, AscCompileOptions};
 use crate::migrations;
 use crate::output::{step, Step};
+use crate::services::IpfsClient;
 
 /// Delay between file change detection and rebuild to batch multiple events.
 const WATCH_DEBOUNCE: Duration = Duration::from_millis(500);
@@ -62,8 +63,15 @@ pub struct BuildOpt {
     pub skip_asc_version_check: bool,
 }
 
+/// Result of a build operation.
+#[derive(Debug)]
+pub struct BuildResult {
+    /// IPFS hash of the uploaded manifest (if IPFS upload was requested)
+    pub ipfs_hash: Option<String>,
+}
+
 /// Run the build command.
-pub fn run_build(opt: BuildOpt) -> Result<()> {
+pub async fn run_build(opt: BuildOpt) -> Result<Option<String>> {
     // Validate output format
     if opt.output_format != "wasm" && opt.output_format != "wast" {
         return Err(anyhow!(
@@ -73,16 +81,18 @@ pub fn run_build(opt: BuildOpt) -> Result<()> {
     }
 
     if opt.watch {
-        watch_and_build(&opt)
+        watch_and_build(&opt).await?;
+        Ok(None)
     } else {
-        build_subgraph(&opt)
+        let result = build_subgraph(&opt).await?;
+        Ok(result.ipfs_hash)
     }
 }
 
 /// Watch subgraph files and rebuild on changes.
-fn watch_and_build(opt: &BuildOpt) -> Result<()> {
+async fn watch_and_build(opt: &BuildOpt) -> Result<()> {
     // Do initial build
-    if let Err(e) = build_subgraph(opt) {
+    if let Err(e) = build_subgraph(opt).await {
         eprintln!("Error during initial build: {}", e);
     }
 
@@ -141,7 +151,7 @@ fn watch_and_build(opt: &BuildOpt) -> Result<()> {
 
                     println!("\nFile change detected: {}\n", changed);
 
-                    if let Err(e) = build_subgraph(opt) {
+                    if let Err(e) = build_subgraph(opt).await {
                         eprintln!("Error during rebuild: {}", e);
                     }
                 }
@@ -183,7 +193,7 @@ fn get_files_to_watch(manifest_path: &Path, manifest: &Manifest) -> Vec<PathBuf>
 }
 
 /// Build the subgraph.
-fn build_subgraph(opt: &BuildOpt) -> Result<()> {
+async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
     // Apply migrations unless skipped
     if !opt.skip_migrations {
         migrations::apply_migrations(&opt.manifest)?;
@@ -270,11 +280,263 @@ fn build_subgraph(opt: &BuildOpt) -> Result<()> {
         &opt.output_format,
     )?;
 
-    step(Step::Done, "Build completed");
+    // Upload to IPFS if requested
+    let ipfs_hash = if let Some(ipfs_url) = &opt.ipfs {
+        let hash = upload_to_ipfs(ipfs_url, &opt.output_dir, &manifest).await?;
+        step(Step::Done, &format!("Build completed: {}", hash));
+        Some(hash)
+    } else {
+        let manifest_path = opt.output_dir.join("subgraph.yaml");
 
-    // TODO: Upload to IPFS if --ipfs is specified
+        step(
+            Step::Done,
+            &format!("Build completed: {}", manifest_path.display()),
+        );
+        None
+    };
 
-    Ok(())
+    Ok(BuildResult { ipfs_hash })
+}
+
+/// Tracks both content hash to IPFS hash (for deduplication) and path to IPFS hash (for lookups).
+#[derive(Default)]
+struct UploadedFiles {
+    /// Content hash -> IPFS hash (for deduplication)
+    content_to_ipfs: HashMap<String, String>,
+    /// Relative path -> IPFS hash (for manifest updates)
+    path_to_ipfs: HashMap<String, String>,
+}
+
+/// Upload build artifacts to IPFS and return the manifest hash.
+async fn upload_to_ipfs(ipfs_url: &str, output_dir: &Path, manifest: &Manifest) -> Result<String> {
+    step(Step::Generate, "Upload subgraph to IPFS");
+
+    let client = IpfsClient::new(ipfs_url)?;
+
+    // Track uploaded files
+    let mut uploaded = UploadedFiles::default();
+
+    // Upload schema file
+    if let Some(schema_path) = &manifest.schema {
+        let schema_name = Path::new(schema_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("schema.graphql");
+        let schema_file = output_dir.join(schema_name);
+        let content = fs::read(&schema_file)
+            .with_context(|| format!("Failed to read schema file: {}", schema_file.display()))?;
+        let hash = upload_file_to_ipfs(&client, schema_name, content, &mut uploaded).await?;
+        step(Step::Write, &format!("  {} => {}", schema_name, hash));
+    }
+
+    // Upload ABI files
+    for ds in &manifest.data_sources {
+        for abi in &ds.abis {
+            let abi_filename = format!("{}.json", abi.name);
+            let abi_file = output_dir.join(&ds.name).join(&abi_filename);
+            if abi_file.exists() {
+                let content = fs::read(&abi_file)
+                    .with_context(|| format!("Failed to read ABI file: {}", abi_file.display()))?;
+                let rel_path = format!("{}/{}", ds.name, abi_filename);
+                let hash = upload_file_to_ipfs(&client, &rel_path, content, &mut uploaded).await?;
+                step(Step::Write, &format!("  {} => {}", rel_path, hash));
+            }
+        }
+    }
+
+    // Upload mapping files
+    for ds in &manifest.data_sources {
+        let mapping_filename = format!("{}.wasm", ds.name);
+        let mapping_file = output_dir.join(&ds.name).join(&mapping_filename);
+        if mapping_file.exists() {
+            let content = fs::read(&mapping_file).with_context(|| {
+                format!("Failed to read mapping file: {}", mapping_file.display())
+            })?;
+            let rel_path = format!("{}/{}", ds.name, mapping_filename);
+            let hash = upload_file_to_ipfs(&client, &rel_path, content, &mut uploaded).await?;
+            step(Step::Write, &format!("  {} => {}", rel_path, hash));
+        }
+    }
+
+    // Upload template mapping files
+    for template in &manifest.templates {
+        let mapping_filename = format!("{}.wasm", template.name);
+        let mapping_file = output_dir
+            .join("templates")
+            .join(&template.name)
+            .join(&mapping_filename);
+        if mapping_file.exists() {
+            let content = fs::read(&mapping_file).with_context(|| {
+                format!(
+                    "Failed to read template mapping: {}",
+                    mapping_file.display()
+                )
+            })?;
+            let rel_path = format!("templates/{}/{}", template.name, mapping_filename);
+            let hash = upload_file_to_ipfs(&client, &rel_path, content, &mut uploaded).await?;
+            step(Step::Write, &format!("  {} => {}", rel_path, hash));
+        }
+    }
+
+    // Now we need to update the manifest with IPFS hashes and upload it
+    let manifest_content = create_ipfs_manifest(output_dir, manifest, &uploaded)?;
+    let manifest_hash = client
+        .add("subgraph.yaml", manifest_content.into_bytes())
+        .await?;
+    step(
+        Step::Write,
+        &format!("  subgraph.yaml => {}", manifest_hash),
+    );
+
+    Ok(manifest_hash)
+}
+
+/// Upload a file to IPFS, using cache to avoid duplicates.
+async fn upload_file_to_ipfs(
+    client: &IpfsClient,
+    path: &str,
+    content: Vec<u8>,
+    uploaded: &mut UploadedFiles,
+) -> Result<String> {
+    // Check if we already uploaded this content
+    let content_hash = {
+        let mut hasher = Sha1::new();
+        hasher.update(&content);
+        format!("{:x}", hasher.finalize())
+    };
+
+    let ipfs_hash = if let Some(hash) = uploaded.content_to_ipfs.get(&content_hash) {
+        hash.clone()
+    } else {
+        let hash = client.add(path, content).await?;
+        uploaded.content_to_ipfs.insert(content_hash, hash.clone());
+        hash
+    };
+
+    // Also track by path for manifest lookups
+    uploaded
+        .path_to_ipfs
+        .insert(path.to_string(), ipfs_hash.clone());
+
+    Ok(ipfs_hash)
+}
+
+/// Create the IPFS manifest with file paths replaced by IPFS hashes.
+fn create_ipfs_manifest(
+    output_dir: &Path,
+    manifest: &Manifest,
+    uploaded: &UploadedFiles,
+) -> Result<String> {
+    // Read the original manifest
+    let manifest_path = output_dir.join("subgraph.yaml");
+    let manifest_str = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read manifest: {}", manifest_path.display()))?;
+
+    let mut value: serde_yaml::Value = serde_yaml::from_str(&manifest_str)?;
+
+    // Update schema path to IPFS reference
+    if let Some(schema_path) = &manifest.schema {
+        let schema_name = Path::new(schema_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("schema.graphql");
+
+        // Find the hash for this file
+        if let Some(hash) = uploaded.path_to_ipfs.get(schema_name) {
+            if let Some(schema) = value.get_mut("schema") {
+                if let Some(file) = schema.get_mut("file") {
+                    *file = create_ipfs_link(hash);
+                }
+            }
+        }
+    }
+
+    // Update data source paths
+    if let Some(data_sources) = value.get_mut("dataSources") {
+        if let Some(arr) = data_sources.as_sequence_mut() {
+            for (i, ds_value) in arr.iter_mut().enumerate() {
+                if i < manifest.data_sources.len() {
+                    let ds = &manifest.data_sources[i];
+                    update_data_source_ipfs_paths(ds_value, ds, uploaded);
+                }
+            }
+        }
+    }
+
+    // Update template paths
+    if let Some(templates) = value.get_mut("templates") {
+        if let Some(arr) = templates.as_sequence_mut() {
+            for (i, template_value) in arr.iter_mut().enumerate() {
+                if i < manifest.templates.len() {
+                    let template = &manifest.templates[i];
+                    update_template_ipfs_paths(template_value, template, uploaded);
+                }
+            }
+        }
+    }
+
+    serde_yaml::to_string(&value).context("Failed to serialize IPFS manifest")
+}
+
+/// Create an IPFS link value.
+fn create_ipfs_link(hash: &str) -> serde_yaml::Value {
+    let mut map = serde_yaml::Mapping::new();
+    map.insert(
+        serde_yaml::Value::String("/".to_string()),
+        serde_yaml::Value::String(format!("/ipfs/{}", hash)),
+    );
+    serde_yaml::Value::Mapping(map)
+}
+
+/// Update data source paths in the manifest to IPFS references.
+fn update_data_source_ipfs_paths(
+    ds_value: &mut serde_yaml::Value,
+    ds: &DataSource,
+    uploaded: &UploadedFiles,
+) {
+    if let Some(mapping) = ds_value.get_mut("mapping") {
+        // Update mapping file
+        if let Some(file) = mapping.get_mut("file") {
+            let mapping_path = format!("{}/{}.wasm", ds.name, ds.name);
+            if let Some(hash) = uploaded.path_to_ipfs.get(&mapping_path) {
+                *file = create_ipfs_link(hash);
+            }
+        }
+
+        // Update ABIs
+        if let Some(abis) = mapping.get_mut("abis") {
+            if let Some(arr) = abis.as_sequence_mut() {
+                for (j, abi_value) in arr.iter_mut().enumerate() {
+                    if j < ds.abis.len() {
+                        let abi = &ds.abis[j];
+                        if let Some(file) = abi_value.get_mut("file") {
+                            let abi_path = format!("{}/{}.json", ds.name, abi.name);
+                            if let Some(hash) = uploaded.path_to_ipfs.get(&abi_path) {
+                                *file = create_ipfs_link(hash);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Update template paths in the manifest to IPFS references.
+fn update_template_ipfs_paths(
+    template_value: &mut serde_yaml::Value,
+    template: &Template,
+    uploaded: &UploadedFiles,
+) {
+    if let Some(mapping) = template_value.get_mut("mapping") {
+        // Update mapping file
+        if let Some(file) = mapping.get_mut("file") {
+            let mapping_path = format!("templates/{}/{}.wasm", template.name, template.name);
+            if let Some(hash) = uploaded.path_to_ipfs.get(&mapping_path) {
+                *file = create_ipfs_link(hash);
+            }
+        }
+    }
 }
 
 /// Compile a data source mapping.

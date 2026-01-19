@@ -132,7 +132,7 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Commands::Codegen(codegen_opt) => run_codegen(codegen_opt),
-        Commands::Build(build_opt) => run_build(build_opt),
+        Commands::Build(build_opt) => run_build(build_opt).await.map(|_| ()),
         Commands::Deploy(deploy_opt) => run_deploy(deploy_opt).await,
         Commands::Init => {
             info!(logger, "init command not yet implemented");
