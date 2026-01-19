@@ -1,3 +1,3 @@
 mod graph_node;
 
-pub use graph_node::{GraphNodeClient, GraphNodeError};
+pub use graph_node::{DeployResult, GraphNodeClient, GraphNodeError};

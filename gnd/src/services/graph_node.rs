@@ -80,13 +80,7 @@ impl GraphNodeClient {
     ///
     /// This registers the subgraph name with the Graph Node but does not deploy any code.
     pub async fn create_subgraph(&self, name: &str) -> Result<(), GraphNodeError> {
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0",
-            id: 1,
-            method: "subgraph_create",
-            params: SubgraphNameParams { name },
-        };
-
+        let request = JsonRpcRequest::name_only("subgraph_create", name);
         self.call::<serde_json::Value>(request).await?;
         Ok(())
     }
@@ -95,21 +89,30 @@ impl GraphNodeClient {
     ///
     /// This unregisters the subgraph name from the Graph Node.
     pub async fn remove_subgraph(&self, name: &str) -> Result<(), GraphNodeError> {
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0",
-            id: 1,
-            method: "subgraph_remove",
-            params: SubgraphNameParams { name },
-        };
-
+        let request = JsonRpcRequest::name_only("subgraph_remove", name);
         self.call::<serde_json::Value>(request).await?;
         Ok(())
+    }
+
+    /// Deploy a subgraph to the Graph Node.
+    ///
+    /// This deploys the subgraph with the given name using the provided IPFS hash.
+    /// Returns the deployment result containing playground and queries URLs.
+    pub async fn deploy_subgraph(
+        &self,
+        name: &str,
+        ipfs_hash: &str,
+        version_label: Option<&str>,
+        debug_fork: Option<&str>,
+    ) -> Result<DeployResult, GraphNodeError> {
+        let request = JsonRpcRequest::deploy(name, ipfs_hash, version_label, debug_fork);
+        self.call::<DeployResult>(request).await
     }
 
     /// Make a JSON-RPC call to the Graph Node
     async fn call<T: for<'de> Deserialize<'de>>(
         &self,
-        request: JsonRpcRequest<'_>,
+        request: JsonRpcRequest,
     ) -> Result<T, GraphNodeError> {
         let response = self
             .client
@@ -135,17 +138,69 @@ impl GraphNodeClient {
     }
 }
 
-#[derive(Debug, Serialize)]
-struct JsonRpcRequest<'a> {
-    jsonrpc: &'static str,
-    id: u32,
-    method: &'static str,
-    params: SubgraphNameParams<'a>,
+/// Result from a successful subgraph deployment.
+#[derive(Debug, Deserialize)]
+pub struct DeployResult {
+    /// URL to the GraphQL playground for this subgraph
+    pub playground: String,
+    /// URL to the GraphQL queries endpoint for this subgraph
+    pub queries: String,
 }
 
 #[derive(Debug, Serialize)]
-struct SubgraphNameParams<'a> {
-    name: &'a str,
+struct JsonRpcRequest {
+    jsonrpc: &'static str,
+    id: u32,
+    method: &'static str,
+    params: JsonRpcParams,
+}
+
+impl JsonRpcRequest {
+    fn name_only(method: &'static str, name: &str) -> Self {
+        Self {
+            jsonrpc: "2.0",
+            id: 1,
+            method,
+            params: JsonRpcParams::NameOnly {
+                name: name.to_string(),
+            },
+        }
+    }
+
+    fn deploy(
+        name: &str,
+        ipfs_hash: &str,
+        version_label: Option<&str>,
+        debug_fork: Option<&str>,
+    ) -> Self {
+        Self {
+            jsonrpc: "2.0",
+            id: 1,
+            method: "subgraph_deploy",
+            params: JsonRpcParams::Deploy {
+                name: name.to_string(),
+                ipfs_hash: ipfs_hash.to_string(),
+                version_label: version_label.map(|s| s.to_string()),
+                debug_fork: debug_fork.map(|s| s.to_string()),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum JsonRpcParams {
+    NameOnly {
+        name: String,
+    },
+    Deploy {
+        name: String,
+        ipfs_hash: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        version_label: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        debug_fork: Option<String>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
