@@ -1,0 +1,4 @@
+type MyEntity @entity(immutable: true) {
+  id: ID!
+  x: BigDecimal!
+}

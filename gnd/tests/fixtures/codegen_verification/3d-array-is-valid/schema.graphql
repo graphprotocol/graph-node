@@ -1,0 +1,4 @@
+type MyEntity @entity(immutable: true) {
+  id: ID!
+  childTokenURIs: [[[String!]!]!]! # string[][][]
+}

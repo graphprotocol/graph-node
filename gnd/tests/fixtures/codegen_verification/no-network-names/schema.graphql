@@ -1,0 +1,3 @@
+type MyEntity @entity(immutable: true) {
+  id: ID!
+}
