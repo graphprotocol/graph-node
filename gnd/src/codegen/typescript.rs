@@ -303,7 +303,7 @@ impl Display for ClassMember {
 }
 
 /// Code that can be part of a class body (method or static method).
-#[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub enum ClassCode {
     Method(Method),
     StaticMethod(StaticMethod),
@@ -325,6 +325,9 @@ pub struct Class {
     pub extends: Option<String>,
     pub export: bool,
     pub members: Vec<ClassMember>,
+    /// Methods in insertion order (regular and static)
+    code: Vec<ClassCode>,
+    // Keep separate vectors for backward compatibility with existing code
     pub methods: Vec<Method>,
     pub static_methods: Vec<StaticMethod>,
 }
@@ -336,6 +339,7 @@ impl Class {
             extends: None,
             export: false,
             members: Vec::new(),
+            code: Vec::new(),
             methods: Vec::new(),
             static_methods: Vec::new(),
         }
@@ -356,10 +360,12 @@ impl Class {
     }
 
     pub fn add_method(&mut self, method: Method) {
+        self.code.push(ClassCode::Method(method.clone()));
         self.methods.push(method);
     }
 
     pub fn add_static_method(&mut self, method: StaticMethod) {
+        self.code.push(ClassCode::StaticMethod(method.clone()));
         self.static_methods.push(method);
     }
 }
@@ -380,12 +386,9 @@ impl Display for Class {
             writeln!(f, "{}", member)?;
         }
 
-        // Write methods (regular and static)
-        for method in &self.static_methods {
-            write!(f, "{}", method)?;
-        }
-        for method in &self.methods {
-            write!(f, "{}", method)?;
+        // Write methods in insertion order (maintains graph-cli output order)
+        for code in &self.code {
+            write!(f, "{}", code)?;
         }
 
         writeln!(f, "}}")

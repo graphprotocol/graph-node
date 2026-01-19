@@ -228,6 +228,78 @@ fn generate_schema_types(schema_path: &Path, output_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Preprocess ABI JSON to add default names for unnamed parameters.
+/// The ethabi crate requires all parameters to have names, but Solidity ABIs
+/// can have unnamed parameters. This function adds `param0`, `param1`, etc.
+fn preprocess_abi_json(abi_str: &str) -> Result<String> {
+    let mut abi: serde_json::Value =
+        serde_json::from_str(abi_str).context("Failed to parse ABI JSON")?;
+
+    if let Some(items) = abi.as_array_mut() {
+        for item in items {
+            if let Some(obj) = item.as_object_mut() {
+                let is_event = obj
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .map(|t| t == "event")
+                    .unwrap_or(false);
+
+                // Add anonymous: false for events if missing
+                if is_event && !obj.contains_key("anonymous") {
+                    obj.insert("anonymous".to_string(), serde_json::Value::Bool(false));
+                }
+
+                // Process inputs for events and functions
+                if let Some(inputs) = obj.get_mut("inputs") {
+                    add_default_names_to_params(inputs, is_event);
+                }
+                // Process outputs for functions
+                if let Some(outputs) = obj.get_mut("outputs") {
+                    add_default_names_to_params(outputs, false);
+                }
+            }
+        }
+    }
+
+    serde_json::to_string(&abi).context("Failed to serialize processed ABI")
+}
+
+/// Add required fields to ABI parameters.
+/// - For event inputs: adds "name" (using `param{index}` if missing) and "indexed": false
+/// - For function inputs/outputs: adds empty "name" if missing (lets ABI codegen use correct prefix)
+/// - For tuple components: adds empty "name" if missing
+fn add_default_names_to_params(params: &mut serde_json::Value, is_event_input: bool) {
+    if let Some(params_arr) = params.as_array_mut() {
+        for (index, param) in params_arr.iter_mut().enumerate() {
+            if let Some(obj) = param.as_object_mut() {
+                // Check if name is missing (not present at all)
+                let name_missing = !obj.contains_key("name");
+
+                if name_missing {
+                    // For events, use param{index} to match graph-cli behavior
+                    // For functions, use empty string so ABI codegen applies correct prefix
+                    let default_name = if is_event_input {
+                        format!("param{}", index)
+                    } else {
+                        String::new()
+                    };
+                    obj.insert("name".to_string(), serde_json::Value::String(default_name));
+                }
+
+                // Add indexed: false for event inputs if missing
+                if is_event_input && !obj.contains_key("indexed") {
+                    obj.insert("indexed".to_string(), serde_json::Value::Bool(false));
+                }
+
+                // Recursively process tuple components (always use empty names)
+                if let Some(components) = obj.get_mut("components") {
+                    add_default_names_to_params(components, false);
+                }
+            }
+        }
+    }
+}
+
 /// Generate types from an ABI file.
 fn generate_abi_types(name: &str, abi_path: &Path, output_dir: &Path) -> Result<()> {
     step(Step::Load, &format!("Load ABI from {}", abi_path.display()));
@@ -235,7 +307,11 @@ fn generate_abi_types(name: &str, abi_path: &Path, output_dir: &Path) -> Result<
     let abi_str = fs::read_to_string(abi_path)
         .with_context(|| format!("Failed to read ABI file: {:?}", abi_path))?;
 
-    let contract: Contract = serde_json::from_str(&abi_str)
+    // Preprocess ABI to add default names for unnamed parameters
+    let processed_abi = preprocess_abi_json(&abi_str)
+        .with_context(|| format!("Failed to preprocess ABI: {:?}", abi_path))?;
+
+    let contract: Contract = serde_json::from_str(&processed_abi)
         .with_context(|| format!("Failed to parse ABI JSON: {:?}", abi_path))?;
 
     step(Step::Generate, &format!("Generate types for ABI {}", name));

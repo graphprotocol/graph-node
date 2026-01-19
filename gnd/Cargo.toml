@@ -65,3 +65,5 @@ pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-arg
 
 [dev-dependencies]
 tempfile = "3"
+walkdir = "2"
+similar = "2"
