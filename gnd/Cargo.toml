@@ -53,6 +53,9 @@ semver = "1"
 # Build command
 sha1 = "0.10"
 
+# Test command
+which = "7"
+
 [target.'cfg(unix)'.dependencies]
 pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
 

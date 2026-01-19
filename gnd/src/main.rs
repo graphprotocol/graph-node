@@ -7,7 +7,8 @@ use tokio_util::sync::CancellationToken;
 
 use gnd::commands::{
     run_auth, run_build, run_clean, run_codegen, run_create, run_deploy, run_dev, run_remove,
-    AuthOpt, BuildOpt, CleanOpt, CodegenOpt, CreateOpt, DeployOpt, DevOpt, RemoveOpt,
+    run_test, AuthOpt, BuildOpt, CleanOpt, CodegenOpt, CreateOpt, DeployOpt, DevOpt, RemoveOpt,
+    TestOpt,
 };
 
 git_testament!(TESTAMENT);
@@ -74,7 +75,7 @@ enum Commands {
     Publish,
 
     /// Run Matchstick tests
-    Test,
+    Test(TestOpt),
 
     /// Remove build artifacts and generated files
     Clean(CleanOpt),
@@ -149,10 +150,7 @@ async fn main() -> Result<()> {
             info!(logger, "publish command not yet implemented");
             std::process::exit(1);
         }
-        Commands::Test => {
-            info!(logger, "test command not yet implemented");
-            std::process::exit(1);
-        }
+        Commands::Test(test_opt) => run_test(test_opt),
         Commands::Clean(clean_opt) => run_clean(clean_opt),
     };
 
