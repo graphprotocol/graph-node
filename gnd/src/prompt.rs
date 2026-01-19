@@ -430,6 +430,8 @@ mod tests {
         assert_eq!(format_subgraph_name("My Subgraph"), "my-subgraph");
         assert_eq!(format_subgraph_name("org/my-subgraph"), "org/my-subgraph");
         assert_eq!(format_subgraph_name("  test  "), "test");
+        assert_eq!(format_subgraph_name("Test_123"), "test-123");
+        assert_eq!(format_subgraph_name("a/b/c"), "a/b/c");
     }
 
     #[test]
@@ -437,5 +439,89 @@ mod tests {
         assert_eq!(get_subgraph_basename("my-subgraph"), "my-subgraph");
         assert_eq!(get_subgraph_basename("org/my-subgraph"), "my-subgraph");
         assert_eq!(get_subgraph_basename("a/b/c"), "c");
+        assert_eq!(get_subgraph_basename(""), "");
+    }
+
+    #[test]
+    fn test_format_network() {
+        let network = Network {
+            id: "mainnet".to_string(),
+            short_name: Some("Ethereum".to_string()),
+            full_name: Some("Ethereum Mainnet".to_string()),
+            aliases: vec!["ethereum".to_string()],
+            caip2_id: "eip155:1".to_string(),
+            api_urls: vec![],
+            rpc_urls: vec![],
+        };
+        assert_eq!(format_network(&network), "Ethereum Mainnet (mainnet)");
+
+        let network_no_full_name = Network {
+            id: "custom".to_string(),
+            short_name: None,
+            full_name: None,
+            aliases: vec![],
+            caip2_id: "eip155:999".to_string(),
+            api_urls: vec![],
+            rpc_urls: vec![],
+        };
+        assert_eq!(format_network(&network_no_full_name), "custom (custom)");
+    }
+
+    #[test]
+    fn test_source_type_display() {
+        assert_eq!(SourceType::Contract.to_string(), "Smart contract");
+        assert_eq!(SourceType::Example.to_string(), "Example subgraph");
+    }
+
+    #[test]
+    fn test_simple_network_completer() {
+        let registry = NetworksRegistry {
+            networks: vec![
+                Network {
+                    id: "mainnet".to_string(),
+                    short_name: Some("Ethereum".to_string()),
+                    full_name: Some("Ethereum Mainnet".to_string()),
+                    aliases: vec!["ethereum".to_string(), "eth".to_string()],
+                    caip2_id: "eip155:1".to_string(),
+                    api_urls: vec![],
+                    rpc_urls: vec![],
+                },
+                Network {
+                    id: "polygon".to_string(),
+                    short_name: Some("Polygon".to_string()),
+                    full_name: Some("Polygon Mainnet".to_string()),
+                    aliases: vec!["matic".to_string()],
+                    caip2_id: "eip155:137".to_string(),
+                    api_urls: vec![],
+                    rpc_urls: vec![],
+                },
+            ],
+        };
+
+        let mut completer = SimpleNetworkCompleter::new(&registry);
+
+        // Test suggestions for "mainnet" (exact ID match)
+        let suggestions = completer.get_suggestions("mainnet").unwrap();
+        assert!(!suggestions.is_empty());
+        assert!(suggestions[0].contains("Ethereum Mainnet"));
+
+        // Test suggestions for "eth" (matches "ethereum" alias)
+        let suggestions = completer.get_suggestions("eth").unwrap();
+        assert!(!suggestions.is_empty());
+        // Should match the network with "ethereum" in aliases
+        assert!(suggestions.iter().any(|s| s.contains("Ethereum")));
+
+        // Test suggestions for "matic" (only matches polygon)
+        let suggestions = completer.get_suggestions("matic").unwrap();
+        assert_eq!(suggestions.len(), 1);
+        assert!(suggestions[0].contains("Polygon"));
+
+        // Test suggestions for empty string (should return all)
+        let suggestions = completer.get_suggestions("").unwrap();
+        assert_eq!(suggestions.len(), 2);
+
+        // Test no matches
+        let suggestions = completer.get_suggestions("nonexistent").unwrap();
+        assert!(suggestions.is_empty());
     }
 }
