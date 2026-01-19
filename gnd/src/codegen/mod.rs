@@ -5,10 +5,12 @@
 //! - Contract ABIs (event and call bindings)
 //! - Data source templates
 
+mod abi;
 mod schema;
 mod types;
 mod typescript;
 
+pub use abi::AbiCodeGenerator;
 pub use schema::SchemaCodeGenerator;
 pub use typescript::{
     ArrayType, Class, ClassMember, Method, ModuleImports, NamedType, NullableType, Param,

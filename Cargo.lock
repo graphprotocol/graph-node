@@ -3669,6 +3669,7 @@ dependencies = [
  "console",
  "dirs",
  "env_logger",
+ "ethabi",
  "git-testament",
  "globset",
  "graph",
