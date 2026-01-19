@@ -135,7 +135,7 @@ async fn main() -> Result<()> {
         Commands::Codegen(codegen_opt) => run_codegen(codegen_opt),
         Commands::Build(build_opt) => run_build(build_opt).await.map(|_| ()),
         Commands::Deploy(deploy_opt) => run_deploy(deploy_opt).await,
-        Commands::Init(init_opt) => run_init(init_opt),
+        Commands::Init(init_opt) => run_init(init_opt).await,
         Commands::Add(add_opt) => run_add(add_opt),
         Commands::Create(create_opt) => run_create(create_opt).await,
         Commands::Remove(remove_opt) => run_remove(remove_opt).await,
