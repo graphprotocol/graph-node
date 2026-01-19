@@ -1533,4 +1533,253 @@ mod tests {
             "Should have getSomething1 method"
         );
     }
+
+    /// Test that tuple/struct types in function inputs and outputs are handled correctly.
+    #[test]
+    fn test_tuple_types_in_functions() {
+        let abi_json = r#"[
+            {
+                "type": "function",
+                "name": "doSomething",
+                "inputs": [
+                    {
+                        "name": "data",
+                        "type": "tuple",
+                        "components": [
+                            {"name": "owner", "type": "address"},
+                            {"name": "value", "type": "uint256"}
+                        ]
+                    }
+                ],
+                "outputs": [
+                    {
+                        "name": "result",
+                        "type": "tuple",
+                        "components": [
+                            {"name": "success", "type": "bool"},
+                            {"name": "newValue", "type": "uint256"}
+                        ]
+                    }
+                ],
+                "stateMutability": "nonpayable"
+            }
+        ]"#;
+
+        let contract = parse_abi(abi_json);
+        let gen = AbiCodeGenerator::new(contract, "TestContract");
+        let types = gen.generate_types();
+
+        // Get class names
+        let class_names: Vec<&str> = types.iter().map(|c| c.name.as_str()).collect();
+
+        // Should have main contract class
+        assert!(
+            class_names.contains(&"TestContract"),
+            "Should have TestContract class"
+        );
+
+        // Should have struct classes for input and output tuples
+        // Input struct: TestContract__doSomethingInputValue0Struct
+        // Output struct: TestContract__doSomethingResultValue0Struct
+        let has_input_struct = class_names
+            .iter()
+            .any(|n| n.contains("Input") && n.contains("Struct"));
+        let has_output_struct = class_names
+            .iter()
+            .any(|n| n.contains("Result") && n.contains("Struct"));
+
+        assert!(
+            has_input_struct,
+            "Should have input struct class, found: {:?}",
+            class_names
+        );
+        assert!(
+            has_output_struct,
+            "Should have output/result struct class, found: {:?}",
+            class_names
+        );
+
+        // Verify the output struct extends ethereum.Tuple
+        let output_struct = types
+            .iter()
+            .find(|c| c.name.contains("Result") && c.name.contains("Struct"))
+            .expect("Should find output struct");
+        assert_eq!(
+            output_struct.extends,
+            Some("ethereum.Tuple".to_string()),
+            "Output struct should extend ethereum.Tuple"
+        );
+
+        // Verify the output struct has getters for its components
+        // The getters use "get valueN" naming for positional access to tuple elements
+        let method_names: Vec<&str> = output_struct
+            .methods
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect();
+        assert!(
+            method_names.iter().any(|n| n.contains("value0")),
+            "Should have value0 getter for first component, found methods: {:?}",
+            method_names
+        );
+        assert!(
+            method_names.iter().any(|n| n.contains("value1")),
+            "Should have value1 getter for second component, found methods: {:?}",
+            method_names
+        );
+    }
+
+    /// Test that tuple types in events are handled correctly.
+    #[test]
+    fn test_tuple_types_in_events() {
+        let abi_json = r#"[
+            {
+                "type": "event",
+                "name": "DataUpdated",
+                "inputs": [
+                    {"name": "id", "type": "uint256", "indexed": true},
+                    {
+                        "name": "data",
+                        "type": "tuple",
+                        "indexed": false,
+                        "components": [
+                            {"name": "timestamp", "type": "uint256"},
+                            {"name": "value", "type": "bytes32"}
+                        ]
+                    }
+                ],
+                "anonymous": false
+            }
+        ]"#;
+
+        let contract = parse_abi(abi_json);
+        let gen = AbiCodeGenerator::new(contract, "TestContract");
+        let types = gen.generate_types();
+
+        // Get class names
+        let class_names: Vec<&str> = types.iter().map(|c| c.name.as_str()).collect();
+
+        // Should have event class
+        assert!(
+            class_names.contains(&"DataUpdated"),
+            "Should have DataUpdated event class"
+        );
+
+        // Should have params class
+        assert!(
+            class_names.contains(&"DataUpdated__Params"),
+            "Should have DataUpdated__Params class"
+        );
+
+        // Should have struct class for the tuple parameter
+        let has_struct = class_names
+            .iter()
+            .any(|n| n.contains("Struct") && n.contains("DataUpdated"));
+        assert!(
+            has_struct,
+            "Should have struct class for tuple parameter, found: {:?}",
+            class_names
+        );
+    }
+
+    /// Test that nested tuple types (struct with struct field) are handled.
+    #[test]
+    fn test_nested_tuple_types() {
+        let abi_json = r#"[
+            {
+                "type": "function",
+                "name": "getNestedData",
+                "inputs": [],
+                "outputs": [
+                    {
+                        "name": "result",
+                        "type": "tuple",
+                        "components": [
+                            {"name": "id", "type": "uint256"},
+                            {
+                                "name": "inner",
+                                "type": "tuple",
+                                "components": [
+                                    {"name": "x", "type": "uint256"},
+                                    {"name": "y", "type": "uint256"}
+                                ]
+                            }
+                        ]
+                    }
+                ],
+                "stateMutability": "view"
+            }
+        ]"#;
+
+        let contract = parse_abi(abi_json);
+        let gen = AbiCodeGenerator::new(contract, "TestContract");
+        let types = gen.generate_types();
+
+        // Get class names
+        let class_names: Vec<&str> = types.iter().map(|c| c.name.as_str()).collect();
+
+        // Should have main contract class
+        assert!(
+            class_names.contains(&"TestContract"),
+            "Should have TestContract class"
+        );
+
+        // Should have at least two struct classes (outer and inner)
+        let struct_count = class_names.iter().filter(|n| n.contains("Struct")).count();
+        assert!(
+            struct_count >= 2,
+            "Should have at least 2 struct classes for nested tuple, found {} in {:?}",
+            struct_count,
+            class_names
+        );
+    }
+
+    /// Test that tuple arrays are handled correctly.
+    #[test]
+    fn test_tuple_array_types() {
+        let abi_json = r#"[
+            {
+                "type": "function",
+                "name": "getAllItems",
+                "inputs": [],
+                "outputs": [
+                    {
+                        "name": "items",
+                        "type": "tuple[]",
+                        "components": [
+                            {"name": "id", "type": "uint256"},
+                            {"name": "name", "type": "string"}
+                        ]
+                    }
+                ],
+                "stateMutability": "view"
+            }
+        ]"#;
+
+        let contract = parse_abi(abi_json);
+        let gen = AbiCodeGenerator::new(contract, "TestContract");
+        let types = gen.generate_types();
+
+        // Find the contract class
+        let contract_class = types.iter().find(|c| c.name == "TestContract").unwrap();
+
+        // Find the getAllItems method
+        let method = contract_class
+            .methods
+            .iter()
+            .find(|m| m.name == "getAllItems")
+            .expect("Should have getAllItems method");
+
+        // The return type should be an Array of the struct type
+        let return_type = method
+            .return_type
+            .as_ref()
+            .expect("Should have return type");
+        let return_type_str = return_type.to_string();
+        assert!(
+            return_type_str.starts_with("Array<"),
+            "Return type should be Array<...>, got: {}",
+            return_type_str
+        );
+    }
 }
