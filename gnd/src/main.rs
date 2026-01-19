@@ -6,9 +6,9 @@ use lazy_static::lazy_static;
 use tokio_util::sync::CancellationToken;
 
 use gnd::commands::{
-    run_auth, run_build, run_clean, run_codegen, run_create, run_deploy, run_dev, run_init,
-    run_remove, run_test, AuthOpt, BuildOpt, CleanOpt, CodegenOpt, CreateOpt, DeployOpt, DevOpt,
-    InitOpt, RemoveOpt, TestOpt,
+    run_add, run_auth, run_build, run_clean, run_codegen, run_create, run_deploy, run_dev,
+    run_init, run_remove, run_test, AddOpt, AuthOpt, BuildOpt, CleanOpt, CodegenOpt, CreateOpt,
+    DeployOpt, DevOpt, InitOpt, RemoveOpt, TestOpt,
 };
 
 git_testament!(TESTAMENT);
@@ -60,7 +60,7 @@ enum Commands {
     Init(InitOpt),
 
     /// Add a datasource to an existing subgraph
-    Add,
+    Add(AddOpt),
 
     /// Register a subgraph name with a Graph Node
     Create(CreateOpt),
@@ -136,10 +136,7 @@ async fn main() -> Result<()> {
         Commands::Build(build_opt) => run_build(build_opt).await.map(|_| ()),
         Commands::Deploy(deploy_opt) => run_deploy(deploy_opt).await,
         Commands::Init(init_opt) => run_init(init_opt),
-        Commands::Add => {
-            info!(logger, "add command not yet implemented");
-            std::process::exit(1);
-        }
+        Commands::Add(add_opt) => run_add(add_opt),
         Commands::Create(create_opt) => run_create(create_opt).await,
         Commands::Remove(remove_opt) => run_remove(remove_opt).await,
         Commands::Auth(auth_opt) => run_auth(auth_opt),
