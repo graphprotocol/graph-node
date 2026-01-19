@@ -1782,4 +1782,125 @@ mod tests {
             return_type_str
         );
     }
+
+    /// Test that array types in events are handled correctly.
+    #[test]
+    fn test_array_types_in_events() {
+        let abi_json = r#"[
+            {
+                "type": "event",
+                "name": "Airdropped",
+                "inputs": [
+                    {"name": "sender", "type": "address", "indexed": true},
+                    {"name": "recipients", "type": "address[]", "indexed": false},
+                    {"name": "amounts", "type": "uint256[]", "indexed": false}
+                ],
+                "anonymous": false
+            }
+        ]"#;
+
+        let contract = parse_abi(abi_json);
+        let gen = AbiCodeGenerator::new(contract, "Token");
+        let types = gen.generate_types();
+
+        // Find the params class
+        let params_class = types
+            .iter()
+            .find(|c| c.name == "Airdropped__Params")
+            .expect("Should have Airdropped__Params class");
+
+        // Check that the array getters exist and have correct return types
+        let method_names: Vec<&str> = params_class
+            .methods
+            .iter()
+            .map(|m| m.name.as_str())
+            .collect();
+
+        assert!(
+            method_names.iter().any(|n| n.contains("recipients")),
+            "Should have recipients getter, found: {:?}",
+            method_names
+        );
+        assert!(
+            method_names.iter().any(|n| n.contains("amounts")),
+            "Should have amounts getter, found: {:?}",
+            method_names
+        );
+
+        // Verify the recipients getter returns Array<Address>
+        let recipients_getter = params_class
+            .methods
+            .iter()
+            .find(|m| m.name.contains("recipients"))
+            .expect("Should have recipients getter");
+        let return_type_str = recipients_getter
+            .return_type
+            .as_ref()
+            .expect("Should have return type")
+            .to_string();
+        assert!(
+            return_type_str.contains("Array<Address>"),
+            "recipients should return Array<Address>, got: {}",
+            return_type_str
+        );
+
+        // Verify the amounts getter returns Array<BigInt>
+        let amounts_getter = params_class
+            .methods
+            .iter()
+            .find(|m| m.name.contains("amounts"))
+            .expect("Should have amounts getter");
+        let amounts_type_str = amounts_getter
+            .return_type
+            .as_ref()
+            .expect("Should have return type")
+            .to_string();
+        assert!(
+            amounts_type_str.contains("Array<BigInt>"),
+            "amounts should return Array<BigInt>, got: {}",
+            amounts_type_str
+        );
+    }
+
+    /// Test that 2D array types (matrices) are handled correctly in functions.
+    #[test]
+    fn test_matrix_types_in_functions() {
+        let abi_json = r#"[
+            {
+                "type": "function",
+                "name": "getMatrix",
+                "inputs": [],
+                "outputs": [
+                    {"name": "data", "type": "uint256[][]"}
+                ],
+                "stateMutability": "view"
+            }
+        ]"#;
+
+        let contract = parse_abi(abi_json);
+        let gen = AbiCodeGenerator::new(contract, "TestContract");
+        let types = gen.generate_types();
+
+        // Find the contract class
+        let contract_class = types.iter().find(|c| c.name == "TestContract").unwrap();
+
+        // Find the getMatrix method
+        let method = contract_class
+            .methods
+            .iter()
+            .find(|m| m.name == "getMatrix")
+            .expect("Should have getMatrix method");
+
+        // The return type should be Array<Array<BigInt>>
+        let return_type = method
+            .return_type
+            .as_ref()
+            .expect("Should have return type");
+        let return_type_str = return_type.to_string();
+        assert!(
+            return_type_str.contains("Array<Array<BigInt>>"),
+            "Return type should be Array<Array<BigInt>>, got: {}",
+            return_type_str
+        );
+    }
 }
