@@ -16,6 +16,7 @@ use notify::{recommended_watcher, RecursiveMode, Watcher};
 use sha1::{Digest, Sha1};
 
 use crate::compiler::{compile_mapping, find_graph_ts, AscCompileOptions};
+use crate::config::{apply_network_config, get_network_config, load_networks_config};
 use crate::migrations;
 use crate::output::{step, Step};
 use crate::services::IpfsClient;
@@ -197,6 +198,11 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
     // Apply migrations unless skipped
     if !opt.skip_migrations {
         migrations::apply_migrations(&opt.manifest)?;
+    }
+
+    // Apply network configuration if specified
+    if let Some(network) = &opt.network {
+        apply_network_to_manifest(&opt.manifest, network, &opt.network_file)?;
     }
 
     // Load the manifest
@@ -834,6 +840,50 @@ fn update_template_paths(
             }
         }
     }
+}
+
+/// Apply network configuration to the manifest file.
+///
+/// This modifies the manifest file in place, updating data source addresses
+/// and start blocks based on the networks.json configuration.
+fn apply_network_to_manifest(
+    manifest_path: &Path,
+    network: &str,
+    network_file: &Path,
+) -> Result<()> {
+    // Check if network file exists
+    if !network_file.exists() {
+        return Err(anyhow!(
+            "Network file '{}' does not exist. Create it or remove --network flag.",
+            network_file.display()
+        ));
+    }
+
+    step(
+        Step::Generate,
+        &format!("Apply network configuration: {}", network),
+    );
+
+    // Load network config
+    let networks_config = load_networks_config(network_file)?;
+    let network_config = get_network_config(&networks_config, network)?;
+
+    // Load manifest
+    let manifest_str = fs::read_to_string(manifest_path)
+        .with_context(|| format!("Failed to read manifest: {}", manifest_path.display()))?;
+
+    let mut manifest: serde_yaml::Value = serde_yaml::from_str(&manifest_str)
+        .with_context(|| format!("Failed to parse manifest: {}", manifest_path.display()))?;
+
+    // Apply network config
+    apply_network_config(&mut manifest, network, network_config)?;
+
+    // Write back to manifest
+    let updated_str = serde_yaml::to_string(&manifest)?;
+    fs::write(manifest_path, updated_str)
+        .with_context(|| format!("Failed to write manifest: {}", manifest_path.display()))?;
+
+    Ok(())
 }
 
 /// Calculate SHA1 hash of a file for caching.

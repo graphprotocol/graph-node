@@ -1,6 +1,7 @@
 pub mod codegen;
 pub mod commands;
 pub mod compiler;
+pub mod config;
 pub mod formatter;
 pub mod migrations;
 pub mod output;
