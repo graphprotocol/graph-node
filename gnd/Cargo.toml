@@ -41,6 +41,10 @@ thiserror = { workspace = true }
 indicatif = "0.17"
 console = "0.15"
 
+# Code generation
+graphql-parser = "0.4"
+regex = "1"
+
 [target.'cfg(unix)'.dependencies]
 pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
 
