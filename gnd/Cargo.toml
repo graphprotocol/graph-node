@@ -29,3 +29,6 @@ pq-sys = { version = "0.7.5", features = ["bundled"] }
 
 [target.'cfg(unix)'.dependencies]
 pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
+
+[dev-dependencies]
+tempfile = "3"
