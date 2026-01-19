@@ -7,11 +7,13 @@
 
 mod abi;
 mod schema;
+mod template;
 mod types;
 mod typescript;
 
 pub use abi::AbiCodeGenerator;
 pub use schema::SchemaCodeGenerator;
+pub use template::{Template, TemplateCodeGenerator, TemplateKind};
 pub use typescript::{
     ArrayType, Class, ClassMember, Method, ModuleImports, NamedType, NullableType, Param,
     StaticMethod, GENERATED_FILE_NOTE,
