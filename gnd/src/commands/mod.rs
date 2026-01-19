@@ -5,6 +5,7 @@ mod codegen;
 mod create;
 mod deploy;
 mod dev;
+mod init;
 mod remove;
 mod test;
 
@@ -15,5 +16,6 @@ pub use codegen::{run_codegen, CodegenOpt};
 pub use create::{run_create, CreateOpt};
 pub use deploy::{run_deploy, DeployOpt};
 pub use dev::{run_dev, DevOpt};
+pub use init::{run_init, InitOpt};
 pub use remove::{run_remove, RemoveOpt};
 pub use test::{run_test, TestOpt};
