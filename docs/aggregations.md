@@ -178,8 +178,8 @@ accepts the following arguments:
   dimension
 - A mandatory `interval`
 - An optional `current` to indicate whether to include the current,
-  partially filled bucket in the response. Can be either `ignore` (the
-  default) or `include` (still **TODO** and not implemented)
+  partially filled bucket in the response. Can be either `exclude` (the
+  default) or `include`
 - Optional `timestamp_{gte|gt|lt|lte|eq|in}` filters to restrict the range
   of timestamps to return. The timestamp to filter by must be a string
   containing microseconds since the epoch. The value `"1704164640000000"`
@@ -189,7 +189,7 @@ accepts the following arguments:
 
 ```graphql
 token_stats(interval: "hour",
-      current: ignore,
+      current: exclude,
       where: {
         token: "0x1234",
         timestamp_gte: 1234567890,
