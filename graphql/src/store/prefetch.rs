@@ -1,6 +1,7 @@
 //! Run a GraphQL query and fetch all the entitied needed to build the
 //! final result
 
+use graph::components::store::AggregationCurrent;
 use graph::data::graphql::ObjectTypeExt;
 use graph::data::query::Trace;
 use graph::data::store::Id;
@@ -625,6 +626,7 @@ impl<'a> Loader<'a> {
                 let child_type = input_schema
                     .object_or_interface(field_type.field_type.get_base_type(), child_interval)
                     .expect("we only collect fields that are objects or interfaces");
+                let mut aggregation_current = field.aggregation_current()?;
 
                 let join = if at_root {
                     MaybeJoin::Root { child_type }
@@ -643,6 +645,10 @@ impl<'a> Loader<'a> {
                     let field_type = object_type
                         .field(&field.name)
                         .expect("field names are valid");
+
+                    // Loading the current bucket is not supported for nested queries
+                    aggregation_current = None;
+
                     MaybeJoin::Nested(Join::new(
                         &input_schema,
                         object_type.cheap_clone(),
@@ -651,7 +657,10 @@ impl<'a> Loader<'a> {
                     ))
                 };
 
-                match self.fetch(&parents, &join, field).await {
+                match self
+                    .fetch(&parents, &join, field, aggregation_current)
+                    .await
+                {
                     Ok((children, trace)) => {
                         let exec_fut = Box::pin(self.execute_selection_set(
                             children,
@@ -695,6 +704,7 @@ impl<'a> Loader<'a> {
         parents: &[&mut Node],
         join: &MaybeJoin<'_>,
         field: &a::Field,
+        aggregation_current: Option<AggregationCurrent>,
     ) -> Result<(Vec<Node>, Trace), QueryExecutionError> {
         let input_schema = self.resolver.store.input_schema().await?;
         let child_type = join.child_type();
@@ -720,6 +730,10 @@ impl<'a> Loader<'a> {
                 EntityFilter::Equal(ARG_ID.to_owned(), StoreValue::from(id.clone()))
                     .and_maybe(query.filter),
             );
+        }
+
+        if child_type.is_aggregation() {
+            query.aggregation_current = Some(aggregation_current.unwrap_or_default());
         }
 
         if let MaybeJoin::Nested(join) = join {

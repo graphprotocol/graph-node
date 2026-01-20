@@ -26,7 +26,10 @@ use graph::prelude::{
     ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
 };
 use graph::schema::{EntityType, FulltextAlgorithm, FulltextConfig, InputSchema};
-use graph::{components::store::AttributeNames, data::store::scalar};
+use graph::{
+    components::store::{AggregationCurrent, AttributeNames},
+    data::store::scalar,
+};
 use inflector::Inflector;
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -40,8 +43,8 @@ use std::string::ToString;
 use crate::block_range::{BoundSide, EntityBlockRange};
 use crate::relational::dsl::AtBlock;
 use crate::relational::{
-    dsl, Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
-    STRING_PREFIX_SIZE, VID_COLUMN,
+    dsl, rollup::Rollup, Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE,
+    PRIMARY_KEY_COLUMN, STRING_PREFIX_SIZE, VID_COLUMN,
 };
 use crate::{
     block_range::{
@@ -2652,6 +2655,11 @@ impl<'a> ParentLimit<'a> {
         // limiting is taken care of in a wrapper around
         // the query we are currently building
     }
+
+    /// Returns the maximum number of rows that could be requested by this range filter.
+    fn max_num_rows(&self) -> u32 {
+        self.range.0.first.unwrap_or(EntityRange::FIRST) + self.range.0.skip
+    }
 }
 
 /// This is the parallel to `EntityWindow`, with names translated to
@@ -4275,6 +4283,7 @@ pub struct FilterQuery<'a> {
     block: BlockNumber,
     query_id: Option<String>,
     site: &'a Site,
+    rollup: Option<&'a Rollup>,
 }
 
 /// String representation that is useful for debugging when `walk_ast` fails
@@ -4302,10 +4311,12 @@ impl<'a> FilterQuery<'a> {
         block: BlockNumber,
         query_id: Option<String>,
         site: &'a Site,
+        aggregation_current: Option<AggregationCurrent>,
     ) -> Result<Self, QueryExecutionError> {
         let sort_key = SortKey::new(order, collection, filter, layout, block)?;
         let range = FilterRange(range);
         let limit = ParentLimit { sort_key, range };
+        let rollup = Self::find_rollup(collection, layout, aggregation_current)?;
 
         Ok(FilterQuery {
             collection,
@@ -4313,7 +4324,44 @@ impl<'a> FilterQuery<'a> {
             block,
             query_id,
             site,
+            rollup,
         })
+    }
+
+    /// Finds the relevant [Rollup] for an aggregation entity query when the query requires the current bucket.
+    ///
+    /// Returns `None` for non-aggregation entity queries.
+    ///
+    /// Returns an error if the query is not supported.
+    fn find_rollup(
+        collection: &'a FilterCollection,
+        layout: &'a Layout,
+        aggregation_current: Option<AggregationCurrent>,
+    ) -> Result<Option<&'a Rollup>, QueryExecutionError> {
+        if !matches!(aggregation_current, Some(AggregationCurrent::Include)) {
+            return Ok(None);
+        }
+
+        // Supporting window and/or multiple entity queries would make the existing SQL queries even more complicated.
+        // It is also unclear whether supporting that would be a valid use case.
+        let entity = match collection {
+            FilterCollection::All(entities) if entities.len() == 1 => &entities[0],
+            _ => return Err(QueryExecutionError::NotSupported(
+                "The current aggregation bucket can only be queried in a root query for one aggregation entity".to_string())
+            ),
+        };
+
+        // This is not supported because the use of `SELECT *` does not always produce the expected results when combined with `UNION ALL`.
+        if matches!(entity.column_names, AttributeNames::All) {
+            return Err(QueryExecutionError::NotSupported(
+                "The current aggregation bucket can only be queried when fields are explicitly selected".to_string())
+            );
+        }
+
+        Ok(layout
+            .rollups
+            .iter()
+            .find(|rollup| rollup.agg_table.object.as_str() == entity.table.meta.object.as_str()))
     }
 
     /// Generate
@@ -4361,19 +4409,61 @@ impl<'a> FilterQuery<'a> {
     ///         where block_range @> $block
     ///           and filter
     ///         order by .. limit .. skip ..) c
+    ///
+    /// For aggregation entity queries that require the current bucket,
+    /// the generated query has the following structure:
+    ///
+    ///     select '..' as entity, to_jsonb(e.*) as data
+    ///         from (
+    ///             (select {column names} from agg_table c where {filters} limit {limit + skip + 1})
+    ///             union all
+    ///             (select {column names} from ({current bucket query from agg source table} + {filters}) c)
+    ///         ) c order by .. limit .. skip ..
     fn query_no_window_one_entity<'b>(
         &'b self,
         wh: &'b WholeTable<'a>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(wh.table, out);
-        out.push_sql(" from (select ");
-        write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
-        self.filtered_rows(wh, out)?;
-        out.push_sql("\n ");
-        self.limit.sort_key.order_by(out, false)?;
-        self.limit.range.walk_ast(out.reborrow())?;
-        out.push_sql(") c");
+        out.push_sql(" from (");
+
+        match self.rollup {
+            Some(rollup) => {
+                out.push_sql("(select ");
+                write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
+                self.filtered_rows(wh, out)?;
+                out.push_sql("\n ");
+                self.limit.sort_key.order_by(out, false)?;
+                out.push_sql(" limit ");
+                out.push_sql(&self.limit.max_num_rows().to_string());
+                out.push_sql(") union all (select ");
+                write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
+                out.push_sql(" from (");
+                let mut current_sql_split = rollup.select_current_sql.split("--FILTERS;");
+                out.push_sql(current_sql_split.next().unwrap());
+                out.push_sql(" and ");
+                wh.at_block.walk_ast(out.reborrow())?;
+                if let Some(filter) = &wh.filter {
+                    out.push_sql(" and ");
+                    filter.walk_ast(out.reborrow())?;
+                }
+                out.push_sql(current_sql_split.next().unwrap());
+                out.push_sql(") c ) ) c");
+                out.push_sql("\n ");
+                self.limit.sort_key.order_by(out, false)?;
+                self.limit.range.walk_ast(out.reborrow())?;
+            }
+            None => {
+                out.push_sql("select ");
+                write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
+                self.filtered_rows(wh, out)?;
+                out.push_sql("\n ");
+                self.limit.sort_key.order_by(out, false)?;
+                self.limit.range.walk_ast(out.reborrow())?;
+                out.push_sql(") c");
+            }
+        }
+
         Ok(())
     }
 
