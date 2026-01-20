@@ -770,15 +770,13 @@ impl FromIterator<(BlockNumber, Address, FunctionSelector)> for EthereumCallFilt
         let mut lookup: HashMap<Address, (BlockNumber, HashSet<FunctionSelector>)> = HashMap::new();
         iter.into_iter()
             .for_each(|(start_block, address, function_signature)| {
-                lookup
+                let entry = lookup
                     .entry(address)
-                    .and_modify(|set| {
-                        if set.0 > start_block {
-                            set.0 = start_block
-                        }
-                        set.1.insert(function_signature);
-                    })
                     .or_insert((start_block, HashSet::default()));
+                if entry.0 > start_block {
+                    entry.0 = start_block;
+                }
+                entry.1.insert(function_signature);
             });
         EthereumCallFilter {
             contract_addresses_function_signatures: lookup,
@@ -1829,6 +1827,28 @@ fn complete_log_filter() {
             }
         }
     }
+}
+
+#[test]
+fn test_call_filter_first_signature_not_lost() {
+    use crate::adapter::{EthereumCallFilter, FunctionSelector};
+    use graph::prelude::web3::types::Address;
+
+    let addr = Address::from_low_u64_be(1);
+    let sig1: FunctionSelector = [0xaa, 0xbb, 0xcc, 0xdd];
+    let sig2: FunctionSelector = [0x11, 0x22, 0x33, 0x44];
+
+    let filter: EthereumCallFilter = vec![(100i32, addr, sig1), (100i32, addr, sig2)]
+        .into_iter()
+        .collect();
+
+    let (_, sigs) = filter
+        .contract_addresses_function_signatures
+        .get(&addr)
+        .unwrap();
+    assert_eq!(sigs.len(), 2);
+    assert!(sigs.contains(&sig1));
+    assert!(sigs.contains(&sig2));
 }
 
 #[test]
