@@ -38,10 +38,16 @@ This spec describes the expansion of `gnd` (Graph Node Dev) to include functiona
 
 ### Known Differences from TS CLI
 
+**Commands:**
 1. **`local` command**: Not implemented. Users should use existing integration test infrastructure.
 2. **`node` subcommand**: Not implemented. Use `graphman` for node management operations.
 3. **`--uncrashable` flag on codegen**: Not implemented. Float Capital's uncrashable helper generation is a niche third-party feature.
 4. **Debug output**: Uses `RUST_LOG` environment variable instead of `DEBUG=graph-cli:*`.
+
+**Code generation** (intentional, documented in verification tests):
+5. **Int8 import**: gnd always imports `Int8` for simplicity, even when not used.
+6. **Trailing commas**: gnd uses trailing commas in multi-line constructs.
+7. **2D array accessors**: gnd uses correct `toStringMatrix()` while graph-cli has a bug using `toStringArray()` for 2D GraphQL array types.
 
 ## CLI Interface
 
@@ -607,53 +613,63 @@ Refactor graph-node components as needed to make them reusable.
 gnd/src/
 ├── main.rs                    # Entry point, clap setup
 ├── lib.rs
+├── formatter.rs               # Prettier integration for code formatting
+├── prompt.rs                  # Interactive prompts (network selection, etc.)
+├── watcher.rs                 # File watcher for --watch modes
 ├── commands/
 │   ├── mod.rs
-│   ├── codegen.rs
-│   ├── build.rs
-│   ├── deploy.rs
-│   ├── init.rs
 │   ├── add.rs
-│   ├── create.rs
-│   ├── remove.rs
 │   ├── auth.rs
-│   ├── publish.rs
-│   ├── test.rs
+│   ├── build.rs
 │   ├── clean.rs
-│   └── dev.rs                 # Existing gnd functionality
+│   ├── codegen.rs
+│   ├── create.rs
+│   ├── deploy.rs
+│   ├── dev.rs                 # Existing gnd functionality
+│   ├── init.rs
+│   ├── publish.rs
+│   ├── remove.rs
+│   └── test.rs
 ├── codegen/
 │   ├── mod.rs
-│   ├── schema.rs              # Entity class generation
 │   ├── abi.rs                 # ABI binding generation
-│   └── template.rs            # Template binding generation
+│   ├── schema.rs              # Entity class generation
+│   ├── template.rs            # Template binding generation
+│   ├── types.rs               # Type conversion utilities
+│   └── typescript.rs          # AST builders for TypeScript/AssemblyScript
 ├── scaffold/
 │   ├── mod.rs
 │   ├── manifest.rs            # Generate subgraph.yaml
-│   ├── schema.rs              # Generate schema.graphql
-│   └── mapping.rs             # Generate mapping.ts
+│   ├── mapping.rs             # Generate mapping.ts
+│   └── schema.rs              # Generate schema.graphql
 ├── migrations/
 │   ├── mod.rs
-│   └── ...                    # One module per migration
+│   ├── api_version.rs         # API version migrations
+│   ├── spec_version.rs        # Spec version migrations
+│   └── versions.rs            # Version definitions
 ├── compiler/
 │   ├── mod.rs
 │   └── asc.rs                 # Shell out to asc
 ├── services/
 │   ├── mod.rs
-│   ├── etherscan.rs           # Etherscan API client
-│   ├── sourcify.rs            # Sourcify API client
-│   ├── registry.rs            # Network registry client
-│   └── graph_node.rs          # Graph Node JSON-RPC client
+│   ├── contract.rs            # ABI fetching (Etherscan, Blockscout, Sourcify, registry)
+│   ├── graph_node.rs          # Graph Node JSON-RPC client
+│   └── ipfs.rs                # IPFS client for uploads
 ├── config/
 │   ├── mod.rs
-│   ├── auth.rs                # ~/.graphprotocol/ management
 │   └── networks.rs            # networks.json handling
-├── output/
-│   ├── mod.rs
-│   └── spinner.rs             # Progress/spinner output
-└── watcher.rs                 # Existing file watcher
+└── output/
+    ├── mod.rs
+    └── spinner.rs             # Progress/spinner output
 ```
 
 ## Testing
+
+### Current Status
+
+- **158 unit tests** passing (`cargo test -p gnd --lib`)
+- **12 codegen verification tests** passing (`cargo test -p gnd --test codegen_verification`)
+- Test fixtures from graph-cli validation tests in `gnd/tests/fixtures/codegen_verification/`
 
 ### Test Strategy
 
@@ -667,14 +683,16 @@ Use the same test corpus as graph-cli. Tests must cover at least everything the 
 
 **TS CLI Test Location:** `/packages/cli/tests/`
 
-### Snapshot Testing for Code Generation
+### Codegen Verification Tests
 
-For each test subgraph:
-1. Run TS CLI codegen, capture output
-2. Run gnd codegen, capture output
-3. Assert outputs are identical
+Located in `gnd/tests/codegen_verification.rs`, these tests verify compatibility with graph-cli:
 
-This ensures byte-for-byte compatibility.
+1. Copy fixture to temp directory (excluding `generated/`)
+2. Run `gnd codegen` on the fixture
+3. Compare output against expected `generated/` directory
+4. Allow known differences (Int8 import, trailing commas, 2D array fix)
+
+Fixtures can be regenerated with `./tests/fixtures/regenerate.sh`.
 
 ### Edge Cases
 
