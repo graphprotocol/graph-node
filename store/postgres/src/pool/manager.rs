@@ -20,9 +20,10 @@ use graph::slog::Logger;
 
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::pool::AsyncPool;
 
@@ -141,6 +142,9 @@ pub(super) struct StateTracker {
     logger: Logger,
     available: Arc<AtomicBool>,
     ignore_timeout: Arc<AtomicBool>,
+    /// Timestamp (as millis since UNIX_EPOCH) when we can next probe.
+    /// 0 means available/no limit.
+    next_probe_at: Arc<AtomicU64>,
 }
 
 impl StateTracker {
@@ -149,14 +153,16 @@ impl StateTracker {
             logger,
             available: Arc::new(AtomicBool::new(true)),
             ignore_timeout: Arc::new(AtomicBool::new(false)),
+            next_probe_at: Arc::new(AtomicU64::new(0)),
         }
     }
 
     pub(super) fn mark_available(&self) {
         if !self.is_available() {
-            info!(self.logger, "Conection checkout"; "event" => "available");
+            info!(self.logger, "Connection checkout"; "event" => "available");
         }
         self.available.store(true, Ordering::Relaxed);
+        self.next_probe_at.store(0, Ordering::Relaxed);
     }
 
     pub(super) fn mark_unavailable(&self, waited: Duration) {
@@ -171,10 +177,47 @@ impl StateTracker {
             }
         }
         self.available.store(false, Ordering::Relaxed);
+
+        // Set next probe time
+        let retry_interval = ENV_VARS.store.connection_unavailable_retry.as_millis() as u64;
+        let next_probe = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + retry_interval;
+        self.next_probe_at.store(next_probe, Ordering::Relaxed);
     }
 
     pub(super) fn is_available(&self) -> bool {
-        AtomicBool::load(&self.available, Ordering::Relaxed)
+        if AtomicBool::load(&self.available, Ordering::Relaxed) {
+            return true;
+        }
+
+        // Allow one probe through every `connection_unavailable_retry` interval
+        let next_probe = AtomicU64::load(&self.next_probe_at, Ordering::Relaxed);
+        let now_millis = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+
+        if now_millis >= next_probe {
+            // Try to claim this probe slot with CAS
+            let retry_interval = ENV_VARS.store.connection_unavailable_retry.as_millis() as u64;
+            if self
+                .next_probe_at
+                .compare_exchange(
+                    next_probe,
+                    now_millis + retry_interval,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
+                // We claimed the probe - allow this request through
+                return true;
+            }
+        }
+        false
     }
 
     pub(super) fn timeout_is_ignored(&self) -> bool {

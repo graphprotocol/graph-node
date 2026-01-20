@@ -171,6 +171,12 @@ pub struct EnvVarsStore {
     /// Set to 0 to always validate (previous behavior).
     /// Set by `GRAPH_STORE_CONNECTION_VALIDATION_IDLE_SECS`. Default is 30 seconds.
     pub connection_validation_idle_secs: Duration,
+    /// When a database shard is marked unavailable due to connection timeouts,
+    /// this controls how often to allow a single probe request through to check
+    /// if the database has recovered. Only one request per interval will attempt
+    /// a connection; all others fail instantly with DatabaseUnavailable.
+    /// Set by `GRAPH_STORE_CONNECTION_UNAVAILABLE_RETRY`. Default is 2 seconds.
+    pub connection_unavailable_retry: Duration,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
@@ -234,6 +240,9 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             disable_call_cache: x.disable_call_cache,
             disable_chain_head_ptr_cache: x.disable_chain_head_ptr_cache,
             connection_validation_idle_secs: Duration::from_secs(x.connection_validation_idle_secs),
+            connection_unavailable_retry: Duration::from_secs(
+                x.connection_unavailable_retry_in_secs,
+            ),
         };
         if let Some(timeout) = vars.batch_timeout {
             if timeout < 2 * vars.batch_target_duration {
@@ -345,6 +354,8 @@ pub struct InnerStore {
     disable_chain_head_ptr_cache: bool,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_VALIDATION_IDLE_SECS", default = "30")]
     connection_validation_idle_secs: u64,
+    #[envconfig(from = "GRAPH_STORE_CONNECTION_UNAVAILABLE_RETRY", default = "2")]
+    connection_unavailable_retry_in_secs: u64,
 }
 
 #[derive(Clone, Copy, Debug)]

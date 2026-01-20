@@ -216,6 +216,11 @@ those.
   decisions. Set to `true` to turn simulation on, defaults to `false`
 - `GRAPH_STORE_CONNECTION_TIMEOUT`: How long to wait to connect to a
   database before assuming the database is down in ms. Defaults to 5000ms.
+- `GRAPH_STORE_CONNECTION_UNAVAILABLE_RETRY`: When a database shard is marked
+  unavailable due to connection timeouts, this controls how often to allow a
+  single probe request through to check if the database has recovered. Only one
+  request per interval will attempt a connection; all others fail instantly.
+  Value is in seconds and defaults to 2s.
 - `EXPERIMENTAL_SUBGRAPH_VERSION_SWITCHING_MODE`: default is `instant`, set
   to `synced` to only switch a named subgraph to a new deployment once it
   has synced, making the new deployment the "Pending" version.
