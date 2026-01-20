@@ -472,7 +472,27 @@ impl EthereumAdapter {
                             Err(anyhow!("{}", string_err))
                         }
                     }
-                    Ok(logs) => Ok(Some((logs, (end + 1, step)))),
+                    Ok(logs) => {
+                        if !logs.is_empty() {
+                            if start == end {
+                                debug!(
+                                    logger,
+                                    "Received {} logs for block {}",
+                                    logs.len(),
+                                    end
+                                );
+                            } else {
+                                debug!(
+                                    logger,
+                                    "Received {} logs for blocks [{}, {}]",
+                                    logs.len(),
+                                    start,
+                                    end
+                                );
+                            }
+                        }
+                        Ok(Some((logs, (end + 1, step))))
+                    }
                 }
             }
         })
