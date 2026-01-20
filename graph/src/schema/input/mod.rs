@@ -51,6 +51,7 @@ pub mod kw {
     pub const INTERVALS: &str = "intervals";
     pub const INTERVAL: &str = "interval";
     pub const CUMULATIVE: &str = "cumulative";
+    pub const CURRENT: &str = "current";
 }
 
 /// The internal representation of a subgraph schema, i.e., the

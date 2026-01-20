@@ -9,7 +9,6 @@ use graph::data::store::IdType;
 use graph::data::store::QueryObject;
 use graph::data::value::{Object, Word};
 use graph::prelude::{r, CacheWeight, CheapClone};
-use graph::schema::kw;
 use graph::schema::AggregationInterval;
 use graph::schema::Field;
 use graph::slog::warn;
@@ -714,11 +713,6 @@ impl<'a> Loader<'a> {
             // Suppress 'order by' in lookups of scalar values since
             // that causes unnecessary work in the database
             query.order = EntityOrder::Unordered;
-        }
-        // Apply default timestamp ordering for aggregations if no custom order is specified
-        if child_type.is_aggregation() && matches!(query.order, EntityOrder::Default) {
-            let ts = child_type.field(kw::TIMESTAMP).unwrap();
-            query.order = EntityOrder::Descending(ts.name.to_string(), ts.value_type);
         }
         query.logger = Some(self.ctx.logger.cheap_clone());
         if let Some(r::Value::String(id)) = field.argument_value(ARG_ID) {
