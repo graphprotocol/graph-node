@@ -190,9 +190,11 @@ impl AbiJson {
                                                         return Ok(Some(vec![]));
                                                     }
                                                     // Recursively resolve the nested path
-                                                    return self
-                                                        .resolve_field_path(components, nested_path)
-                                                        .map(Some);
+                                                    return Self::resolve_field_path(
+                                                        components,
+                                                        nested_path,
+                                                    )
+                                                    .map(Some);
                                                 }
                                             }
                                         }
@@ -217,7 +219,6 @@ impl AbiJson {
     /// Supports both numeric indices and field names
     /// Returns the index path to access the final field
     fn resolve_field_path(
-        &self,
         components: &serde_json::Value,
         field_path: &[&str],
     ) -> Result<Vec<usize>, Error> {
@@ -254,7 +255,7 @@ impl AbiJson {
                             // Recursively resolve the remaining path
                             let mut result = vec![index];
                             let nested_result =
-                                self.resolve_field_path(nested_components, remaining_path)?;
+                                Self::resolve_field_path(nested_components, remaining_path)?;
                             result.extend(nested_result);
                             return Ok(result);
                         } else {
@@ -294,8 +295,10 @@ impl AbiJson {
                                 if let Some(nested_components) = component.get("components") {
                                     // Recursively resolve the remaining path
                                     let mut result = vec![index];
-                                    let nested_result =
-                                        self.resolve_field_path(nested_components, remaining_path)?;
+                                    let nested_result = Self::resolve_field_path(
+                                        nested_components,
+                                        remaining_path,
+                                    )?;
                                     result.extend(nested_result);
                                     return Ok(result);
                                 } else {

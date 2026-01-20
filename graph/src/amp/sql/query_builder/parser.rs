@@ -42,15 +42,15 @@ struct AllowOnlySelectQueries;
 
 impl AllowOnlySelectQueries {
     /// Returns an error if the `set_expr` is not a `SELECT` expression.
-    fn visit_set_expr(&self, set_expr: &ast::SetExpr) -> Result<()> {
+    fn visit_set_expr(set_expr: &ast::SetExpr) -> Result<()> {
         match set_expr {
             ast::SetExpr::Select(_)
             | ast::SetExpr::Query(_)
             | ast::SetExpr::Values(_)
             | ast::SetExpr::Table(_) => Ok(()),
             ast::SetExpr::SetOperation { left, right, .. } => {
-                self.visit_set_expr(left)?;
-                self.visit_set_expr(right)?;
+                Self::visit_set_expr(left)?;
+                Self::visit_set_expr(right)?;
                 Ok(())
             }
             ast::SetExpr::Insert(_) | ast::SetExpr::Update(_) | ast::SetExpr::Delete(_) => {
@@ -64,7 +64,7 @@ impl Visitor for AllowOnlySelectQueries {
     type Break = anyhow::Error;
 
     fn pre_visit_query(&mut self, query: &ast::Query) -> ControlFlow<Self::Break> {
-        match self.visit_set_expr(&query.body) {
+        match Self::visit_set_expr(&query.body) {
             Ok(()) => ControlFlow::Continue(()),
             Err(e) => ControlFlow::Break(e),
         }
