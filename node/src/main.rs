@@ -26,7 +26,7 @@ fn main() {
 async fn main_inner() {
     env_logger::init();
 
-    let cancel_token = shutdown_token();
+    let cancel_token = CancellationToken::new();
     let env_vars = Arc::new(EnvVars::from_env().unwrap());
     let opt = opt::Opt::parse();
 
@@ -64,40 +64,4 @@ async fn main_inner() {
         cancel_token,
     )
     .await;
-}
-
-fn shutdown_token() -> CancellationToken {
-    use tokio::signal;
-
-    let cancel_token = CancellationToken::new();
-    let cancel_token_clone = cancel_token.clone();
-
-    async fn shutdown_signal_handler() {
-        let ctrl_c = async {
-            signal::ctrl_c().await.unwrap();
-        };
-
-        #[cfg(unix)]
-        let terminate = async {
-            signal::unix::signal(signal::unix::SignalKind::terminate())
-                .unwrap()
-                .recv()
-                .await;
-        };
-
-        #[cfg(not(unix))]
-        let terminate = std::future::pending::<()>();
-
-        tokio::select! {
-            _ = ctrl_c => {},
-            _ = terminate => {},
-        };
-    }
-
-    tokio::spawn(async move {
-        shutdown_signal_handler().await;
-        cancel_token_clone.cancel();
-    });
-
-    cancel_token
 }
