@@ -11,15 +11,16 @@
 
 use std::fs;
 use std::io::{self, IsTerminal};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
+use graphql_parser::schema as gql;
 
 use crate::output::{step, Step};
 use crate::prompt::{InitForm, SourceType};
 use crate::scaffold::{generate_scaffold, init_git, install_dependencies, ScaffoldOptions};
-use crate::services::{ContractInfo, ContractService, NetworksRegistry};
+use crate::services::{ContractInfo, ContractService, IpfsClient, NetworksRegistry};
 
 /// Available protocols for subgraph development.
 #[derive(Clone, Debug, ValueEnum)]
@@ -145,7 +146,7 @@ pub async fn run_init(opt: InitOpt) -> Result<()> {
     match source {
         ScaffoldSource::Contract => init_from_contract(&opt).await,
         ScaffoldSource::Example => init_from_example(&opt),
-        ScaffoldSource::Subgraph => init_from_subgraph(&opt),
+        ScaffoldSource::Subgraph => init_from_subgraph(&opt).await,
     }
 }
 
@@ -481,12 +482,277 @@ fn init_from_example(opt: &InitOpt) -> Result<()> {
 }
 
 /// Initialize a subgraph from an existing deployed subgraph.
-fn init_from_subgraph(_opt: &InitOpt) -> Result<()> {
-    Err(anyhow!(
-        "Init from subgraph is not yet implemented.\n\
-         This feature requires fetching subgraph manifest from IPFS.\n\n\
-         Please use --from-example instead, or use the TypeScript graph-cli."
-    ))
+///
+/// This creates a new subgraph scaffold based on an existing subgraph deployment,
+/// extracting immutable entities from the deployed schema.
+async fn init_from_subgraph(opt: &InitOpt) -> Result<()> {
+    let deployment_id = opt
+        .from_subgraph
+        .as_ref()
+        .ok_or_else(|| anyhow!("Deployment ID is required for --from-subgraph"))?;
+
+    let network = opt.network.as_deref().unwrap_or("mainnet");
+
+    // Determine IPFS URL
+    let ipfs_url = opt
+        .ipfs
+        .as_deref()
+        .unwrap_or("https://api.thegraph.com/ipfs");
+
+    step(
+        Step::Load,
+        &format!("Fetching subgraph {} from IPFS", deployment_id),
+    );
+
+    // Create IPFS client
+    let ipfs_client = IpfsClient::new(ipfs_url)?;
+
+    // Fetch the manifest from IPFS
+    let manifest_yaml = ipfs_client.fetch_manifest(deployment_id).await?;
+
+    step(Step::Done, "Manifest fetched successfully");
+
+    // Parse the manifest
+    let manifest: serde_yaml::Value =
+        serde_yaml::from_str(&manifest_yaml).context("Failed to parse subgraph manifest YAML")?;
+
+    // Validate network matches
+    if let Some(manifest_network) = extract_network(&manifest) {
+        if manifest_network != network {
+            return Err(anyhow!(
+                "Network mismatch: The source subgraph is indexing '{}', but you specified '{}'.\n\
+                 When composing subgraphs, they must index the same network.",
+                manifest_network,
+                network
+            ));
+        }
+    }
+
+    // Get start block from manifest if not provided
+    let start_block = opt
+        .start_block
+        .as_ref()
+        .and_then(|s| s.parse::<u64>().ok())
+        .or_else(|| get_min_start_block(&manifest));
+
+    // Extract schema CID from manifest
+    let schema_cid = extract_schema_cid(&manifest).ok_or_else(|| {
+        anyhow!("Could not find schema CID in manifest. Expected schema.file['/'] field.")
+    })?;
+
+    step(Step::Load, &format!("Fetching schema {}", schema_cid));
+
+    // Fetch the schema from IPFS
+    let schema_content = ipfs_client.fetch_schema(&schema_cid).await?;
+
+    step(Step::Done, "Schema fetched successfully");
+
+    // Find immutable entities in the schema
+    let immutable_entities = find_immutable_entities(&schema_content)?;
+
+    if immutable_entities.is_empty() {
+        return Err(anyhow!(
+            "Source subgraph must have at least one immutable entity.\n\
+             This subgraph cannot be used as a source subgraph since it has no immutable entities.\n\n\
+             Immutable entities are marked with @entity(immutable: true) in the schema."
+        ));
+    }
+
+    step(
+        Step::Generate,
+        &format!(
+            "Found {} immutable entities: {}",
+            immutable_entities.len(),
+            immutable_entities.join(", ")
+        ),
+    );
+
+    // Determine subgraph name
+    let subgraph_name = opt
+        .subgraph_name
+        .clone()
+        .unwrap_or_else(|| "composed-subgraph".to_string());
+
+    // Determine directory
+    let directory = opt.directory.clone().unwrap_or_else(|| {
+        PathBuf::from(subgraph_name.split('/').next_back().unwrap_or("subgraph"))
+    });
+
+    // Check if directory already exists
+    if directory.exists() {
+        return Err(anyhow!(
+            "Directory '{}' already exists. Please choose a different name or remove the existing directory.",
+            directory.display()
+        ));
+    }
+
+    // Generate scaffold with immutable entities
+    let scaffold_options = ScaffoldOptions {
+        address: None,
+        network: network.to_string(),
+        contract_name: "Contract".to_string(),
+        subgraph_name: subgraph_name.clone(),
+        start_block,
+        abi: None,
+        index_events: false,
+    };
+
+    generate_scaffold(&directory, &scaffold_options)?;
+
+    // Write the fetched schema to the subgraph
+    let schema_path = directory.join("schema.graphql");
+    fs::write(&schema_path, &schema_content)
+        .with_context(|| format!("Failed to write schema to {}", schema_path.display()))?;
+
+    // Update the manifest with the source subgraph reference
+    update_manifest_with_source(&directory, deployment_id, &immutable_entities)?;
+
+    // Initialize git unless skipped
+    if !opt.skip_git {
+        let _ = init_git(&directory);
+    }
+
+    // Install dependencies unless skipped
+    if !opt.skip_install {
+        if let Err(e) = install_dependencies(&directory) {
+            eprintln!("Warning: {}", e);
+        }
+    }
+
+    step(
+        Step::Done,
+        &format!("Subgraph created at {}", directory.display()),
+    );
+
+    println!();
+    println!("Next steps:");
+    println!("  cd {}", directory.display());
+    println!("  # Edit subgraph.yaml to add your own data sources");
+    println!("  # The source subgraph's immutable entities are available via grafting");
+    println!("  gnd codegen");
+    println!("  gnd build");
+
+    Ok(())
+}
+
+// ============================================================================
+// Manifest Parsing Utilities
+// ============================================================================
+
+/// Extract the schema CID from a subgraph manifest.
+///
+/// The schema is typically at `schema.file["/"]` in the manifest YAML.
+fn extract_schema_cid(manifest: &serde_yaml::Value) -> Option<String> {
+    let schema = manifest.get("schema")?;
+    let file = schema.get("file")?;
+    let cid = file.get("/")?;
+    let cid_str = cid.as_str()?;
+
+    // Strip /ipfs/ prefix if present
+    Some(
+        cid_str
+            .strip_prefix("/ipfs/")
+            .unwrap_or(cid_str)
+            .to_string(),
+    )
+}
+
+/// Extract the network from the first data source in a manifest.
+fn extract_network(manifest: &serde_yaml::Value) -> Option<String> {
+    let data_sources = manifest.get("dataSources")?.as_sequence()?;
+    let first_ds = data_sources.first()?;
+    let network = first_ds.get("network")?.as_str()?;
+    Some(network.to_string())
+}
+
+/// Get the minimum start block from all data sources.
+fn get_min_start_block(manifest: &serde_yaml::Value) -> Option<u64> {
+    let data_sources = manifest.get("dataSources")?.as_sequence()?;
+
+    let start_blocks: Vec<u64> = data_sources
+        .iter()
+        .filter_map(|ds| {
+            ds.get("source")
+                .and_then(|s| s.get("startBlock"))
+                .and_then(|b| b.as_u64())
+        })
+        .collect();
+
+    start_blocks.into_iter().min()
+}
+
+// ============================================================================
+// Schema Parsing Utilities
+// ============================================================================
+
+/// Find all immutable entities in a GraphQL schema.
+///
+/// Immutable entities are marked with `@entity(immutable: true)`.
+fn find_immutable_entities(schema: &str) -> Result<Vec<String>> {
+    let ast = gql::parse_schema::<String>(schema)
+        .map_err(|e| anyhow!("Failed to parse GraphQL schema: {}", e))?;
+
+    let mut immutable_entities = Vec::new();
+
+    for def in ast.definitions {
+        if let gql::Definition::TypeDefinition(gql::TypeDefinition::Object(obj)) = def {
+            // Check if this type has @entity(immutable: true)
+            if is_immutable_entity(&obj) {
+                immutable_entities.push(obj.name);
+            }
+        }
+    }
+
+    Ok(immutable_entities)
+}
+
+/// Check if an object type has the @entity(immutable: true) directive.
+fn is_immutable_entity(obj: &gql::ObjectType<String>) -> bool {
+    for directive in &obj.directives {
+        if directive.name == "entity" {
+            for (name, value) in &directive.arguments {
+                if name == "immutable" {
+                    if let gql::Value::Boolean(true) = value {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Update the generated manifest to include the source subgraph reference.
+fn update_manifest_with_source(
+    directory: &Path,
+    source_deployment: &str,
+    _immutable_entities: &[String],
+) -> Result<()> {
+    let manifest_path = directory.join("subgraph.yaml");
+
+    // Read the generated manifest
+    let manifest_content = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read manifest at {}", manifest_path.display()))?;
+
+    // Add a comment about the source subgraph at the top
+    let updated_content = format!(
+        "# This subgraph composes data from an existing subgraph.\n\
+         # Source deployment: {}\n\
+         #\n\
+         # To access the source subgraph's immutable entities, you can use grafting:\n\
+         # features:\n\
+         #   - grafting\n\
+         # graft:\n\
+         #   base: {}\n\
+         #   block: <block-number>\n\
+         #\n{}",
+        source_deployment, source_deployment, manifest_content
+    );
+
+    fs::write(&manifest_path, updated_content)
+        .with_context(|| format!("Failed to update manifest at {}", manifest_path.display()))?;
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -557,5 +823,241 @@ mod tests {
         assert!(opt.spkg.is_none());
         assert!(opt.network.is_none());
         assert!(opt.ipfs.is_none());
+    }
+
+    // ========================================================================
+    // Manifest Parsing Tests
+    // ========================================================================
+
+    #[test]
+    fn test_extract_schema_cid() {
+        // Standard manifest format with /ipfs/ prefix
+        let manifest: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+            schema:
+              file:
+                "/": "/ipfs/QmSchemaHash123"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            extract_schema_cid(&manifest),
+            Some("QmSchemaHash123".to_string())
+        );
+
+        // Manifest without /ipfs/ prefix
+        let manifest: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+            schema:
+              file:
+                "/": "QmSchemaHash456"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            extract_schema_cid(&manifest),
+            Some("QmSchemaHash456".to_string())
+        );
+
+        // Missing schema
+        let manifest: serde_yaml::Value = serde_yaml::from_str(r#"dataSources: []"#).unwrap();
+        assert_eq!(extract_schema_cid(&manifest), None);
+
+        // Missing file
+        let manifest: serde_yaml::Value = serde_yaml::from_str(r#"schema: {}"#).unwrap();
+        assert_eq!(extract_schema_cid(&manifest), None);
+    }
+
+    #[test]
+    fn test_extract_network() {
+        // Standard manifest with network
+        let manifest: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+            dataSources:
+              - network: mainnet
+                source:
+                  address: "0x123"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(extract_network(&manifest), Some("mainnet".to_string()));
+
+        // Multiple data sources
+        let manifest: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+            dataSources:
+              - network: polygon
+                source:
+                  address: "0x123"
+              - network: polygon
+                source:
+                  address: "0x456"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(extract_network(&manifest), Some("polygon".to_string()));
+
+        // No data sources
+        let manifest: serde_yaml::Value = serde_yaml::from_str(r#"dataSources: []"#).unwrap();
+        assert_eq!(extract_network(&manifest), None);
+
+        // Missing dataSources
+        let manifest: serde_yaml::Value = serde_yaml::from_str(r#"schema: {}"#).unwrap();
+        assert_eq!(extract_network(&manifest), None);
+    }
+
+    #[test]
+    fn test_get_min_start_block() {
+        // Multiple data sources with start blocks
+        let manifest: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+            dataSources:
+              - source:
+                  startBlock: 100
+              - source:
+                  startBlock: 50
+              - source:
+                  startBlock: 200
+            "#,
+        )
+        .unwrap();
+        assert_eq!(get_min_start_block(&manifest), Some(50));
+
+        // Mixed with and without start blocks
+        let manifest: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+            dataSources:
+              - source:
+                  address: "0x123"
+              - source:
+                  startBlock: 150
+              - source:
+                  startBlock: 75
+            "#,
+        )
+        .unwrap();
+        assert_eq!(get_min_start_block(&manifest), Some(75));
+
+        // No start blocks
+        let manifest: serde_yaml::Value = serde_yaml::from_str(
+            r#"
+            dataSources:
+              - source:
+                  address: "0x123"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(get_min_start_block(&manifest), None);
+
+        // Empty data sources
+        let manifest: serde_yaml::Value = serde_yaml::from_str(r#"dataSources: []"#).unwrap();
+        assert_eq!(get_min_start_block(&manifest), None);
+    }
+
+    // ========================================================================
+    // Schema Parsing Tests
+    // ========================================================================
+
+    #[test]
+    fn test_find_immutable_entities() {
+        // Schema with immutable entities
+        let schema = r#"
+            type Transfer @entity(immutable: true) {
+                id: ID!
+                from: Bytes!
+                to: Bytes!
+                amount: BigInt!
+            }
+
+            type Account @entity {
+                id: ID!
+                balance: BigInt!
+            }
+
+            type Approval @entity(immutable: true) {
+                id: ID!
+                owner: Bytes!
+                spender: Bytes!
+            }
+        "#;
+
+        let entities = find_immutable_entities(schema).unwrap();
+        assert_eq!(entities.len(), 2);
+        assert!(entities.contains(&"Transfer".to_string()));
+        assert!(entities.contains(&"Approval".to_string()));
+        assert!(!entities.contains(&"Account".to_string()));
+    }
+
+    #[test]
+    fn test_find_immutable_entities_none() {
+        // Schema with no immutable entities
+        let schema = r#"
+            type Account @entity {
+                id: ID!
+                balance: BigInt!
+            }
+
+            type Token @entity {
+                id: ID!
+                name: String!
+            }
+        "#;
+
+        let entities = find_immutable_entities(schema).unwrap();
+        assert!(entities.is_empty());
+    }
+
+    #[test]
+    fn test_find_immutable_entities_explicit_false() {
+        // Entity with immutable: false should not be included
+        let schema = r#"
+            type Transfer @entity(immutable: false) {
+                id: ID!
+                amount: BigInt!
+            }
+
+            type Withdrawal @entity(immutable: true) {
+                id: ID!
+                amount: BigInt!
+            }
+        "#;
+
+        let entities = find_immutable_entities(schema).unwrap();
+        assert_eq!(entities.len(), 1);
+        assert!(entities.contains(&"Withdrawal".to_string()));
+    }
+
+    #[test]
+    fn test_is_immutable_entity() {
+        let schema = r#"
+            type Transfer @entity(immutable: true) {
+                id: ID!
+            }
+        "#;
+
+        let ast = gql::parse_schema::<String>(schema).unwrap();
+        for def in ast.definitions {
+            if let gql::Definition::TypeDefinition(gql::TypeDefinition::Object(obj)) = def {
+                if obj.name == "Transfer" {
+                    assert!(is_immutable_entity(&obj));
+                }
+            }
+        }
+
+        // Non-immutable entity
+        let schema = r#"
+            type Account @entity {
+                id: ID!
+            }
+        "#;
+
+        let ast = gql::parse_schema::<String>(schema).unwrap();
+        for def in ast.definitions {
+            if let gql::Definition::TypeDefinition(gql::TypeDefinition::Object(obj)) = def {
+                if obj.name == "Account" {
+                    assert!(!is_immutable_entity(&obj));
+                }
+            }
+        }
     }
 }

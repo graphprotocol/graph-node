@@ -1,7 +1,8 @@
-//! IPFS client for uploading subgraph files.
+//! IPFS client for uploading and fetching subgraph files.
 //!
 //! This module provides an IPFS client that uses the Kubo RPC API to upload
-//! files and get their IPFS hashes. It's used by the build and deploy commands.
+//! files, get their IPFS hashes, and fetch content by CID. It's used by the
+//! build, deploy, and init commands.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -140,6 +141,61 @@ impl IpfsClient {
         }
 
         Ok(())
+    }
+
+    /// Fetch content from IPFS by CID.
+    ///
+    /// Returns the content as a string. The CID can be with or without the
+    /// `/ipfs/` prefix.
+    pub async fn cat(&self, cid: &str) -> Result<String> {
+        // Normalize CID: strip /ipfs/ prefix if present
+        let normalized_cid = cid.strip_prefix("/ipfs/").unwrap_or(cid);
+
+        let mut url = self.api_url.clone();
+        url.set_path(&format!("{}/cat", url.path().trim_end_matches('/')));
+        url.query_pairs_mut().append_pair("arg", normalized_cid);
+
+        let response = self
+            .client
+            .post(url)
+            .send()
+            .await
+            .context("Failed to send cat request to IPFS")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "Failed to fetch {} from IPFS (status {}): {}",
+                normalized_cid,
+                status,
+                body
+            ));
+        }
+
+        response
+            .text()
+            .await
+            .context("Failed to read response body from IPFS")
+    }
+
+    /// Fetch a subgraph manifest from IPFS by deployment ID.
+    ///
+    /// The deployment ID is the CID of the manifest (typically starts with `Qm`).
+    /// Returns the raw manifest YAML content.
+    pub async fn fetch_manifest(&self, deployment_id: &str) -> Result<String> {
+        self.cat(deployment_id)
+            .await
+            .with_context(|| format!("Failed to fetch manifest for deployment {}", deployment_id))
+    }
+
+    /// Fetch the schema from IPFS using a manifest's schema CID.
+    ///
+    /// The schema CID is extracted from the manifest YAML at `schema.file["/"]`.
+    pub async fn fetch_schema(&self, schema_cid: &str) -> Result<String> {
+        self.cat(schema_cid)
+            .await
+            .with_context(|| format!("Failed to fetch schema {}", schema_cid))
     }
 }
 
