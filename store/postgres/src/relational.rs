@@ -17,7 +17,7 @@ mod query_tests;
 pub(crate) mod dsl;
 pub(crate) mod index;
 pub(crate) mod prune;
-mod rollup;
+pub(crate) mod rollup;
 pub(crate) mod value;
 
 use diesel::deserialize::FromSql;
@@ -237,7 +237,7 @@ pub struct Layout {
     pub input_schema: InputSchema,
 
     /// The rollups for aggregations in this layout
-    rollups: Vec<Rollup>,
+    pub(crate) rollups: Vec<Rollup>,
 }
 
 impl Layout {
@@ -882,6 +882,7 @@ impl Layout {
             query.block,
             query.query_id,
             &self.site,
+            query.aggregation_current,
         )?;
 
         let query_clone = query.clone();
