@@ -285,9 +285,9 @@ gnd/src/
 - [x] Add comprehensive tests for prompt module (network completer, source type)
 - [x] Add comprehensive tests for init command (interactive mode detection)
 - [ ] Ensure all edge cases are covered (ongoing)
-- [ ] Documentation:
-  - [ ] CLI usage docs (README with command reference, examples, common workflows)
-  - [ ] Migration guide from graph-cli to gnd (differences, compatibility notes)
+- [x] Documentation:
+  - [x] CLI usage docs (README with command reference, examples, common workflows)
+  - [x] Migration guide from graph-cli to gnd (differences, compatibility notes)
 - [x] Shell completions (bash, elvish, fish, powershell, zsh via clap_complete)
 
 ## Key Decisions
