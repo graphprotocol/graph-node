@@ -50,6 +50,42 @@ test-runner *EXTRA_FLAGS:
 test-integration *EXTRA_FLAGS:
     @just _cargo-test {{EXTRA_FLAGS}} --package graph-tests --test integration_tests -- --nocapture
 
+# Run gnd CLI integration tests (deployment workflow with gnd as CLI)
+# Prerequisites: nix run .#integration (PostgreSQL:3011, IPFS:3001, Anvil:3021)
+test-gnd-cli *EXTRA_FLAGS:
+    #!/usr/bin/env bash
+    set -e # Exit on error
+
+    # Set GRAPH_CLI to use gnd binary
+    export GRAPH_CLI="../target/debug/gnd"
+
+    # Verify gnd binary exists
+    if [ ! -f "$GRAPH_CLI" ]; then
+        echo "Error: gnd binary not found at $GRAPH_CLI"
+        echo "Run 'just build' or 'cargo build -p gnd' first"
+        exit 1
+    fi
+
+    echo "Running gnd CLI integration tests with GRAPH_CLI=$GRAPH_CLI"
+
+    cargo test {{EXTRA_FLAGS}} --package graph-tests --test gnd_cli_tests -- --nocapture
+
+# Run gnd standalone command tests (init, add, build - no Graph Node required)
+test-gnd-commands *EXTRA_FLAGS:
+    #!/usr/bin/env bash
+    set -e # Exit on error
+
+    # Verify gnd binary exists
+    if [ ! -f "target/debug/gnd" ]; then
+        echo "Error: gnd binary not found at target/debug/gnd"
+        echo "Run 'just build' or 'cargo build -p gnd' first"
+        exit 1
+    fi
+
+    echo "Running gnd standalone command tests"
+
+    cargo test {{EXTRA_FLAGS}} --package gnd --test cli_commands -- --nocapture
+
 # Clean workspace (cargo clean)
 clean:
     cargo clean

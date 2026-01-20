@@ -7,6 +7,14 @@ edition.workspace = true
 name = "gnd"
 path = "src/main.rs"
 
+[[test]]
+name = "cli_commands"
+path = "tests/cli_commands.rs"
+
+[[test]]
+name = "codegen_verification"
+path = "tests/codegen_verification.rs"
+
 [dependencies]
 # Core graph dependencies
 graph = { path = "../graph" }
