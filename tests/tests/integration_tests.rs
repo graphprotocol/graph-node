@@ -122,6 +122,7 @@ impl SourceSubgraph {
         }
     }
 
+    #[allow(dead_code)] // Used by gnd_tests.rs
     pub fn alias(&self) -> Option<&str> {
         match self {
             Self::Subgraph(_) => None,
@@ -207,6 +208,7 @@ impl TestCase {
         Ok(subgraph)
     }
 
+    #[allow(dead_code)] // Used by gnd_tests.rs
     pub async fn prepare(&self, contracts: &[Contract]) -> anyhow::Result<String> {
         // If a subgraph has subgraph datasources, prepare them first and collect their deployment hashes
         let source_mappings = if let Some(_subgraphs) = &self.source_subgraph {
@@ -405,7 +407,7 @@ pub async fn query_succeeds(
 * the `cases` variable in `integration_tests`.
 */
 
-async fn test_int8(ctx: TestContext) -> anyhow::Result<()> {
+pub async fn test_int8(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
 
@@ -866,7 +868,7 @@ async fn test_overloaded_functions(ctx: TestContext) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn test_value_roundtrip(ctx: TestContext) -> anyhow::Result<()> {
+pub async fn test_value_roundtrip(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
 

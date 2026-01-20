@@ -698,6 +698,39 @@ Fixtures can be regenerated with `./tests/fixtures/regenerate.sh`.
 
 When edge case bugs are discovered in the TS CLI, gnd should fix them rather than replicate them. Document any behavioral differences that result from bug fixes.
 
+### CLI Integration Tests
+
+Located in `tests/tests/gnd_cli_tests.rs`, these tests verify gnd works as a drop-in replacement for graph-cli by running the integration test suite with `GRAPH_CLI` environment variable pointing to the gnd binary.
+
+**How it works:**
+- The integration test infrastructure uses `CONFIG.graph_cli` for deployment commands
+- Setting `GRAPH_CLI=../target/debug/gnd` makes tests use gnd instead of graph-cli
+- `Subgraph::deploy()` calls `gnd codegen`, `gnd create`, `gnd deploy`
+
+**Commands tested:**
+- `gnd codegen` - Generate AssemblyScript types
+- `gnd create` - Register subgraph name with Graph Node
+- `gnd deploy` - Deploy subgraph to Graph Node
+
+**Running:**
+```bash
+just test-gnd-cli
+```
+
+### Standalone Command Tests
+
+Located in `gnd/tests/cli_commands.rs`, these tests verify commands that don't require a running Graph Node:
+
+**Commands tested:**
+- `gnd init` - Scaffold generation (--from-example, --from-contract, --from-subgraph)
+- `gnd add` - Add datasource to existing subgraph
+- `gnd build` - WASM compilation
+
+**Running:**
+```bash
+just test-gnd-commands
+```
+
 ## Dependencies to Add
 
 ### Cargo.toml additions
