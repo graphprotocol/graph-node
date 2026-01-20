@@ -60,6 +60,9 @@ which = "7"
 # Interactive prompts
 inquire = "0.7"
 
+# Browser opening for publish command
+open = "5"
+
 [target.'cfg(unix)'.dependencies]
 pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
 
