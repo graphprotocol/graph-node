@@ -1,3 +1,5 @@
+use alloy::network::AnyRpcBlock;
+use alloy::rpc::types::Block as AlloyRpcBlock;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
@@ -72,6 +74,61 @@ use crate::{
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
     ENV_VARS,
 };
+
+/// Test alloy deserialization compatibility with a block from block cache.
+/// This is for debugging/validation - it deserializes the same block JSON with alloy
+/// and logs whether it succeeds or fails, without affecting the actual block processing.
+///
+/// Tests two types:
+/// 1. AlloyRpcBlock (strict) - uses TxEnvelope, requires chainId for typed transactions
+/// 2. AnyRpcBlock (lenient) - uses AnyTxEnvelope with fallback to Unknown variant
+fn test_alloy_block_compat(logger: &Logger, value: &json::Value) {
+    // Extract block number/hash for logging before attempting deserialization
+    let block_num = value
+        .get("number")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let block_hash = value
+        .get("hash")
+        .and_then(|v| v.as_str())
+        .map(|s| &s[..std::cmp::min(18, s.len())])
+        .unwrap_or("unknown");
+
+    // Test 1: Strict type (AlloyRpcBlock) - will fail for blocks with typed txns missing chainId
+    let strict_result = serde_json::from_value::<AlloyRpcBlock>(value.clone());
+    let strict_status = match &strict_result {
+        Ok(block) => format!("OK txs={}", block.transactions.len()),
+        Err(e) => format!("FAIL err={}", e),
+    };
+
+    // Test 2: Lenient type (AnyRpcBlock) - should always work via Unknown fallback
+    let any_result = serde_json::from_value::<AnyRpcBlock>(value.clone());
+    let any_status = match &any_result {
+        Ok(block) => format!("OK txs={}", block.transactions.len()),
+        Err(e) => format!("FAIL err={}", e),
+    };
+
+    // Log both results together
+    if strict_result.is_ok() && any_result.is_ok() {
+        debug!(
+            logger,
+            "alloy_compat block={} hash={} strict={} any={}",
+            block_num,
+            block_hash,
+            strict_status,
+            any_status
+        );
+    } else {
+        warn!(
+            logger,
+            "alloy_compat block={} hash={} strict={} any={}",
+            block_num,
+            block_hash,
+            strict_status,
+            any_status
+        );
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct EthereumAdapter {
@@ -1704,7 +1761,11 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|value| json::from_value(value).ok())
+            .filter_map(|value| {
+                // Test alloy deserialization compatibility
+                test_alloy_block_compat(&logger, &value);
+                json::from_value(value).ok()
+            })
             .map(Arc::new)
             .collect();
 
