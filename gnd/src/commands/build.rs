@@ -21,7 +21,9 @@ use crate::config::{apply_network_config, get_network_config, load_networks_conf
 use crate::migrations;
 use crate::output::{step, Step};
 use crate::services::IpfsClient;
-use crate::validation::{format_schema_errors, validate_schema};
+use crate::validation::{
+    format_manifest_errors, format_schema_errors, validate_manifest, validate_schema,
+};
 
 /// Delay between file change detection and rebuild to batch multiple events.
 const WATCH_DEBOUNCE: Duration = Duration::from_millis(500);
@@ -215,6 +217,19 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
+
+    // Validate manifest structure
+    let manifest_errors = validate_manifest(&manifest, &source_dir);
+    if !manifest_errors.is_empty() {
+        eprintln!(
+            "Manifest validation errors:\n{}",
+            format_manifest_errors(&manifest_errors)
+        );
+        return Err(anyhow!(
+            "Manifest validation failed with {} error(s)",
+            manifest_errors.len()
+        ));
+    }
 
     // Validate schema before compilation
     if let Some(schema_path) = &manifest.schema {
@@ -928,34 +943,54 @@ fn resolve_path(manifest: &Path, path: &str) -> PathBuf {
 
 /// A simplified subgraph manifest structure.
 #[derive(Debug)]
-struct Manifest {
-    spec_version: Version,
-    schema: Option<String>,
-    data_sources: Vec<DataSource>,
-    templates: Vec<Template>,
+pub(crate) struct Manifest {
+    pub spec_version: Version,
+    pub schema: Option<String>,
+    #[allow(dead_code)]
+    pub features: Vec<String>,
+    #[allow(dead_code)]
+    pub graft: Option<GraftConfig>,
+    pub data_sources: Vec<DataSource>,
+    pub templates: Vec<Template>,
+}
+
+/// Graft configuration.
+#[derive(Debug)]
+#[allow(dead_code)]
+pub(crate) struct GraftConfig {
+    pub base: String,
+    pub block: u64,
 }
 
 #[derive(Debug)]
-struct DataSource {
-    name: String,
-    mapping_file: Option<String>,
-    abis: Vec<Abi>,
+pub(crate) struct DataSource {
+    pub name: String,
+    #[allow(dead_code)]
+    pub kind: String,
+    pub network: Option<String>,
+    pub mapping_file: Option<String>,
+    pub api_version: Option<Version>,
+    pub abis: Vec<Abi>,
 }
 
 #[derive(Debug)]
-struct Template {
-    name: String,
-    mapping_file: Option<String>,
+pub(crate) struct Template {
+    pub name: String,
+    #[allow(dead_code)]
+    pub kind: String,
+    pub network: Option<String>,
+    pub mapping_file: Option<String>,
+    pub api_version: Option<Version>,
 }
 
 #[derive(Debug)]
-struct Abi {
-    name: String,
-    file: String,
+pub(crate) struct Abi {
+    pub name: String,
+    pub file: String,
 }
 
 /// Load a subgraph manifest from a YAML file.
-fn load_manifest(path: &Path) -> Result<Manifest> {
+pub(crate) fn load_manifest(path: &Path) -> Result<Manifest> {
     step(
         Step::Load,
         &format!("Load subgraph from {}", path.display()),
@@ -982,6 +1017,24 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
         .and_then(|f| f.as_str())
         .map(String::from);
 
+    // Extract features
+    let features = value
+        .get("features")
+        .and_then(|f| f.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|f| f.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // Extract graft config
+    let graft = value.get("graft").and_then(|g| {
+        let base = g.get("base")?.as_str()?.to_string();
+        let block = g.get("block")?.as_u64().unwrap_or(0);
+        Some(GraftConfig { base, block })
+    });
+
     // Extract data sources
     let data_sources = value
         .get("dataSources")
@@ -990,11 +1043,22 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
             arr.iter()
                 .filter_map(|ds| {
                     let name = ds.get("name")?.as_str()?.to_string();
+                    let kind = ds
+                        .get("kind")
+                        .and_then(|k| k.as_str())
+                        .unwrap_or("ethereum/contract")
+                        .to_string();
+                    let network = ds.get("network").and_then(|n| n.as_str()).map(String::from);
                     let mapping_file = ds
                         .get("mapping")
                         .and_then(|m| m.get("file"))
                         .and_then(|f| f.as_str())
                         .map(String::from);
+                    let api_version = ds
+                        .get("mapping")
+                        .and_then(|m| m.get("apiVersion"))
+                        .and_then(|v| v.as_str())
+                        .and_then(|v| Version::parse(v).ok());
                     let abis = ds
                         .get("mapping")
                         .and_then(|m| m.get("abis"))
@@ -1011,7 +1075,10 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
                         .unwrap_or_default();
                     Some(DataSource {
                         name,
+                        kind,
+                        network,
                         mapping_file,
+                        api_version,
                         abis,
                     })
                 })
@@ -1027,12 +1094,29 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
             arr.iter()
                 .filter_map(|t| {
                     let name = t.get("name")?.as_str()?.to_string();
+                    let kind = t
+                        .get("kind")
+                        .and_then(|k| k.as_str())
+                        .unwrap_or("ethereum/contract")
+                        .to_string();
+                    let network = t.get("network").and_then(|n| n.as_str()).map(String::from);
                     let mapping_file = t
                         .get("mapping")
                         .and_then(|m| m.get("file"))
                         .and_then(|f| f.as_str())
                         .map(String::from);
-                    Some(Template { name, mapping_file })
+                    let api_version = t
+                        .get("mapping")
+                        .and_then(|m| m.get("apiVersion"))
+                        .and_then(|v| v.as_str())
+                        .and_then(|v| Version::parse(v).ok());
+                    Some(Template {
+                        name,
+                        kind,
+                        network,
+                        mapping_file,
+                        api_version,
+                    })
                 })
                 .collect()
         })
@@ -1041,6 +1125,8 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
     Ok(Manifest {
         spec_version,
         schema,
+        features,
+        graft,
         data_sources,
         templates,
     })
@@ -1071,8 +1157,10 @@ schema:
 dataSources:
   - kind: ethereum/contract
     name: Token
+    network: mainnet
     mapping:
       kind: ethereum/events
+      apiVersion: 0.0.6
       file: ./src/mapping.ts
       abis:
         - name: ERC20
@@ -1080,8 +1168,10 @@ dataSources:
 templates:
   - kind: ethereum/contract
     name: DynamicToken
+    network: mainnet
     mapping:
       kind: ethereum/events
+      apiVersion: 0.0.6
       file: ./src/dynamic.ts
 "#;
 
@@ -1092,6 +1182,15 @@ templates:
         assert_eq!(manifest.schema, Some("./schema.graphql".to_string()));
         assert_eq!(manifest.data_sources.len(), 1);
         assert_eq!(manifest.data_sources[0].name, "Token");
+        assert_eq!(manifest.data_sources[0].kind, "ethereum/contract");
+        assert_eq!(
+            manifest.data_sources[0].network,
+            Some("mainnet".to_string())
+        );
+        assert_eq!(
+            manifest.data_sources[0].api_version,
+            Some(Version::new(0, 0, 6))
+        );
         assert_eq!(
             manifest.data_sources[0].mapping_file,
             Some("./src/mapping.ts".to_string())
@@ -1100,6 +1199,54 @@ templates:
         assert_eq!(manifest.data_sources[0].abis[0].name, "ERC20");
         assert_eq!(manifest.templates.len(), 1);
         assert_eq!(manifest.templates[0].name, "DynamicToken");
+        assert_eq!(manifest.templates[0].kind, "ethereum/contract");
+        assert_eq!(manifest.templates[0].network, Some("mainnet".to_string()));
+        assert_eq!(
+            manifest.templates[0].api_version,
+            Some(Version::new(0, 0, 6))
+        );
+    }
+
+    #[test]
+    fn test_load_manifest_with_graft_and_features() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest_path = temp_dir.path().join("subgraph.yaml");
+
+        let manifest_content = r#"
+specVersion: 0.0.6
+features:
+  - nonFatalErrors
+  - fullTextSearch
+graft:
+  base: QmXYZ123
+  block: 12345
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Token
+    network: mainnet
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      file: ./src/mapping.ts
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+"#;
+
+        fs::write(&manifest_path, manifest_content).unwrap();
+
+        let manifest = load_manifest(&manifest_path).unwrap();
+        assert_eq!(manifest.spec_version, Version::new(0, 0, 6));
+        assert_eq!(
+            manifest.features,
+            vec!["nonFatalErrors".to_string(), "fullTextSearch".to_string()]
+        );
+        assert!(manifest.graft.is_some());
+        let graft = manifest.graft.unwrap();
+        assert_eq!(graft.base, "QmXYZ123");
+        assert_eq!(graft.block, 12345);
     }
 
     #[test]

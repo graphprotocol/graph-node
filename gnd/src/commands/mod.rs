@@ -14,6 +14,7 @@ mod test;
 pub use add::{run_add, AddOpt};
 pub use auth::{get_deploy_key, run_auth, AuthOpt};
 pub use build::{run_build, BuildOpt};
+pub(crate) use build::{Abi, DataSource, Manifest, Template};
 pub use clean::{run_clean, CleanOpt};
 pub use codegen::{run_codegen, CodegenOpt};
 pub use create::{run_create, CreateOpt};
