@@ -8,4 +8,5 @@ pub mod output;
 pub mod prompt;
 pub mod scaffold;
 pub mod services;
+pub mod validation;
 pub mod watcher;

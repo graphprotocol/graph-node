@@ -13,6 +13,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use notify::{recommended_watcher, RecursiveMode, Watcher};
+use semver::Version;
 use sha1::{Digest, Sha1};
 
 use crate::compiler::{compile_mapping, find_graph_ts, AscCompileOptions};
@@ -20,6 +21,7 @@ use crate::config::{apply_network_config, get_network_config, load_networks_conf
 use crate::migrations;
 use crate::output::{step, Step};
 use crate::services::IpfsClient;
+use crate::validation::{format_schema_errors, validate_schema};
 
 /// Delay between file change detection and rebuild to batch multiple events.
 const WATCH_DEBOUNCE: Duration = Duration::from_millis(500);
@@ -213,6 +215,23 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
         .filter(|p| !p.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."))
         .to_path_buf();
+
+    // Validate schema before compilation
+    if let Some(schema_path) = &manifest.schema {
+        let schema_path = resolve_path(&opt.manifest, schema_path);
+        let validation_errors = validate_schema(&schema_path, &manifest.spec_version)?;
+
+        if !validation_errors.is_empty() {
+            eprintln!(
+                "Schema validation errors:\n{}",
+                format_schema_errors(&validation_errors)
+            );
+            return Err(anyhow!(
+                "Schema validation failed with {} error(s)",
+                validation_errors.len()
+            ));
+        }
+    }
 
     // Find graph-ts and node_modules
     let (lib_dirs, global_file) = find_graph_ts(&source_dir)?;
@@ -910,6 +929,7 @@ fn resolve_path(manifest: &Path, path: &str) -> PathBuf {
 /// A simplified subgraph manifest structure.
 #[derive(Debug)]
 struct Manifest {
+    spec_version: Version,
     schema: Option<String>,
     data_sources: Vec<DataSource>,
     templates: Vec<Template>,
@@ -946,6 +966,14 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
 
     let value: serde_json::Value = serde_yaml::from_str(&manifest_str)
         .with_context(|| format!("Failed to parse manifest YAML: {:?}", path))?;
+
+    // Extract spec version (default to 0.0.4 if not specified)
+    let spec_version_str = value
+        .get("specVersion")
+        .and_then(|v| v.as_str())
+        .unwrap_or("0.0.4");
+
+    let spec_version = Version::parse(spec_version_str).unwrap_or_else(|_| Version::new(0, 0, 4));
 
     // Extract schema path
     let schema = value
@@ -1011,6 +1039,7 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
         .unwrap_or_default();
 
     Ok(Manifest {
+        spec_version,
         schema,
         data_sources,
         templates,
@@ -1059,6 +1088,7 @@ templates:
         fs::write(&manifest_path, manifest_content).unwrap();
 
         let manifest = load_manifest(&manifest_path).unwrap();
+        assert_eq!(manifest.spec_version, Version::new(0, 0, 4));
         assert_eq!(manifest.schema, Some("./schema.graphql".to_string()));
         assert_eq!(manifest.data_sources.len(), 1);
         assert_eq!(manifest.data_sources[0].name, "Token");
