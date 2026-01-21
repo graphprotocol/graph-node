@@ -56,7 +56,7 @@ use crate::{
     data_source::{DataSource, UnresolvedDataSource},
     ethereum_adapter::{
         blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
-        parse_log_triggers,
+        parse_log_triggers, test_alloy_block_compat, test_alloy_receipts_compat,
     },
     SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
 };
@@ -1049,7 +1049,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .ancestor_block(ptr, offset, root)
             .await?
             .map(|x| x.0)
-            .map(json::from_value)
+            .map(|value| {
+                // Test alloy deserialization compatibility
+                test_alloy_block_compat(&self.logger, &value);
+                test_alloy_receipts_compat(&self.logger, &value);
+                json::from_value(value)
+            })
             .transpose()?;
         Ok(block.map(|block| {
             BlockFinality::NonFinal(EthereumBlockWithCalls {
@@ -1067,8 +1072,11 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 let chain_store = self.chain_store.cheap_clone();
                 // First try to get the block from the store
                 if let Ok(blocks) = chain_store.blocks(vec![block.hash.clone()]).await {
-                    if let Some(block) = blocks.first() {
-                        if let Ok(block) = json::from_value::<LightEthereumBlock>(block.clone()) {
+                    if let Some(value) = blocks.first() {
+                        // Test alloy deserialization compatibility
+                        test_alloy_block_compat(&self.logger, value);
+                        test_alloy_receipts_compat(&self.logger, value);
+                        if let Ok(block) = json::from_value::<LightEthereumBlock>(value.clone()) {
                             return Ok(block.parent_ptr());
                         }
                     }

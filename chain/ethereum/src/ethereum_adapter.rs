@@ -1,5 +1,6 @@
 use alloy::network::AnyRpcBlock;
 use alloy::rpc::types::Block as AlloyRpcBlock;
+use alloy::rpc::types::TransactionReceipt as AlloyReceipt;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::BlockHash;
@@ -82,7 +83,7 @@ use crate::{
 /// Tests two types:
 /// 1. AlloyRpcBlock (strict) - uses TxEnvelope, requires chainId for typed transactions
 /// 2. AnyRpcBlock (lenient) - uses AnyTxEnvelope with fallback to Unknown variant
-fn test_alloy_block_compat(logger: &Logger, value: &json::Value) {
+pub(crate) fn test_alloy_block_compat(logger: &Logger, value: &json::Value) {
     // Extract block number/hash for logging before attempting deserialization
     let block_num = value
         .get("number")
@@ -126,6 +127,58 @@ fn test_alloy_block_compat(logger: &Logger, value: &json::Value) {
             block_hash,
             strict_status,
             any_status
+        );
+    }
+}
+
+/// Test alloy deserialization compatibility with receipts from block cache.
+/// Extracts transaction_receipts from the block JSON and tests each with alloy.
+pub(crate) fn test_alloy_receipts_compat(logger: &Logger, block_value: &json::Value) {
+    let block_num = block_value
+        .get("number")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    let receipts = match block_value.get("transaction_receipts") {
+        Some(json::Value::Array(arr)) if !arr.is_empty() => arr,
+        _ => {
+            debug!(
+                logger,
+                "alloy_compat_receipts block={} no_receipts_to_test", block_num
+            );
+            return;
+        }
+    };
+
+    let mut ok_count = 0;
+    let mut fail_count = 0;
+    let mut first_error: Option<String> = None;
+
+    for receipt in receipts {
+        match serde_json::from_value::<AlloyReceipt>(receipt.clone()) {
+            Ok(_) => ok_count += 1,
+            Err(e) => {
+                fail_count += 1;
+                if first_error.is_none() {
+                    first_error = Some(e.to_string());
+                }
+            }
+        }
+    }
+
+    if fail_count > 0 {
+        warn!(
+            logger,
+            "alloy_compat_receipts block={} ok={} fail={} first_err={}",
+            block_num,
+            ok_count,
+            fail_count,
+            first_error.unwrap_or_default()
+        );
+    } else {
+        debug!(
+            logger,
+            "alloy_compat_receipts block={} ok={}", block_num, ok_count
         );
     }
 }
@@ -1764,6 +1817,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .filter_map(|value| {
                 // Test alloy deserialization compatibility
                 test_alloy_block_compat(&logger, &value);
+                test_alloy_receipts_compat(&logger, &value);
                 json::from_value(value).ok()
             })
             .map(Arc::new)
