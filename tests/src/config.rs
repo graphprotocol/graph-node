@@ -279,8 +279,12 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let graph_cli =
-            std::env::var("GRAPH_CLI").unwrap_or_else(|_| "node_modules/.bin/graph".to_string());
+        let graph_cli = std::env::var("GRAPH_CLI").unwrap_or_else(|_| {
+            fs::canonicalize("../target/debug/gnd")
+                .expect("failed to infer gnd location. (Was it built already?)")
+                .to_string_lossy()
+                .into_owned()
+        });
         let num_parallel_tests = std::env::var("N_CONCURRENT_TESTS")
             .map(|x| x.parse().expect("N_CONCURRENT_TESTS must be a number"))
             .unwrap_or(1000);
