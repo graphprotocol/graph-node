@@ -123,7 +123,7 @@ impl FileLogStore {
 
         let kept_entries: Vec<String> = reader
             .lines()
-            .filter_map(|line| line.ok())
+            .map_while(Result::ok)
             .filter(|line| {
                 // Parse timestamp from log entry
                 if let Some(entry) = self.parse_line(line) {

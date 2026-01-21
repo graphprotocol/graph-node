@@ -825,6 +825,16 @@
                   "ofType": null
                 },
                 "defaultValue": "0"
+              },
+              {
+                "name": "orderDirection",
+                "description": "Sort direction for results. Default: desc (newest first).",
+                "type": {
+                  "kind": "ENUM",
+                  "name": "OrderDirection",
+                  "ofType": null
+                },
+                "defaultValue": "desc"
               }
             ],
             "type": {
