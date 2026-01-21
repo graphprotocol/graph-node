@@ -5,12 +5,13 @@ use std::time::{Duration, Instant};
 use graph::data::subgraph::API_VERSION_0_0_8;
 use graph::data::value::Word;
 
-use graph::futures03::StreamExt;
+use graph::futures03::stream::StreamExt;
+use graph::prelude::alloy::primitives::Address;
 use graph::schema::EntityType;
 use never::Never;
 use semver::Version;
-use web3::types::H160;
 
+use graph::abi;
 use graph::blockchain::BlockTime;
 use graph::blockchain::Blockchain;
 use graph::components::link_resolver::LinkResolverContext;
@@ -21,8 +22,6 @@ use graph::components::subgraph::{
 use graph::data::store::{self};
 use graph::data_source::{CausalityRegion, DataSource, EntityTypeAccess};
 use graph::ensure;
-use graph::prelude::ethabi::param_type::Reader;
-use graph::prelude::ethabi::{decode, encode, Token};
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
 use graph::runtime::gas::{self, complexity, Gas, GasCounter};
@@ -1174,19 +1173,19 @@ impl HostExports {
             .map_err(|e| DeterministicHostError::from(Error::from(e)))
     }
 
-    pub(crate) fn string_to_h160(
+    pub(crate) fn string_to_address(
         &self,
         string: &str,
         gas: &GasCounter,
         state: &mut BlockState,
-    ) -> Result<H160, DeterministicHostError> {
+    ) -> Result<Address, DeterministicHostError> {
         Self::track_gas_and_ops(
             gas,
             state,
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, &string),
             "string_to_h160",
         )?;
-        string_to_h160(string)
+        string_to_address(string)
     }
 
     pub(crate) fn bytes_to_string(
@@ -1208,11 +1207,11 @@ impl HostExports {
 
     pub(crate) fn ethereum_encode(
         &self,
-        token: Token,
+        value: abi::DynSolValue,
         gas: &GasCounter,
         state: &mut BlockState,
     ) -> Result<Vec<u8>, DeterministicHostError> {
-        let encoded = encode(&[token]);
+        let encoded = value.abi_encode();
 
         Self::track_gas_and_ops(
             gas,
@@ -1230,7 +1229,7 @@ impl HostExports {
         data: Vec<u8>,
         gas: &GasCounter,
         state: &mut BlockState,
-    ) -> Result<Token, anyhow::Error> {
+    ) -> Result<abi::DynSolValue, anyhow::Error> {
         Self::track_gas_and_ops(
             gas,
             state,
@@ -1238,15 +1237,9 @@ impl HostExports {
             "ethereum_decode",
         )?;
 
-        let param_types =
-            Reader::read(&types).map_err(|e| anyhow::anyhow!("Failed to read types: {}", e))?;
+        let ty: abi::DynSolType = types.parse().context("Failed to read types")?;
 
-        decode(&[param_types], &data)
-            // The `.pop().unwrap()` here is ok because we're always only passing one
-            // `param_types` to `decode`, so the returned `Vec` has always size of one.
-            // We can't do `tokens[0]` because the value can't be moved out of the `Vec`.
-            .map(|mut tokens| tokens.pop().unwrap())
-            .context("Failed to decode")
+        ty.abi_decode(&data).context("Failed to decode")
     }
 
     pub(crate) fn yaml_from_bytes(
@@ -1277,11 +1270,9 @@ impl HostExports {
     }
 }
 
-fn string_to_h160(string: &str) -> Result<H160, DeterministicHostError> {
-    // `H160::from_str` takes a hex string with no leading `0x`.
-    let s = string.trim_start_matches("0x");
-    H160::from_str(s)
-        .with_context(|| format!("Failed to convert string to Address/H160: '{}'", s))
+fn string_to_address(string: &str) -> Result<Address, DeterministicHostError> {
+    Address::from_str(string)
+        .with_context(|| format!("Failed to convert string to Address: '{}'", string))
         .map_err(DeterministicHostError::from)
 }
 
@@ -1380,8 +1371,8 @@ pub mod test_support {
 #[test]
 fn test_string_to_h160_with_0x() {
     assert_eq!(
-        H160::from_str("A16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap(),
-        string_to_h160("0xA16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap()
+        Address::from_str("A16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap(),
+        string_to_address("0xA16081F360e3847006dB660bae1c6d1b2e17eC2A").unwrap()
     )
 }
 

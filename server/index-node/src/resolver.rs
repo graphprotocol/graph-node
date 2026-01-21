@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use async_trait::async_trait;
 use graph::data::query::Trace;
 use graph::data::store::Id;
+use graph::prelude::alloy::primitives::Address;
 use graph::schema::EntityType;
-use web3::types::Address;
 
 use git_testament::{git_testament, CommitKind};
 use graph::amp;
@@ -375,7 +375,7 @@ where
         if !poi_protection.validate_access_token(self.bearer_token.as_deref()) {
             // Let's sign the POI with a zero'd address when the access token is
             // invalid.
-            indexer = Some(Address::zero());
+            indexer = Some(Address::ZERO);
         }
 
         let poi_fut = self

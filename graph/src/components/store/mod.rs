@@ -3,6 +3,7 @@ mod err;
 mod traits;
 pub mod write;
 
+use alloy::primitives::Address;
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
@@ -1138,7 +1139,7 @@ pub struct CachedEthereumCall {
     pub block_ptr: BlockPtr,
 
     /// The address to the called contract.
-    pub contract_address: ethabi::Address,
+    pub contract_address: Address,
 
     /// The encoded return value of this call.
     pub return_value: Vec<u8>,

@@ -8,6 +8,7 @@ use graph::components::store::{
 use graph::data::store::Id;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
+use graph::prelude::alloy::primitives::B256;
 use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph::{
     components::store::{DeploymentId, DeploymentLocator},
@@ -22,7 +23,6 @@ use slog::Logger;
 use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use web3::types::H256;
 
 use graph_store_postgres::SubgraphStore as DieselSubgraphStore;
 use test_store::*;
@@ -399,7 +399,7 @@ lazy_static! {
         InputSchema::parse_latest(ACCOUNT_GQL, LOAD_RELATED_ID.clone())
             .expect("Failed to parse user schema");
     static ref TEST_BLOCK_1_PTR: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13"
         )),
         1u64

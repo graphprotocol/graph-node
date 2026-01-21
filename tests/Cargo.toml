@@ -25,6 +25,10 @@ tokio = { version = "1.45.1", features = ["rt", "macros", "process"] }
 # uses until then
 secp256k1 = { version = "0.21", features = ["recovery"] }
 tokio-util.workspace = true
+web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches-onto-0.18", features = [
+    "arbitrary_precision",
+    "test",
+] }
 
 [dev-dependencies]
 anyhow = "1.0.100"

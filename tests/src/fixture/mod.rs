@@ -38,7 +38,8 @@ use graph::http_body_util::Full;
 use graph::hyper::body::Bytes;
 use graph::hyper::Request;
 use graph::ipfs::{IpfsClient, IpfsMetrics};
-use graph::prelude::ethabi::ethereum_types::H256;
+use graph::prelude::alloy::primitives::B256;
+use graph::prelude::alloy::primitives::U256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
     lazy_static, q, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
@@ -71,7 +72,7 @@ pub fn test_ptr(n: BlockNumber) -> BlockPtr {
 
 // Set n as the low bits and `reorg_n` as the high bits of the hash.
 pub fn test_ptr_reorged(n: BlockNumber, reorg_n: u32) -> BlockPtr {
-    let mut hash = H256::from_low_u64_be(n as u64);
+    let mut hash = B256::from(U256::from(n as u64));
     hash[0..4].copy_from_slice(&reorg_n.to_be_bytes());
     BlockPtr {
         hash: hash.into(),

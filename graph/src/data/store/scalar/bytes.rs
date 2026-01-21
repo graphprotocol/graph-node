@@ -1,9 +1,9 @@
+use alloy::primitives::Address;
 use diesel::deserialize::FromSql;
 use diesel::pg::PgValue;
 use diesel::serialize::ToSql;
 use hex;
 use serde::{self, Deserialize, Serialize};
-use web3::types::*;
 
 use std::fmt::{self, Display, Formatter};
 use std::ops::Deref;
@@ -64,12 +64,6 @@ impl From<Address> for Bytes {
     }
 }
 
-impl From<web3::types::Bytes> for Bytes {
-    fn from(bytes: web3::types::Bytes) -> Bytes {
-        Bytes::from(bytes.0.as_slice())
-    }
-}
-
 impl From<BlockHash> for Bytes {
     fn from(hash: BlockHash) -> Self {
         Bytes(hash.0)
@@ -121,5 +115,11 @@ impl ToSql<diesel::sql_types::Binary, diesel::pg::Pg> for Bytes {
 impl FromSql<diesel::sql_types::Binary, diesel::pg::Pg> for Bytes {
     fn from_sql(value: PgValue) -> diesel::deserialize::Result<Self> {
         <Vec<u8> as FromSql<diesel::sql_types::Binary, _>>::from_sql(value).map(Bytes::from)
+    }
+}
+
+impl From<alloy::primitives::Bytes> for Bytes {
+    fn from(bytes: alloy::primitives::Bytes) -> Bytes {
+        Bytes::from(bytes.as_ref())
     }
 }

@@ -1,23 +1,20 @@
 use async_trait::async_trait;
+use graph::abi;
 use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
+use graph::components::ethereum::AnyTransaction;
 use graph::data::subgraph::API_VERSION_0_0_2;
 use graph::data::subgraph::API_VERSION_0_0_6;
 use graph::data::subgraph::API_VERSION_0_0_7;
 use graph::data_source::common::DeclaredCall;
-use graph::prelude::ethabi::ethereum_types::H160;
-use graph::prelude::ethabi::ethereum_types::H256;
-use graph::prelude::ethabi::ethereum_types::U128;
-use graph::prelude::ethabi::ethereum_types::U256;
-use graph::prelude::ethabi::ethereum_types::U64;
-use graph::prelude::ethabi::Address;
-use graph::prelude::ethabi::LogParam;
-use graph::prelude::web3::types::Block;
-use graph::prelude::web3::types::Log;
-use graph::prelude::web3::types::Transaction;
-use graph::prelude::web3::types::TransactionReceipt;
+use graph::prelude::alloy::consensus::Transaction as TransactionTrait;
+use graph::prelude::alloy::network::AnyTransactionReceipt as AlloyTransactionReceipt;
+use graph::prelude::alloy::network::TransactionResponse;
+use graph::prelude::alloy::primitives::{Address, B256, U256};
+use graph::prelude::alloy::rpc::types::Log;
 use graph::prelude::BlockNumber;
 use graph::prelude::BlockPtr;
+use graph::prelude::LightEthereumBlock;
 use graph::prelude::{CheapClone, EthereumCall};
 use graph::runtime::asc_new;
 use graph::runtime::gas::GasCounter;
@@ -38,26 +35,23 @@ use crate::runtime::abi::AscEthereumTransaction_0_0_1;
 use crate::runtime::abi::AscEthereumTransaction_0_0_2;
 use crate::runtime::abi::AscEthereumTransaction_0_0_6;
 
-// ETHDEP: This should be defined in only one place.
-type LightEthereumBlock = Block<Transaction>;
-
-static U256_DEFAULT: U256 = U256::zero();
+static U256_DEFAULT: U256 = U256::ZERO;
 
 pub enum MappingTrigger {
     Log {
         block: Arc<LightEthereumBlock>,
-        transaction: Arc<Transaction>,
+        transaction: Arc<AnyTransaction>,
         log: Arc<Log>,
-        params: Vec<LogParam>,
-        receipt: Option<Arc<TransactionReceipt>>,
+        params: Vec<abi::DynSolParam>,
+        receipt: Option<Arc<AlloyTransactionReceipt>>,
         calls: Vec<DeclaredCall>,
     },
     Call {
         block: Arc<LightEthereumBlock>,
-        transaction: Arc<Transaction>,
+        transaction: Arc<AnyTransaction>,
         call: Arc<EthereumCall>,
-        inputs: Vec<LogParam>,
-        outputs: Vec<LogParam>,
+        inputs: Vec<abi::DynSolParam>,
+        outputs: Vec<abi::DynSolParam>,
     },
     Block {
         block: Arc<LightEthereumBlock>,
@@ -65,7 +59,7 @@ pub enum MappingTrigger {
 }
 
 impl MappingTriggerTrait for MappingTrigger {
-    fn error_context(&self) -> std::string::String {
+    fn error_context(&self) -> String {
         let transaction_id = match self {
             MappingTrigger::Log { log, .. } => log.transaction_hash,
             MappingTrigger::Call { call, .. } => call.transaction_hash,
@@ -85,15 +79,15 @@ impl std::fmt::Debug for MappingTrigger {
         #[derive(Debug)]
         enum MappingTriggerWithoutBlock {
             Log {
-                _transaction: Arc<Transaction>,
+                _transaction: Arc<AnyTransaction>,
                 _log: Arc<Log>,
-                _params: Vec<LogParam>,
+                _params: Vec<abi::DynSolParam>,
             },
             Call {
-                _transaction: Arc<Transaction>,
+                _transaction: Arc<AnyTransaction>,
                 _call: Arc<EthereumCall>,
-                _inputs: Vec<LogParam>,
-                _outputs: Vec<LogParam>,
+                _inputs: Vec<abi::DynSolParam>,
+                _outputs: Vec<abi::DynSolParam>,
             },
             Block,
         }
@@ -238,13 +232,13 @@ impl ToAscPtr for MappingTrigger {
 #[derive(Clone, Debug)]
 pub struct LogPosition {
     pub index: usize,
-    pub receipt: Arc<TransactionReceipt>,
+    pub receipt: Arc<AlloyTransactionReceipt>,
     pub requires_transaction_receipt: bool,
 }
 
 #[derive(Clone, Debug)]
 pub enum LogRef {
-    FullLog(Arc<Log>, Option<Arc<TransactionReceipt>>),
+    FullLog(Arc<Log>, Option<Arc<AlloyTransactionReceipt>>),
     LogPosition(LogPosition),
 }
 
@@ -252,7 +246,7 @@ impl LogRef {
     pub fn log(&self) -> &Log {
         match self {
             LogRef::FullLog(log, _) => log.as_ref(),
-            LogRef::LogPosition(pos) => pos.receipt.logs.get(pos.index).unwrap(),
+            LogRef::LogPosition(pos) => pos.receipt.logs().get(pos.index).unwrap(),
         }
     }
 
@@ -262,7 +256,7 @@ impl LogRef {
     /// For `LogPosition` variants, only returns the receipt if the
     /// `requires_transaction_receipt` flag is true, otherwise returns None
     /// even though the receipt is stored internally.
-    pub fn receipt(&self) -> Option<&Arc<TransactionReceipt>> {
+    pub fn receipt(&self) -> Option<&Arc<AlloyTransactionReceipt>> {
         match self {
             LogRef::FullLog(_, receipt) => receipt.as_ref(),
             LogRef::LogPosition(pos) => {
@@ -275,28 +269,28 @@ impl LogRef {
         }
     }
 
-    pub fn log_index(&self) -> Option<U256> {
+    pub fn log_index(&self) -> Option<u64> {
         self.log().log_index
     }
 
-    pub fn transaction_index(&self) -> Option<U64> {
+    pub fn transaction_index(&self) -> Option<u64> {
         self.log().transaction_index
     }
 
-    fn transaction_hash(&self) -> Option<H256> {
+    fn transaction_hash(&self) -> Option<B256> {
         self.log().transaction_hash
     }
 
-    pub fn block_hash(&self) -> Option<H256> {
+    pub fn block_hash(&self) -> Option<B256> {
         self.log().block_hash
     }
 
-    pub fn block_number(&self) -> Option<U64> {
+    pub fn block_number(&self) -> Option<u64> {
         self.log().block_number
     }
 
-    pub fn address(&self) -> &H160 {
-        &self.log().address
+    pub fn address(&self) -> &Address {
+        &self.log().inner.address
     }
 }
 
@@ -339,14 +333,14 @@ impl EthereumTrigger {
             EthereumTrigger::Block(block_ptr, _) => block_ptr.number,
             EthereumTrigger::Call(call) => call.block_number,
             EthereumTrigger::Log(log_ref) => {
-                i32::try_from(log_ref.block_number().unwrap().as_u64()).unwrap()
+                i32::try_from(log_ref.block_number().unwrap()).unwrap()
             }
         }
     }
 
-    pub fn block_hash(&self) -> H256 {
+    pub fn block_hash(&self) -> B256 {
         match self {
-            EthereumTrigger::Block(block_ptr, _) => block_ptr.hash_as_h256(),
+            EthereumTrigger::Block(block_ptr, _) => block_ptr.hash.as_b256(),
             EthereumTrigger::Call(call) => call.block_hash,
             EthereumTrigger::Log(log_ref) => log_ref.block_hash().unwrap(),
         }
@@ -390,23 +384,21 @@ impl Ord for EthereumTrigger {
             // Calls vs. events are logged by their tx index;
             // if they are from the same transaction, events come first
             (Self::Call(a), Self::Log(b))
-                if a.transaction_index == b.transaction_index().unwrap().as_u64() =>
+                if a.transaction_index == b.transaction_index().unwrap() =>
             {
                 Ordering::Greater
             }
             (Self::Log(a), Self::Call(b))
-                if a.transaction_index().unwrap().as_u64() == b.transaction_index =>
+                if a.transaction_index().unwrap() == b.transaction_index =>
             {
                 Ordering::Less
             }
-            (Self::Call(a), Self::Log(b)) => a
-                .transaction_index
-                .cmp(&b.transaction_index().unwrap().as_u64()),
-            (Self::Log(a), Self::Call(b)) => a
-                .transaction_index()
-                .unwrap()
-                .as_u64()
-                .cmp(&b.transaction_index),
+            (Self::Call(a), Self::Log(b)) => {
+                a.transaction_index.cmp(&b.transaction_index().unwrap())
+            }
+            (Self::Log(a), Self::Call(b)) => {
+                a.transaction_index().unwrap().cmp(&b.transaction_index)
+            }
         }
     }
 }
@@ -437,137 +429,140 @@ impl TriggerData for EthereumTrigger {
     }
 
     fn address_match(&self) -> Option<&[u8]> {
-        self.address().map(|address| address.as_bytes())
+        self.address().map(|address| address.as_slice())
     }
 }
 
 /// Ethereum block data.
 #[derive(Clone, Debug)]
 pub struct EthereumBlockData<'a> {
-    block: &'a Block<Transaction>,
+    block: &'a LightEthereumBlock,
 }
 
-impl<'a> From<&'a Block<Transaction>> for EthereumBlockData<'a> {
-    fn from(block: &'a Block<Transaction>) -> EthereumBlockData<'a> {
+impl<'a> From<&'a LightEthereumBlock> for EthereumBlockData<'a> {
+    fn from(block: &'a LightEthereumBlock) -> EthereumBlockData<'a> {
         EthereumBlockData { block }
     }
 }
 
 impl<'a> EthereumBlockData<'a> {
-    pub fn hash(&self) -> &H256 {
-        self.block.hash.as_ref().unwrap()
+    pub fn hash(&self) -> &B256 {
+        &self.block.inner().header.hash
     }
 
-    pub fn parent_hash(&self) -> &H256 {
-        &self.block.parent_hash
+    pub fn parent_hash(&self) -> &B256 {
+        &self.block.inner().header.parent_hash
     }
 
-    pub fn uncles_hash(&self) -> &H256 {
-        &self.block.uncles_hash
+    pub fn uncles_hash(&self) -> &B256 {
+        &self.block.inner().header.ommers_hash
     }
 
-    pub fn author(&self) -> &H160 {
-        &self.block.author
+    pub fn author(&self) -> &Address {
+        &self.block.inner().header.beneficiary
     }
 
-    pub fn state_root(&self) -> &H256 {
-        &self.block.state_root
+    pub fn state_root(&self) -> &B256 {
+        &self.block.inner().header.state_root
     }
 
-    pub fn transactions_root(&self) -> &H256 {
-        &self.block.transactions_root
+    pub fn transactions_root(&self) -> &B256 {
+        &self.block.inner().header.transactions_root
     }
 
-    pub fn receipts_root(&self) -> &H256 {
-        &self.block.receipts_root
+    pub fn receipts_root(&self) -> &B256 {
+        &self.block.inner().header.receipts_root
     }
 
-    pub fn number(&self) -> U64 {
-        self.block.number.unwrap()
+    pub fn number(&self) -> u64 {
+        self.block.number_u64()
     }
 
-    pub fn gas_used(&self) -> &U256 {
-        &self.block.gas_used
+    pub fn gas_used(&self) -> u64 {
+        self.block.inner().header.gas_used
     }
 
-    pub fn gas_limit(&self) -> &U256 {
-        &self.block.gas_limit
+    pub fn gas_limit(&self) -> u64 {
+        self.block.inner().header.gas_limit
     }
 
-    pub fn timestamp(&self) -> &U256 {
-        &self.block.timestamp
+    pub fn timestamp(&self) -> u64 {
+        self.block.inner().header.timestamp
     }
 
     pub fn difficulty(&self) -> &U256 {
-        &self.block.difficulty
+        &self.block.inner().header.difficulty
     }
 
     pub fn total_difficulty(&self) -> &U256 {
         self.block
+            .inner()
+            .header
             .total_difficulty
             .as_ref()
             .unwrap_or(&U256_DEFAULT)
     }
 
     pub fn size(&self) -> &Option<U256> {
-        &self.block.size
+        &self.block.inner().header.size
     }
 
-    pub fn base_fee_per_gas(&self) -> &Option<U256> {
-        &self.block.base_fee_per_gas
+    pub fn base_fee_per_gas(&self) -> &Option<u64> {
+        &self.block.inner().header.base_fee_per_gas
     }
 }
 
 /// Ethereum transaction data.
 #[derive(Clone, Debug)]
 pub struct EthereumTransactionData<'a> {
-    tx: &'a Transaction,
+    tx: &'a AnyTransaction,
+    base_fee_per_gas: Option<u64>,
 }
 
 impl<'a> EthereumTransactionData<'a> {
     // We don't implement `From` because it causes confusion with the `from`
     // accessor method
-    fn new(tx: &'a Transaction) -> EthereumTransactionData<'a> {
-        EthereumTransactionData { tx }
+    fn new(tx: &'a AnyTransaction, base_fee_per_gas: Option<u64>) -> EthereumTransactionData<'a> {
+        EthereumTransactionData {
+            tx,
+            base_fee_per_gas,
+        }
     }
 
-    pub fn hash(&self) -> &H256 {
-        &self.tx.hash
+    pub fn hash(&self) -> B256 {
+        self.tx.tx_hash()
     }
 
-    pub fn index(&self) -> U128 {
-        self.tx.transaction_index.unwrap().as_u64().into()
+    pub fn index(&self) -> u64 {
+        self.tx.transaction_index.unwrap()
     }
 
-    pub fn from(&self) -> &H160 {
-        // unwrap: this is always `Some` for txns that have been mined
-        //         (see https://github.com/tomusdrw/rust-web3/pull/407)
-        self.tx.from.as_ref().unwrap()
+    pub fn from(&self) -> Address {
+        self.tx.from()
     }
 
-    pub fn to(&self) -> &Option<H160> {
-        &self.tx.to
+    pub fn to(&self) -> Option<Address> {
+        self.tx.to()
     }
 
-    pub fn value(&self) -> &U256 {
-        &self.tx.value
+    pub fn value(&self) -> U256 {
+        self.tx.value()
     }
 
-    pub fn gas_limit(&self) -> &U256 {
-        &self.tx.gas
+    pub fn gas_limit(&self) -> u64 {
+        self.tx.gas_limit()
     }
 
-    pub fn gas_price(&self) -> &U256 {
-        // EIP-1559 made this optional.
-        self.tx.gas_price.as_ref().unwrap_or(&U256_DEFAULT)
+    pub fn gas_price(&self) -> u128 {
+        self.tx.effective_gas_price(self.base_fee_per_gas)
     }
 
     pub fn input(&self) -> &[u8] {
-        &self.tx.input.0
+        self.tx.input()
     }
 
-    pub fn nonce(&self) -> &U256 {
-        &self.tx.nonce
+    pub fn nonce(&self) -> u64 {
+        self.tx.nonce()
     }
 }
 
@@ -576,45 +571,46 @@ impl<'a> EthereumTransactionData<'a> {
 pub struct EthereumEventData<'a> {
     pub block: EthereumBlockData<'a>,
     pub transaction: EthereumTransactionData<'a>,
-    pub params: &'a [LogParam],
+    pub params: &'a [abi::DynSolParam],
     log: &'a Log,
 }
 
 impl<'a> EthereumEventData<'a> {
     pub fn new(
-        block: &'a Block<Transaction>,
-        tx: &'a Transaction,
+        block: &'a LightEthereumBlock,
+        tx: &'a AnyTransaction,
         log: &'a Log,
-        params: &'a [LogParam],
+        params: &'a [abi::DynSolParam],
     ) -> Self {
         EthereumEventData {
             block: EthereumBlockData::from(block),
-            transaction: EthereumTransactionData::new(tx),
+            transaction: EthereumTransactionData::new(tx, block.base_fee_per_gas()),
             log,
             params,
         }
     }
 
     pub fn address(&self) -> &Address {
-        &self.log.address
+        &self.log.inner.address
     }
 
-    pub fn log_index(&self) -> &U256 {
-        self.log.log_index.as_ref().unwrap_or(&U256_DEFAULT)
+    pub fn log_index(&self) -> u64 {
+        self.log.log_index.unwrap_or(0)
     }
 
-    pub fn transaction_log_index(&self) -> &U256 {
+    pub fn transaction_log_index(&self) -> u64 {
         // We purposely use the `log_index` here. Geth does not support
         // `transaction_log_index`, and subgraphs that use it only care that
         // it identifies the log, the specific value is not important. Still
         // this will change the output of subgraphs that use this field.
         //
         // This was initially changed in commit b95c6953
-        self.log.log_index.as_ref().unwrap_or(&U256_DEFAULT)
+        self.log.log_index.unwrap_or(0)
     }
 
-    pub fn log_type(&self) -> &Option<String> {
-        &self.log.log_type
+    pub fn log_type(&self) -> Option<String> {
+        // This field was present in old rust-web3 Block, but alloy doesn't have it.
+        None
     }
 }
 
@@ -623,22 +619,22 @@ impl<'a> EthereumEventData<'a> {
 pub struct EthereumCallData<'a> {
     pub block: EthereumBlockData<'a>,
     pub transaction: EthereumTransactionData<'a>,
-    pub inputs: &'a [LogParam],
-    pub outputs: &'a [LogParam],
+    pub inputs: &'a [abi::DynSolParam],
+    pub outputs: &'a [abi::DynSolParam],
     call: &'a EthereumCall,
 }
 
 impl<'a> EthereumCallData<'a> {
     fn new(
-        block: &'a Block<Transaction>,
-        transaction: &'a Transaction,
+        block: &'a LightEthereumBlock,
+        transaction: &'a AnyTransaction,
         call: &'a EthereumCall,
-        inputs: &'a [LogParam],
-        outputs: &'a [LogParam],
+        inputs: &'a [abi::DynSolParam],
+        outputs: &'a [abi::DynSolParam],
     ) -> EthereumCallData<'a> {
         EthereumCallData {
             block: EthereumBlockData::from(block),
-            transaction: EthereumTransactionData::new(transaction),
+            transaction: EthereumTransactionData::new(transaction, block.base_fee_per_gas()),
             inputs,
             outputs,
             call,

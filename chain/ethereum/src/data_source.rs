@@ -1,7 +1,11 @@
 use anyhow::{anyhow, Error};
 use anyhow::{ensure, Context};
 use async_trait::async_trait;
+use graph::abi;
+use graph::abi::EventExt;
+use graph::abi::FunctionExt;
 use graph::blockchain::{BlockPtr, TriggerWithHandler};
+use graph::components::ethereum::AnyTransaction;
 use graph::components::link_resolver::LinkResolverContext;
 use graph::components::metrics::subgraph::SubgraphInstanceMetrics;
 use graph::components::store::{EthereumCallCache, StoredDynamicDataSource};
@@ -17,9 +21,13 @@ use graph::env::ENV_VARS;
 use graph::futures03::future::try_join;
 use graph::futures03::stream::FuturesOrdered;
 use graph::futures03::TryStreamExt;
-use graph::prelude::ethabi::ethereum_types::H160;
-use graph::prelude::ethabi::StateMutability;
-use graph::prelude::{Link, SubgraphManifestValidationError};
+use graph::prelude::alloy::{
+    consensus::{TxEnvelope, TxLegacy},
+    network::TransactionResponse,
+    primitives::{Address, B256, U256},
+    rpc::types::Log,
+};
+use graph::prelude::{alloy, Link, SubgraphManifestValidationError};
 use graph::slog::{debug, error, o, trace};
 use itertools::Itertools;
 use serde::de::Error as ErrorD;
@@ -34,11 +42,8 @@ use tiny_keccak::{keccak256, Keccak};
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        ethabi::{Address, Event, Function, LogParam, ParamType, RawLog},
-        serde_json, warn,
-        web3::types::{Log, Transaction, H256},
-        BlockNumber, CheapClone, EthereumCall, LightEthereumBlock, LightEthereumBlockExt,
-        LinkResolver, Logger,
+        serde_json, warn, BlockNumber, CheapClone, EthereumCall, LightEthereumBlock,
+        LightEthereumBlockExt, LinkResolver, Logger,
     },
 };
 
@@ -134,7 +139,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn address(&self) -> Option<&[u8]> {
-        self.address.as_ref().map(|x| x.as_bytes())
+        self.address.as_ref().map(|x| x.as_slice())
     }
 
     fn has_declared_calls(&self) -> bool {
@@ -238,7 +243,7 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 
     fn as_stored_dynamic_data_source(&self) -> StoredDynamicDataSource {
-        let param = self.address.map(|addr| addr.0.into());
+        let param = self.address.map(|addr| addr.as_slice().into());
         StoredDynamicDataSource {
             manifest_idx: self.manifest_idx,
             param,
@@ -277,7 +282,7 @@ impl blockchain::DataSource<Chain> for DataSource {
 
         let contract_abi = template.mapping.find_abi(&template.source.abi)?;
 
-        let address = param.map(|x| H160::from_slice(&x));
+        let address = param.map(|x| Address::from_slice(&x));
         Ok(DataSource {
             kind: template.kind.to_string(),
             network: template.network.as_ref().map(|s| s.to_string()),
@@ -432,6 +437,45 @@ impl blockchain::DataSource<Chain> for DataSource {
     }
 }
 
+/// Generic function that creates a mock legacy Transaction from ANY log
+fn create_dummy_transaction(
+    block_number: u64,
+    block_hash: B256,
+    transaction_index: Option<u64>,
+    transaction_hash: Option<B256>,
+) -> Result<AnyTransaction, anyhow::Error> {
+    use alloy::serde::WithOtherFields;
+    use graph::components::ethereum::AnyTxEnvelope;
+    use graph::prelude::alloy::{
+        consensus::transaction::Recovered, consensus::Signed, primitives::Signature,
+        rpc::types::Transaction,
+    };
+
+    let tx = TxLegacy::default();
+
+    // Create a dummy signature
+    let signature = Signature::new(U256::ZERO, U256::ZERO, false);
+
+    let tx_hash = transaction_hash.ok_or(anyhow!("Log has no transaction hash"))?;
+    let signed_tx = Signed::new_unchecked(tx, signature, tx_hash);
+    let eth_envelope = TxEnvelope::Legacy(signed_tx);
+
+    // Wrap in AnyTxEnvelope
+    let any_envelope = AnyTxEnvelope::Ethereum(eth_envelope);
+
+    let recovered = Recovered::new_unchecked(any_envelope, Address::ZERO);
+
+    let inner_tx = Transaction {
+        inner: recovered,
+        block_hash: Some(block_hash),
+        block_number: Some(block_number),
+        transaction_index,
+        effective_gas_price: None,
+    };
+
+    Ok(AnyTransaction::new(WithOtherFields::new(inner_tx)))
+}
+
 impl DataSource {
     fn from_manifest(
         kind: String,
@@ -463,7 +507,7 @@ impl DataSource {
         })
     }
 
-    fn handlers_for_log(&self, log: &Log) -> Vec<MappingEventHandler> {
+    fn handlers_for_log(&self, log: &alloy::rpc::types::Log) -> Vec<MappingEventHandler> {
         self.mapping
             .event_handlers
             .iter()
@@ -527,28 +571,28 @@ impl DataSource {
         }
     }
 
-    /// Returns the contract event with the given signature, if it exists. A an event from the ABI
+    /// Returns the contract event with the given signature, if it exists. An event from the ABI
     /// will be matched if:
     /// 1. An event signature is equal to `signature`.
     /// 2. There are no equal matches, but there is exactly one event that equals `signature` if all
     ///    `indexed` modifiers are removed from the parameters.
-    fn contract_event_with_signature(&self, signature: &str) -> Option<&Event> {
+    fn contract_event_with_signature(&self, signature: &str) -> Option<&abi::Event> {
         // Returns an `Event(uint256,address)` signature for an event, without `indexed` hints.
-        fn ambiguous_event_signature(event: &Event) -> String {
+        fn ambiguous_event_signature(event: &abi::Event) -> String {
             format!(
                 "{}({})",
                 event.name,
                 event
                     .inputs
                     .iter()
-                    .map(|input| event_param_type_signature(&input.kind))
+                    .map(|input| input.selector_type().into_owned())
                     .collect::<Vec<_>>()
                     .join(",")
             )
         }
 
         // Returns an `Event(indexed uint256,address)` type signature for an event.
-        fn event_signature(event: &Event) -> String {
+        fn event_signature(event: &abi::Event) -> String {
             format!(
                 "{}({})",
                 event.name,
@@ -558,38 +602,11 @@ impl DataSource {
                     .map(|input| format!(
                         "{}{}",
                         if input.indexed { "indexed " } else { "" },
-                        event_param_type_signature(&input.kind)
+                        input.selector_type()
                     ))
                     .collect::<Vec<_>>()
                     .join(",")
             )
-        }
-
-        // Returns the signature of an event parameter type (e.g. `uint256`).
-        fn event_param_type_signature(kind: &ParamType) -> String {
-            use ParamType::*;
-
-            match kind {
-                Address => "address".into(),
-                Bytes => "bytes".into(),
-                Int(size) => format!("int{}", size),
-                Uint(size) => format!("uint{}", size),
-                Bool => "bool".into(),
-                String => "string".into(),
-                Array(inner) => format!("{}[]", event_param_type_signature(inner)),
-                FixedBytes(size) => format!("bytes{}", size),
-                FixedArray(inner, size) => {
-                    format!("{}[{}]", event_param_type_signature(inner), size)
-                }
-                Tuple(components) => format!(
-                    "({})",
-                    components
-                        .iter()
-                        .map(event_param_type_signature)
-                        .collect::<Vec<_>>()
-                        .join(",")
-                ),
-            }
         }
 
         self.contract_abi
@@ -630,7 +647,9 @@ impl DataSource {
             })
     }
 
-    fn contract_function_with_signature(&self, target_signature: &str) -> Option<&Function> {
+    fn contract_function_with_signature(&self, target_signature: &str) -> Option<&abi::Function> {
+        use abi::StateMutability;
+
         self.contract_abi
             .contract
             .functions()
@@ -644,7 +663,7 @@ impl DataSource {
                 let mut arguments = function
                     .inputs
                     .iter()
-                    .map(|input| format!("{}", input.kind))
+                    .map(|input| input.selector_type().into_owned())
                     .collect::<Vec<String>>()
                     .join(",");
                 // `address,uint256,bool)
@@ -734,11 +753,7 @@ impl DataSource {
                     .into_iter()
                     .filter_map(|(event_handler, event_abi)| {
                         event_abi
-                            .parse_log(RawLog {
-                                topics: log.topics.clone(),
-                                data: log.data.clone().0,
-                            })
-                            .map(|log| log.params)
+                            .decode_log(&log)
                             .map_err(|e| {
                                 trace!(
                                     logger,
@@ -777,17 +792,15 @@ impl DataSource {
                 // See also ca0edc58-0ec5-4c89-a7dd-2241797f5e50.
                 // There is another special case in zkSync-era, where the transaction hash in this case would be zero
                 // See https://docs.zksync.io/zk-stack/concepts/blocks.html#fictive-l2-block-finalizing-the-batch
-                let transaction = if log.transaction_hash == block.hash
-                    || log.transaction_hash == Some(H256::zero())
+                let transaction = if log.transaction_hash == Some(block.hash())
+                    || log.transaction_hash == Some(B256::ZERO)
                 {
-                    Transaction {
-                        hash: log.transaction_hash.unwrap(),
-                        block_hash: block.hash,
-                        block_number: block.number,
-                        transaction_index: log.transaction_index,
-                        from: Some(H160::zero()),
-                        ..Transaction::default()
-                    }
+                    create_dummy_transaction(
+                        block.number_u64(),
+                        block.hash(),
+                        log.transaction_index,
+                        log.transaction_hash,
+                    )?
                 } else {
                     // This is the general case where the log's transaction hash does not match the block's hash
                     // and is not a special zero hash, implying a real transaction associated with this log.
@@ -798,8 +811,8 @@ impl DataSource {
 
                 let logging_extras = Arc::new(o! {
                     "signature" => event_handler.event.to_string(),
-                    "address" => format!("{}", &log.address),
-                    "transaction" => format!("{}", &transaction.hash),
+                    "address" => format!("{}", &log.address()),
+                    "transaction" => format!("{}", &transaction.inner.tx_hash()),
                 });
                 let handler = event_handler.handler.clone();
                 let calls = DeclaredCall::from_log_trigger_with_event(
@@ -843,20 +856,15 @@ impl DataSource {
                         )
                     })?;
 
-                // Parse the inputs
-                //
-                // Take the input for the call, chop off the first 4 bytes, then call
-                // `function.decode_input` to get a vector of `Token`s. Match the `Token`s
-                // with the `Param`s in `function.inputs` to create a `Vec<LogParam>`.
-                let tokens = match function_abi.decode_input(&call.input.0[4..]).with_context(
-                    || {
+                let values = match function_abi
+                    .abi_decode_input(&call.input.0[4..])
+                    .with_context(|| {
                         format!(
                             "Generating function inputs for the call {:?} failed, raw input: {}",
                             &function_abi,
                             hex::encode(&call.input.0)
                         )
-                    },
-                ) {
+                    }) {
                     Ok(val) => val,
                     // See also 280b0108-a96e-4738-bb37-60ce11eeb5bf
                     Err(err) => {
@@ -866,27 +874,22 @@ impl DataSource {
                 };
 
                 ensure!(
-                    tokens.len() == function_abi.inputs.len(),
+                    values.len() == function_abi.inputs.len(),
                     "Number of arguments in call does not match \
                     number of inputs in function signature."
                 );
 
-                let inputs = tokens
+                let inputs = values
                     .into_iter()
                     .enumerate()
-                    .map(|(i, token)| LogParam {
+                    .map(|(i, value)| abi::DynSolParam {
                         name: function_abi.inputs[i].name.clone(),
-                        value: token,
+                        value,
                     })
                     .collect::<Vec<_>>();
 
-                // Parse the outputs
-                //
-                // Take the output for the call, then call `function.decode_output` to
-                // get a vector of `Token`s. Match the `Token`s with the `Param`s in
-                // `function.outputs` to create a `Vec<LogParam>`.
-                let tokens = function_abi
-                    .decode_output(&call.output.0)
+                let values = function_abi
+                    .abi_decode_output(&call.output.0)
                     .with_context(|| {
                         format!(
                             "Decoding function outputs for the call {:?} failed, raw output: {}",
@@ -896,17 +899,17 @@ impl DataSource {
                     })?;
 
                 ensure!(
-                    tokens.len() == function_abi.outputs.len(),
+                    values.len() == function_abi.outputs.len(),
                     "Number of parameters in the call output does not match \
                         number of outputs in the function signature."
                 );
 
-                let outputs = tokens
+                let outputs = values
                     .into_iter()
                     .enumerate()
-                    .map(|(i, token)| LogParam {
+                    .map(|(i, value)| abi::DynSolParam {
                         name: function_abi.outputs[i].name.clone(),
-                        value: token,
+                        value,
                     })
                     .collect::<Vec<_>>();
 
@@ -918,7 +921,7 @@ impl DataSource {
                 let logging_extras = Arc::new(o! {
                     "function" => handler.function.to_string(),
                     "to" => format!("{}", &call.to),
-                    "transaction" => format!("{}", &transaction.hash),
+                    "transaction" => format!("{}", &transaction.inner.tx_hash()),
                 });
                 Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Call {
@@ -1478,13 +1481,13 @@ pub struct MappingCallHandler {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize)]
 pub struct UnresolvedMappingEventHandler {
     pub event: String,
-    pub topic0: Option<H256>,
-    #[serde(deserialize_with = "deserialize_h256_vec", default)]
-    pub topic1: Option<Vec<H256>>,
-    #[serde(deserialize_with = "deserialize_h256_vec", default)]
-    pub topic2: Option<Vec<H256>>,
-    #[serde(deserialize_with = "deserialize_h256_vec", default)]
-    pub topic3: Option<Vec<H256>>,
+    pub topic0: Option<B256>,
+    #[serde(deserialize_with = "deserialize_b256_vec", default)]
+    pub topic1: Option<Vec<B256>>,
+    #[serde(deserialize_with = "deserialize_b256_vec", default)]
+    pub topic2: Option<Vec<B256>>,
+    #[serde(deserialize_with = "deserialize_b256_vec", default)]
+    pub topic3: Option<Vec<B256>>,
     pub handler: String,
     #[serde(default)]
     pub receipt: bool,
@@ -1518,17 +1521,17 @@ impl UnresolvedMappingEventHandler {
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct MappingEventHandler {
     pub event: String,
-    pub topic0: Option<H256>,
-    pub topic1: Option<Vec<H256>>,
-    pub topic2: Option<Vec<H256>>,
-    pub topic3: Option<Vec<H256>>,
+    pub topic0: Option<B256>,
+    pub topic1: Option<Vec<B256>>,
+    pub topic2: Option<Vec<B256>>,
+    pub topic3: Option<Vec<B256>>,
     pub handler: String,
     pub receipt: bool,
     pub calls: CallDecls,
 }
 
-// Custom deserializer for H256 fields that removes the '0x' prefix before parsing
-fn deserialize_h256_vec<'de, D>(deserializer: D) -> Result<Option<Vec<H256>>, D::Error>
+// Custom deserializer for B256 fields that removes the '0x' prefix before parsing
+fn deserialize_b256_vec<'de, D>(deserializer: D) -> Result<Option<Vec<B256>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -1536,40 +1539,40 @@ where
 
     match s {
         Some(vec) => {
-            let mut h256_vec = Vec::new();
+            let mut b256_vec = Vec::new();
             for hex_str in vec {
                 // Remove '0x' prefix if present
                 let clean_hex_str = hex_str.trim_start_matches("0x");
                 // Ensure the hex string is 64 characters long, after removing '0x'
                 let padded_hex_str = format!("{:0>64}", clean_hex_str);
                 // Parse the padded string into H256, handling potential errors
-                h256_vec.push(
-                    H256::from_str(&padded_hex_str)
-                        .map_err(|e| D::Error::custom(format!("Failed to parse H256: {}", e)))?,
+                b256_vec.push(
+                    B256::from_str(&padded_hex_str)
+                        .map_err(|e| D::Error::custom(format!("Failed to parse B256: {}", e)))?,
                 );
             }
-            Ok(Some(h256_vec))
+            Ok(Some(b256_vec))
         }
         None => Ok(None),
     }
 }
 
 impl MappingEventHandler {
-    pub fn topic0(&self) -> H256 {
+    pub fn topic0(&self) -> B256 {
         self.topic0
-            .unwrap_or_else(|| string_to_h256(&self.event.replace("indexed ", "")))
+            .unwrap_or_else(|| string_to_b256(&self.event.replace("indexed ", "")))
     }
 
     pub fn matches(&self, log: &Log) -> bool {
-        let matches_topic = |index: usize, topic_opt: &Option<Vec<H256>>| -> bool {
+        let matches_topic = |index: usize, topic_opt: &Option<Vec<B256>>| -> bool {
             topic_opt.as_ref().is_none_or(|topic_vec| {
-                log.topics
+                log.topics()
                     .get(index)
                     .is_some_and(|log_topic| topic_vec.contains(log_topic))
             })
         };
 
-        if let Some(topic0) = log.topics.first() {
+        if let Some(topic0) = log.topics().first() {
             return self.topic0() == *topic0
                 && matches_topic(1, &self.topic1)
                 && matches_topic(2, &self.topic2)
@@ -1587,18 +1590,15 @@ impl MappingEventHandler {
     }
 }
 
-/// Hashes a string to a H256 hash.
-fn string_to_h256(s: &str) -> H256 {
+/// Hashes a string to a B256 hash.
+fn string_to_b256(s: &str) -> B256 {
     let mut result = [0u8; 32];
     let data = s.replace(' ', "").into_bytes();
     let mut sponge = Keccak::new_keccak256();
     sponge.update(&data);
     sponge.finalize(&mut result);
 
-    // This was deprecated but the replacement seems to not be available in the
-    // version web3 uses.
-    #[allow(deprecated)]
-    H256::from_slice(&result)
+    B256::from_slice(&result)
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]

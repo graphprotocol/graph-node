@@ -33,6 +33,8 @@ pub mod env;
 
 pub mod ipfs;
 
+pub mod abi;
+
 pub mod amp;
 
 /// Wrapper for spawning tasks that abort on panic, which is our default.
@@ -74,12 +76,12 @@ pub use url;
 /// ```
 pub mod prelude {
     pub use ::anyhow;
+    pub use alloy;
     pub use anyhow::{anyhow, Context as _, Error};
     pub use atty;
     pub use chrono;
     pub use diesel;
     pub use envconfig;
-    pub use ethabi;
     pub use hex;
     pub use lazy_static::lazy_static;
     pub use prost;
@@ -103,7 +105,6 @@ pub mod prelude {
     pub use tokio;
     pub use toml;
     pub use tonic;
-    pub use web3;
 
     pub type DynTryFuture<'a, Ok = (), Err = Error> =
         Pin<Box<dyn futures03::Future<Output = Result<Ok, Err>> + Send + 'a>>;
@@ -171,6 +172,7 @@ pub mod prelude {
     pub use crate::util::cache_weight::CacheWeight;
     pub use crate::util::futures::{retry, TimeoutError};
     pub use crate::util::stats::{AtomicMovingStats, MovingStats};
+    pub use crate::util::test_utils::*;
 
     macro_rules! static_graphql {
         ($m:ident, $m2:ident, {$($n:ident,)*}) => {

@@ -3,9 +3,10 @@ use diesel_async::SimpleAsyncConnection;
 use graph::components::store::write::{EntityModification, RowGroup};
 use graph::data::store::scalar;
 use graph::entity;
+use graph::prelude::alloy::primitives::B256;
 use graph::prelude::{
-    o, slog, web3::types::H256, DeploymentHash, Entity, EntityCollection, EntityFilter,
-    EntityOrder, EntityQuery, Logger, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
+    o, slog, DeploymentHash, Entity, EntityCollection, EntityFilter, EntityOrder, EntityQuery,
+    Logger, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
 };
 use graph::prelude::{BlockNumber, MetricsRegistry};
 use graph::schema::{EntityKey, EntityType, InputSchema};
@@ -185,13 +186,13 @@ lazy_static! {
     static ref LARGE_INT: BigInt = BigInt::from(i64::MAX).pow(17).unwrap();
     static ref LARGE_DECIMAL: BigDecimal =
         BigDecimal::from(1) / BigDecimal::new(LARGE_INT.clone(), 1);
-    static ref BYTES_VALUE: H256 = H256::from(hex!(
+    static ref BYTES_VALUE: B256 = B256::from(hex!(
         "e8b3b02b936c4a4a331ac691ac9a86e197fb7731f14e3108602c87d4dac55160"
     ));
-    static ref BYTES_VALUE2: H256 = H256::from(hex!(
+    static ref BYTES_VALUE2: B256 = B256::from(hex!(
         "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1"
     ));
-    static ref BYTES_VALUE3: H256 = H256::from(hex!(
+    static ref BYTES_VALUE3: B256 = B256::from(hex!(
         "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
     ));
     static ref SCALAR_ENTITY: Entity = {

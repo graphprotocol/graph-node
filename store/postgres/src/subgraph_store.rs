@@ -27,16 +27,16 @@ use graph::{
     internal_error,
     prelude::StoreEvent,
     prelude::{
-        anyhow, lazy_static, o, web3::types::Address, ApiVersion, BlockNumber, BlockPtr,
-        ChainStore, DeploymentHash, EntityOperation, Logger, MetricsRegistry, NodeId,
-        PartialBlockPtr, StoreError, SubgraphDeploymentEntity, SubgraphName,
-        SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
+        anyhow, lazy_static, o, ApiVersion, BlockNumber, BlockPtr, ChainStore, DeploymentHash,
+        EntityOperation, Logger, MetricsRegistry, NodeId, PartialBlockPtr, StoreError,
+        SubgraphDeploymentEntity, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        SubgraphVersionSwitchingMode,
     },
     schema::{ApiSchema, InputSchema},
     url::Url,
     util::timed_cache::TimedCache,
 };
-use graph::{derive::CheapClone, futures03::future::join_all};
+use graph::{derive::CheapClone, futures03::future::join_all, prelude::alloy::primitives::Address};
 
 use crate::{
     deployment::{OnSync, SubgraphHealth},
@@ -1155,7 +1155,7 @@ impl Inner {
         };
 
         let block_for_poi_query = BlockPtr::new(block_hash.clone(), block_number);
-        let indexer = Some(Address::zero());
+        let indexer = Some(Address::ZERO);
         let poi = store
             .get_proof_of_indexing(site, &indexer, block_for_poi_query)
             .await?;
