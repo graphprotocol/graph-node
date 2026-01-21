@@ -2127,6 +2127,12 @@ impl ChainHeadPtrCache {
         let ttl = self.current_ttl();
         *self.entry.write() = Some((new_value, now + ttl));
     }
+
+    /// Clear the cached value. Used in tests when chain is reset.
+    #[cfg(debug_assertions)]
+    fn clear(&self) {
+        *self.entry.write() = None;
+    }
 }
 
 pub struct ChainStore {
@@ -2360,6 +2366,7 @@ impl ChainStore {
 
         self.storage.remove_chain(&mut conn, &self.chain).await;
         self.recent_blocks_cache.clear();
+        self.chain_head_ptr_cache.clear();
 
         for block in chain {
             self.upsert_block(block).await.expect("can upsert block");
