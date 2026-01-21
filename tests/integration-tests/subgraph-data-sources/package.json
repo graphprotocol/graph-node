@@ -7,7 +7,6 @@
     "deploy:test": "graph deploy test/subgraph-data-sources --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "0.93.4-alpha-20250105163501-f401d0c57c4ba1f1af95a928d447efd63a56ecdc",
     "@graphprotocol/graph-ts": "0.36.0-alpha-20241129215038-b75cda9"
   }
 }

@@ -189,7 +189,9 @@ jobs:
         run: just build --test integration_tests
 
       - name: Run integration tests
-        run: just test-integration
+        run: |
+          export PATH="${{ github.workspace }}/node_modules/.bin:$PATH"
+          just test-integration
 
       - name: Cat graph-node.log
         if: always()
