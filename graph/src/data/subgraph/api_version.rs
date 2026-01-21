@@ -92,15 +92,26 @@ impl UnifiedMappingApiVersion {
     pub(super) fn try_from_versions(
         versions: impl Iterator<Item = Version>,
     ) -> Result<Self, DifferentMappingApiVersions> {
-        let unique_versions: BTreeSet<Version> = versions.collect();
+        use super::manifest_validation::validate_api_versions;
+        use super::SubgraphManifestValidationError;
 
+        let versions_vec: Vec<Version> = versions.collect();
+
+        // Use shared validation logic
+        if let Err(SubgraphManifestValidationError::DifferentApiVersions(e)) =
+            validate_api_versions(&versions_vec)
+        {
+            return Err(e);
+        }
+
+        // Extract the unified version
+        let unique_versions: BTreeSet<Version> = versions_vec.into_iter().collect();
         let all_below_referential_version = unique_versions.iter().all(|v| *v < API_VERSION_0_0_5);
-        let all_the_same = unique_versions.len() == 1;
 
-        let unified_version: Option<Version> = match (all_below_referential_version, all_the_same) {
-            (false, false) => return Err(DifferentMappingApiVersions(unique_versions)),
-            (false, true) => Some(unique_versions.iter().next().unwrap().clone()),
-            (true, _) => None,
+        let unified_version: Option<Version> = if all_below_referential_version {
+            None
+        } else {
+            unique_versions.into_iter().next()
         };
 
         Ok(UnifiedMappingApiVersion(unified_version))
