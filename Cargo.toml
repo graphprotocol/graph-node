@@ -38,7 +38,7 @@ license = "MIT OR Apache-2.0"
 alloy = { version = "1.0.33", features = ["dyn-abi", "json-abi", "full", "arbitrary", "json-rpc", "serde"] }
 alloy-rpc-types = "1.0.33"
 anyhow = "1.0"
-async-graphql = { version = "7.1.0", features = ["chrono"] }
+async-graphql = { version = "7.2.1", features = ["chrono"] }
 async-graphql-axum = "7.0.17"
 async-trait = "0.1.74"
 axum = "0.8.8"
