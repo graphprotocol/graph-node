@@ -90,11 +90,14 @@ impl AdapterConfiguration {
     }
 }
 
+use graph_chain_ethereum::health::{health_check_task, Health};
+
 pub struct Networks {
     pub adapters: Vec<AdapterConfiguration>,
     pub rpc_provider_manager: ProviderManager<EthereumNetworkAdapter>,
     pub firehose_provider_manager: ProviderManager<Arc<FirehoseEndpoint>>,
     pub weighted_rpc_steering: bool,
+    pub health_checkers: Vec<Arc<Health>>,
 }
 
 impl Networks {
@@ -113,6 +116,7 @@ impl Networks {
                 ProviderCheckStrategy::MarkAsValid,
             ),
             weighted_rpc_steering: false,
+            health_checkers: vec![],
         }
     }
 
@@ -256,6 +260,15 @@ impl Networks {
             },
         );
 
+        let health_checkers: Vec<_> = eth_adapters
+            .clone()
+            .flat_map(|(_, adapters)| adapters)
+            .map(|adapter| Arc::new(Health::new(adapter.adapter.clone())))
+            .collect();
+        if weighted_rpc_steering {
+            tokio::spawn(health_check_task(health_checkers.clone()));
+        }
+
         let firehose_adapters = adapters
             .iter()
             .flat_map(|a| a.as_firehose())
@@ -282,6 +295,7 @@ impl Networks {
                 ProviderCheckStrategy::RequireAll(provider_checks),
             ),
             weighted_rpc_steering,
+            health_checkers,
         };
 
         s
@@ -380,6 +394,7 @@ impl Networks {
             eth_adapters,
             None,
             self.weighted_rpc_steering,
+            self.health_checkers.clone(),
         )
     }
 }
