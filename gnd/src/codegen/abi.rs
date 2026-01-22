@@ -9,8 +9,123 @@ use std::collections::HashMap;
 
 use ethabi::{Contract, Event, EventParam, Function, Param, ParamType, StateMutability};
 use regex::Regex;
+use serde_json::Value as JsonValue;
 
 use super::typescript::{self as ts, Class, ClassMember, Method, ModuleImports, Param as TsParam};
+
+/// Represents component name information extracted from ABI JSON.
+/// This is needed because ethabi's `ParamType::Tuple` loses the component names.
+#[derive(Debug, Clone, Default)]
+struct ComponentNames {
+    /// Names of the components at this level (in order)
+    names: Vec<String>,
+    /// Nested component names for each component that is itself a tuple
+    /// Key is the index of the component in `names`
+    nested: HashMap<usize, ComponentNames>,
+}
+
+impl ComponentNames {
+    /// Get the name for a component at the given index.
+    /// Falls back to "value{index}" if no name is available.
+    fn get_name(&self, index: usize) -> String {
+        self.names
+            .get(index)
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .unwrap_or_else(|| format!("value{}", index))
+    }
+
+    /// Get nested component names for a component at the given index.
+    fn get_nested(&self, index: usize) -> Option<&ComponentNames> {
+        self.nested.get(&index)
+    }
+}
+
+/// Key for looking up component names: (member_type, member_name, param_kind, param_index)
+/// - member_type: "event", "function", or "call" (for callFunctions)
+/// - member_name: event or function name
+/// - param_kind: "inputs" or "outputs"
+/// - param_index: parameter index
+type ComponentLookupKey = (String, String, String, usize);
+
+/// Parse component names from ABI JSON for a single parameter.
+fn parse_component_names(param_json: &JsonValue) -> ComponentNames {
+    let mut result = ComponentNames::default();
+
+    if let Some(components) = param_json.get("components").and_then(|c| c.as_array()) {
+        for (idx, component) in components.iter().enumerate() {
+            // Get the name, defaulting to empty string if not present
+            let name = component
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string();
+            result.names.push(name);
+
+            // Recursively parse nested components
+            if component.get("components").is_some() {
+                let nested = parse_component_names(component);
+                if !nested.names.is_empty() {
+                    result.nested.insert(idx, nested);
+                }
+            }
+        }
+    }
+
+    result
+}
+
+/// Parse all component names from the raw ABI JSON.
+fn parse_abi_component_names(abi_json: &str) -> HashMap<ComponentLookupKey, ComponentNames> {
+    let mut result = HashMap::new();
+
+    let Ok(abi): Result<Vec<JsonValue>, _> = serde_json::from_str(abi_json) else {
+        return result;
+    };
+
+    for member in abi {
+        let member_type = member.get("type").and_then(|t| t.as_str()).unwrap_or("");
+        let member_name = member
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        // Process inputs
+        if let Some(inputs) = member.get("inputs").and_then(|i| i.as_array()) {
+            for (idx, input) in inputs.iter().enumerate() {
+                if input.get("components").is_some() {
+                    let component_names = parse_component_names(input);
+                    let key = (
+                        member_type.to_string(),
+                        member_name.clone(),
+                        "inputs".to_string(),
+                        idx,
+                    );
+                    result.insert(key, component_names);
+                }
+            }
+        }
+
+        // Process outputs (for functions)
+        if let Some(outputs) = member.get("outputs").and_then(|o| o.as_array()) {
+            for (idx, output) in outputs.iter().enumerate() {
+                if output.get("components").is_some() {
+                    let component_names = parse_component_names(output);
+                    let key = (
+                        member_type.to_string(),
+                        member_name.clone(),
+                        "outputs".to_string(),
+                        idx,
+                    );
+                    result.insert(key, component_names);
+                }
+            }
+        }
+    }
+
+    result
+}
 
 /// Reserved words in AssemblyScript that need to be escaped.
 const RESERVED_WORDS: &[&str] = &[
@@ -81,16 +196,41 @@ const GRAPH_TS_MODULE: &str = "@graphprotocol/graph-ts";
 pub struct AbiCodeGenerator {
     contract: Contract,
     name: String,
+    /// Component names extracted from raw ABI JSON, indexed by lookup key.
+    component_names: HashMap<ComponentLookupKey, ComponentNames>,
 }
 
 impl AbiCodeGenerator {
     /// Create a new ABI code generator.
+    ///
+    /// The `abi_json` parameter is the raw ABI JSON string. It's used to extract
+    /// component names that ethabi loses when parsing tuples.
+    pub fn new_with_json(contract: Contract, name: impl Into<String>, abi_json: &str) -> Self {
+        let mut name = name.into();
+        // Sanitize name to be a valid class name
+        let re = Regex::new(r#"[!@#$%^&*()+\-=\[\]{};':\"|,.<>/?]+"#).unwrap();
+        name = re.replace_all(&name, "_").to_string();
+        let component_names = parse_abi_component_names(abi_json);
+        Self {
+            contract,
+            name,
+            component_names,
+        }
+    }
+
+    /// Create a new ABI code generator without component name information.
+    /// This is kept for backwards compatibility with tests.
+    /// For production use, prefer `new_with_json` to get proper struct field names.
     pub fn new(contract: Contract, name: impl Into<String>) -> Self {
         let mut name = name.into();
         // Sanitize name to be a valid class name
         let re = Regex::new(r#"[!@#$%^&*()+\-=\[\]{};':\"|,.<>/?]+"#).unwrap();
         name = re.replace_all(&name, "_").to_string();
-        Self { contract, name }
+        Self {
+            contract,
+            name,
+            component_names: HashMap::new(),
+        }
     }
 
     /// Generate module imports for the ABI file.
@@ -141,12 +281,21 @@ impl AbiCodeGenerator {
             // Generate getters for event params
             let inputs = self.disambiguate_params(&event.inputs, "param");
             for (index, (param, param_name)) in inputs.iter().enumerate() {
+                // Look up component names for this event parameter
+                let lookup_key = (
+                    "event".to_string(),
+                    event.name.clone(),
+                    "inputs".to_string(),
+                    index,
+                );
+                let component_names = self.component_names.get(&lookup_key);
                 let param_object = self.generate_event_param(
                     param,
                     param_name,
                     index,
                     &event_class_name,
                     &mut tuple_classes,
+                    component_names,
                 );
                 params_class.add_method(param_object);
             }
@@ -228,6 +377,14 @@ impl AbiCodeGenerator {
 
             let inputs = self.disambiguate_params_from_func_inputs(&func.inputs, "value");
             for (index, (param, param_name)) in inputs.iter().enumerate() {
+                // Look up component names for this function input
+                let lookup_key = (
+                    "function".to_string(),
+                    func.name.clone(),
+                    "inputs".to_string(),
+                    index,
+                );
+                let component_names = self.component_names.get(&lookup_key);
                 let getter = self.generate_input_output_getter(
                     param,
                     param_name,
@@ -236,6 +393,7 @@ impl AbiCodeGenerator {
                     "call",
                     "inputValues",
                     &mut tuple_classes,
+                    component_names,
                 );
                 inputs_class.add_method(getter);
             }
@@ -253,6 +411,14 @@ impl AbiCodeGenerator {
 
             let outputs = self.disambiguate_params_from_func_inputs(&func.outputs, "value");
             for (index, (param, param_name)) in outputs.iter().enumerate() {
+                // Look up component names for this function output
+                let lookup_key = (
+                    "function".to_string(),
+                    func.name.clone(),
+                    "outputs".to_string(),
+                    index,
+                );
+                let component_names = self.component_names.get(&lookup_key);
                 let getter = self.generate_input_output_getter(
                     param,
                     param_name,
@@ -261,6 +427,7 @@ impl AbiCodeGenerator {
                     "call",
                     "outputValues",
                     &mut tuple_classes,
+                    component_names,
                 );
                 outputs_class.add_method(getter);
             }
@@ -299,6 +466,7 @@ impl AbiCodeGenerator {
         index: usize,
         event_class_name: &str,
         tuple_classes: &mut Vec<Class>,
+        component_names: Option<&ComponentNames>,
     ) -> Method {
         // Handle indexed params - strings, bytes and arrays are hashed to bytes32
         let value_type = if param.indexed {
@@ -316,6 +484,7 @@ impl AbiCodeGenerator {
                 "event",
                 "parameters",
                 tuple_classes,
+                component_names,
             )
         } else {
             let asc_type = self.asc_type_for_ethereum(&value_type);
@@ -341,6 +510,7 @@ impl AbiCodeGenerator {
         parent_type: &str,
         parent_field: &str,
         tuple_classes: &mut Vec<Class>,
+        component_names: Option<&ComponentNames>,
     ) -> Method {
         if self.contains_tuple_type(&param.kind) {
             self.generate_tuple_getter(
@@ -351,6 +521,7 @@ impl AbiCodeGenerator {
                 parent_type,
                 parent_field,
                 tuple_classes,
+                component_names,
             )
         } else {
             let asc_type = self.asc_type_for_ethereum(&param.kind);
@@ -376,6 +547,7 @@ impl AbiCodeGenerator {
         parent_type: &str,
         parent_field: &str,
         tuple_classes: &mut Vec<Class>,
+        component_names: Option<&ComponentNames>,
     ) -> Method {
         let cap_name = capitalize(name);
         let tuple_identifier = format!("{}{}", parent_class, cap_name);
@@ -414,14 +586,17 @@ impl AbiCodeGenerator {
                 .exported()
                 .extends("ethereum.Tuple");
 
-            let component_params = self.disambiguate_tuple_components(components);
+            let component_params = self.disambiguate_tuple_components(components, component_names);
             for (idx, (component, component_name)) in component_params.iter().enumerate() {
+                // Get nested component names for recursive tuple types
+                let nested_names = component_names.and_then(|cn| cn.get_nested(idx));
                 let component_getter = self.generate_tuple_component_getter(
                     component,
                     component_name,
                     idx,
                     &tuple_identifier,
                     tuple_classes,
+                    nested_names,
                 );
                 tuple_class.add_method(component_getter);
             }
@@ -445,6 +620,7 @@ impl AbiCodeGenerator {
         index: usize,
         parent_class: &str,
         tuple_classes: &mut Vec<Class>,
+        component_names: Option<&ComponentNames>,
     ) -> Method {
         if self.contains_tuple_type(param_type) {
             self.generate_tuple_getter(
@@ -455,6 +631,7 @@ impl AbiCodeGenerator {
                 "tuple",
                 "",
                 tuple_classes,
+                component_names,
             )
         } else {
             let asc_type = self.asc_type_for_ethereum(param_type);
@@ -491,17 +668,27 @@ impl AbiCodeGenerator {
                 &outputs,
                 &tuple_result_parent_type,
                 &mut result_classes,
+                &func.name,
             );
             result_classes.push(result_class.clone());
             (result_class.name.clone(), false)
         } else if !outputs.is_empty() {
             let (param, _) = &outputs[0];
             if self.contains_tuple_type(&param.kind) {
+                // Look up component names for this function output
+                let lookup_key = (
+                    "function".to_string(),
+                    func.name.clone(),
+                    "outputs".to_string(),
+                    0,
+                );
+                let component_names = self.component_names.get(&lookup_key);
                 let tuple_name = self.generate_tuple_return_type(
                     &param.kind,
                     0,
                     &tuple_result_parent_type,
                     &mut result_classes,
+                    component_names,
                 );
                 (tuple_name, true)
             } else {
@@ -517,11 +704,20 @@ impl AbiCodeGenerator {
         // Generate tuple types for inputs
         for (index, (param, _)) in inputs.iter().enumerate() {
             if self.contains_tuple_type(&param.kind) {
+                // Look up component names for this function input
+                let lookup_key = (
+                    "function".to_string(),
+                    func.name.clone(),
+                    "inputs".to_string(),
+                    index,
+                );
+                let component_names = self.component_names.get(&lookup_key);
                 self.generate_tuple_class_for_input(
                     &param.kind,
                     index,
                     &tuple_input_parent_type,
                     &mut result_classes,
+                    component_names,
                 );
             }
         }
@@ -682,6 +878,7 @@ impl AbiCodeGenerator {
         outputs: &[(&Param, String)],
         tuple_result_parent_type: &str,
         result_classes: &mut Vec<Class>,
+        func_name: &str,
     ) -> Class {
         let class_name = tuple_result_parent_type.to_string();
         let mut klass = ts::klass(&class_name).exported();
@@ -773,11 +970,20 @@ impl AbiCodeGenerator {
         // Generate tuple classes for outputs
         for (index, (param, _)) in outputs.iter().enumerate() {
             if self.contains_tuple_type(&param.kind) {
+                // Look up component names for this function output
+                let lookup_key = (
+                    "function".to_string(),
+                    func_name.to_string(),
+                    "outputs".to_string(),
+                    index,
+                );
+                let component_names = self.component_names.get(&lookup_key);
                 self.generate_tuple_class_for_input(
                     &param.kind,
                     index,
                     tuple_result_parent_type,
                     result_classes,
+                    component_names,
                 );
             }
         }
@@ -792,8 +998,15 @@ impl AbiCodeGenerator {
         index: usize,
         parent_type: &str,
         result_classes: &mut Vec<Class>,
+        component_names: Option<&ComponentNames>,
     ) -> String {
-        self.generate_tuple_class_for_input(param_type, index, parent_type, result_classes);
+        self.generate_tuple_class_for_input(
+            param_type,
+            index,
+            parent_type,
+            result_classes,
+            component_names,
+        );
         let tuple_name = self.tuple_type_name(param_type, index, parent_type);
         if self.is_tuple_array_type(param_type) {
             format!("Array<{}>", tuple_name)
@@ -811,6 +1024,7 @@ impl AbiCodeGenerator {
         index: usize,
         parent_type: &str,
         result_classes: &mut Vec<Class>,
+        component_names: Option<&ComponentNames>,
     ) {
         let tuple_class_name = self.tuple_type_name(param_type, index, parent_type);
         let mut tuple_class = ts::klass(&tuple_class_name)
@@ -818,8 +1032,10 @@ impl AbiCodeGenerator {
             .extends("ethereum.Tuple");
 
         if let Some(components) = self.get_tuple_components(param_type) {
-            let component_params = self.disambiguate_tuple_components(components);
+            let component_params = self.disambiguate_tuple_components(components, component_names);
             for (idx, (component, component_name)) in component_params.iter().enumerate() {
+                // Get nested component names for recursive tuple types
+                let nested_names = component_names.and_then(|cn| cn.get_nested(idx));
                 let getter = if self.contains_tuple_type(component) {
                     // Recursively generate tuple classes
                     let cap = capitalize(&format!("{}", index));
@@ -829,6 +1045,7 @@ impl AbiCodeGenerator {
                         idx,
                         &nested_parent,
                         result_classes,
+                        nested_names,
                     );
                     let nested_tuple_name = self.tuple_type_name(component, idx, &nested_parent);
                     let access = format!("this[{}]", idx);
@@ -1047,14 +1264,22 @@ impl AbiCodeGenerator {
     }
 
     /// Disambiguate tuple components.
+    /// If `component_names` is provided, uses the actual names from the ABI JSON.
+    /// Otherwise falls back to "value{index}" naming.
     fn disambiguate_tuple_components<'a>(
         &self,
         components: &'a [ParamType],
+        component_names: Option<&ComponentNames>,
     ) -> Vec<(&'a ParamType, String)> {
         components
             .iter()
             .enumerate()
-            .map(|(index, component)| (component, format!("value{}", index)))
+            .map(|(index, component)| {
+                let name = component_names
+                    .map(|cn| cn.get_name(index))
+                    .unwrap_or_else(|| format!("value{}", index));
+                (component, name)
+            })
             .collect()
     }
 
