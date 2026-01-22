@@ -11,7 +11,7 @@ This spec describes the expansion of `gnd` (Graph Node Dev) to include functiona
 
 ## Non-Goals
 
-- Multi-protocol support (NEAR, Cosmos, Arweave, Substreams, Subgraph) - future work
+- Multi-protocol support (NEAR, Cosmos, Arweave, Substreams) - future work
 - Rollout/migration plan from TS CLI
 - Performance optimization beyond reasonable behavior
 
@@ -19,35 +19,33 @@ This spec describes the expansion of `gnd` (Graph Node Dev) to include functiona
 
 ### Command Matrix
 
-| Command | TS CLI | gnd | Notes |
-|---------|--------|-----|-------|
-| `codegen` | Yes | Yes | Generate AssemblyScript types |
-| `build` | Yes | Yes | Compile to WASM |
-| `deploy` | Yes | Yes | Deploy to Graph Node |
-| `init` | Yes | Yes | Scaffold new subgraph |
-| `add` | Yes | Yes | Add datasource to existing subgraph |
-| `remove` | Yes | Yes | Unregister subgraph name |
-| `create` | Yes | Yes | Register subgraph name |
-| `auth` | Yes | Yes | Set deploy key |
-| `publish` | Yes | Yes | Publish to decentralized network |
-| `test` | Yes | Yes | Run Matchstick tests |
-| `clean` | Yes | Yes | Remove build artifacts |
-| `dev` | No | Yes | Run graph-node in dev mode (existing gnd) |
-| `local` | Yes | No | Skipped - use existing test infrastructure |
-| `node` | Yes | No | Skipped - use graphman for node management |
+| Command   | TS CLI | gnd | Notes                                      |
+| --------- | ------ | --- | ------------------------------------------ |
+| `codegen` | Yes    | Yes | Generate AssemblyScript types              |
+| `build`   | Yes    | Yes | Compile to WASM                            |
+| `deploy`  | Yes    | Yes | Deploy to Graph Node                       |
+| `init`    | Yes    | Yes | Scaffold new subgraph                      |
+| `add`     | Yes    | Yes | Add datasource to existing subgraph        |
+| `remove`  | Yes    | Yes | Unregister subgraph name                   |
+| `create`  | Yes    | Yes | Register subgraph name                     |
+| `auth`    | Yes    | Yes | Set deploy key                             |
+| `publish` | Yes    | Yes | Publish to decentralized network           |
+| `test`    | Yes    | Yes | Run Matchstick tests                       |
+| `clean`   | Yes    | Yes | Remove build artifacts                     |
+| `dev`     | No     | Yes | Run graph-node in dev mode (existing gnd)  |
+| `local`   | Yes    | No  | Skipped - use existing test infrastructure |
+| `node`    | Yes    | No  | Skipped - use graphman for node management |
 
 ### Known Differences from TS CLI
 
 **Commands:**
+
 1. **`local` command**: Not implemented. Users should use existing integration test infrastructure.
 2. **`node` subcommand**: Not implemented. Use `graphman` for node management operations.
 3. **`--uncrashable` flag on codegen**: Not implemented. Float Capital's uncrashable helper generation is a niche third-party feature.
 4. **Debug output**: Uses `RUST_LOG` environment variable instead of `DEBUG=graph-cli:*`.
 
-**Code generation** (intentional, documented in verification tests):
-5. **Int8 import**: gnd always imports `Int8` for simplicity, even when not used.
-6. **Trailing commas**: gnd uses trailing commas in multi-line constructs.
-7. **2D array accessors**: gnd uses correct `toStringMatrix()` while graph-cli has a bug using `toStringArray()` for 2D GraphQL array types.
+**Code generation** (intentional, documented in verification tests): 5. **Int8 import**: gnd always imports `Int8` for simplicity, even when not used. 6. **Trailing commas**: gnd uses trailing commas in multi-line constructs. 7. **2D array accessors**: gnd uses correct `toStringMatrix()` while graph-cli has a bug using `toStringArray()` for 2D GraphQL array types. 8. **Tuple/struct component names**: gnd correctly extracts component names from raw ABI JSON, while graph-cli's ethabi parser loses nested component names for some tuple types.
 
 ## CLI Interface
 
@@ -71,6 +69,7 @@ Shows both gnd version and the graph-cli version it emulates.
 ### Flag Compatibility
 
 All flags must match the TS CLI exactly:
+
 - Same long names (`--output-dir`)
 - Same short names (`-o`)
 - Same defaults
@@ -81,6 +80,7 @@ Reference: Each command section below lists flags with references to TS CLI sour
 ### Output Format
 
 Output must match TS CLI format exactly, including:
+
 - Spinner/progress indicators
 - Success checkmarks (`✔`)
 - Step descriptions
@@ -92,6 +92,7 @@ Reference: `/packages/cli/src/command-helpers/spinner.ts`
 ### Exit Codes
 
 Exit codes must match TS CLI behavior:
+
 - `0`: Success
 - `1`: Error (validation, compilation, deployment failure, etc.)
 
@@ -99,10 +100,10 @@ Exit codes must match TS CLI behavior:
 
 Use same paths and formats as TS CLI:
 
-| File | Path | Purpose |
-|------|------|---------|
-| Auth tokens | `~/.graphprotocol/` | Deploy keys and access tokens |
-| Network config | `networks.json` (project root) | Network-specific addresses |
+| File           | Path                           | Purpose                       |
+| -------------- | ------------------------------ | ----------------------------- |
+| Auth tokens    | `~/.graphprotocol/`            | Deploy keys and access tokens |
+| Network config | `networks.json` (project root) | Network-specific addresses    |
 
 Reference: `/packages/cli/src/command-helpers/auth.ts`
 
@@ -113,11 +114,13 @@ Reference: `/packages/cli/src/command-helpers/auth.ts`
 Generates AssemblyScript types from subgraph manifest.
 
 **Usage:**
+
 ```
 gnd codegen [subgraph-manifest]
 ```
 
 **Arguments:**
+
 - `subgraph-manifest`: Path to manifest file (default: `subgraph.yaml`)
 
 **Flags:**
@@ -130,6 +133,7 @@ gnd codegen [subgraph-manifest]
 | `--help` | `-h` | | Show help |
 
 **Behavior:**
+
 1. Load and validate manifest
 2. Apply migrations (unless `--skip-migrations`)
 3. Assert minimum API version (0.0.5) and graph-ts version (0.25.0)
@@ -140,17 +144,20 @@ gnd codegen [subgraph-manifest]
 8. Write to output directory
 
 **Output Structure:**
+
 ```
 generated/
 ├── schema.ts                           # Entity classes
 ├── <DataSourceName>/
 │   └── <ContractName>.ts              # ABI bindings
-└── templates/
-    └── <TemplateName>/
-        └── <ContractName>.ts          # Template ABI bindings
+├── templates/
+│   └── <TemplateName>/
+│       └── <ContractName>.ts          # Template ABI bindings
+└── subgraph-<IPFS_HASH>.ts            # Entity types for subgraph data sources
 ```
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/codegen.ts`
 - Type generator: `/packages/cli/src/type-generator.ts`
 - Schema codegen: `/packages/cli/src/codegen/schema.ts`
@@ -161,11 +168,13 @@ generated/
 Compiles subgraph to WASM.
 
 **Usage:**
+
 ```
 gnd build [subgraph-manifest]
 ```
 
 **Arguments:**
+
 - `subgraph-manifest`: Path to manifest file (default: `subgraph.yaml`)
 
 **Flags:**
@@ -181,15 +190,35 @@ gnd build [subgraph-manifest]
 | `--help` | `-h` | | Show help |
 
 **Behavior:**
+
 1. Run codegen (unless types already exist)
 2. Apply migrations (unless `--skip-migrations`)
 3. Resolve network-specific values from networks.json
 4. Shell out to `asc` (AssemblyScript compiler) for each mapping
 5. Copy ABIs and schema to build directory
-6. Generate build manifest
-7. Optionally upload to IPFS
+6. Copy template ABIs to build/templates/<name>/ directories
+7. Generate build manifest
+8. Optionally upload to IPFS
+
+**Build Output Structure:**
+
+```
+build/
+├── schema.graphql
+├── subgraph.yaml
+├── <DataSourceName>/
+│   ├── <DataSourceName>.wasm
+│   └── <ContractName>.json          # ABI
+└── templates/
+    └── <TemplateName>/
+        ├── <TemplateName>.wasm
+        └── <ContractName>.json      # ABI
+```
+
+**Note:** When multiple data sources or templates share the same mapping.ts file, gnd compiles it once and copies the resulting WASM to all required output locations.
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/build.ts`
 - Compiler: `/packages/cli/src/compiler/index.ts`
 
@@ -198,11 +227,13 @@ gnd build [subgraph-manifest]
 Deploys subgraph to a Graph Node.
 
 **Usage:**
+
 ```
 gnd deploy [subgraph-name] [subgraph-manifest]
 ```
 
 **Arguments:**
+
 - `subgraph-name`: Name to deploy as (e.g., `user/subgraph`)
 - `subgraph-manifest`: Path to manifest file (default: `subgraph.yaml`)
 
@@ -225,17 +256,20 @@ gnd deploy [subgraph-name] [subgraph-manifest]
 | `--help` | `-h` | | Show help |
 
 **Deploy Targets:**
+
 - Local Graph Node (via `--node` and `--ipfs`)
 - Subgraph Studio (`--product subgraph-studio` or `--studio`)
 - Hosted Service (`--product hosted-service`)
 - Decentralized network (via `publish` command)
 
 **Behavior:**
+
 1. Build subgraph (runs build command)
 2. Upload build artifacts to IPFS
 3. Send deployment request to Graph Node via JSON-RPC
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/deploy.ts`
 
 ### `gnd init`
@@ -243,11 +277,13 @@ gnd deploy [subgraph-name] [subgraph-manifest]
 Scaffolds a new subgraph project.
 
 **Usage:**
+
 ```
 gnd init [directory]
 ```
 
 **Arguments:**
+
 - `directory`: Directory to create subgraph in
 
 **Flags:**
@@ -268,6 +304,7 @@ gnd init [directory]
 | `--help` | `-h` | | Show help |
 
 **Behavior:**
+
 1. Prompt for missing information (protocol, network, contract, etc.)
 2. Fetch ABI from Etherscan/Sourcify if `--from-contract` and no `--abi`
 3. Generate scaffold:
@@ -281,11 +318,13 @@ gnd init [directory]
 5. Install dependencies
 
 **External APIs:**
+
 - Etherscan API: Fetch verified contract ABIs
 - Sourcify API: Fetch verified contract ABIs (fallback)
 - Network registry: `@pinax/graph-networks-registry` for chain configuration
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/init.ts`
 - Scaffold: `/packages/cli/src/scaffold/index.ts`
 - Schema generation: `/packages/cli/src/scaffold/schema.ts`
@@ -297,11 +336,13 @@ gnd init [directory]
 Adds a new datasource to an existing subgraph.
 
 **Usage:**
+
 ```
 gnd add <address> [subgraph-manifest]
 ```
 
 **Arguments:**
+
 - `address`: Contract address
 - `subgraph-manifest`: Path to manifest file (default: `subgraph.yaml`)
 
@@ -316,6 +357,7 @@ gnd add <address> [subgraph-manifest]
 | `--help` | `-h` | | Show help |
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/add.ts`
 
 ### `gnd create`
@@ -323,11 +365,13 @@ gnd add <address> [subgraph-manifest]
 Registers a subgraph name with a Graph Node.
 
 **Usage:**
+
 ```
 gnd create <subgraph-name>
 ```
 
 **Arguments:**
+
 - `subgraph-name`: Name to register
 
 **Flags:**
@@ -338,6 +382,7 @@ gnd create <subgraph-name>
 | `--help` | `-h` | | Show help |
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/create.ts`
 
 ### `gnd remove`
@@ -345,11 +390,13 @@ gnd create <subgraph-name>
 Unregisters a subgraph name from a Graph Node.
 
 **Usage:**
+
 ```
 gnd remove <subgraph-name>
 ```
 
 **Arguments:**
+
 - `subgraph-name`: Name to unregister
 
 **Flags:**
@@ -360,6 +407,7 @@ gnd remove <subgraph-name>
 | `--help` | `-h` | | Show help |
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/remove.ts`
 
 ### `gnd auth`
@@ -367,11 +415,13 @@ gnd remove <subgraph-name>
 Sets the deploy key for a Graph Node.
 
 **Usage:**
+
 ```
 gnd auth <deploy-key>
 ```
 
 **Arguments:**
+
 - `deploy-key`: Deploy key to store
 
 **Flags:**
@@ -385,6 +435,7 @@ gnd auth <deploy-key>
 Stores deploy key in `~/.graphprotocol/` for later use by deploy/publish commands.
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/auth.ts`
 - Auth helpers: `/packages/cli/src/command-helpers/auth.ts`
 
@@ -393,11 +444,13 @@ Stores deploy key in `~/.graphprotocol/` for later use by deploy/publish command
 Publishes a subgraph to The Graph's decentralized network.
 
 **Usage:**
+
 ```
 gnd publish [subgraph-manifest]
 ```
 
 **Arguments:**
+
 - `subgraph-manifest`: Path to manifest file (default: `subgraph.yaml`)
 
 **Flags:**
@@ -409,6 +462,7 @@ gnd publish [subgraph-manifest]
 | `--help` | `-h` | | Show help |
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/publish.ts`
 
 ### `gnd test`
@@ -416,11 +470,13 @@ gnd publish [subgraph-manifest]
 Runs Matchstick tests for the subgraph.
 
 **Usage:**
+
 ```
 gnd test [datasource]
 ```
 
 **Arguments:**
+
 - `datasource`: Specific datasource to test (optional)
 
 **Flags:**
@@ -435,11 +491,13 @@ gnd test [datasource]
 | `--help` | `-h` | | Show help |
 
 **Behavior:**
+
 1. Download Matchstick binary (if not present)
 2. Shell out to Matchstick with appropriate flags
 3. Report test results
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/test.ts`
 
 ### `gnd clean`
@@ -447,6 +505,7 @@ gnd test [datasource]
 Removes build artifacts and generated files.
 
 **Usage:**
+
 ```
 gnd clean
 ```
@@ -462,6 +521,7 @@ gnd clean
 Removes `generated/` and `build/` directories (or custom paths if specified).
 
 **TS CLI References:**
+
 - Command: `/packages/cli/src/commands/clean.ts`
 
 ### `gnd dev`
@@ -471,6 +531,7 @@ Runs graph-node in development mode with file watching.
 This is the existing `gnd` functionality, preserved as a subcommand. The implementation can be adjusted to fit the new subcommand structure.
 
 **Usage:**
+
 ```
 gnd dev [options]
 ```
@@ -487,6 +548,7 @@ Code generation is the most complex component and must produce byte-for-byte ide
 #### 1. Entity Classes (`schema.ts`)
 
 Generated from GraphQL schema. Each entity type becomes an AssemblyScript class with:
+
 - Constructor
 - Static `load(id)` method
 - Static `loadInBlock(id)` method
@@ -499,10 +561,30 @@ Generated from GraphQL schema. Each entity type becomes an AssemblyScript class 
 #### 2. ABI Bindings (`<Contract>.ts`)
 
 Generated from contract ABI. Includes:
+
 - Event classes with typed parameters
 - Function call result classes
 - Contract class with typed call methods
 - Proper Ethereum type mappings
+
+**Tuple/Struct Handling:**
+When an event or function has tuple parameters with named components (e.g., a struct), gnd generates proper struct classes with named getters:
+
+```typescript
+class AssetTransfer__ParamsAssetStruct extends ethereum.Tuple {
+  get addr(): Address {
+    return this[0].toAddress();
+  }
+  get amount(): BigInt {
+    return this[1].toBigInt();
+  }
+  get active(): boolean {
+    return this[2].toBoolean();
+  }
+}
+```
+
+gnd parses the raw ABI JSON to extract component names, which ethabi loses during parsing.
 
 **TS CLI Reference:** `/packages/cli/src/protocols/ethereum/codegen/abi.ts`
 
@@ -512,37 +594,59 @@ Generated for template datasources with the same structure as ABI bindings.
 
 **TS CLI Reference:** `/packages/cli/src/codegen/template.ts`
 
+#### 4. Subgraph Data Source Bindings (`subgraph-<IPFS_HASH>.ts`)
+
+Generated for `kind: subgraph` data sources. When a manifest contains a subgraph data source:
+
+```yaml
+dataSources:
+  - kind: subgraph
+    name: SourceSubgraph
+    source:
+      address: "QmRWTEejPDDwALaquFGm6X2GBbbh5osYDXwCRRkoZ6KQhb"
+```
+
+gnd will:
+
+1. Fetch the referenced subgraph's manifest from IPFS
+2. Extract and fetch the schema from the manifest
+3. Generate entity types (without store methods) to `generated/subgraph-{IPFS_HASH}.ts`
+
+The generated types include entity classes with getters for all fields, but no `save()`, `load()`, or `loadInBlock()` methods since these are read-only types from the source subgraph.
+
+**TS CLI Reference:** `/packages/cli/src/type-generator.ts` lines 72-136
+
 ### Type Mappings
 
 #### GraphQL → AssemblyScript
 
-| GraphQL | AssemblyScript |
-|---------|----------------|
-| `ID` | `string` |
-| `String` | `string` |
-| `Int` | `i32` |
-| `BigInt` | `BigInt` |
-| `BigDecimal` | `BigDecimal` |
-| `Bytes` | `Bytes` |
-| `Boolean` | `boolean` |
-| `[T]` | `Array<T>` |
-| Entity reference | `string` (ID) |
+| GraphQL          | AssemblyScript |
+| ---------------- | -------------- |
+| `ID`             | `string`       |
+| `String`         | `string`       |
+| `Int`            | `i32`          |
+| `BigInt`         | `BigInt`       |
+| `BigDecimal`     | `BigDecimal`   |
+| `Bytes`          | `Bytes`        |
+| `Boolean`        | `boolean`      |
+| `[T]`            | `Array<T>`     |
+| Entity reference | `string` (ID)  |
 
 **TS CLI Reference:** `/packages/cli/src/codegen/schema.ts` (look for type mapping functions)
 
 #### Ethereum ABI → AssemblyScript
 
-| Solidity | AssemblyScript |
-|----------|----------------|
-| `address` | `Address` |
-| `bool` | `boolean` |
-| `bytes` | `Bytes` |
-| `bytesN` | `Bytes` |
-| `intN` | `BigInt` |
-| `uintN` | `BigInt` |
-| `string` | `string` |
-| `T[]` | `Array<T>` |
-| tuple | Generated class |
+| Solidity  | AssemblyScript  |
+| --------- | --------------- |
+| `address` | `Address`       |
+| `bool`    | `boolean`       |
+| `bytes`   | `Bytes`         |
+| `bytesN`  | `Bytes`         |
+| `intN`    | `BigInt`        |
+| `uintN`   | `BigInt`        |
+| `string`  | `string`        |
+| `T[]`     | `Array<T>`      |
+| tuple     | Generated class |
 
 **TS CLI Reference:** `/packages/cli/src/protocols/ethereum/codegen/abi.ts`
 
@@ -555,6 +659,7 @@ Different `apiVersion` values in the manifest affect code generation. gnd must s
 ### Formatting
 
 All generated code must be formatted with prettier before writing:
+
 - Shell out to `prettier` with same configuration as TS CLI
 - Parser: `typescript`
 
@@ -563,6 +668,7 @@ All generated code must be formatted with prettier before writing:
 Migrations update older manifest formats to newer versions. gnd must implement all migrations that TS CLI supports.
 
 **Migration Chain:**
+
 ```
 0.0.1 → 0.0.2 → 0.0.3 → 0.0.4 → 0.0.5 → ... → current
 ```
@@ -570,6 +676,7 @@ Migrations update older manifest formats to newer versions. gnd must implement a
 **TS CLI Reference:** `/packages/cli/src/migrations/`
 
 Each migration is a transformation function that:
+
 1. Checks manifest version
 2. Applies necessary changes
 3. Updates version number
@@ -578,32 +685,32 @@ Each migration is a transformation function that:
 
 ### Runtime Dependencies (shell out)
 
-| Tool | Purpose | Required |
-|------|---------|----------|
-| `asc` | AssemblyScript compiler | For `build` |
-| `prettier` | Code formatting | For `codegen` |
-| `matchstick` | Test runner | For `test` |
+| Tool         | Purpose                 | Required      |
+| ------------ | ----------------------- | ------------- |
+| `asc`        | AssemblyScript compiler | For `build`   |
+| `prettier`   | Code formatting         | For `codegen` |
+| `matchstick` | Test runner             | For `test`    |
 
 ### Network APIs
 
-| API | Purpose |
-|-----|---------|
-| Etherscan | Fetch verified contract ABIs |
-| Sourcify | Fetch verified contract ABIs (fallback) |
+| API                              | Purpose                                 |
+| -------------------------------- | --------------------------------------- |
+| Etherscan                        | Fetch verified contract ABIs            |
+| Sourcify                         | Fetch verified contract ABIs (fallback) |
 | `@pinax/graph-networks-registry` | Network configuration (chain IDs, etc.) |
 
 The network registry should be fetched at runtime to get current network configurations.
 
 ### graph-node Reuse
 
-| Component | graph-node Location | Purpose |
-|-----------|---------------------|---------|
-| Manifest parsing | `graph/src/data/subgraph/` | Load subgraph.yaml |
-| Manifest validation | `graph/src/data/subgraph/` | Validate manifest structure |
-| GraphQL schema | `graph/src/schema/input/` | Parse schema.graphql |
-| IPFS client | `graph/src/ipfs/` | Upload to IPFS |
-| Link resolver | `graph/src/components/link_resolver/` | Resolve file references |
-| File watcher | `gnd/src/watcher.rs` | Watch mode |
+| Component           | graph-node Location                   | Purpose                     |
+| ------------------- | ------------------------------------- | --------------------------- |
+| Manifest parsing    | `graph/src/data/subgraph/`            | Load subgraph.yaml          |
+| Manifest validation | `graph/src/data/subgraph/`            | Validate manifest structure |
+| GraphQL schema      | `graph/src/schema/input/`             | Parse schema.graphql        |
+| IPFS client         | `graph/src/ipfs/`                     | Upload to IPFS              |
+| Link resolver       | `graph/src/components/link_resolver/` | Resolve file references     |
+| File watcher        | `gnd/src/watcher.rs`                  | Watch mode                  |
 
 Refactor graph-node components as needed to make them reusable.
 
@@ -667,8 +774,9 @@ gnd/src/
 
 ### Current Status
 
-- **158 unit tests** passing (`cargo test -p gnd --lib`)
+- **166 unit tests** passing (`cargo test -p gnd --lib`)
 - **12 codegen verification tests** passing (`cargo test -p gnd --test codegen_verification`)
+- **7 CLI command tests** passing (`cargo test -p gnd --test cli_commands`)
 - Test fixtures from graph-cli validation tests in `gnd/tests/fixtures/codegen_verification/`
 
 ### Test Strategy
@@ -703,16 +811,19 @@ When edge case bugs are discovered in the TS CLI, gnd should fix them rather tha
 Located in `tests/tests/gnd_cli_tests.rs`, these tests verify gnd works as a drop-in replacement for graph-cli by running the integration test suite with `GRAPH_CLI` environment variable pointing to the gnd binary.
 
 **How it works:**
+
 - The integration test infrastructure uses `CONFIG.graph_cli` for deployment commands
 - Setting `GRAPH_CLI=../target/debug/gnd` makes tests use gnd instead of graph-cli
 - `Subgraph::deploy()` calls `gnd codegen`, `gnd create`, `gnd deploy`
 
 **Commands tested:**
+
 - `gnd codegen` - Generate AssemblyScript types
 - `gnd create` - Register subgraph name with Graph Node
 - `gnd deploy` - Deploy subgraph to Graph Node
 
 **Running:**
+
 ```bash
 just test-gnd-cli
 ```
@@ -722,11 +833,13 @@ just test-gnd-cli
 Located in `gnd/tests/cli_commands.rs`, these tests verify commands that don't require a running Graph Node:
 
 **Commands tested:**
+
 - `gnd init` - Scaffold generation (--from-example, --from-contract, --from-subgraph)
 - `gnd add` - Add datasource to existing subgraph
 - `gnd build` - WASM compilation
 
 **Running:**
+
 ```bash
 just test-gnd-commands
 ```
