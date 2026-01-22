@@ -360,7 +360,8 @@ fn generate_abi_types(name: &str, abi_path: &Path, output_dir: &Path) -> Result<
 
     step(Step::Generate, &format!("Generate types for ABI {}", name));
 
-    let generator = AbiCodeGenerator::new(contract, name);
+    // Use new_with_json to preserve struct field names from the ABI
+    let generator = AbiCodeGenerator::new_with_json(contract, name, &processed_abi);
     let imports = generator.generate_module_imports();
     let classes = generator.generate_types();
 
