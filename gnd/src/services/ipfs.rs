@@ -197,6 +197,38 @@ impl IpfsClient {
             .await
             .with_context(|| format!("Failed to fetch schema {}", schema_cid))
     }
+
+    /// Fetch the GraphQL schema for a subgraph deployment.
+    ///
+    /// This fetches the manifest from IPFS, extracts the schema CID, and then
+    /// fetches the schema content. Used for generating types for subgraph data sources.
+    pub async fn fetch_subgraph_schema(&self, deployment_id: &str) -> Result<String> {
+        // Fetch the manifest
+        let manifest_content = self.fetch_manifest(deployment_id).await?;
+
+        // Parse manifest YAML to extract schema CID
+        let manifest: serde_json::Value = serde_yaml::from_str(&manifest_content)
+            .with_context(|| format!("Failed to parse manifest YAML for {}", deployment_id))?;
+
+        // Extract schema CID from schema.file["/"]
+        let schema_cid = manifest
+            .get("schema")
+            .and_then(|s| s.get("file"))
+            .and_then(|f| f.get("/"))
+            .and_then(|c| c.as_str())
+            .ok_or_else(|| {
+                anyhow!(
+                    "Failed to extract schema CID from manifest {}",
+                    deployment_id
+                )
+            })?;
+
+        // Normalize schema CID - strip /ipfs/ prefix if present
+        let normalized_cid = schema_cid.strip_prefix("/ipfs/").unwrap_or(schema_cid);
+
+        // Fetch and return the schema
+        self.fetch_schema(normalized_cid).await
+    }
 }
 
 /// Response from the IPFS add endpoint.

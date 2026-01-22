@@ -4,6 +4,7 @@
 //! - GraphQL schema (entity classes)
 //! - Contract ABIs (event and call bindings)
 //! - Data source templates
+//! - Subgraph data sources (fetches schema from IPFS)
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,6 +25,7 @@ use crate::codegen::{
 use crate::formatter::try_format_typescript;
 use crate::migrations;
 use crate::output::{step, Step};
+use crate::services::IpfsClient;
 use crate::validation::{format_schema_errors, validate_schema};
 
 /// Default IPFS URL.
@@ -57,18 +59,18 @@ pub struct CodegenOpt {
 }
 
 /// Run the codegen command.
-pub fn run_codegen(opt: CodegenOpt) -> Result<()> {
+pub async fn run_codegen(opt: CodegenOpt) -> Result<()> {
     if opt.watch {
-        watch_and_generate(&opt)
+        watch_and_generate(&opt).await
     } else {
-        generate_types(&opt)
+        generate_types(&opt).await
     }
 }
 
 /// Watch subgraph files and regenerate types on changes.
-fn watch_and_generate(opt: &CodegenOpt) -> Result<()> {
+async fn watch_and_generate(opt: &CodegenOpt) -> Result<()> {
     // Do initial generation
-    if let Err(e) = generate_types(opt) {
+    if let Err(e) = generate_types(opt).await {
         eprintln!("Error during initial generation: {}", e);
     }
 
@@ -127,7 +129,7 @@ fn watch_and_generate(opt: &CodegenOpt) -> Result<()> {
 
                     println!("\nFile change detected: {}\n", changed);
 
-                    if let Err(e) = generate_types(opt) {
+                    if let Err(e) = generate_types(opt).await {
                         eprintln!("Error during regeneration: {}", e);
                     }
                 }
@@ -159,7 +161,7 @@ fn get_files_to_watch(manifest_path: &Path, manifest: &Manifest) -> Vec<PathBuf>
 }
 
 /// Generate all types for the subgraph.
-fn generate_types(opt: &CodegenOpt) -> Result<()> {
+async fn generate_types(opt: &CodegenOpt) -> Result<()> {
     // Apply migrations unless skipped
     if !opt.skip_migrations {
         migrations::apply_migrations(&opt.manifest)?;
@@ -201,6 +203,12 @@ fn generate_types(opt: &CodegenOpt) -> Result<()> {
                 generate_abi_types(&abi.name, &abi_path, &template_output_dir)?;
             }
         }
+    }
+
+    // Generate types for subgraph data sources
+    if !manifest.subgraph_sources.is_empty() {
+        generate_subgraph_source_types(&manifest.subgraph_sources, &opt.output_dir, &opt.ipfs)
+            .await?;
     }
 
     step(Step::Done, "Types generated successfully");
@@ -416,6 +424,69 @@ fn generate_template_types(templates: &[ManifestTemplate], output_dir: &Path) ->
     Ok(())
 }
 
+/// Generate types for subgraph data sources.
+///
+/// For each subgraph data source, this fetches the referenced subgraph's schema
+/// from IPFS and generates entity types (without store methods).
+async fn generate_subgraph_source_types(
+    subgraph_sources: &[SubgraphSource],
+    output_dir: &Path,
+    ipfs_url: &str,
+) -> Result<()> {
+    step(Step::Generate, "Generate types for subgraph data sources");
+
+    let ipfs_client = IpfsClient::new(ipfs_url)?;
+
+    for source in subgraph_sources {
+        step(
+            Step::Load,
+            &format!("Fetch schema for subgraph {}", source.address),
+        );
+
+        // Fetch schema from IPFS using block_in_place to allow blocking in async context
+        let schema_str = ipfs_client.fetch_subgraph_schema(&source.address).await?;
+
+        // Parse the schema
+        let ast: gql::Document<'_, String> = gql::parse_schema(&schema_str)
+            .map_err(|e| anyhow::anyhow!("Failed to parse subgraph schema: {}", e))?;
+
+        step(
+            Step::Generate,
+            &format!("Generate types for subgraph {}", source.address),
+        );
+
+        // Generate entity types WITHOUT store methods (false = no store methods)
+        let generator = match SchemaCodeGenerator::new(&ast) {
+            Ok(gen) => gen,
+            Err(e) => {
+                eprintln!(
+                    "Warning: Failed to create schema generator for subgraph {}: {}",
+                    source.address, e
+                );
+                continue;
+            }
+        };
+
+        let imports = generator.generate_module_imports();
+        // Pass false to generate entities without store methods
+        let entity_classes = generator.generate_types(false);
+
+        let code = generate_file(&imports, &entity_classes);
+        let formatted = try_format_typescript(&code);
+
+        // Output to: <output_dir>/subgraph-<IPFS_HASH>.ts
+        let output_file = output_dir.join(format!("subgraph-{}.ts", source.address));
+        step(
+            Step::Write,
+            &format!("Write types to {}", output_file.display()),
+        );
+        fs::write(&output_file, formatted)
+            .with_context(|| format!("Failed to write subgraph types: {:?}", output_file))?;
+    }
+
+    Ok(())
+}
+
 /// Generate a TypeScript file from imports and classes.
 fn generate_file(imports: &[ModuleImports], classes: &[Class]) -> String {
     let mut output = String::new();
@@ -457,12 +528,22 @@ struct Manifest {
     schema: Option<String>,
     data_sources: Vec<DataSource>,
     templates: Vec<ManifestTemplate>,
+    /// Subgraph data sources (kind: subgraph) with IPFS addresses
+    subgraph_sources: Vec<SubgraphSource>,
 }
 
 #[derive(Debug)]
 struct DataSource {
     name: String,
     abis: Vec<Abi>,
+}
+
+/// A subgraph data source (kind: subgraph).
+/// These reference another subgraph by its IPFS deployment ID.
+#[derive(Debug)]
+struct SubgraphSource {
+    /// The IPFS hash (deployment ID) of the referenced subgraph
+    address: String,
 }
 
 #[derive(Debug)]
@@ -506,14 +587,28 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
         .and_then(|f| f.as_str())
         .map(String::from);
 
-    // Extract data sources
-    let data_sources = value
-        .get("dataSources")
-        .and_then(|ds| ds.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|ds| {
-                    let name = ds.get("name")?.as_str()?.to_string();
+    // Extract data sources and subgraph sources
+    let mut data_sources = Vec::new();
+    let mut subgraph_sources = Vec::new();
+
+    if let Some(ds_array) = value.get("dataSources").and_then(|ds| ds.as_array()) {
+        for ds in ds_array {
+            let kind = ds.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+
+            if kind == "subgraph" {
+                // Subgraph data source - extract the IPFS address
+                if let Some(address) = ds
+                    .get("source")
+                    .and_then(|s| s.get("address"))
+                    .and_then(|a| a.as_str())
+                {
+                    subgraph_sources.push(SubgraphSource {
+                        address: address.to_string(),
+                    });
+                }
+            } else {
+                // Regular data source (ethereum/contract, etc.) - extract ABIs
+                if let Some(name) = ds.get("name").and_then(|n| n.as_str()) {
                     let abis = ds
                         .get("mapping")
                         .and_then(|m| m.get("abis"))
@@ -528,11 +623,14 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
                                 .collect()
                         })
                         .unwrap_or_default();
-                    Some(DataSource { name, abis })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+                    data_sources.push(DataSource {
+                        name: name.to_string(),
+                        abis,
+                    });
+                }
+            }
+        }
+    }
 
     // Extract templates
     let templates = value
@@ -568,6 +666,7 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
         schema,
         data_sources,
         templates,
+        subgraph_sources,
     })
 }
 
@@ -638,8 +737,8 @@ templates:
     /// - generated/schema.ts
     /// - generated/<DataSourceName>/<AbiName>.ts
     /// - generated/templates/<TemplateName>/<AbiName>.ts
-    #[test]
-    fn test_codegen_directory_structure() {
+    #[tokio::test]
+    async fn test_codegen_directory_structure() {
         let temp_dir = TempDir::new().unwrap();
         let project_dir = temp_dir.path();
         let output_dir = project_dir.join("generated");
@@ -701,7 +800,7 @@ type MyEntity @entity(immutable: true) {
             watch: false,
             ipfs: "https://api.thegraph.com/ipfs/api/v0".to_string(),
         };
-        generate_types(&opt).unwrap();
+        generate_types(&opt).await.unwrap();
 
         // Verify directory structure
         assert!(
@@ -747,8 +846,8 @@ type MyEntity @entity(immutable: true) {
     ///
     /// Tests that schema.ts matches the expected TS CLI format for a simple entity.
     /// This helps ensure byte-for-byte compatibility with the graph-cli.
-    #[test]
-    fn test_schema_codegen_snapshot() {
+    #[tokio::test]
+    async fn test_schema_codegen_snapshot() {
         let temp_dir = TempDir::new().unwrap();
         let project_dir = temp_dir.path();
         let output_dir = project_dir.join("generated");
@@ -790,7 +889,7 @@ type MyEntity @entity(immutable: true) {
             watch: false,
             ipfs: "https://api.thegraph.com/ipfs/api/v0".to_string(),
         };
-        generate_types(&opt).unwrap();
+        generate_types(&opt).await.unwrap();
 
         // Read generated schema.ts
         let schema_ts = fs::read_to_string(output_dir.join("schema.ts")).unwrap();
@@ -862,8 +961,8 @@ type MyEntity @entity(immutable: true) {
     /// Snapshot test for ABI codegen output format.
     ///
     /// Tests that ABI types match the expected TS CLI format for events and contract class.
-    #[test]
-    fn test_abi_codegen_snapshot() {
+    #[tokio::test]
+    async fn test_abi_codegen_snapshot() {
         let temp_dir = TempDir::new().unwrap();
         let project_dir = temp_dir.path();
         let output_dir = project_dir.join("generated");
@@ -916,7 +1015,7 @@ dataSources:
             watch: false,
             ipfs: "https://api.thegraph.com/ipfs/api/v0".to_string(),
         };
-        generate_types(&opt).unwrap();
+        generate_types(&opt).await.unwrap();
 
         // Read generated ABI types
         let abi_ts =
