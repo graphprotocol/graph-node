@@ -1051,8 +1051,8 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .map(|x| x.0)
             .map(|value| {
                 // Test alloy deserialization compatibility
-                test_alloy_block_compat(&self.logger, &value);
-                test_alloy_receipts_compat(&self.logger, &value);
+                test_alloy_block_compat(&self.logger, &value, "ancestor_block");
+                test_alloy_receipts_compat(&self.logger, &value, "ancestor_block");
                 json::from_value(value)
             })
             .transpose()?;
@@ -1074,8 +1074,8 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 if let Ok(blocks) = chain_store.blocks(vec![block.hash.clone()]).await {
                     if let Some(value) = blocks.first() {
                         // Test alloy deserialization compatibility
-                        test_alloy_block_compat(&self.logger, value);
-                        test_alloy_receipts_compat(&self.logger, value);
+                        test_alloy_block_compat(&self.logger, value, "parent_ptr");
+                        test_alloy_receipts_compat(&self.logger, value, "parent_ptr");
                         if let Ok(block) = json::from_value::<LightEthereumBlock>(value.clone()) {
                             return Ok(block.parent_ptr());
                         }

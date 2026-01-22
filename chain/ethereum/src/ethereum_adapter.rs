@@ -83,27 +83,62 @@ use crate::{
 /// Tests two types:
 /// 1. AlloyRpcBlock (strict) - uses TxEnvelope, requires chainId for typed transactions
 /// 2. AnyRpcBlock (lenient) - uses AnyTxEnvelope with fallback to Unknown variant
-pub(crate) fn test_alloy_block_compat(logger: &Logger, value: &json::Value) {
-    // Extract block number/hash for logging before attempting deserialization
-    let block_num = value
+///
+/// `source` indicates which code path called this (e.g., "load_blocks", "ancestor_block", "parent_ptr")
+pub(crate) fn test_alloy_block_compat(logger: &Logger, value: &json::Value, source: &str) {
+    // Check if we received wrapper format or inner block directly
+    let is_wrapper = value.get("block").is_some();
+    let format = if is_wrapper { "wrapper" } else { "inner" };
+    let inner_block = value.get("block").unwrap_or(value);
+
+    // Extract block number/hash from the inner block
+    let block_num = inner_block
         .get("number")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
-    let block_hash = value
+    let full_hash = inner_block
         .get("hash")
         .and_then(|v| v.as_str())
-        .map(|s| &s[..std::cmp::min(18, s.len())])
         .unwrap_or("unknown");
 
+    // Debug: if both are unknown, log detailed info to help find in database
+    if block_num == "unknown" && full_hash == "unknown" {
+        let outer_keys: Vec<&str> = value
+            .as_object()
+            .map(|obj| obj.keys().map(|k| k.as_str()).collect())
+            .unwrap_or_default();
+        let inner_keys: Vec<&str> = inner_block
+            .as_object()
+            .map(|obj| obj.keys().map(|k| k.as_str()).collect())
+            .unwrap_or_default();
+        // Truncate JSON preview to avoid huge logs
+        let json_preview = inner_block.to_string();
+        let json_preview = if json_preview.len() > 500 {
+            format!("{}...", &json_preview[..500])
+        } else {
+            json_preview
+        };
+        warn!(
+            logger,
+            "alloy_compat unexpected JSON structure";
+            "source" => source,
+            "format" => format,
+            "outer_keys" => format!("{:?}", outer_keys),
+            "inner_keys" => format!("{:?}", inner_keys),
+            "json_preview" => json_preview
+        );
+        return; // Skip further testing since structure is unexpected
+    }
+
     // Test 1: Strict type (AlloyRpcBlock) - will fail for blocks with typed txns missing chainId
-    let strict_result = serde_json::from_value::<AlloyRpcBlock>(value.clone());
+    let strict_result = serde_json::from_value::<AlloyRpcBlock>(inner_block.clone());
     let strict_status = match &strict_result {
         Ok(block) => format!("OK txs={}", block.transactions.len()),
         Err(e) => format!("FAIL err={}", e),
     };
 
     // Test 2: Lenient type (AnyRpcBlock) - should always work via Unknown fallback
-    let any_result = serde_json::from_value::<AnyRpcBlock>(value.clone());
+    let any_result = serde_json::from_value::<AnyRpcBlock>(inner_block.clone());
     let any_status = match &any_result {
         Ok(block) => format!("OK txs={}", block.transactions.len()),
         Err(e) => format!("FAIL err={}", e),
@@ -113,38 +148,58 @@ pub(crate) fn test_alloy_block_compat(logger: &Logger, value: &json::Value) {
     if strict_result.is_ok() && any_result.is_ok() {
         debug!(
             logger,
-            "alloy_compat block={} hash={} strict={} any={}",
+            "alloy_compat path={} format={} block={} strict={} any={}",
+            source,
+            format,
             block_num,
-            block_hash,
             strict_status,
-            any_status
+            any_status;
+            "hash" => full_hash
         );
     } else {
         warn!(
             logger,
-            "alloy_compat block={} hash={} strict={} any={}",
+            "alloy_compat path={} format={} block={} strict={} any={}",
+            source,
+            format,
             block_num,
-            block_hash,
             strict_status,
-            any_status
+            any_status;
+            "hash" => full_hash
         );
     }
 }
 
 /// Test alloy deserialization compatibility with receipts from block cache.
 /// Extracts transaction_receipts from the block JSON and tests each with alloy.
-pub(crate) fn test_alloy_receipts_compat(logger: &Logger, block_value: &json::Value) {
-    let block_num = block_value
+///
+/// `source` indicates which code path called this (e.g., "load_blocks", "ancestor_block", "parent_ptr")
+pub(crate) fn test_alloy_receipts_compat(logger: &Logger, block_value: &json::Value, source: &str) {
+    // Check if we received wrapper format or inner block directly
+    let is_wrapper = block_value.get("block").is_some();
+    let format = if is_wrapper { "wrapper" } else { "inner" };
+    let inner_block = block_value.get("block").unwrap_or(block_value);
+
+    let block_num = inner_block
         .get("number")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
+    let full_hash = inner_block
+        .get("hash")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
 
+    // Receipts are at the outer level in EthereumBlock format
     let receipts = match block_value.get("transaction_receipts") {
         Some(json::Value::Array(arr)) if !arr.is_empty() => arr,
         _ => {
             debug!(
                 logger,
-                "alloy_compat_receipts block={} no_receipts_to_test", block_num
+                "alloy_compat_receipts path={} format={} block={} no_receipts_to_test",
+                source,
+                format,
+                block_num;
+                "hash" => full_hash
             );
             return;
         }
@@ -169,16 +224,24 @@ pub(crate) fn test_alloy_receipts_compat(logger: &Logger, block_value: &json::Va
     if fail_count > 0 {
         warn!(
             logger,
-            "alloy_compat_receipts block={} ok={} fail={} first_err={}",
+            "alloy_compat_receipts path={} format={} block={} ok={} fail={} first_err={}",
+            source,
+            format,
             block_num,
             ok_count,
             fail_count,
-            first_error.unwrap_or_default()
+            first_error.unwrap_or_default();
+            "hash" => full_hash
         );
     } else {
         debug!(
             logger,
-            "alloy_compat_receipts block={} ok={}", block_num, ok_count
+            "alloy_compat_receipts path={} format={} block={} ok={}",
+            source,
+            format,
+            block_num,
+            ok_count;
+            "hash" => full_hash
         );
     }
 }
@@ -1816,8 +1879,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .into_iter()
             .filter_map(|value| {
                 // Test alloy deserialization compatibility
-                test_alloy_block_compat(&logger, &value);
-                test_alloy_receipts_compat(&logger, &value);
+                test_alloy_block_compat(&logger, &value, "load_blocks");
+                test_alloy_receipts_compat(&logger, &value, "load_blocks");
                 json::from_value(value).ok()
             })
             .map(Arc::new)
