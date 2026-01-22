@@ -3667,10 +3667,8 @@ dependencies = [
  "graph-node",
  "lazy_static",
  "notify",
- "openssl-sys",
  "pgtemp",
  "pq-sys",
- "serde",
  "tokio",
  "tokio-util 0.7.18",
 ]
