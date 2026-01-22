@@ -261,7 +261,8 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
         .with_context(|| format!("Failed to create output directory: {:?}", opt.output_dir))?;
 
     // Compile data source mappings
-    let mut compiled_files: HashSet<String> = HashSet::new();
+    // Track compiled files: source hash -> compiled output path
+    let mut compiled_files: HashMap<String, PathBuf> = HashMap::new();
 
     for ds in &manifest.data_sources {
         if let Some(mapping) = &ds.mapping_file {
@@ -304,11 +305,19 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
         copy_schema(&schema_path, &opt.output_dir)?;
     }
 
-    // Copy ABI files
+    // Copy ABI files for data sources
     for ds in &manifest.data_sources {
         for abi in &ds.abis {
             let abi_path = resolve_path(&opt.manifest, &abi.file);
             copy_abi(&abi.name, &abi_path, &ds.name, &opt.output_dir)?;
+        }
+    }
+
+    // Copy ABI files for templates
+    for template in &manifest.templates {
+        for abi in &template.abis {
+            let abi_path = resolve_path(&opt.manifest, &abi.file);
+            copy_template_abi(&abi.name, &abi_path, &template.name, &opt.output_dir)?;
         }
     }
 
@@ -369,7 +378,7 @@ async fn upload_to_ipfs(ipfs_url: &str, output_dir: &Path, manifest: &Manifest) 
         step(Step::Write, &format!("  {} => {}", schema_name, hash));
     }
 
-    // Upload ABI files
+    // Upload ABI files for data sources
     for ds in &manifest.data_sources {
         for abi in &ds.abis {
             let abi_filename = format!("{}.json", abi.name);
@@ -378,6 +387,24 @@ async fn upload_to_ipfs(ipfs_url: &str, output_dir: &Path, manifest: &Manifest) 
                 let content = fs::read(&abi_file)
                     .with_context(|| format!("Failed to read ABI file: {}", abi_file.display()))?;
                 let rel_path = format!("{}/{}", ds.name, abi_filename);
+                let hash = upload_file_to_ipfs(&client, &rel_path, content, &mut uploaded).await?;
+                step(Step::Write, &format!("  {} => {}", rel_path, hash));
+            }
+        }
+    }
+
+    // Upload ABI files for templates
+    for template in &manifest.templates {
+        for abi in &template.abis {
+            let abi_filename = format!("{}.json", abi.name);
+            let abi_file = output_dir
+                .join("templates")
+                .join(&template.name)
+                .join(&abi_filename);
+            if abi_file.exists() {
+                let content = fs::read(&abi_file)
+                    .with_context(|| format!("Failed to read ABI file: {}", abi_file.display()))?;
+                let rel_path = format!("templates/{}/{}", template.name, abi_filename);
                 let hash = upload_file_to_ipfs(&client, &rel_path, content, &mut uploaded).await?;
                 step(Step::Write, &format!("  {} => {}", rel_path, hash));
             }
@@ -576,6 +603,23 @@ fn update_template_ipfs_paths(
                 *file = create_ipfs_link(hash);
             }
         }
+
+        // Update ABIs
+        if let Some(abis) = mapping.get_mut("abis") {
+            if let Some(arr) = abis.as_sequence_mut() {
+                for (j, abi_value) in arr.iter_mut().enumerate() {
+                    if j < template.abis.len() {
+                        let abi = &template.abis[j];
+                        if let Some(file) = abi_value.get_mut("file") {
+                            let abi_path = format!("templates/{}/{}.json", template.name, abi.name);
+                            if let Some(hash) = uploaded.path_to_ipfs.get(&abi_path) {
+                                *file = create_ipfs_link(hash);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -589,21 +633,10 @@ fn compile_data_source_mapping(
     libs: &str,
     global_file: &Path,
     output_format: &str,
-    compiled_files: &mut HashSet<String>,
+    compiled_files: &mut HashMap<String, PathBuf>,
     skip_version_check: bool,
 ) -> Result<()> {
     let cache_key = file_hash(mapping_path)?;
-
-    // Check if already compiled
-    if compiled_files.contains(&cache_key) {
-        step(
-            Step::Skip,
-            &format!("Compile data source: {} (already compiled)", ds_name),
-        );
-        return Ok(());
-    }
-
-    step(Step::Generate, &format!("Compile data source: {}", ds_name));
 
     let output_subdir = output_dir.join(ds_name);
     fs::create_dir_all(&output_subdir)?;
@@ -615,18 +648,36 @@ fn compile_data_source_mapping(
     };
     let output_file = output_subdir.join(format!("{}.{}", ds_name, extension));
 
+    // Check if already compiled - copy existing WASM file if so
+    if let Some(existing_wasm) = compiled_files.get(&cache_key) {
+        step(
+            Step::Skip,
+            &format!("Compile data source: {} (already compiled)", ds_name),
+        );
+        fs::copy(existing_wasm, &output_file).with_context(|| {
+            format!(
+                "Failed to copy WASM from {} to {}",
+                existing_wasm.display(),
+                output_file.display()
+            )
+        })?;
+        return Ok(());
+    }
+
+    step(Step::Generate, &format!("Compile data source: {}", ds_name));
+
     let options = AscCompileOptions {
         input_file: mapping_path.to_path_buf(),
         base_dir: source_dir.to_path_buf(),
         libs: libs.to_string(),
         global_file: global_file.to_path_buf(),
-        output_file,
+        output_file: output_file.clone(),
         output_format: output_format.to_string(),
         skip_version_check,
     };
 
     compile_mapping(&options)?;
-    compiled_files.insert(cache_key);
+    compiled_files.insert(cache_key, output_file);
 
     Ok(())
 }
@@ -641,27 +692,10 @@ fn compile_template_mapping(
     libs: &str,
     global_file: &Path,
     output_format: &str,
-    compiled_files: &mut HashSet<String>,
+    compiled_files: &mut HashMap<String, PathBuf>,
     skip_version_check: bool,
 ) -> Result<()> {
     let cache_key = file_hash(mapping_path)?;
-
-    // Check if already compiled
-    if compiled_files.contains(&cache_key) {
-        step(
-            Step::Skip,
-            &format!(
-                "Compile data source template: {} (already compiled)",
-                template_name
-            ),
-        );
-        return Ok(());
-    }
-
-    step(
-        Step::Generate,
-        &format!("Compile data source template: {}", template_name),
-    );
 
     let output_subdir = output_dir.join("templates").join(template_name);
     fs::create_dir_all(&output_subdir)?;
@@ -673,18 +707,42 @@ fn compile_template_mapping(
     };
     let output_file = output_subdir.join(format!("{}.{}", template_name, extension));
 
+    // Check if already compiled - copy existing WASM file if so
+    if let Some(existing_wasm) = compiled_files.get(&cache_key) {
+        step(
+            Step::Skip,
+            &format!(
+                "Compile data source template: {} (already compiled)",
+                template_name
+            ),
+        );
+        fs::copy(existing_wasm, &output_file).with_context(|| {
+            format!(
+                "Failed to copy WASM from {} to {}",
+                existing_wasm.display(),
+                output_file.display()
+            )
+        })?;
+        return Ok(());
+    }
+
+    step(
+        Step::Generate,
+        &format!("Compile data source template: {}", template_name),
+    );
+
     let options = AscCompileOptions {
         input_file: mapping_path.to_path_buf(),
         base_dir: source_dir.to_path_buf(),
         libs: libs.to_string(),
         global_file: global_file.to_path_buf(),
-        output_file,
+        output_file: output_file.clone(),
         output_format: output_format.to_string(),
         skip_version_check,
     };
 
     compile_mapping(&options)?;
-    compiled_files.insert(cache_key);
+    compiled_files.insert(cache_key, output_file);
 
     Ok(())
 }
@@ -723,6 +781,39 @@ fn copy_abi(abi_name: &str, abi_path: &Path, ds_name: &str, output_dir: &Path) -
     step(
         Step::Write,
         &format!("Copy ABI {} to {}", abi_name, output_path.display()),
+    );
+
+    fs::copy(abi_path, &output_path).with_context(|| {
+        format!(
+            "Failed to copy ABI from {} to {}",
+            abi_path.display(),
+            output_path.display()
+        )
+    })?;
+
+    Ok(())
+}
+
+/// Copy a template ABI file to the output directory.
+fn copy_template_abi(
+    abi_name: &str,
+    abi_path: &Path,
+    template_name: &str,
+    output_dir: &Path,
+) -> Result<()> {
+    let output_subdir = output_dir.join("templates").join(template_name);
+    fs::create_dir_all(&output_subdir)?;
+
+    let abi_filename = format!("{}.json", abi_name);
+    let output_path = output_subdir.join(&abi_filename);
+
+    step(
+        Step::Write,
+        &format!(
+            "Copy template ABI {} to {}",
+            abi_name,
+            output_path.display()
+        ),
     );
 
     fs::copy(abi_path, &output_path).with_context(|| {
@@ -981,6 +1072,7 @@ pub(crate) struct Template {
     pub network: Option<String>,
     pub mapping_file: Option<String>,
     pub api_version: Option<Version>,
+    pub abis: Vec<Abi>,
 }
 
 #[derive(Debug)]
@@ -1110,12 +1202,27 @@ pub(crate) fn load_manifest(path: &Path) -> Result<Manifest> {
                         .and_then(|m| m.get("apiVersion"))
                         .and_then(|v| v.as_str())
                         .and_then(|v| Version::parse(v).ok());
+                    let abis = t
+                        .get("mapping")
+                        .and_then(|m| m.get("abis"))
+                        .and_then(|a| a.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|abi| {
+                                    let name = abi.get("name")?.as_str()?.to_string();
+                                    let file = abi.get("file")?.as_str()?.to_string();
+                                    Some(Abi { name, file })
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
                     Some(Template {
                         name,
                         kind,
                         network,
                         mapping_file,
                         api_version,
+                        abis,
                     })
                 })
                 .collect()
