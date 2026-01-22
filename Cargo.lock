@@ -3795,12 +3795,14 @@ dependencies = [
  "prost-types",
  "semver 1.0.27",
  "serde",
+ "serde_json",
  "thiserror 2.0.17",
  "tiny-keccak 1.5.0",
  "tokio",
  "tokio-stream",
  "tonic-build",
  "tower 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "web3",
 ]
 
 [[package]]

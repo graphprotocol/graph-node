@@ -79,6 +79,166 @@ use crate::{
     ENV_VARS,
 };
 
+// rust-web3 types for compatibility testing
+use web3::types::Block as Web3Block;
+use web3::types::Transaction as Web3Transaction;
+use web3::types::TransactionReceipt as Web3Receipt;
+
+/// Test rust-web3 deserialization compatibility with a block from block cache.
+/// This is for debugging/validation - it deserializes the same block JSON with rust-web3
+/// and logs whether it succeeds or fails, without affecting the actual block processing.
+///
+/// `source` indicates which code path called this (e.g., "load_blocks", "ancestor_block", "parent_ptr")
+pub(crate) fn test_web3_block_compat(logger: &Logger, value: &json::Value, source: &str) {
+    // Check if we received wrapper format or inner block directly
+    let is_wrapper = value.get("block").is_some();
+    let format = if is_wrapper { "wrapper" } else { "inner" };
+    let inner_block = value.get("block").unwrap_or(value);
+
+    // Extract block number/hash from the inner block
+    let block_num = inner_block
+        .get("number")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let full_hash = inner_block
+        .get("hash")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    // Debug: if both are unknown, log detailed info to help find in database
+    if block_num == "unknown" && full_hash == "unknown" {
+        let outer_keys: Vec<&str> = value
+            .as_object()
+            .map(|obj| obj.keys().map(|k| k.as_str()).collect())
+            .unwrap_or_default();
+        let inner_keys: Vec<&str> = inner_block
+            .as_object()
+            .map(|obj| obj.keys().map(|k| k.as_str()).collect())
+            .unwrap_or_default();
+        // Truncate JSON preview to avoid huge logs
+        let json_preview = inner_block.to_string();
+        let json_preview = if json_preview.len() > 500 {
+            format!("{}...", &json_preview[..500])
+        } else {
+            json_preview
+        };
+        warn!(
+            logger,
+            "web3_compat unexpected JSON structure";
+            "source" => source,
+            "format" => format,
+            "outer_keys" => format!("{:?}", outer_keys),
+            "inner_keys" => format!("{:?}", inner_keys),
+            "json_preview" => json_preview
+        );
+        return; // Skip further testing since structure is unexpected
+    }
+
+    // Test rust-web3 Block<Transaction> deserialization on the INNER block
+    let result = serde_json::from_value::<Web3Block<Web3Transaction>>(inner_block.clone());
+    match &result {
+        Ok(block) => {
+            let tx_count = block.transactions.len();
+            debug!(
+                logger,
+                "web3_compat path={} format={} block={} OK txs={}",
+                source,
+                format,
+                block_num,
+                tx_count;
+                "hash" => full_hash
+            );
+        }
+        Err(e) => {
+            warn!(
+                logger,
+                "web3_compat path={} format={} block={} FAIL err={}",
+                source,
+                format,
+                block_num,
+                e;
+                "hash" => full_hash
+            );
+        }
+    }
+}
+
+/// Test rust-web3 deserialization compatibility with receipts from block cache.
+/// Extracts transaction_receipts from the block JSON and tests each with rust-web3.
+///
+/// `source` indicates which code path called this (e.g., "load_blocks", "ancestor_block", "parent_ptr")
+pub(crate) fn test_web3_receipts_compat(logger: &Logger, block_value: &json::Value, source: &str) {
+    // Check if we received wrapper format or inner block directly
+    let is_wrapper = block_value.get("block").is_some();
+    let format = if is_wrapper { "wrapper" } else { "inner" };
+    let inner_block = block_value.get("block").unwrap_or(block_value);
+
+    let block_num = inner_block
+        .get("number")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let full_hash = inner_block
+        .get("hash")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    // Receipts are at the outer level in EthereumBlock format
+    let receipts = match block_value.get("transaction_receipts") {
+        Some(json::Value::Array(arr)) if !arr.is_empty() => arr,
+        _ => {
+            debug!(
+                logger,
+                "web3_compat_receipts path={} format={} block={} no_receipts_to_test",
+                source,
+                format,
+                block_num;
+                "hash" => full_hash
+            );
+            return;
+        }
+    };
+
+    let mut ok_count = 0;
+    let mut fail_count = 0;
+    let mut first_error: Option<String> = None;
+
+    for receipt in receipts {
+        match serde_json::from_value::<Web3Receipt>(receipt.clone()) {
+            Ok(_) => ok_count += 1,
+            Err(e) => {
+                fail_count += 1;
+                if first_error.is_none() {
+                    first_error = Some(e.to_string());
+                }
+            }
+        }
+    }
+
+    if fail_count > 0 {
+        warn!(
+            logger,
+            "web3_compat_receipts path={} format={} block={} ok={} fail={} first_err={}",
+            source,
+            format,
+            block_num,
+            ok_count,
+            fail_count,
+            first_error.unwrap_or_default();
+            "hash" => full_hash
+        );
+    } else {
+        debug!(
+            logger,
+            "web3_compat_receipts path={} format={} block={} ok={}",
+            source,
+            format,
+            block_num,
+            ok_count;
+            "hash" => full_hash
+        );
+    }
+}
+
 type AlloyProvider = FillProvider<
     JoinFill<
         Identity,
@@ -1614,6 +1774,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .unwrap_or_default()
             .into_iter()
             .filter_map(|value| {
+                // Test rust-web3 deserialization compatibility
+                test_web3_block_compat(&logger, &value, "load_blocks");
+                test_web3_receipts_compat(&logger, &value, "load_blocks");
+
                 json::from_value(value.clone())
                     .map_err(|e| {
                         let block_num = value.get("number").and_then(|n| n.as_u64());

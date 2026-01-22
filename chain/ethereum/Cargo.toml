@@ -9,6 +9,7 @@ envconfig = { workspace = true }
 jsonrpc-core = "18.0.0"
 graph = { path = "../../graph" }
 serde = { workspace = true }
+serde_json = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 anyhow = "1.0"
@@ -19,6 +20,9 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 tower = { workspace = true }
+
+# rust-web3 for compatibility testing - deserialize in parallel with alloy
+web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches-onto-0.18", default-features = false, features = ["signing"] }
 
 itertools = "0.14.0"
 

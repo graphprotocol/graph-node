@@ -55,7 +55,7 @@ use crate::{
     data_source::{DataSource, UnresolvedDataSource},
     ethereum_adapter::{
         blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
-        parse_log_triggers,
+        parse_log_triggers, test_web3_block_compat, test_web3_receipts_compat,
     },
     SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
 };
@@ -1078,6 +1078,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         // First check if we have the ancestor in cache and can deserialize it
         let block_ptr = match cached {
             Some((json, ptr)) => {
+                // Test rust-web3 deserialization compatibility
+                test_web3_block_compat(&self.logger, &json, "ancestor_block");
+                test_web3_receipts_compat(&self.logger, &json, "ancestor_block");
+
                 // Try to deserialize the cached block
                 match json::from_value::<EthereumBlock>(json.clone()) {
                     Ok(block) => {
@@ -1161,6 +1165,10 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 // First try to get the block from the store
                 if let Ok(blocks) = chain_store.blocks(vec![block.hash.clone()]).await {
                     if let Some(cached_json) = blocks.first() {
+                        // Test rust-web3 deserialization compatibility
+                        test_web3_block_compat(&self.logger, cached_json, "parent_ptr");
+                        test_web3_receipts_compat(&self.logger, cached_json, "parent_ptr");
+
                         match json::from_value::<LightEthereumBlock>(cached_json.clone()) {
                             Ok(block) => {
                                 return Ok(block.parent_ptr());
