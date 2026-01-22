@@ -90,7 +90,7 @@ test-store = { path = "./store/test-store" }
 thiserror = "2.0.18"
 deadpool = { version = "0.12", features = ["rt_tokio_1", "managed"] }
 tokio = { version = "1.49.0", features = ["full"] }
-tokio-stream = { version = "0.1.15", features = ["sync"] }
+tokio-stream = { version = "0.1.18", features = ["sync"] }
 tokio-retry = "0.3.0"
 
 tonic = { version = "0.12.3", features = ["tls-roots", "gzip"] }
