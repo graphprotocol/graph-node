@@ -340,7 +340,7 @@ impl SubgraphStore {
         self.evict(schema.id())?;
         let graft_base = deployment.graft_base.as_ref();
 
-        let (site, exists, node_id) = {
+        let (site, deployment_store, node_id) = {
             // We need to deal with two situations:
             //   (1) We are really creating a new subgraph; it therefore needs
             //       to go in the shard and onto the node that the placement
@@ -353,67 +353,61 @@ impl SubgraphStore {
             //       the same deployment in another shard
             let (shard, node_id) = self.place(&name, &network_name, node_id).await?;
 
-            let mut conn = self.primary_conn().await?;
-            conn.transaction(|conn| {
-                async {
-                    let (site, site_was_created) = conn
-                        .allocate_site(shard, schema.id(), network_name, graft_base)
-                        .await?;
-                    let node_id = conn.assigned_node(&site).await?.unwrap_or(node_id);
-                    let site = Arc::new(site);
+            let mut pconn = self.primary_conn().await?;
+            pconn
+                .transaction(|pconn| {
+                    async {
+                        let (site, site_was_created) = pconn
+                            .allocate_site(shard, schema.id(), network_name, graft_base)
+                            .await?;
+                        let node_id = pconn.assigned_node(&site).await?.unwrap_or(node_id);
+                        let site = Arc::new(site);
+                        let deployment_store = self
+                            .stores
+                            .get(&site.shard)
+                            .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
 
-                    if let Some(graft_base) = graft_base {
-                        // Ensure that the graft base exists
-                        let base_layout = self.layout(graft_base).await?;
-                        let entities_with_causality_region =
-                            deployment.manifest.entities_with_causality_region.clone();
-                        let catalog = Catalog::for_tests(
-                            site.cheap_clone(),
-                            entities_with_causality_region.into_iter().collect(),
-                        )?;
-                        let layout = Layout::new(site.cheap_clone(), schema, catalog)?;
+                        if site_was_created {
+                            if let Some(graft_base) = graft_base {
+                                // Ensure that the graft base exists
+                                let base_layout = self.layout(graft_base).await?;
+                                let mut shard_conn =
+                                    deployment_store.get_replica_conn(ReplicaId::Main).await?;
+                                let entities_with_causality_region =
+                                    deployment.manifest.entities_with_causality_region.clone();
+                                let catalog = Catalog::for_creation(
+                                    &mut shard_conn,
+                                    site.cheap_clone(),
+                                    entities_with_causality_region.into_iter().collect(),
+                                )
+                                .await?;
+                                let layout = Layout::new(site.cheap_clone(), schema, catalog)?;
 
-                        let errors = layout.can_copy_from(&base_layout);
-                        if !errors.is_empty() {
-                            return Err(StoreError::Unknown(anyhow!(
-                                "The subgraph `{}` cannot be used as the graft base \
-                             for `{}` because the schemas are incompatible:\n    - {}",
-                                &base_layout.catalog.site.namespace,
-                                &layout.catalog.site.namespace,
-                                errors.join("\n    - ")
-                            )));
+                                let errors = layout.can_copy_from(&base_layout);
+                                if !errors.is_empty() {
+                                    return Err(StoreError::Unknown(anyhow!(
+                                        "The subgraph `{}` cannot be used as the graft base \
+                                for `{}` because the schemas are incompatible:\n    - {}",
+                                        &base_layout.catalog.site.namespace,
+                                        &layout.catalog.site.namespace,
+                                        errors.join("\n    - ")
+                                    )));
+                                }
+
+                                pconn
+                                    .record_active_copy(base_layout.site.as_ref(), site.as_ref())
+                                    .await?;
+                            }
                         }
+
+                        Ok((site, deployment_store, node_id))
                     }
-
-                    Ok((site, !site_was_created, node_id))
-                }
-                .scope_boxed()
-            })
-            .await?
-        };
-
-        // If the deployment already exists, we don't need to perform any copying
-        // If it doesn't exist, we need to copy the graft base to the new deployment
-        if !exists {
-            let graft_base_layout = match graft_base {
-                Some(base) => Some(self.layout(base).await?),
-                None => None,
-            };
-
-            if let Some(graft_base_layout) = &graft_base_layout {
-                self.primary_conn()
-                    .await?
-                    .record_active_copy(graft_base_layout.site.as_ref(), site.as_ref())
-                    .await?;
-            }
+                    .scope_boxed()
+                })
+                .await?
         };
 
         // Create the actual databases schema and metadata entries
-        let deployment_store = self
-            .stores
-            .get(&site.shard)
-            .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
-
         let index_def = if let Some(graft) = graft_base {
             if let Some(site) = self.sites.get(graft) {
                 let store = self
