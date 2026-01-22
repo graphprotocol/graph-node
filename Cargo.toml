@@ -98,7 +98,7 @@ tonic-build = { version = "0.12.3", features = ["prost"] }
 tower-http = { version = "0.6.8", features = ["cors"] }
 tower = { version = "0.5.1", features = ["full"] }
 wasmparser = "0.118.1"
-wasmtime = { version = "35.0.0", features = ["async"] }
+wasmtime = { version = "36.0.3", features = ["async"] }
 rand = { version = "0.9.2", features = ["os_rng"] }
 prometheus = "0.14.0"
 
