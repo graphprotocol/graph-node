@@ -4123,15 +4123,18 @@ dependencies = [
 
 [[package]]
 name = "graphql-tools"
-version = "0.4.0"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68fb22726aceab7a8933cdcff4201e1cdbcc7c7394df5bc1ebdcf27b44376433"
+checksum = "9513662272317e955f5d72b13b4015ba31c84d68225f4b5d0a2ad6ffceec1258"
 dependencies = [
- "graphql-parser",
+ "combine",
+ "itoa",
  "lazy_static",
+ "ryu",
  "serde",
  "serde_json",
  "serde_with",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
@@ -4917,9 +4920,9 @@ dependencies = [
 
 [[package]]
 name = "itoa"
-version = "1.0.11"
+version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
+checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
 name = "ittapi"
@@ -6312,7 +6315,7 @@ version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
- "heck 0.4.1",
+ "heck 0.5.0",
  "itertools 0.14.0",
  "log",
  "multimap",
@@ -7004,9 +7007,9 @@ dependencies = [
 
 [[package]]
 name = "ryu"
-version = "1.0.18"
+version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
+checksum = "a50f4cf475b65d88e057964e0e9bb1f0aa9bbb2036dc65c64596b42932536984"
 
 [[package]]
 name = "same-file"
