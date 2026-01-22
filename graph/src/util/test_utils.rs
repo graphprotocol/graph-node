@@ -9,8 +9,10 @@ use crate::prelude::alloy::rpc::types::{Block, Header};
 /// Creates a minimal Alloy Block for testing purposes.
 pub fn create_minimal_block_for_test(block_number: u64, block_hash: B256) -> Block {
     // Create consensus header with defaults, but set the specific number
-    let mut consensus_header = ConsensusHeader::default();
-    consensus_header.number = block_number;
+    let consensus_header = ConsensusHeader {
+        number: block_number,
+        ..Default::default()
+    };
 
     // Create RPC header with the specific hash
     let rpc_header = Header {
@@ -51,7 +53,7 @@ pub fn create_dummy_transaction(
         inner: recovered,
         block_hash: Some(block_hash),
         block_number: Some(block_number),
-        transaction_index: transaction_index,
+        transaction_index,
         effective_gas_price: None,
     }
 }

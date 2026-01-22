@@ -966,7 +966,7 @@ pub async fn update_deployment_status(
             d::failed.eq(health.is_failed()),
             d::health.eq(health),
             d::fatal_error.eq::<Option<String>>(fatal_error),
-            d::non_fatal_errors.eq::<Vec<String>>(non_fatal_errors.unwrap_or(vec![])),
+            d::non_fatal_errors.eq::<Vec<String>>(non_fatal_errors.unwrap_or_default()),
         ))
         .execute(conn)
         .await

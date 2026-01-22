@@ -52,12 +52,12 @@ impl FunctionExt for Function {
 
         let mut sig = String::with_capacity(sig_cap);
 
-        sig.push_str(&name);
-        signature_part(&inputs, &mut sig);
+        sig.push_str(name);
+        signature_part(inputs, &mut sig);
 
         if !outputs.is_empty() {
             sig.push(':');
-            signature_part(&outputs, &mut sig);
+            signature_part(outputs, &mut sig);
         }
 
         sig
@@ -122,12 +122,12 @@ fn signature_part(params: &[Param], out: &mut String) {
         1 => {
             params[0].selector_type_raw(out);
         }
-        n => {
+        _ => {
             params[0].selector_type_raw(out);
 
-            for i in 1..n {
+            for param in params.iter().skip(1) {
                 out.push(',');
-                params[i].selector_type_raw(out);
+                param.selector_type_raw(out);
             }
         }
     }

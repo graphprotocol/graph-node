@@ -77,9 +77,11 @@ fn test_trigger_ordering() {
     };
     let call1 = EthereumTrigger::Call(Arc::new(call1));
 
-    let mut call2 = EthereumCall::default();
-    call2.transaction_index = 2;
-    call2.input = Bytes::from(vec![0]);
+    let call2 = EthereumCall {
+        transaction_index: 2,
+        input: Bytes::from(vec![0]),
+        ..Default::default()
+    };
     let call2 = EthereumTrigger::Call(Arc::new(call2));
 
     let call3 = EthereumCall {
@@ -89,10 +91,12 @@ fn test_trigger_ordering() {
     let call3 = EthereumTrigger::Call(Arc::new(call3));
 
     // Call with the same tx index as call2
-    let mut call4 = EthereumCall::default();
-    call4.transaction_index = 2;
     // different than call2 so they don't get mistaken as the same
-    call4.input = Bytes::from(vec![1]);
+    let call4 = EthereumCall {
+        transaction_index: 2,
+        input: Bytes::from(vec![1]),
+        ..Default::default()
+    };
     let call4 = EthereumTrigger::Call(Arc::new(call4));
 
     // Event with transaction_index 1 and log_index 0;

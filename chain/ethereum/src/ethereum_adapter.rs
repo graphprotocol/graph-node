@@ -1483,7 +1483,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 let encoded_call = call
                     .function
                     .abi_encode_input(&call.args)
-                    .map_err(|err| ContractCallError::EncodingError(err))?;
+                    .map_err(ContractCallError::EncodingError)?;
                 call::Request::new(call.address, encoded_call, index)
             };
 

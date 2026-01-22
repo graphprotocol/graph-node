@@ -1,4 +1,5 @@
 #[rustfmt::skip]
+#[allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
 #[path = "protobuf/sf.ethereum.r#type.v2.rs"]
 mod pbcodec;
 
@@ -844,6 +845,33 @@ impl BlockchainBlock for HeaderOnlyBlock {
     }
 }
 
+fn extract_signature_from_trace(
+    _trace: &TransactionTrace,
+    _tx_type: TxType,
+) -> Result<alloy::signers::Signature, Error> {
+    use alloy::primitives::{Signature as PrimitiveSignature, U256};
+
+    // Create a dummy signature with r = 0, s = 0 and even y-parity (false)
+    let dummy = PrimitiveSignature::new(U256::ZERO, U256::ZERO, false);
+
+    Ok(dummy)
+}
+
+fn get_to_address(trace: &TransactionTrace) -> Result<Option<Address>, Error> {
+    // Try to detect contract creation transactions, which have no 'to' address
+    let is_contract_creation = trace.to.is_empty()
+        || trace
+            .calls
+            .first()
+            .is_some_and(|call| CallType::try_from(call.call_type) == Ok(CallType::Create));
+
+    if is_contract_creation {
+        Ok(None)
+    } else {
+        Ok(Some(trace.to.try_decode_proto("transaction to address")?))
+    }
+}
+
 #[cfg(test)]
 mod test {
     use graph::{blockchain::Block as _, prelude::chrono::Utc};
@@ -886,25 +914,31 @@ mod test {
         use graph::prelude::alloy::network::AnyTxEnvelope;
         use graph::prelude::alloy::primitives::B256;
 
-        let mut block = Block::default();
-        let mut header = BlockHeader::default();
-        header.number = 123456;
-        header.timestamp = Some(Timestamp {
-            seconds: 1234567890,
-            nanos: 0,
-        });
-        block.header = Some(header);
-        block.number = 123456;
-        block.hash = vec![0u8; 32];
+        let header = BlockHeader {
+            number: 123456,
+            timestamp: Some(Timestamp {
+                seconds: 1234567890,
+                nanos: 0,
+            }),
+            ..Default::default()
+        };
+        let block = Block {
+            header: Some(header),
+            number: 123456,
+            hash: vec![0u8; 32],
+            ..Default::default()
+        };
 
-        let mut trace = TransactionTrace::default();
-        trace.r#type = 126; // 0x7e Optimism deposit transaction
-        trace.hash = vec![1u8; 32];
-        trace.from = vec![2u8; 20];
-        trace.to = vec![3u8; 20];
-        trace.nonce = 42;
-        trace.gas_limit = 21000;
-        trace.index = 0;
+        let trace = TransactionTrace {
+            r#type: 126, // 0x7e Optimism deposit transaction
+            hash: vec![1u8; 32],
+            from: vec![2u8; 20],
+            to: vec![3u8; 20],
+            nonce: 42,
+            gas_limit: 21000,
+            index: 0,
+            ..Default::default()
+        };
 
         let trace_at = TransactionTraceAt::new(&trace, &block);
         let result: Result<
@@ -941,25 +975,32 @@ mod test {
         use super::transaction_trace_to_alloy_txn_reciept;
         use crate::codec::TransactionTrace;
 
-        let mut block = Block::default();
-        let mut header = BlockHeader::default();
-        header.number = 123456;
-        block.header = Some(header);
-        block.hash = vec![0u8; 32];
+        let header = BlockHeader {
+            number: 123456,
+            ..Default::default()
+        };
+        let block = Block {
+            header: Some(header),
+            hash: vec![0u8; 32],
+            ..Default::default()
+        };
 
-        let mut trace = TransactionTrace::default();
-        trace.r#type = 126; // 0x7e Optimism deposit transaction
-        trace.hash = vec![1u8; 32];
-        trace.from = vec![2u8; 20];
-        trace.to = vec![3u8; 20];
-        trace.index = 0;
-        trace.gas_used = 21000;
-        trace.status = 1;
-
-        let mut receipt = super::TransactionReceipt::default();
-        receipt.cumulative_gas_used = 21000;
-        receipt.logs_bloom = vec![0u8; 256];
-        trace.receipt = Some(receipt);
+        let receipt = super::TransactionReceipt {
+            cumulative_gas_used: 21000,
+            logs_bloom: vec![0u8; 256],
+            ..Default::default()
+        };
+        let trace = TransactionTrace {
+            r#type: 126, // 0x7e Optimism deposit transaction
+            hash: vec![1u8; 32],
+            from: vec![2u8; 20],
+            to: vec![3u8; 20],
+            index: 0,
+            gas_used: 21000,
+            status: 1,
+            receipt: Some(receipt),
+            ..Default::default()
+        };
 
         let result = transaction_trace_to_alloy_txn_reciept(&trace, &block);
 
@@ -976,32 +1017,5 @@ mod test {
         assert_eq!(receipt.inner.inner.r#type, 126);
         assert_eq!(receipt.gas_used, 21000);
         assert_eq!(receipt.transaction_index, Some(0));
-    }
-}
-
-fn extract_signature_from_trace(
-    _trace: &TransactionTrace,
-    _tx_type: TxType,
-) -> Result<alloy::signers::Signature, Error> {
-    use alloy::primitives::{Signature as PrimitiveSignature, U256};
-
-    // Create a dummy signature with r = 0, s = 0 and even y-parity (false)
-    let dummy = PrimitiveSignature::new(U256::ZERO, U256::ZERO, false);
-
-    Ok(dummy)
-}
-
-fn get_to_address(trace: &TransactionTrace) -> Result<Option<Address>, Error> {
-    // Try to detect contract creation transactions, which have no 'to' address
-    let is_contract_creation = trace.to.is_empty()
-        || trace
-            .calls
-            .first()
-            .is_some_and(|call| CallType::try_from(call.call_type) == Ok(CallType::Create));
-
-    if is_contract_creation {
-        Ok(None)
-    } else {
-        Ok(Some(trace.to.try_decode_proto("transaction to address")?))
     }
 }

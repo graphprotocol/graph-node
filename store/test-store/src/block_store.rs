@@ -107,13 +107,13 @@ impl FakeBlock {
         let parent_hash = B256::from_str(self.parent_hash.as_str()).expect("invalid parent hash");
         let block_hash = B256::from_str(self.hash.as_str()).expect("invalid block hash");
 
-        let mut consensus_header = ConsensusHeader::default();
-        consensus_header.number = self.number as u64;
-        consensus_header.parent_hash = parent_hash;
-        consensus_header.logs_bloom = Bloom::default(); // Empty bloom filter for test blocks
-        if let Some(ts) = self.timestamp {
-            consensus_header.timestamp = ts.to::<u64>();
-        }
+        let consensus_header = ConsensusHeader {
+            number: self.number as u64,
+            parent_hash,
+            logs_bloom: Bloom::default(), // Empty bloom filter for test blocks
+            timestamp: self.timestamp.map(|ts| ts.to::<u64>()).unwrap_or_default(),
+            ..Default::default()
+        };
 
         let rpc_header = Header {
             hash: block_hash,

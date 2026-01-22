@@ -92,7 +92,7 @@ impl LightEthereumBlockExt for AnyBlock {
         log.transaction_hash.and_then(|hash| {
             self.transactions
                 .txns()
-                .find(|tx| &tx.tx_hash() == &hash)
+                .find(|tx| tx.tx_hash() == hash)
                 .cloned()
         })
     }
@@ -101,7 +101,7 @@ impl LightEthereumBlockExt for AnyBlock {
         call.transaction_hash.and_then(|hash| {
             self.transactions
                 .txns()
-                .find(|tx| &tx.tx_hash() == &hash)
+                .find(|tx| tx.tx_hash() == hash)
                 .cloned()
         })
     }
@@ -227,15 +227,15 @@ impl EthereumCall {
 
         // The only traces without transactions are those from Parity block reward contracts, we
         // don't support triggering on that.
-        let transaction_index = trace.transaction_position? as u64;
+        let transaction_index = trace.transaction_position?;
 
         Some(EthereumCall {
             from: call.from,
             to: call.to,
             value: call.value,
-            gas_used: gas_used,
+            gas_used,
             input: call.input.clone(),
-            output: output,
+            output,
             block_number: BlockNumber::try_from(
                 trace
                     .block_number
