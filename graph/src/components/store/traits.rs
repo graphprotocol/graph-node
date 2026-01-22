@@ -3,7 +3,6 @@ use std::ops::Range;
 
 use anyhow::Error;
 use async_trait::async_trait;
-use web3::types::{Address, H256};
 
 use super::*;
 use crate::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
@@ -19,7 +18,10 @@ use crate::data::store::ethereum::call;
 use crate::data::store::{QueryObject, SqlQueryObject};
 use crate::data::subgraph::{status, DeploymentFeatures};
 use crate::data::{query::QueryTarget, subgraph::schema::*};
-use crate::prelude::{DeploymentState, NodeId, QueryExecutionError, SubgraphName};
+use crate::prelude::{
+    alloy::primitives::{Address, B256},
+    DeploymentState, NodeId, QueryExecutionError, SubgraphName,
+};
 use crate::schema::{ApiSchema, InputSchema};
 
 pub trait SubscriptionManager: Send + Sync + 'static {
@@ -549,7 +551,7 @@ pub trait ChainStore: ChainHeadStore {
     async fn attempt_chain_head_update(
         self: Arc<Self>,
         ancestor_count: BlockNumber,
-    ) -> Result<Option<H256>, Error>;
+    ) -> Result<Option<B256>, Error>;
 
     /// Returns the blocks present in the store.
     async fn blocks(
@@ -626,7 +628,7 @@ pub trait ChainStore: ChainHeadStore {
     /// Tries to retrieve all transactions receipts for a given block.
     async fn transaction_receipts_in_block(
         &self,
-        block_ptr: &H256,
+        block_ptr: &B256,
     ) -> Result<Vec<transaction_receipt::LightTransactionReceipt>, StoreError>;
 
     /// Clears call cache of the chain for the given `from` and `to` block number.

@@ -19,7 +19,7 @@ use graph::data_source::offchain::OffchainDataSourceKind;
 use graph::data_source::{DataSourceEnum, DataSourceTemplate};
 use graph::entity;
 use graph::env::ENV_VARS;
-use graph::prelude::web3::types::H256;
+use graph::prelude::alloy::primitives::B256;
 use graph::prelude::{
     anyhow, serde_yaml, BigDecimal, BigInt, DeploymentHash, Link, SubgraphManifest,
     SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphStore,
@@ -812,18 +812,18 @@ specVersion: 1.2.0
 
     assert_eq!(
         Some(vec![
-            H256::from_str("0000000000000000000000000000000000000000000000000000000000000000")
+            B256::from_str("0000000000000000000000000000000000000000000000000000000000000000")
                 .unwrap(),
-            H256::from_str("0000000000000000000000000000000000000000000000000000000000000001")
+            B256::from_str("0000000000000000000000000000000000000000000000000000000000000001")
                 .unwrap(),
-            H256::from_str("0000000000000000000000000000000000000000000000000000000000000002")
+            B256::from_str("0000000000000000000000000000000000000000000000000000000000000002")
                 .unwrap()
         ]),
         topic1.clone()
     );
 
     assert_eq!(
-        Some(vec![H256::from_str(
+        Some(vec![B256::from_str(
             "0000000000000000000000000000000000000000000000000000000000000001"
         )
         .unwrap()]),
@@ -831,7 +831,7 @@ specVersion: 1.2.0
     );
 
     assert_eq!(
-        Some(vec![H256::from_str(
+        Some(vec![B256::from_str(
             "0000000000000000000000000000000000000000000000000000000000000002"
         )
         .unwrap()]),

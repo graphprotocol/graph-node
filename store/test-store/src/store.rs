@@ -10,6 +10,7 @@ use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::data::subgraph::SubgraphFeature;
 use graph::data_source::DataSource;
 use graph::log;
+use graph::prelude::alloy::primitives::B256;
 use graph::prelude::{QueryStoreManager as _, SubgraphStore as _, *};
 use graph::schema::EntityType;
 use graph::schema::InputSchema;
@@ -37,7 +38,6 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::time::Instant;
 use std::{marker::PhantomData, sync::Mutex};
-use web3::types::H256;
 
 pub const NETWORK_NAME: &str = "fake_network";
 pub const DATA_SOURCE_KIND: &str = "mock/kind";
@@ -69,14 +69,14 @@ lazy_static! {
     pub static ref SUBGRAPH_STORE: Arc<DieselSubgraphStore> = STORE.subgraph_store();
     static ref BLOCK_STORE: DieselBlockStore = STORE.block_store();
     pub static ref GENESIS_PTR: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
         )),
         0u64
     )
         .into();
     pub static ref BLOCK_ONE: BlockPtr = (
-        H256::from(hex!(
+        B256::from(hex!(
             "8511fa04b64657581e3f00e14543c1d522d5d7e771b54aa3060b662ade47da13"
         )),
         1u64
@@ -84,14 +84,15 @@ lazy_static! {
         .into();
     pub static ref BLOCKS: [BlockPtr; 4] = {
         let two: BlockPtr = (
-            H256::from(hex!(
+            B256::from(hex!(
                 "b98fb783b49de5652097a989414c767824dff7e7fd765a63b493772511db81c1"
             )),
             2u64,
         )
             .into();
+
         let three: BlockPtr = (
-            H256::from(hex!(
+            B256::from(hex!(
                 "977c084229c72a0fa377cae304eda9099b6a2cb5d83b25cdf0f0969b69874255"
             )),
             3u64,

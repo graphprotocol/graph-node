@@ -4,8 +4,8 @@ use serde::{self, Deserialize, Serialize};
 use stable_hash::utils::AsInt;
 use stable_hash::StableHash;
 use thiserror::Error;
-use web3::types::*;
 
+use crate::prelude::alloy::primitives::{U128, U256, U64};
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::ops::{Add, BitAnd, BitOr, Div, Mul, Rem, Shl, Shr, Sub};
@@ -174,22 +174,19 @@ impl BigInt {
     }
 
     pub fn from_unsigned_u128(n: U128) -> Self {
-        let mut bytes: [u8; 16] = [0; 16];
-        n.to_little_endian(&mut bytes);
+        let bytes: [u8; U128::BYTES] = n.to_le_bytes();
         // Unwrap: 128 bits is much less than BigInt::MAX_BITS
         BigInt::from_unsigned_bytes_le(&bytes).unwrap()
     }
 
     pub fn from_unsigned_u256(n: &U256) -> Self {
-        let mut bytes: [u8; 32] = [0; 32];
-        n.to_little_endian(&mut bytes);
+        let bytes: [u8; U256::BYTES] = n.to_le_bytes();
         // Unwrap: 256 bits is much less than BigInt::MAX_BITS
         BigInt::from_unsigned_bytes_le(&bytes).unwrap()
     }
 
     pub fn from_signed_u256(n: &U256) -> Self {
-        let mut bytes: [u8; 32] = [0; 32];
-        n.to_little_endian(&mut bytes);
+        let bytes: [u8; U256::BYTES] = n.to_le_bytes();
         BigInt::from_signed_bytes_le(&bytes).unwrap()
     }
 
@@ -202,9 +199,9 @@ impl BigInt {
             );
             let mut i_bytes: [u8; 32] = [255; 32];
             i_bytes[..bytes.len()].copy_from_slice(&bytes);
-            U256::from_little_endian(&i_bytes)
+            U256::from_le_slice(&i_bytes)
         } else {
-            U256::from_little_endian(&bytes)
+            U256::from_le_slice(&bytes)
         }
     }
 
@@ -216,7 +213,7 @@ impl BigInt {
                 self
             );
         }
-        Ok(U256::from_little_endian(&bytes))
+        Ok(U256::from_le_slice(&bytes))
     }
 
     pub fn pow(self, exponent: u8) -> Result<BigInt, anyhow::Error> {
@@ -256,6 +253,12 @@ impl From<i128> for BigInt {
     }
 }
 
+impl From<u128> for BigInt {
+    fn from(i: u128) -> BigInt {
+        BigInt::unchecked_new(i.into())
+    }
+}
+
 impl From<u8> for BigInt {
     fn from(i: u8) -> BigInt {
         BigInt::unchecked_new(i.into())
@@ -287,7 +290,7 @@ impl From<U64> for BigInt {
     /// handle signed U64s, we should add the same
     /// `{to,from}_{signed,unsigned}_u64` methods that we have for U64.
     fn from(n: U64) -> BigInt {
-        BigInt::from(n.as_u64())
+        BigInt::from(n.to::<u64>())
     }
 }
 
@@ -403,8 +406,9 @@ impl GasSizeOf for BigInt {
 
 #[cfg(test)]
 mod test {
+    use alloy::primitives::U64;
+
     use super::{super::test::same_stable_hash, BigInt};
-    use web3::types::U64;
 
     #[test]
     fn bigint_to_from_u64() {

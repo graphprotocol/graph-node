@@ -10,6 +10,7 @@ use graph::data::query::{CacheStatus, QueryResults, Trace};
 use graph::data::store::ID;
 use graph::data::value::{Object, Word};
 use graph::derive::CheapClone;
+use graph::prelude::alloy::primitives::B256;
 use graph::prelude::*;
 use graph::schema::{
     ast as sast, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME, META_FIELD_NAME,
@@ -202,11 +203,11 @@ impl StoreResolver {
                 // locate_block indicates that we do not have a block hash
                 // by setting the hash to `zero`
                 // See 7a7b9708-adb7-4fc2-acec-88680cb07ec1
-                let hash_h256 = ptr.hash_as_h256();
-                if hash_h256 == web3::types::H256::zero() {
+                let hash_b256 = ptr.hash.as_b256();
+                if hash_b256 == B256::ZERO {
                     None
                 } else {
-                    Some(r::Value::String(format!("0x{:x}", hash_h256)))
+                    Some(r::Value::String(format!("0x{:x}", hash_b256)))
                 }
             })
             .unwrap_or(r::Value::Null);

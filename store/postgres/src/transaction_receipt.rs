@@ -39,15 +39,25 @@ impl TryFrom<RawTransactionReceipt> for LightTransactionReceipt {
         let block_hash = block_hash.map(drain_vector).transpose()?;
         let block_number = block_number.map(drain_vector).transpose()?;
         let gas_used = gas_used.map(drain_vector).transpose()?;
-        let status = status.map(drain_vector).transpose()?;
+
+        // Convert big-endian bytes to numbers
+        let transaction_index = u64::from_be_bytes(transaction_index);
+        let block_number = block_number.map(u64::from_be_bytes);
+        let gas_used = gas_used.map(u64::from_be_bytes).unwrap_or(0);
+
+        // Status is non-zero for success, zero for failure. Works for any byte length.
+        // Defaults to true for pre-Byzantium receipts (no status field), consistent with alloy.
+        let status = status
+            .map(|bytes| bytes.iter().any(|&b| b != 0))
+            .unwrap_or(true);
 
         Ok(LightTransactionReceipt {
             transaction_hash: transaction_hash.into(),
-            transaction_index: transaction_index.into(),
+            transaction_index,
             block_hash: block_hash.map(Into::into),
-            block_number: block_number.map(Into::into),
-            gas_used: gas_used.map(Into::into),
-            status: status.map(Into::into),
+            block_number,
+            gas_used,
+            status,
         })
     }
 }

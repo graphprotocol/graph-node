@@ -6,7 +6,7 @@ use graph::data::store::{scalar, Id, IdType};
 use graph::data::subgraph::*;
 use graph::data::value::Word;
 use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
-use graph::prelude::web3::types::U256;
+use graph::prelude::alloy::primitives::U256;
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{AscIndexId, AscType, HostExportError};
 use graph::runtime::{AscPtr, ToAscObj};
@@ -22,7 +22,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 use test_store::{LOGGER, STORE};
 use wasmtime::{AsContext, AsContextMut};
-use web3::types::H160;
 
 use crate::common::{mock_context, mock_data_source};
 
@@ -706,19 +705,19 @@ async fn test_big_int_to_hex(api_version: Version, gas_used: u64) {
     .await;
 
     // Convert zero to hex
-    let zero = BigInt::from_unsigned_u256(&U256::zero());
+    let zero = BigInt::from_unsigned_u256(&U256::ZERO);
     let zero_hex_ptr: AscPtr<AscString> = instance.invoke_export1("big_int_to_hex", &zero).await;
     let zero_hex_str: String = instance.asc_get(zero_hex_ptr).unwrap();
     assert_eq!(zero_hex_str, "0x0");
 
     // Convert 1 to hex
-    let one = BigInt::from_unsigned_u256(&U256::one());
+    let one = BigInt::from_unsigned_u256(&U256::ONE);
     let one_hex_ptr: AscPtr<AscString> = instance.invoke_export1("big_int_to_hex", &one).await;
     let one_hex_str: String = instance.asc_get(one_hex_ptr).unwrap();
     assert_eq!(one_hex_str, "0x1");
 
     // Convert U256::max_value() to hex
-    let u256_max = BigInt::from_unsigned_u256(&U256::max_value());
+    let u256_max = BigInt::from_unsigned_u256(&U256::MAX);
     let u256_max_hex_ptr: AscPtr<AscString> =
         instance.invoke_export1("big_int_to_hex", &u256_max).await;
     let u256_max_hex_str: String = instance.asc_get(u256_max_hex_ptr).unwrap();

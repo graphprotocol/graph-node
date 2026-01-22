@@ -3,7 +3,12 @@ use std::sync::Arc;
 use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, Trigger},
     prelude::{
-        web3::types::{Address, Bytes, Log, H160, H256, U64},
+        alloy::{
+            self,
+            primitives::{Address, Bytes, LogData, B256},
+            rpc::types::{Block, Log},
+        },
+        rand::{self, Rng},
         EthereumCall, LightEthereumBlock,
     },
     slog::{self, o, Logger},
@@ -14,15 +19,55 @@ use crate::{
     trigger::{EthereumBlockTriggerType, EthereumTrigger, LogRef},
 };
 
+pub trait Random {
+    fn random() -> Self;
+}
+
+impl Random for B256 {
+    fn random() -> Self {
+        let mut rng = rand::rng();
+        let mut bytes = [0u8; 32];
+        rng.fill(&mut bytes);
+        Self::from(bytes)
+    }
+}
+
+impl Random for Address {
+    fn random() -> Self {
+        let mut rng = rand::rng();
+        let mut bytes = [0u8; 20];
+        rng.fill(&mut bytes);
+        Self::from(bytes)
+    }
+}
+
+fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
+    let log = Log {
+        inner: alloy::primitives::Log {
+            address: Address::default(),
+            data: LogData::new_unchecked(vec![], Bytes::from(vec![])),
+        },
+        block_hash: Some(B256::ZERO),
+        block_number: Some(0),
+        block_timestamp: Some(0),
+        transaction_hash: Some(B256::ZERO),
+        transaction_index: Some(tx_index),
+        log_index: Some(log_index),
+        removed: false,
+    };
+
+    Arc::new(log)
+}
+
 #[test]
 fn test_trigger_ordering() {
     let block1 = EthereumTrigger::Block(
-        BlockPtr::from((H256::random(), 1u64)),
+        BlockPtr::from((B256::random(), 1u64)),
         EthereumBlockTriggerType::End,
     );
 
     let block2 = EthereumTrigger::Block(
-        BlockPtr::from((H256::random(), 0u64)),
+        BlockPtr::from((B256::random(), 0u64)),
         EthereumBlockTriggerType::WithCallTo(Address::random()),
     );
 
@@ -34,7 +79,7 @@ fn test_trigger_ordering() {
 
     let call2 = EthereumCall {
         transaction_index: 2,
-        input: Bytes(vec![0]),
+        input: Bytes::from(vec![0]),
         ..Default::default()
     };
     let call2 = EthereumTrigger::Call(Arc::new(call2));
@@ -46,28 +91,13 @@ fn test_trigger_ordering() {
     let call3 = EthereumTrigger::Call(Arc::new(call3));
 
     // Call with the same tx index as call2
+    // different than call2 so they don't get mistaken as the same
     let call4 = EthereumCall {
         transaction_index: 2,
-        input: Bytes(vec![1]),
+        input: Bytes::from(vec![1]),
         ..Default::default()
     };
     let call4 = EthereumTrigger::Call(Arc::new(call4));
-
-    fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
-        Arc::new(Log {
-            address: H160::default(),
-            topics: vec![],
-            data: Bytes::default(),
-            block_hash: Some(H256::zero()),
-            block_number: Some(U64::zero()),
-            transaction_hash: Some(H256::zero()),
-            transaction_index: Some(tx_index.into()),
-            log_index: Some(log_index.into()),
-            transaction_log_index: Some(log_index.into()),
-            log_type: Some("".into()),
-            removed: Some(false),
-        })
-    }
 
     // Event with transaction_index 1 and log_index 0;
     // should be the first element after sorting
@@ -99,14 +129,9 @@ fn test_trigger_ordering() {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    // The field initializers are necessary because inside of
-    // BlockWithTriggers::new there's a log for both fields. So just using
-    // Default above gives None on them.
-    let b: LightEthereumBlock = LightEthereumBlock {
-        number: Some(Default::default()),
-        hash: Some(Default::default()),
-        ..Default::default()
-    };
+    let b = Block::default();
+
+    let b = LightEthereumBlock::new(graph::components::ethereum::AnyBlock::from(b));
 
     // Test that `BlockWithTriggers` sorts the triggers.
     let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(
@@ -126,12 +151,12 @@ fn test_trigger_ordering() {
 #[test]
 fn test_trigger_dedup() {
     let block1 = EthereumTrigger::Block(
-        BlockPtr::from((H256::random(), 1u64)),
+        BlockPtr::from((B256::random(), 1u64)),
         EthereumBlockTriggerType::End,
     );
 
     let block2 = EthereumTrigger::Block(
-        BlockPtr::from((H256::random(), 0u64)),
+        BlockPtr::from((B256::random(), 0u64)),
         EthereumBlockTriggerType::WithCallTo(Address::random()),
     );
 
@@ -163,22 +188,6 @@ fn test_trigger_dedup() {
     };
     let call4 = EthereumTrigger::Call(Arc::new(call4));
 
-    fn create_log(tx_index: u64, log_index: u64) -> Arc<Log> {
-        Arc::new(Log {
-            address: H160::default(),
-            topics: vec![],
-            data: Bytes::default(),
-            block_hash: Some(H256::zero()),
-            block_number: Some(U64::zero()),
-            transaction_hash: Some(H256::zero()),
-            transaction_index: Some(tx_index.into()),
-            log_index: Some(log_index.into()),
-            transaction_log_index: Some(log_index.into()),
-            log_type: Some("".into()),
-            removed: Some(false),
-        })
-    }
-
     let log1 = EthereumTrigger::Log(LogRef::FullLog(create_log(1, 0), None));
     let log2 = EthereumTrigger::Log(LogRef::FullLog(create_log(1, 1), None));
     let log3 = EthereumTrigger::Log(LogRef::FullLog(create_log(2, 5), None));
@@ -206,14 +215,11 @@ fn test_trigger_dedup() {
 
     let logger = Logger::root(slog::Discard, o!());
 
-    // The field initializers are necessary because inside of
-    // BlockWithTriggers::new there's a log for both fields. So just using
-    // Default above gives None on them.
-    let b: LightEthereumBlock = LightEthereumBlock {
-        number: Some(Default::default()),
-        hash: Some(Default::default()),
-        ..Default::default()
-    };
+    #[allow(unused_variables)]
+    let b = Block::default();
+
+    #[allow(unreachable_code)]
+    let b = LightEthereumBlock::new(graph::components::ethereum::AnyBlock::from(b));
 
     // Test that `BlockWithTriggers` sorts the triggers.
     let block_with_triggers = BlockWithTriggers::<crate::Chain>::new(

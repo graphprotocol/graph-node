@@ -14,13 +14,14 @@ use git_testament::{git_testament, git_testament_macros};
 use graph::blockchain::BlockHash;
 use graph::data::store::scalar::ToPrimitive;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
+use graph::prelude::alloy::primitives::B256;
 use graph::prelude::BlockNumber;
 use graph::prelude::{
     chrono::{DateTime, Utc},
     BlockPtr, DeploymentHash, StoreError, SubgraphDeploymentEntity,
 };
 use graph::schema::InputSchema;
-use graph::{data::subgraph::status, internal_error, prelude::web3::types::H256};
+use graph::{data::subgraph::status, internal_error};
 use itertools::Itertools;
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -191,7 +192,7 @@ impl TryFrom<ErrorDetail> for SubgraphError {
         // FIXME:
         //
         // workaround for arweave
-        let block_hash = block_hash.map(|hash| H256::from_slice(&hash.as_slice()[..32]));
+        let block_hash = block_hash.map(|hash| B256::from_slice(&hash.as_slice()[..32]));
         // In existing databases, we have errors that have a `block_range` of
         // `UNVERSIONED_RANGE`, which leads to `None` as the block number, but
         // has a hash. Conversely, it is also possible for an error to not have a
