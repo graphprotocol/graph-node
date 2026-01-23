@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
+use inflector::Inflector;
 use serde_json::Value as JsonValue;
 
 use crate::formatter::format_typescript;
@@ -356,7 +357,7 @@ fn add_mapping_file(project_dir: &Path, contract_name: &str, events: &[EventInfo
     let src_dir = project_dir.join("src");
     fs::create_dir_all(&src_dir).context("Failed to create src directory")?;
 
-    let mapping_file = src_dir.join(format!("{}.ts", to_kebab_case(contract_name)));
+    let mapping_file = src_dir.join(format!("{}.ts", contract_name.to_kebab_case()));
 
     if mapping_file.exists() {
         step(
@@ -446,22 +447,6 @@ fn generate_event_handler(event: &EventInfo) -> String {
 }}
 "#
     )
-}
-
-/// Convert a string to kebab-case.
-fn to_kebab_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() {
-            if i > 0 {
-                result.push('-');
-            }
-            result.push(c.to_lowercase().next().unwrap_or(c));
-        } else {
-            result.push(c);
-        }
-    }
-    result
 }
 
 /// Update the manifest with the new data source.
@@ -555,7 +540,7 @@ fn update_manifest(
     );
     mapping.insert(
         serde_yaml::Value::String("file".to_string()),
-        serde_yaml::Value::String(format!("./src/{}.ts", to_kebab_case(contract_name))),
+        serde_yaml::Value::String(format!("./src/{}.ts", contract_name.to_kebab_case())),
     );
 
     // Build the data source
@@ -651,11 +636,11 @@ mod tests {
 
     #[test]
     fn test_to_kebab_case() {
-        assert_eq!(to_kebab_case("MyContract"), "my-contract");
-        assert_eq!(to_kebab_case("SimpleToken"), "simple-token");
-        assert_eq!(to_kebab_case("Contract"), "contract");
-        assert_eq!(to_kebab_case("contract"), "contract");
-        assert_eq!(to_kebab_case("ERC20Token"), "e-r-c20-token");
+        assert_eq!("MyContract".to_kebab_case(), "my-contract");
+        assert_eq!("SimpleToken".to_kebab_case(), "simple-token");
+        assert_eq!("Contract".to_kebab_case(), "contract");
+        assert_eq!("contract".to_kebab_case(), "contract");
+        assert_eq!("ERC20Token".to_kebab_case(), "erc20-token");
     }
 
     #[test]
