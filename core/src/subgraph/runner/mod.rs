@@ -1,5 +1,12 @@
+mod state;
 mod trigger_runner;
 
+// Re-exports for Phase 3 when run_inner is refactored to use the state machine.
+// Currently unused but part of the public API.
+#[allow(unused_imports)]
+pub use state::{RestartReason, RunnerState, StopReason};
+
+use self::state::RunnerState as RState;
 use crate::subgraph::context::IndexingContext;
 use crate::subgraph::error::{
     ClassifyErrorHelper as _, DetailHelper as _, NonDeterministicErrorHelper as _, ProcessingError,
@@ -65,6 +72,10 @@ where
     logger: Logger,
     pub metrics: RunnerMetrics,
     cancel_handle: Option<CancelHandle>,
+    /// The runner's lifecycle state machine.
+    /// Currently unused but will be used in Phase 3 when run_inner is refactored.
+    #[allow(dead_code)]
+    runner_state: RState<C>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -105,6 +116,7 @@ where
             logger,
             metrics,
             cancel_handle: None,
+            runner_state: RState::Initializing,
         }
     }
 
