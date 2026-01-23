@@ -9,14 +9,23 @@
 //! tasks are really worth parallelizing, and applying this trick
 //! indiscriminately will only result in messy code and diminishing returns.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::time::{self, Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
+use graph::components::subgraph::{
+    ProofOfIndexing, ProofOfIndexingEvent, ProofOfIndexingFinisher, ProofOfIndexingVersion,
+};
+use graph::data::store::Id;
+use graph::entity;
 use graph::futures03::StreamExt;
 use graph::itertools::Itertools;
 use graph::prelude::serde_json::{json, Value};
+use graph::prelude::{alloy::primitives::Address, hex, BlockPtr, DeploymentHash};
+use graph::schema::InputSchema;
+use graph::slog::{o, Discard, Logger};
 use graph_tests::contract::Contract;
 use graph_tests::subgraph::Subgraph;
 use graph_tests::{error, status, CONFIG};
@@ -172,7 +181,7 @@ impl TestCase {
         contracts: &[Contract],
     ) -> Result<Subgraph> {
         status!(&self.name, "Deploying subgraph");
-        let subgraph_name = match Subgraph::deploy(subgraph_name, contracts).await {
+        let subgraph_name = match Subgraph::deploy(subgraph_name, contracts, None).await {
             Ok(name) => name,
             Err(e) => {
                 error!(&self.name, "Deploy failed");
@@ -199,22 +208,28 @@ impl TestCase {
     }
 
     pub async fn prepare(&self, contracts: &[Contract]) -> anyhow::Result<String> {
-        // If a subgraph has subgraph datasources, prepare them first
-        if let Some(_subgraphs) = &self.source_subgraph {
-            if let Err(e) = self.prepare_multiple_sources(contracts).await {
-                error!(&self.name, "source subgraph deployment failed: {:?}", e);
-                return Err(e);
+        // If a subgraph has subgraph datasources, prepare them first and collect their deployment hashes
+        let source_mappings = if let Some(_subgraphs) = &self.source_subgraph {
+            match self.prepare_multiple_sources(contracts).await {
+                Ok(mappings) => Some(mappings),
+                Err(e) => {
+                    error!(&self.name, "source subgraph deployment failed: {:?}", e);
+                    return Err(e);
+                }
             }
-        }
+        } else {
+            None
+        };
 
         status!(&self.name, "Preparing subgraph");
-        let (_, subgraph_name, _) = match Subgraph::prepare(&self.name, contracts).await {
-            Ok(name) => name,
-            Err(e) => {
-                error!(&self.name, "Prepare failed: {:?}", e);
-                return Err(e);
-            }
-        };
+        let (_, subgraph_name, _) =
+            match Subgraph::prepare(&self.name, contracts, source_mappings.as_deref()).await {
+                Ok(name) => name,
+                Err(e) => {
+                    error!(&self.name, "Prepare failed: {:?}", e);
+                    return Err(e);
+                }
+            };
 
         Ok(subgraph_name)
     }
@@ -276,45 +291,64 @@ impl TestCase {
         }
     }
 
-    async fn run(self, contracts: &[Contract]) -> TestResult {
-        // If a subgraph has subgraph datasources, deploy them first
-        if let Some(_subgraphs) = &self.source_subgraph {
-            if let Err(e) = self.deploy_multiple_sources(contracts).await {
-                error!(&self.name, "source subgraph deployment failed");
-                return TestResult {
-                    name: self.name.clone(),
-                    subgraph: None,
-                    status: TestStatus::Err(e),
-                };
+    pub async fn run(self, contracts: &[Contract]) -> TestResult {
+        // If a subgraph has subgraph datasources, deploy them first and collect their deployment hashes
+        let source_mappings = if let Some(_subgraphs) = &self.source_subgraph {
+            match self.deploy_multiple_sources(contracts).await {
+                Ok(mappings) => Some(mappings),
+                Err(e) => {
+                    error!(&self.name, "source subgraph deployment failed");
+                    return TestResult {
+                        name: self.name.clone(),
+                        subgraph: None,
+                        status: TestStatus::Err(e),
+                    };
+                }
             }
-        }
+        } else {
+            None
+        };
 
         status!(&self.name, "Deploying subgraph");
-        let subgraph_name = match Subgraph::deploy(&self.name, contracts).await {
-            Ok(name) => name,
-            Err(e) => {
-                error!(&self.name, "Deploy failed");
-                return TestResult {
-                    name: self.name.clone(),
-                    subgraph: None,
-                    status: TestStatus::Err(e.context("Deploy failed")),
-                };
-            }
-        };
+        let subgraph_name =
+            match Subgraph::deploy(&self.name, contracts, source_mappings.as_deref()).await {
+                Ok(name) => name,
+                Err(e) => {
+                    error!(&self.name, "Deploy failed");
+                    return TestResult {
+                        name: self.name.clone(),
+                        subgraph: None,
+                        status: TestStatus::Err(e.context("Deploy failed")),
+                    };
+                }
+            };
 
         self.check_health_and_test(contracts, subgraph_name).await
     }
 
-    async fn prepare_multiple_sources(&self, contracts: &[Contract]) -> Result<()> {
+    async fn prepare_multiple_sources(
+        &self,
+        contracts: &[Contract],
+    ) -> Result<Vec<(String, String)>> {
+        let mut mappings = Vec::new();
         if let Some(sources) = &self.source_subgraph {
             for source in sources {
-                let _ = Subgraph::prepare(source.test_name(), contracts).await?;
+                // Source subgraphs don't have their own sources, so pass None
+                let _ = Subgraph::prepare(source.test_name(), contracts, None).await?;
+                // If the source has an alias (pre-known IPFS hash), use it for the mapping
+                if let Some(alias) = source.alias() {
+                    mappings.push((source.test_name().to_string(), alias.to_string()));
+                }
             }
         }
-        Ok(())
+        Ok(mappings)
     }
 
-    async fn deploy_multiple_sources(&self, contracts: &[Contract]) -> Result<()> {
+    async fn deploy_multiple_sources(
+        &self,
+        contracts: &[Contract],
+    ) -> Result<Vec<(String, String)>> {
+        let mut mappings = Vec::new();
         if let Some(sources) = &self.source_subgraph {
             for source in sources {
                 let subgraph = self.deploy_and_wait(source.test_name(), contracts).await?;
@@ -323,9 +357,11 @@ impl TestCase {
                     "Source subgraph deployed with hash {}",
                     subgraph.deployment
                 );
+                // Use the test_name as the placeholder key
+                mappings.push((source.test_name().to_string(), subgraph.deployment.clone()));
             }
         }
-        Ok(())
+        Ok(mappings)
     }
 }
 
@@ -892,21 +928,22 @@ async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
 
     assert!(subgraph.healthy);
 
+    // Fixed block hashes from deterministic Anvil config
     let block_hashes: Vec<&str> = vec![
         "e26fccbd24dcc76074b432becf29cad3bcba11a8467a7b770fad109c2b5d14c2",
         "249dbcbee975c22f8c9cc937536945ca463568c42d8933a3f54129dec352e46b",
         "408675f81c409dede08d0eeb2b3420a73b067c4fa8c5f0fc49ce369289467c33",
     ];
 
-    let pois: Vec<&str> = vec![
-        "0x606c1ed77564ef9ab077e0438da9f3c6af79a991603aecf74650971a88d05b65",
-        "0xbb21d5cf5fd62892159f95211da4a02f0dfa1b43d68aeb64baa52cc67fbb6c8e",
-        "0x5a01b371017c924e8cedd62a76cf8dcf05987f80d2b91aaf3fb57872ab75887f",
-    ];
+    // The deployment hash is dynamic (depends on the base subgraph's hash)
+    let deployment_hash = DeploymentHash::new(&subgraph.deployment).unwrap();
+
+    // Compute the expected POI values dynamically
+    let expected_pois = compute_expected_pois(&deployment_hash, &block_hashes);
 
     for i in 1..4 {
         let block_hash = get_block_hash(i).await.unwrap();
-        // We need to make sure that the preconditions for POI are fulfiled
+        // We need to make sure that the preconditions for POI are fulfilled
         // namely that the blockchain produced the proper block hashes for the
         // blocks of which we will check the POI.
         assert_eq!(block_hash, block_hashes[(i - 1) as usize]);
@@ -938,10 +975,144 @@ async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
         // Change on the block #2 would mean a change in the transitioning
         // from the old to the new algorithm hence would be reflected only
         // subgraphs that are grafting from pre 0.0.5 to 0.0.6 or newer.
-        assert_eq!(poi, pois[(i - 1) as usize]);
+        assert_eq!(
+            poi,
+            expected_pois[(i - 1) as usize],
+            "POI mismatch for block {}",
+            i
+        );
     }
 
     Ok(())
+}
+
+/// Compute the expected POI values for the grafted subgraph.
+///
+/// The grafted subgraph:
+/// - Spec version 0.0.6 (uses Fast POI algorithm)
+/// - Grafts from base subgraph at block 2
+/// - Creates GraftedData entities starting from block 3
+///
+/// The base subgraph:
+/// - Spec version 0.0.5 (uses Legacy POI algorithm)
+/// - Creates BaseData entities for each block
+///
+/// POI algorithm transition:
+/// - Blocks 0-2: Legacy POI digests (from base subgraph)
+/// - Block 3+: Fast POI algorithm with transition from Legacy
+fn compute_expected_pois(deployment_hash: &DeploymentHash, block_hashes: &[&str]) -> Vec<String> {
+    let logger = Logger::root(Discard, o!());
+    let causality_region = "ethereum/test";
+
+    // Create schemas for the entity types
+    let base_schema = InputSchema::parse_latest(
+        "type BaseData @entity(immutable: true) { id: ID!, data: String!, blockNumber: BigInt! }",
+        deployment_hash.clone(),
+    )
+    .unwrap();
+
+    let grafted_schema = InputSchema::parse_latest(
+        "type GraftedData @entity(immutable: true) { id: ID!, data: String!, blockNumber: BigInt! }",
+        deployment_hash.clone(),
+    )
+    .unwrap();
+
+    // Compute POI digests at each block checkpoint
+    // Store the accumulated state after each block so we can compute POI at any block
+    let mut db_at_block: HashMap<i32, HashMap<Id, Vec<u8>>> = HashMap::new();
+    let mut db: HashMap<Id, Vec<u8>> = HashMap::new();
+
+    // Process blocks 0-3:
+    // - Blocks 0-2: Legacy POI (from base subgraph, creates BaseData entities)
+    // - Block 3: Fast POI (grafted subgraph starts here, creates GraftedData entity)
+    //
+    // The base subgraph starts from block 0 (genesis block triggers handlers in Anvil).
+    //
+    // The grafted subgraph:
+    // - spec version 0.0.6 → uses Fast POI algorithm
+    // - grafts from base subgraph at block 2
+    // - inherits POI digests from base for blocks 0-2
+    // - transitions from Legacy to Fast at block 3
+    for block_i in 0..=3i32 {
+        let version = if block_i <= 2 {
+            ProofOfIndexingVersion::Legacy
+        } else {
+            ProofOfIndexingVersion::Fast
+        };
+
+        let mut stream = ProofOfIndexing::new(block_i, version);
+
+        if block_i <= 2 {
+            // Base subgraph creates BaseData
+            let id_str = block_i.to_string();
+            let entity = entity! {
+                base_schema =>
+                    id: &id_str,
+                    data: "from base",
+                    blockNumber: graph::prelude::Value::BigInt(block_i.into()),
+            };
+
+            let event = ProofOfIndexingEvent::SetEntity {
+                entity_type: "BaseData",
+                id: &id_str,
+                data: &entity,
+            };
+            stream.write(&logger, causality_region, &event);
+        } else {
+            // Grafted subgraph creates GraftedData
+            let id_str = block_i.to_string();
+            let entity = entity! {
+                grafted_schema =>
+                    id: &id_str,
+                    data: "to grafted",
+                    blockNumber: graph::prelude::Value::BigInt(block_i.into()),
+            };
+
+            let event = ProofOfIndexingEvent::SetEntity {
+                entity_type: "GraftedData",
+                id: &id_str,
+                data: &entity,
+            };
+            stream.write(&logger, causality_region, &event);
+        }
+
+        for (name, region) in stream.take() {
+            let prev = db.get(&name);
+            let update = region.pause(prev.map(|v| &v[..]));
+            db.insert(name, update);
+        }
+
+        db_at_block.insert(block_i, db.clone());
+    }
+
+    // Compute POI for blocks 1, 2, 3
+    let mut pois = Vec::new();
+    for (block_idx, block_hash_hex) in block_hashes.iter().enumerate() {
+        let block_number = (block_idx + 1) as i32;
+
+        // Get the POI version for this block - grafted subgraph uses Fast (spec 0.0.6)
+        let version = ProofOfIndexingVersion::Fast;
+
+        let block_hash_bytes = hex::decode(block_hash_hex).unwrap();
+        let block_ptr = BlockPtr::from((block_hash_bytes, block_number as u64));
+
+        // Use zero address to match the test query's indexer parameter
+        let indexer = Some(Address::ZERO);
+        let mut finisher =
+            ProofOfIndexingFinisher::new(&block_ptr, deployment_hash, &indexer, version);
+
+        if let Some(db_state) = db_at_block.get(&block_number) {
+            for (name, region) in db_state.iter() {
+                finisher.add_causality_region(name, region);
+            }
+        }
+
+        let poi_bytes = finisher.finish();
+        let poi = format!("0x{}", hex::encode(poi_bytes));
+        pois.push(poi);
+    }
+
+    pois
 }
 
 async fn test_poi_for_failed_subgraph(ctx: TestContext) -> anyhow::Result<()> {
