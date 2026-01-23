@@ -437,10 +437,24 @@ async fn generate_subgraph_source_types(
 
     let ipfs_client = IpfsClient::new(ipfs_url)?;
 
+    // Validate that all subgraph data source names are unique
+    let mut seen_names = std::collections::HashSet::new();
+    for source in subgraph_sources {
+        if !seen_names.insert(&source.name) {
+            return Err(anyhow!(
+                "Duplicate subgraph data source name '{}'. Each subgraph data source must have a unique name.",
+                source.name
+            ));
+        }
+    }
+
     for source in subgraph_sources {
         step(
             Step::Load,
-            &format!("Fetch schema for subgraph {}", source.address),
+            &format!(
+                "Fetch schema for subgraph {} ({})",
+                source.name, source.address
+            ),
         );
 
         // Fetch schema from IPFS using block_in_place to allow blocking in async context
@@ -452,7 +466,10 @@ async fn generate_subgraph_source_types(
 
         step(
             Step::Generate,
-            &format!("Generate types for subgraph {}", source.address),
+            &format!(
+                "Generate types for subgraph {} ({})",
+                source.name, source.address
+            ),
         );
 
         // Generate entity types WITHOUT store methods (false = no store methods)
@@ -460,8 +477,8 @@ async fn generate_subgraph_source_types(
             Ok(gen) => gen,
             Err(e) => {
                 eprintln!(
-                    "Warning: Failed to create schema generator for subgraph {}: {}",
-                    source.address, e
+                    "Warning: Failed to create schema generator for subgraph {} ({}): {}",
+                    source.name, source.address, e
                 );
                 continue;
             }
@@ -474,8 +491,9 @@ async fn generate_subgraph_source_types(
         let code = generate_file(&imports, &entity_classes);
         let formatted = try_format_typescript(&code);
 
-        // Output to: <output_dir>/subgraph-<IPFS_HASH>.ts
-        let output_file = output_dir.join(format!("subgraph-{}.ts", source.address));
+        // Output to: <output_dir>/subgraph-<NAME>.ts
+        // Using name instead of IPFS hash for stable file names
+        let output_file = output_dir.join(format!("subgraph-{}.ts", source.name));
         step(
             Step::Write,
             &format!("Write types to {}", output_file.display()),
@@ -542,6 +560,8 @@ struct DataSource {
 /// These reference another subgraph by its IPFS deployment ID.
 #[derive(Debug)]
 struct SubgraphSource {
+    /// The data source name from the manifest
+    name: String,
     /// The IPFS hash (deployment ID) of the referenced subgraph
     address: String,
 }
@@ -596,13 +616,20 @@ fn load_manifest(path: &Path) -> Result<Manifest> {
             let kind = ds.get("kind").and_then(|k| k.as_str()).unwrap_or("");
 
             if kind == "subgraph" {
-                // Subgraph data source - extract the IPFS address
+                // Subgraph data source - extract the name and IPFS address
+                let name = ds
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("unnamed")
+                    .to_string();
+
                 if let Some(address) = ds
                     .get("source")
                     .and_then(|s| s.get("address"))
                     .and_then(|a| a.as_str())
                 {
                     subgraph_sources.push(SubgraphSource {
+                        name,
                         address: address.to_string(),
                     });
                 }

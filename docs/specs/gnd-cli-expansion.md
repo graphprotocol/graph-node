@@ -45,7 +45,7 @@ This spec describes the expansion of `gnd` (Graph Node Dev) to include functiona
 3. **`--uncrashable` flag on codegen**: Not implemented. Float Capital's uncrashable helper generation is a niche third-party feature.
 4. **Debug output**: Uses `RUST_LOG` environment variable instead of `DEBUG=graph-cli:*`.
 
-**Code generation** (intentional, documented in verification tests): 5. **Int8 import**: gnd always imports `Int8` for simplicity, even when not used. 6. **Trailing commas**: gnd uses trailing commas in multi-line constructs. 7. **2D array accessors**: gnd uses correct `toStringMatrix()` while graph-cli has a bug using `toStringArray()` for 2D GraphQL array types. 8. **Tuple/struct component names**: gnd correctly extracts component names from raw ABI JSON, while graph-cli's ethabi parser loses nested component names for some tuple types.
+**Code generation** (intentional, documented in verification tests): 5. **Int8 import**: gnd always imports `Int8` for simplicity, even when not used. 6. **Trailing commas**: gnd uses trailing commas in multi-line constructs. 7. **2D array accessors**: gnd uses correct `toStringMatrix()` while graph-cli has a bug using `toStringArray()` for 2D GraphQL array types. 8. **Tuple/struct component names**: gnd correctly extracts component names from raw ABI JSON, while graph-cli's ethabi parser loses nested component names for some tuple types. 9. **Subgraph data source file naming**: gnd uses the data source name (`subgraph-SourceName.ts`) instead of IPFS hash (`subgraph-QmHash.ts`) for stable import paths that don't break when source subgraphs are redeployed.
 
 ## CLI Interface
 
@@ -153,7 +153,7 @@ generated/
 ├── templates/
 │   └── <TemplateName>/
 │       └── <ContractName>.ts          # Template ABI bindings
-└── subgraph-<IPFS_HASH>.ts            # Entity types for subgraph data sources
+└── subgraph-<DataSourceName>.ts       # Entity types for subgraph data sources
 ```
 
 **TS CLI References:**
@@ -594,7 +594,7 @@ Generated for template datasources with the same structure as ABI bindings.
 
 **TS CLI Reference:** `/packages/cli/src/codegen/template.ts`
 
-#### 4. Subgraph Data Source Bindings (`subgraph-<IPFS_HASH>.ts`)
+#### 4. Subgraph Data Source Bindings (`subgraph-<DataSourceName>.ts`)
 
 Generated for `kind: subgraph` data sources. When a manifest contains a subgraph data source:
 
@@ -608,9 +608,12 @@ dataSources:
 
 gnd will:
 
-1. Fetch the referenced subgraph's manifest from IPFS
-2. Extract and fetch the schema from the manifest
-3. Generate entity types (without store methods) to `generated/subgraph-{IPFS_HASH}.ts`
+1. Validate that all subgraph data source names are unique (error if duplicates found)
+2. Fetch the referenced subgraph's manifest from IPFS
+3. Extract and fetch the schema from the manifest
+4. Generate entity types (without store methods) to `generated/subgraph-{DataSourceName}.ts`
+
+**Note:** gnd uses the data source name (e.g., `SourceSubgraph`) for the generated filename rather than the IPFS hash. This produces stable import paths like `import { Entity } from '../generated/subgraph-SourceSubgraph'` that don't break when the source subgraph is redeployed with a new hash. This differs from graph-cli which uses the IPFS hash.
 
 The generated types include entity classes with getters for all fields, but no `save()`, `load()`, or `loadInBlock()` methods since these are read-only types from the source subgraph.
 
