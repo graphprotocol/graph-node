@@ -17,8 +17,11 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
 use graphql_parser::schema as gql;
 
-use crate::output::{step, Step};
-use crate::prompt::{InitForm, SourceType};
+use crate::output::{step, with_spinner, Step};
+use crate::prompt::{
+    get_subgraph_basename, prompt_directory_with_confirm, prompt_subgraph_slug_with_confirm,
+    InitForm, SourceType,
+};
 use crate::scaffold::{generate_scaffold, init_git, install_dependencies, ScaffoldOptions};
 use crate::services::{ContractInfo, ContractService, IpfsClient, NetworksRegistry};
 
@@ -402,8 +405,19 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
 }
 
 /// Initialize a subgraph from an example template.
+///
+/// This matches the graph-cli `init --from-example` behavior:
+/// 1. Prompt for subgraph slug (with confirmation output)
+/// 2. Prompt for directory (with confirmation output)
+/// 3. Clone example with spinner
+/// 4. Initialize networks config with spinner
+/// 5. Update package.json with spinner
+/// 6. Initialize git with spinner
+/// 7. Install dependencies with spinner
+/// 8. Run codegen with spinner
+/// 9. Print "Next steps" message
 fn init_from_example(opt: &InitOpt) -> Result<()> {
-    use std::process::{Command, Stdio};
+    use std::io::IsTerminal;
 
     let example = opt.from_example.as_deref().ok_or_else(|| {
         anyhow!(
@@ -418,11 +432,24 @@ fn init_from_example(opt: &InitOpt) -> Result<()> {
         other => other,
     };
 
-    let subgraph_name = opt.subgraph_name.as_deref().unwrap_or("my-subgraph");
+    // Determine subgraph slug - prompt if not provided and in terminal
+    let subgraph_name = if let Some(name) = &opt.subgraph_name {
+        name.clone()
+    } else if io::stdin().is_terminal() {
+        prompt_subgraph_slug_with_confirm(None)?
+    } else {
+        "my-subgraph".to_string()
+    };
 
-    let directory = opt.directory.clone().unwrap_or_else(|| {
-        PathBuf::from(subgraph_name.split('/').next_back().unwrap_or("subgraph"))
-    });
+    // Determine directory - prompt if not provided and in terminal
+    let directory = if let Some(dir) = &opt.directory {
+        dir.clone()
+    } else if io::stdin().is_terminal() {
+        let default_dir = get_subgraph_basename(&subgraph_name);
+        PathBuf::from(prompt_directory_with_confirm(Some(&default_dir))?)
+    } else {
+        PathBuf::from(get_subgraph_basename(&subgraph_name))
+    };
 
     // Check if directory already exists
     if directory.exists() {
@@ -432,128 +459,318 @@ fn init_from_example(opt: &InitOpt) -> Result<()> {
         ));
     }
 
-    // Clone only the specific example using git sparse-checkout
-    let temp_dir = tempfile::tempdir()?;
-    let repo_url = "https://github.com/graphprotocol/graph-tooling";
-    let example_subpath = format!("examples/{}", example);
+    // Clone example with spinner
+    clone_example_with_spinner(example, &directory)?;
 
-    step(Step::Load, &format!("Fetching example: {}", example));
+    // Initialize networks config with spinner
+    init_networks_config_with_spinner(&directory)?;
 
-    // Initialize empty repo with sparse checkout
-    let status = Command::new("git")
-        .current_dir(temp_dir.path())
-        .args(["init"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
+    // Update package.json with subgraph name
+    update_package_json_with_spinner(&directory, &subgraph_name)?;
 
-    if !status.success() {
-        return Err(anyhow!("Failed to initialize git repository"));
-    }
-
-    // Configure sparse checkout for just the example directory
-    Command::new("git")
-        .current_dir(temp_dir.path())
-        .args(["sparse-checkout", "init", "--cone"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
-
-    Command::new("git")
-        .current_dir(temp_dir.path())
-        .args(["sparse-checkout", "set", &example_subpath])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
-
-    // Add remote and fetch only the needed content
-    Command::new("git")
-        .current_dir(temp_dir.path())
-        .args(["remote", "add", "origin", repo_url])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
-
-    let fetch_status = Command::new("git")
-        .current_dir(temp_dir.path())
-        .args(["fetch", "--depth=1", "origin", "main"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
-
-    if !fetch_status.success() {
-        return Err(anyhow!("Failed to fetch from graph-tooling repository"));
-    }
-
-    Command::new("git")
-        .current_dir(temp_dir.path())
-        .args(["checkout", "origin/main"])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()?;
-
-    // Verify example exists
-    let example_path = temp_dir.path().join("examples").join(example);
-    if !example_path.exists() {
-        return Err(anyhow!(
-            "Example '{}' not found. See available examples at:\n\
-             https://github.com/graphprotocol/graph-tooling/tree/main/examples",
-            example
-        ));
-    }
-
-    // Copy example to target directory
-    step(
-        Step::Generate,
-        &format!("Creating subgraph from example: {}", example),
-    );
-    copy_dir_recursive(&example_path, &directory)?;
-
-    // Initialize fresh git repo unless skipped
+    // Initialize git unless skipped
     if !opt.skip_git {
-        step(Step::Generate, "Initializing Git repository");
-        let _ = Command::new("git")
-            .current_dir(&directory)
-            .arg("init")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        init_git_with_spinner(&directory)?;
     }
 
     // Install dependencies unless skipped
     if !opt.skip_install {
-        step(Step::Generate, "Installing dependencies");
-        // Try pnpm first, then npm
-        let pnpm_status = Command::new("pnpm")
-            .current_dir(&directory)
-            .arg("install")
-            .status();
-
-        if pnpm_status.is_err() || !pnpm_status.unwrap().success() {
-            let npm_status = Command::new("npm")
-                .current_dir(&directory)
-                .arg("install")
-                .status();
-
-            if npm_status.is_err() || !npm_status.unwrap().success() {
-                eprintln!("Warning: Failed to install dependencies. Run 'npm install' manually.");
-            }
+        if let Err(e) = install_dependencies(&directory) {
+            eprintln!("Warning: {}", e);
         }
     }
 
-    step(
-        Step::Done,
-        &format!("Subgraph created at {}", directory.display()),
-    );
+    // Run codegen unless install was skipped (codegen requires dependencies)
+    if !opt.skip_install {
+        run_codegen_with_spinner(&directory)?;
+    }
 
-    println!();
-    println!("Next steps:");
-    println!("  cd {}", directory.display());
-    println!("  # Edit subgraph.yaml with your contract details");
-    println!("  gnd codegen");
-    println!("  gnd build");
+    // Print final message
+    print_next_steps(&subgraph_name, &directory);
 
     Ok(())
+}
+
+/// Clone example subgraph with spinner.
+fn clone_example_with_spinner(example: &str, directory: &Path) -> Result<()> {
+    use std::process::{Command, Stdio};
+
+    with_spinner(
+        "Cloning example subgraph",
+        "Failed to clone example",
+        "Cloned with warnings",
+        |_spinner| {
+            let temp_dir = tempfile::tempdir()?;
+            let repo_url = "https://github.com/graphprotocol/graph-tooling";
+            let example_subpath = format!("examples/{}", example);
+
+            // Initialize empty repo with sparse checkout
+            let status = Command::new("git")
+                .current_dir(temp_dir.path())
+                .args(["init"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+
+            if !status.success() {
+                return Err(anyhow!("Failed to initialize git repository"));
+            }
+
+            // Configure sparse checkout for just the example directory
+            Command::new("git")
+                .current_dir(temp_dir.path())
+                .args(["sparse-checkout", "init", "--cone"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+
+            Command::new("git")
+                .current_dir(temp_dir.path())
+                .args(["sparse-checkout", "set", &example_subpath])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+
+            // Add remote and fetch only the needed content
+            Command::new("git")
+                .current_dir(temp_dir.path())
+                .args(["remote", "add", "origin", repo_url])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+
+            let fetch_status = Command::new("git")
+                .current_dir(temp_dir.path())
+                .args(["fetch", "--depth=1", "origin", "main"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+
+            if !fetch_status.success() {
+                return Err(anyhow!("Failed to fetch from graph-tooling repository"));
+            }
+
+            Command::new("git")
+                .current_dir(temp_dir.path())
+                .args(["checkout", "origin/main"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+
+            // Verify example exists
+            let example_path = temp_dir.path().join("examples").join(example);
+            if !example_path.exists() {
+                return Err(anyhow!(
+                    "Example '{}' not found. See available examples at:\n\
+                     https://github.com/graphprotocol/graph-tooling/tree/main/examples",
+                    example
+                ));
+            }
+
+            // Copy example to target directory
+            copy_dir_recursive(&example_path, directory)?;
+
+            Ok(())
+        },
+    )
+}
+
+/// Initialize networks.json with spinner.
+fn init_networks_config_with_spinner(directory: &Path) -> Result<()> {
+    with_spinner(
+        "Initialize networks config",
+        "Failed to initialize networks config",
+        "Networks config initialized with warnings",
+        |_spinner| {
+            // Create a minimal networks.json if it doesn't exist
+            let networks_path = directory.join("networks.json");
+            if !networks_path.exists() {
+                let networks_content = serde_json::json!({
+                    "mainnet": {
+                        "Gravity": {
+                            "address": "0x2E645469f354BB4F5c8a05B3b30A929361cf77eC"
+                        }
+                    }
+                });
+                fs::write(
+                    &networks_path,
+                    serde_json::to_string_pretty(&networks_content)?,
+                )?;
+            }
+            Ok(())
+        },
+    )
+}
+
+/// Update package.json with subgraph name with spinner.
+fn update_package_json_with_spinner(directory: &Path, subgraph_name: &str) -> Result<()> {
+    with_spinner(
+        "Update subgraph name and commands in package.json",
+        "Failed to update package.json",
+        "Updated with warnings",
+        |_spinner| {
+            let package_path = directory.join("package.json");
+            if package_path.exists() {
+                let content = fs::read_to_string(&package_path)?;
+                let mut package: serde_json::Value = serde_json::from_str(&content)?;
+
+                if let Some(obj) = package.as_object_mut() {
+                    // Update name to the subgraph basename
+                    let basename = subgraph_name
+                        .split('/')
+                        .next_back()
+                        .unwrap_or(subgraph_name);
+                    obj.insert("name".to_string(), serde_json::json!(basename));
+
+                    // Remove license and repository fields (like graph-cli does)
+                    obj.remove("license");
+                    obj.remove("repository");
+
+                    // Update deploy script with new subgraph name
+                    if let Some(scripts) = obj.get_mut("scripts").and_then(|s| s.as_object_mut()) {
+                        scripts.insert(
+                            "deploy".to_string(),
+                            serde_json::json!(format!(
+                                "graph deploy --node https://api.studio.thegraph.com/deploy/ {}",
+                                subgraph_name
+                            )),
+                        );
+                        scripts.insert(
+                            "create-local".to_string(),
+                            serde_json::json!(format!(
+                                "graph create --node http://localhost:8020/ {}",
+                                subgraph_name
+                            )),
+                        );
+                        scripts.insert(
+                            "remove-local".to_string(),
+                            serde_json::json!(format!(
+                                "graph remove --node http://localhost:8020/ {}",
+                                subgraph_name
+                            )),
+                        );
+                        scripts.insert(
+                            "deploy-local".to_string(),
+                            serde_json::json!(format!(
+                                "graph deploy --node http://localhost:8020/ --ipfs http://localhost:5001 {}",
+                                subgraph_name
+                            )),
+                        );
+                    }
+                }
+
+                fs::write(&package_path, serde_json::to_string_pretty(&package)?)?;
+            }
+            Ok(())
+        },
+    )
+}
+
+/// Initialize git repository with spinner.
+fn init_git_with_spinner(directory: &Path) -> Result<()> {
+    use std::process::{Command, Stdio};
+
+    with_spinner(
+        "Initialize subgraph repository",
+        "Failed to initialize git repository",
+        "Git initialized with warnings",
+        |_spinner| {
+            // Remove any existing .git directory (from the cloned example)
+            let git_dir = directory.join(".git");
+            if git_dir.exists() {
+                fs::remove_dir_all(&git_dir)?;
+            }
+
+            // Initialize fresh git repo
+            let status = Command::new("git")
+                .current_dir(directory)
+                .arg("init")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+
+            if !status.success() {
+                return Err(anyhow!("git init failed"));
+            }
+
+            // Stage all files
+            let _ = Command::new("git")
+                .current_dir(directory)
+                .args(["add", "--all"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+
+            // Create initial commit
+            let _ = Command::new("git")
+                .current_dir(directory)
+                .args(["commit", "-m", "Initial commit"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+
+            Ok(())
+        },
+    )
+}
+
+/// Run codegen with spinner.
+fn run_codegen_with_spinner(directory: &Path) -> Result<()> {
+    use std::process::{Command, Stdio};
+
+    // Detect package manager
+    let pkg_manager = if directory.join("pnpm-lock.yaml").exists() {
+        "pnpm"
+    } else if directory.join("yarn.lock").exists() {
+        "yarn"
+    } else {
+        "npm"
+    };
+
+    with_spinner(
+        format!("Generate ABI and schema types with {} codegen", pkg_manager),
+        "Failed to run codegen",
+        "Codegen completed with warnings",
+        |_spinner| {
+            let status = Command::new(pkg_manager)
+                .current_dir(directory)
+                .args(["run", "codegen"])
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()?;
+
+            if !status.success() {
+                return Err(anyhow!("codegen failed"));
+            }
+
+            Ok(())
+        },
+    )
+}
+
+/// Print the "Next steps" message in graph-cli format.
+fn print_next_steps(subgraph_name: &str, directory: &Path) {
+    let basename = subgraph_name
+        .split('/')
+        .next_back()
+        .unwrap_or(subgraph_name);
+    let dir_name = directory
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| directory.to_string_lossy().to_string());
+
+    println!();
+    println!("Subgraph {} created in {}", basename, dir_name);
+    println!();
+    println!("Next steps:");
+    println!();
+    println!("  1. Run `graph auth` to authenticate with your deploy key.");
+    println!();
+    println!("  2. Type `cd {}` to enter the subgraph.", dir_name);
+    println!();
+    println!("  3. Run `yarn deploy` to deploy the subgraph.");
+    println!();
+    println!("Make sure to visit the documentation on https://thegraph.com/docs/ for further information.");
 }
 
 /// Initialize a subgraph from an existing deployed subgraph.

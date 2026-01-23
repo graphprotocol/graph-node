@@ -4,6 +4,7 @@
 //! consistent prompting behavior similar to the TypeScript graph-cli.
 
 use anyhow::Result;
+use console::{style, Term};
 use inquire::validator::Validation;
 use inquire::{Autocomplete, Confirm, CustomUserError, Select, Text};
 
@@ -236,6 +237,79 @@ pub fn prompt_abi_path() -> Result<Option<String>> {
     } else {
         Ok(None)
     }
+}
+
+/// Prompt for subgraph slug with graph-cli style confirmation output.
+///
+/// After the user enters a value, clears the prompt line and shows:
+/// `✔ Subgraph slug · <value>`
+pub fn prompt_subgraph_slug_with_confirm(default: Option<&str>) -> Result<String> {
+    let term = Term::stderr();
+    let mut prompt = Text::new("Subgraph slug")
+        .with_help_message("e.g., my-subgraph or myorg/my-subgraph")
+        .with_validator(|input: &str| {
+            if input.trim().is_empty() {
+                Ok(Validation::Invalid("Subgraph slug cannot be empty".into()))
+            } else {
+                Ok(Validation::Valid)
+            }
+        });
+
+    if let Some(d) = default {
+        prompt = prompt.with_default(d);
+    }
+
+    let name = prompt.prompt()?;
+    let formatted = format_subgraph_name(&name);
+
+    // Clear the previous line and print confirmation
+    let _ = term.clear_last_lines(1);
+    let label = "Subgraph slug";
+    println!(
+        "{} {} {} {}",
+        style("✔").green(),
+        label,
+        style("·").dim(),
+        formatted
+    );
+
+    Ok(formatted)
+}
+
+/// Prompt for directory with graph-cli style confirmation output.
+///
+/// After the user enters a value, clears the prompt line and shows:
+/// `✔ Directory to create the subgraph in · <value>`
+pub fn prompt_directory_with_confirm(default: Option<&str>) -> Result<String> {
+    let term = Term::stderr();
+    let mut prompt = Text::new("Directory to create the subgraph in")
+        .with_help_message("Directory name for the new subgraph")
+        .with_validator(|input: &str| {
+            if input.trim().is_empty() {
+                Ok(Validation::Invalid("Directory cannot be empty".into()))
+            } else {
+                Ok(Validation::Valid)
+            }
+        });
+
+    if let Some(d) = default {
+        prompt = prompt.with_default(d);
+    }
+
+    let dir = prompt.prompt()?;
+
+    // Clear the previous line and print confirmation
+    let _ = term.clear_last_lines(1);
+    let label = "Directory to create the subgraph in";
+    println!(
+        "{} {} {} {}",
+        style("✔").green(),
+        label,
+        style("·").dim(),
+        dir
+    );
+
+    Ok(dir)
 }
 
 /// Format a subgraph name to be valid.
