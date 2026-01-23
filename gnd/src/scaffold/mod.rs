@@ -13,13 +13,13 @@ pub use schema::generate_schema;
 
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use anyhow::{anyhow, Context, Result};
 use serde_json::Value as JsonValue;
 
 use crate::formatter::format_typescript;
-use crate::output::{step, Step};
+use crate::output::{step, with_spinner, Step};
 
 /// Options for scaffold generation.
 #[derive(Debug, Clone)]
@@ -120,34 +120,62 @@ pub fn init_git(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Install npm dependencies.
+/// Install npm dependencies with spinner and suppressed output.
 pub fn install_dependencies(dir: &Path) -> Result<()> {
-    step(Step::Generate, "Installing dependencies");
+    // Detect which package manager to use
+    let pkg_manager = detect_package_manager(dir);
 
-    // Try pnpm first
-    let pnpm_result = Command::new("pnpm")
-        .current_dir(dir)
-        .arg("install")
-        .status();
+    with_spinner(
+        format!("Install dependencies with {}", pkg_manager),
+        "Failed to install dependencies",
+        "Installed with warnings",
+        |_spinner| {
+            let status = Command::new(&pkg_manager)
+                .current_dir(dir)
+                .arg("install")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .map_err(|e| anyhow!("{}: {}", pkg_manager, e))?;
 
-    if let Ok(status) = pnpm_result {
-        if status.success() {
-            return Ok(());
-        }
+            if status.success() {
+                return Ok(());
+            }
+
+            // If pnpm failed, try npm as fallback
+            if pkg_manager == "pnpm" {
+                let npm_status = Command::new("npm")
+                    .current_dir(dir)
+                    .arg("install")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .map_err(|e| anyhow!("npm: {}", e))?;
+
+                if npm_status.success() {
+                    return Ok(());
+                }
+            }
+
+            Err(anyhow!(
+                "Failed to install dependencies. Please run 'npm install' manually."
+            ))
+        },
+    )
+}
+
+/// Detect the package manager to use based on lock files.
+fn detect_package_manager(dir: &Path) -> String {
+    if dir.join("pnpm-lock.yaml").exists() {
+        "pnpm".to_string()
+    } else if dir.join("yarn.lock").exists() {
+        "yarn".to_string()
+    } else if dir.join("package-lock.json").exists() {
+        "npm".to_string()
+    } else {
+        // Default to pnpm
+        "pnpm".to_string()
     }
-
-    // Fall back to npm
-    let npm_result = Command::new("npm").current_dir(dir).arg("install").status();
-
-    if let Ok(status) = npm_result {
-        if status.success() {
-            return Ok(());
-        }
-    }
-
-    Err(anyhow!(
-        "Failed to install dependencies. Please run 'npm install' manually."
-    ))
 }
 
 /// Generate package.json content.
