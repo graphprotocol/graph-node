@@ -22,7 +22,7 @@ services:
   anvil:
     # Pinned to specific version since newer versions do not produce
     # deterministic block hashes. Unpin once that's fixed upstream
-    image: ghcr.io/foundry-rs/foundry:v1.2.3
+    image: ghcr.io/foundry-rs/foundry:v1.4.0
     ports:
       - '3021:8545'
     command: "'anvil --host 0.0.0.0 --gas-limit 100000000000 --base-fee 1 --block-time 2 --timestamp 1743944919 --mnemonic \"test test test test test test test test test test test junk\"'"
