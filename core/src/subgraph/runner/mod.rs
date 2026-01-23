@@ -1,3 +1,5 @@
+mod trigger_runner;
+
 use crate::subgraph::context::IndexingContext;
 use crate::subgraph::error::{
     ClassifyErrorHelper as _, DetailHelper as _, NonDeterministicErrorHelper as _, ProcessingError,
@@ -41,6 +43,8 @@ use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::vec;
+
+use self::trigger_runner::TriggerRunner;
 
 const MINUTE: Duration = Duration::from_secs(60);
 
@@ -621,38 +625,26 @@ where
 
         // Process events one after the other, passing in entity operations
         // collected previously to every new event being processed
-        let mut res = Ok(block_state);
-        match match_res {
+        let trigger_runner = TriggerRunner::new(
+            self.ctx.trigger_processor.as_ref(),
+            &self.logger,
+            &self.inputs.debug_fork,
+            &self.metrics.subgraph,
+            self.inputs.instrument,
+        );
+        let res = match match_res {
             Ok(runnables) => {
-                for runnable in runnables {
-                    let process_res = self
-                        .ctx
-                        .trigger_processor
-                        .process_trigger(
-                            &self.logger,
-                            runnable.hosted_triggers,
-                            &block,
-                            res.unwrap(),
-                            &proof_of_indexing,
-                            &causality_region,
-                            &self.inputs.debug_fork,
-                            &self.metrics.subgraph,
-                            self.inputs.instrument,
-                        )
-                        .await
-                        .map_err(|e| e.add_trigger_context(&runnable.trigger));
-                    match process_res {
-                        Ok(state) => res = Ok(state),
-                        Err(e) => {
-                            res = Err(e);
-                            break;
-                        }
-                    }
-                }
+                trigger_runner
+                    .execute(
+                        &block,
+                        runnables,
+                        block_state,
+                        &proof_of_indexing,
+                        &causality_region,
+                    )
+                    .await
             }
-            Err(e) => {
-                res = Err(e);
-            }
+            Err(e) => Err(e),
         };
 
         match res {
@@ -755,39 +747,28 @@ where
                     .match_and_decode_many(&logger, &block, triggers, hosts_filter)
                     .await;
 
-                let mut res = Ok(block_state);
-                match match_res {
+                // Use the same TriggerRunner to process triggers for dynamic data sources
+                let trigger_runner = TriggerRunner::new(
+                    self.ctx.trigger_processor.as_ref(),
+                    &self.logger,
+                    &self.inputs.debug_fork,
+                    &self.metrics.subgraph,
+                    self.inputs.instrument,
+                );
+                let res = match match_res {
                     Ok(runnables) => {
-                        for runnable in runnables {
-                            let process_res = self
-                                .ctx
-                                .trigger_processor
-                                .process_trigger(
-                                    &self.logger,
-                                    runnable.hosted_triggers,
-                                    &block,
-                                    res.unwrap(),
-                                    &proof_of_indexing,
-                                    &causality_region,
-                                    &self.inputs.debug_fork,
-                                    &self.metrics.subgraph,
-                                    self.inputs.instrument,
-                                )
-                                .await
-                                .map_err(|e| e.add_trigger_context(&runnable.trigger));
-                            match process_res {
-                                Ok(state) => res = Ok(state),
-                                Err(e) => {
-                                    res = Err(e);
-                                    break;
-                                }
-                            }
-                        }
+                        trigger_runner
+                            .execute(
+                                &block,
+                                runnables,
+                                block_state,
+                                &proof_of_indexing,
+                                &causality_region,
+                            )
+                            .await
                     }
-                    Err(e) => {
-                        res = Err(e);
-                    }
-                }
+                    Err(e) => Err(e),
+                };
 
                 block_state = res.map_err(|e| {
                     // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
