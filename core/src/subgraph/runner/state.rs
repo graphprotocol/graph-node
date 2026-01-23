@@ -2,9 +2,12 @@
 //!
 //! This module defines the explicit state machine for the runner's lifecycle,
 //! replacing the implicit state embedded in the nested loop structure.
+//!
+//! Note: Some variants are currently unused as the state machine is incrementally
+//! adopted. They will be used in future phases as the refactor progresses.
 
-// Allow dead code during incremental implementation. These types are introduced
-// in Phase 2 but will be actively used in Phase 3 when run_inner is refactored.
+// Allow dead code as these types are part of the public API and will be used
+// in subsequent phases of the runner refactor.
 #![allow(dead_code)]
 
 use graph::blockchain::block_stream::{BlockStream, BlockWithTriggers, FirehoseCursor};
@@ -64,6 +67,8 @@ pub enum RestartReason {
 pub enum StopReason {
     /// The subgraph reached its configured maximum end block.
     MaxEndBlockReached,
+    /// The subgraph reached its configured stop block.
+    StopBlockReached,
     /// The subgraph was canceled (unassigned).
     Canceled,
     /// The subgraph was unassigned or a newer runner took over.
@@ -72,4 +77,6 @@ pub enum StopReason {
     Fatal,
     /// Block stream ended naturally (e.g., in tests).
     StreamEnded,
+    /// For testing: stop when restart would happen.
+    BreakOnRestart,
 }

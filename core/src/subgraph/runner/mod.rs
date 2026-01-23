@@ -1,12 +1,11 @@
 mod state;
 mod trigger_runner;
 
-// Re-exports for Phase 3 when run_inner is refactored to use the state machine.
-// Currently unused but part of the public API.
+// Re-export state types for use by external code and future refactoring phases.
 #[allow(unused_imports)]
 pub use state::{RestartReason, RunnerState, StopReason};
 
-use self::state::RunnerState as RState;
+use self::state::StopReason as SReason;
 use crate::subgraph::context::IndexingContext;
 use crate::subgraph::error::{
     ClassifyErrorHelper as _, DetailHelper as _, NonDeterministicErrorHelper as _, ProcessingError,
@@ -73,9 +72,10 @@ where
     pub metrics: RunnerMetrics,
     cancel_handle: Option<CancelHandle>,
     /// The runner's lifecycle state machine.
-    /// Currently unused but will be used in Phase 3 when run_inner is refactored.
+    /// Currently only tracks initialization state; will be fully utilized
+    /// as the state machine refactor progresses in subsequent phases.
     #[allow(dead_code)]
-    runner_state: RState<C>,
+    runner_state: RunnerState<C>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -116,7 +116,7 @@ where
             logger,
             metrics,
             cancel_handle: None,
-            runner_state: RState::Initializing,
+            runner_state: RunnerState::Initializing,
         }
     }
 
@@ -261,7 +261,15 @@ where
         self.run_inner(false).await.map(|_| ())
     }
 
-    async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, SubgraphRunnerError> {
+    /// Perform initialization tasks before starting the main run loop.
+    ///
+    /// This includes:
+    /// - Attempting to unfail deterministic errors from previous runs
+    /// - Checking if the max end block has already been reached
+    ///
+    /// Returns `Some(stop_reason)` if the subgraph should stop immediately,
+    /// or `None` if initialization succeeded and we should proceed.
+    async fn initialize(&mut self) -> Result<Option<SReason>, Error> {
         self.update_deployment_synced_metric();
 
         // If a subgraph failed for deterministic reasons, before start indexing, we first
@@ -297,87 +305,133 @@ where
                     info!(self.logger, "Stopping subgraph as we reached maximum endBlock";
                                 "max_end_block" => max_end_block,
                                 "current_block" => current_ptr.block_number());
-                    self.inputs.store.flush().await?;
-                    return Ok(self);
+                    return Ok(Some(SReason::MaxEndBlockReached));
                 }
             }
         }
 
+        Ok(None)
+    }
+
+    /// Await the next block stream event and process it.
+    ///
+    /// This method handles:
+    /// - Getting the next event from the block stream
+    /// - Processing the event (block, revert, or error)
+    /// - Checking for cancellation
+    ///
+    /// Returns the `Action` indicating what to do next.
+    async fn await_block(
+        &mut self,
+        block_stream: &mut Cancelable<Box<dyn BlockStream<C>>>,
+    ) -> Result<Action, SubgraphRunnerError> {
+        let event = {
+            let _section = self.metrics.stream.stopwatch.start_section("scan_blocks");
+            block_stream.next().await
+        };
+
+        // TODO: move cancel handle to the Context
+        // This will require some code refactor in how the BlockStream is created
+        let block_start = Instant::now();
+
+        let action = self.handle_stream_event(event).await.inspect(|res| {
+            self.metrics
+                .subgraph
+                .observe_block_processed(block_start.elapsed(), res.block_finished());
+        })?;
+
+        self.update_deployment_synced_metric();
+
+        // Check for cancellation after processing event
+        if self.is_canceled() {
+            return self.check_cancellation();
+        }
+
+        Ok(action)
+    }
+
+    /// Check if the runner has been canceled and return the appropriate action.
+    fn check_cancellation(&self) -> Result<Action, SubgraphRunnerError> {
+        // It is also possible that the runner was in a retry delay state while
+        // the subgraph was reassigned and a new runner was started.
+        if self.ctx.instances.contains(&self.inputs.deployment.id) {
+            warn!(
+                self.logger,
+                "Terminating the subgraph runner because a newer one is active. \
+                 Possible reassignment detected while the runner was in a non-cancellable pending state",
+            );
+            return Err(SubgraphRunnerError::Duplicate);
+        }
+
+        warn!(
+            self.logger,
+            "Terminating the subgraph runner because subgraph was unassigned",
+        );
+        Ok(Action::Stop)
+    }
+
+    /// Restart the block stream after a restart was requested.
+    ///
+    /// This method:
+    /// - Attempts to restart the store to clear any errors
+    /// - Reverts state to the last good block if needed
+    /// - Starts a new block stream
+    async fn restart(&mut self) -> Result<Cancelable<Box<dyn BlockStream<C>>>, Error> {
+        // Restart the store to clear any errors that it
+        // might have encountered and use that from now on
+        let store = self.inputs.store.cheap_clone();
+        if let Some(store) = store.restart().await? {
+            let last_good_block = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
+            self.revert_state_to(last_good_block)?;
+            self.inputs = Arc::new(self.inputs.with_store(store));
+        }
+
+        debug!(self.logger, "Starting or restarting subgraph");
+        let block_stream = self.start_block_stream().await?;
+        debug!(self.logger, "Started block stream");
+        self.metrics.subgraph.deployment_status.running();
+
+        Ok(block_stream)
+    }
+
+    /// Finalize the runner after stopping.
+    ///
+    /// This flushes the store and returns the final result.
+    async fn finalize(self) -> Result<Self, SubgraphRunnerError> {
+        info!(self.logger, "Stopping subgraph");
+        self.inputs.store.flush().await?;
+        Ok(self)
+    }
+
+    async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, SubgraphRunnerError> {
+        // Phase 1: Initialization
+        if let Some(_stop_reason) = self.initialize().await? {
+            return self.finalize().await;
+        }
+
+        // Phase 2: Start initial block stream
+        debug!(self.logger, "Starting or restarting subgraph");
+        let mut block_stream = self.start_block_stream().await?;
+        debug!(self.logger, "Started block stream");
+        self.metrics.subgraph.deployment_status.running();
+
+        // Phase 3: Main event loop
         loop {
-            debug!(self.logger, "Starting or restarting subgraph");
+            let action = self.await_block(&mut block_stream).await?;
 
-            let mut block_stream = self.start_block_stream().await?;
-
-            debug!(self.logger, "Started block stream");
-
-            self.metrics.subgraph.deployment_status.running();
-
-            // Process events from the stream as long as no restart is needed
-            loop {
-                let event = {
-                    let _section = self.metrics.stream.stopwatch.start_section("scan_blocks");
-
-                    block_stream.next().await
-                };
-
-                // TODO: move cancel handle to the Context
-                // This will require some code refactor in how the BlockStream is created
-                let block_start = Instant::now();
-
-                let action = self.handle_stream_event(event).await.inspect(|res| {
-                    self.metrics
-                        .subgraph
-                        .observe_block_processed(block_start.elapsed(), res.block_finished());
-                })?;
-
-                self.update_deployment_synced_metric();
-
-                // It is possible that the subgraph was unassigned, but the runner was in
-                // a retry delay state and did not observe the cancel signal.
-                if self.is_canceled() {
-                    // It is also possible that the runner was in a retry delay state while
-                    // the subgraph was reassigned and a new runner was started.
-                    if self.ctx.instances.contains(&self.inputs.deployment.id) {
-                        warn!(
-                            self.logger,
-                            "Terminating the subgraph runner because a newer one is active. \
-                             Possible reassignment detected while the runner was in a non-cancellable pending state",
-                        );
-                        return Err(SubgraphRunnerError::Duplicate);
-                    }
-
-                    warn!(
-                        self.logger,
-                        "Terminating the subgraph runner because subgraph was unassigned",
-                    );
+            match action {
+                Action::Continue => continue,
+                Action::Stop => {
+                    return self.finalize().await;
+                }
+                Action::Restart if break_on_restart => {
+                    info!(self.logger, "Stopping subgraph on break");
+                    self.inputs.store.flush().await?;
                     return Ok(self);
                 }
-
-                match action {
-                    Action::Continue => continue,
-                    Action::Stop => {
-                        info!(self.logger, "Stopping subgraph");
-                        self.inputs.store.flush().await?;
-                        return Ok(self);
-                    }
-                    Action::Restart if break_on_restart => {
-                        info!(self.logger, "Stopping subgraph on break");
-                        self.inputs.store.flush().await?;
-                        return Ok(self);
-                    }
-                    Action::Restart => {
-                        // Restart the store to clear any errors that it
-                        // might have encountered and use that from now on
-                        let store = self.inputs.store.cheap_clone();
-                        if let Some(store) = store.restart().await? {
-                            let last_good_block =
-                                store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
-                            self.revert_state_to(last_good_block)?;
-                            self.inputs = Arc::new(self.inputs.with_store(store));
-                        }
-                        break;
-                    }
-                };
+                Action::Restart => {
+                    block_stream = self.restart().await?;
+                }
             }
         }
     }
