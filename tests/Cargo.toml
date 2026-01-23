@@ -19,6 +19,8 @@ graph-runtime-wasm = { path = "../runtime/wasm" }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 slog = { workspace = true }
+slog-async = { workspace = true }
+slog-term = { workspace = true }
 tokio = { version = "1.49.0", features = ["rt", "macros", "process"] }
 tokio-util.workspace = true
 
