@@ -303,6 +303,13 @@ gnd init [directory]
 | `--allow-simple-name` | | `false` | Allow simple subgraph names |
 | `--help` | `-h` | | Show help |
 
+**Example Subgraphs:**
+
+The `--from-example <name>` flag clones from `https://github.com/graphprotocol/graph-tooling/tree/main/examples`.
+The example name is **required** - no default is provided. Available examples include:
+`ethereum-gravatar`, `aggregations`, `ethereum-basic-event-handlers`, `substreams-powered-subgraph`, etc.
+Legacy name `ethereum/gravatar` is automatically converted to `ethereum-gravatar`.
+
 **Behavior:**
 
 1. Prompt for missing information (protocol, network, contract, etc.)
