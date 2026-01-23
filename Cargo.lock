@@ -3692,6 +3692,7 @@ dependencies = [
 name = "gnd"
 version = "0.36.0"
 dependencies = [
+ "Inflector",
  "anyhow",
  "clap",
  "clap_complete",

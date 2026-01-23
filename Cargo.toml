@@ -67,6 +67,7 @@ graphman-server = { path = "./server/graphman" }
 graphman = { path = "./core/graphman" }
 graphman-store = { path = "./core/graphman_store" }
 graphql-tools = "0.5.1"
+Inflector = "0.11.3"
 itertools = "0.14.0"
 lazy_static = "1.5.0"
 prost = "0.14"
