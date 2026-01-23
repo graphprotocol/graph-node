@@ -6,7 +6,7 @@ dataSources:
     name: SourceA
     network: test
     source:
-      address: 'QmZBecjQfrQG5BfpapLywSAzVb5FSFty4j9hVSAhkxbBas'
+      address: '@source-subgraph-a@'
       startBlock: 0
     mapping:
       apiVersion: 0.0.7
@@ -22,7 +22,7 @@ dataSources:
     name: SourceB
     network: test
     source:
-      address: 'QmaqX7yefmvgVTbc2ZukVYasSgXtE7Xg5b79Z7afVx4y6u'
+      address: '@source-subgraph-b@'
       startBlock: 0
     mapping:
       apiVersion: 0.0.7
