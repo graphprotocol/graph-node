@@ -218,11 +218,11 @@ Each phase is complete when:
 
 ### Phase 2: Define RunnerState Enum
 
-- [ ] Define `RunnerState` enum with all variants
-- [ ] Define `RestartReason` and `StopReason` enums
-- [ ] Add `state: RunnerState` field to `SubgraphRunner`
-- [ ] Initialize state in constructor
-- [ ] Verify tests pass
+- [x] Define `RunnerState` enum with all variants
+- [x] Define `RestartReason` and `StopReason` enums
+- [x] Add `state: RunnerState` field to `SubgraphRunner`
+- [x] Initialize state in constructor
+- [x] Verify tests pass
 
 ### Phase 3: Refactor run_inner to State Machine
 
