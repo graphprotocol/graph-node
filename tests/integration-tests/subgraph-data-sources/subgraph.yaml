@@ -6,7 +6,7 @@ dataSources:
     name: Contract
     network: test
     source:
-      address: 'QmRWTEejPDDwALaquFGm6X2GBbbh5osYDXwCRRkoZ6KQhb'
+      address: '@source-subgraph@'
       startBlock: 0
     mapping:
       apiVersion: 0.0.7
