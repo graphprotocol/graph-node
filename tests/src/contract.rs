@@ -75,14 +75,7 @@ impl Contract {
     }
 
     fn code_and_abi(name: &str) -> anyhow::Result<(String, Vec<u8>)> {
-        let src = TestFile::new(&format!("contracts/src/{}.sol", name));
         let bin = TestFile::new(&format!("contracts/out/{}.sol/{}.json", name, name));
-        if src.newer(&bin) {
-            println!(
-                "The source {} is newer than the compiled contract {}. Please recompile.",
-                src, bin
-            );
-        }
 
         let json: Value = serde_json::from_reader(bin.reader()?).unwrap();
         let abi = serde_json::to_string(&json["abi"]).unwrap();
