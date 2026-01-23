@@ -265,7 +265,7 @@ impl PoolCoordinator {
 
         let primary = self.primary()?;
 
-        let mut pconn = primary.get().await?;
+        let mut pconn = primary.get_for_setup().await?;
 
         let states: Vec<_> = states
             .into_iter()

@@ -63,6 +63,10 @@ pub struct EnvVarsStore {
     /// Set by the environment variable `GRAPH_STORE_CONNECTION_TIMEOUT` (expressed
     /// in milliseconds). The default value is 5000ms.
     pub connection_timeout: Duration,
+    /// Set by `GRAPH_STORE_SETUP_TIMEOUT` (in milliseconds). Default: 30000ms.
+    /// Used during database setup (migrations, schema creation) which can
+    /// legitimately take longer than normal operations.
+    pub setup_timeout: Duration,
     /// Set by the environment variable `GRAPH_STORE_CONNECTION_MIN_IDLE`. No
     /// default value is provided.
     pub connection_min_idle: Option<u32>,
@@ -214,6 +218,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             ),
             recent_blocks_cache_capacity: x.recent_blocks_cache_capacity,
             connection_timeout: Duration::from_millis(x.connection_timeout_in_millis),
+            setup_timeout: Duration::from_millis(x.setup_timeout_in_millis),
             connection_min_idle: x.connection_min_idle,
             connection_idle_timeout: Duration::from_secs(x.connection_idle_timeout_in_secs),
             write_queue_size: x.write_queue_size,
@@ -299,6 +304,8 @@ pub struct InnerStore {
     // configured differently for each pool.
     #[envconfig(from = "GRAPH_STORE_CONNECTION_TIMEOUT", default = "5000")]
     connection_timeout_in_millis: u64,
+    #[envconfig(from = "GRAPH_STORE_SETUP_TIMEOUT", default = "30000")]
+    setup_timeout_in_millis: u64,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_MIN_IDLE")]
     connection_min_idle: Option<u32>,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_IDLE_TIMEOUT", default = "600")]
