@@ -620,6 +620,18 @@ impl PoolInner {
         self.get_from_pool(&self.pool, None, Duration::ZERO).await
     }
 
+    /// Get a connection using the setup timeout. Use only during database
+    /// initialization where operations can legitimately take longer.
+    async fn get_for_setup(&self) -> Result<AsyncPgConnection, StoreError> {
+        let setup_timeouts = Timeouts {
+            wait: Some(ENV_VARS.store.setup_timeout),
+            create: Some(ENV_VARS.store.setup_timeout),
+            recycle: Some(ENV_VARS.store.setup_timeout),
+        };
+        self.get_from_pool(&self.pool, Some(setup_timeouts), Duration::ZERO)
+            .await
+    }
+
     /// Get the pool for fdw connections. It is an error if none is configured
     fn fdw_pool(&self, logger: &Logger) -> Result<&AsyncPool, StoreError> {
         let pool = match &self.fdw_pool {
@@ -701,7 +713,7 @@ impl PoolInner {
     }
 
     async fn locale_check(&self, logger: &Logger) -> Result<(), StoreError> {
-        let mut conn = self.get().await?;
+        let mut conn = self.get_for_setup().await?;
         let _: () = if let Err(msg) = catalog::Locale::load(&mut conn).await?.suitable() {
             if self.shard == *PRIMARY_SHARD && primary::is_empty(&mut conn).await? {
                 const MSG: &str = "Database does not use C locale. \
@@ -751,7 +763,7 @@ impl PoolInner {
 
     async fn configure_fdw(&self, servers: &[ForeignServer]) -> Result<(), StoreError> {
         info!(&self.logger, "Setting up fdw");
-        let mut conn = self.get().await?;
+        let mut conn = self.get_for_setup().await?;
         conn.batch_execute("create extension if not exists postgres_fdw")
             .await?;
         conn.transaction(|conn| {
@@ -790,7 +802,10 @@ impl PoolInner {
         // careful that block_on only gets called on a blocking thread to
         // avoid errors from the tokio runtime
         let logger = self.logger.cheap_clone();
-        let mut conn = self.get().await.map(AsyncConnectionWrapper::from)?;
+        let mut conn = self
+            .get_for_setup()
+            .await
+            .map(AsyncConnectionWrapper::from)?;
 
         tokio::task::spawn_blocking(move || {
             diesel::Connection::transaction::<_, StoreError, _>(&mut conn, |conn| {
@@ -808,7 +823,7 @@ impl PoolInner {
         }
 
         info!(&self.logger, "Dropping cross-shard views");
-        let mut conn = self.get().await?;
+        let mut conn = self.get_for_setup().await?;
         conn.transaction(|conn| {
             async {
                 let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
@@ -845,7 +860,7 @@ impl PoolInner {
             return Ok(());
         }
 
-        let mut conn = self.get().await?;
+        let mut conn = self.get_for_setup().await?;
         let sharded = Namespace::special(CROSS_SHARD_NSP);
         if catalog::has_namespace(&mut conn, &sharded).await? {
             // We dropped the namespace before, but another node must have
@@ -897,7 +912,7 @@ impl PoolInner {
     pub async fn remap(&self, server: &ForeignServer) -> Result<(), StoreError> {
         if server.shard == *PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
-            let mut conn = self.get().await?;
+            let mut conn = self.get_for_setup().await?;
             conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard).scope_boxed())
                 .await?;
         }
@@ -907,7 +922,7 @@ impl PoolInner {
                 "Mapping metadata from {}",
                 server.shard.as_str()
             );
-            let mut conn = self.get().await?;
+            let mut conn = self.get_for_setup().await?;
             conn.transaction(|conn| server.map_metadata(conn).scope_boxed())
                 .await?;
         }
@@ -919,7 +934,7 @@ impl PoolInner {
             return Ok(false);
         }
 
-        let mut conn = self.get().await?;
+        let mut conn = self.get_for_setup().await?;
         server.needs_remap(&mut conn).await
     }
 }

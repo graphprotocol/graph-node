@@ -216,6 +216,9 @@ those.
   decisions. Set to `true` to turn simulation on, defaults to `false`
 - `GRAPH_STORE_CONNECTION_TIMEOUT`: How long to wait to connect to a
   database before assuming the database is down in ms. Defaults to 5000ms.
+- `GRAPH_STORE_SETUP_TIMEOUT`: Timeout for database setup operations
+  (migrations, schema creation) in milliseconds. Defaults to 30000ms (30s).
+  Setup operations can legitimately take longer than normal runtime operations.
 - `GRAPH_STORE_CONNECTION_UNAVAILABLE_RETRY`: When a database shard is marked
   unavailable due to connection timeouts, this controls how often to allow a
   single probe request through to check if the database has recovered. Only one
