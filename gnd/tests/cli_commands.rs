@@ -108,7 +108,11 @@ fn test_init_from_example() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Example downloads from GitHub, may fail in CI without network
         // Skip test if it fails due to network issues
-        if stderr.contains("network") || stderr.contains("fetch") || stderr.contains("download") {
+        if stderr.contains("network")
+            || stderr.contains("fetch")
+            || stderr.contains("download")
+            || stderr.contains("Failed to fetch")
+        {
             eprintln!("Skipping test_init_from_example: network unavailable");
             return;
         }
@@ -131,6 +135,94 @@ fn test_init_from_example() {
     assert!(
         subgraph_dir.join("package.json").exists(),
         "package.json should exist"
+    );
+
+    // Verify it's actually the ethereum-gravatar example (contains Gravatar entity)
+    let schema = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        schema.contains("Gravatar"),
+        "schema.graphql should contain Gravatar entity"
+    );
+}
+
+#[test]
+fn test_init_from_example_invalid_name() {
+    let temp_dir = TempDir::new().unwrap();
+    let output = run_gnd(
+        &[
+            "init",
+            "--skip-install",
+            "--from-example",
+            "nonexistent-example-12345",
+            "test",
+        ],
+        temp_dir.path(),
+    );
+
+    // Command should fail
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    // Skip test if it fails due to network issues (can't verify example doesn't exist)
+    if stderr.contains("Failed to fetch from graph-tooling") {
+        eprintln!("Skipping test_init_from_example_invalid_name: network unavailable");
+        return;
+    }
+
+    // Should show helpful error message
+    assert!(
+        stderr.contains("not found") || stderr.contains("graph-tooling"),
+        "Error should mention example not found or link to graph-tooling. Got: {}",
+        stderr
+    );
+}
+
+#[test]
+fn test_init_from_example_aggregations() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("my-agg");
+
+    let output = run_gnd(
+        &[
+            "init",
+            "--skip-install",
+            "--from-example",
+            "aggregations",
+            "my-agg",
+        ],
+        temp_dir.path(),
+    );
+
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Example downloads from GitHub, may fail in CI without network
+        if stderr.contains("network")
+            || stderr.contains("fetch")
+            || stderr.contains("download")
+            || stderr.contains("Failed to fetch")
+        {
+            eprintln!("Skipping test_init_from_example_aggregations: network unavailable");
+            return;
+        }
+        panic!(
+            "gnd init --from-example aggregations failed:\nstdout: {}\nstderr: {}",
+            stdout, stderr
+        );
+    }
+
+    // Verify scaffold was created
+    assert!(subgraph_dir.exists(), "Subgraph directory should exist");
+
+    // Verify it's actually the aggregations example, not ethereum-gravatar
+    let manifest = fs::read_to_string(subgraph_dir.join("subgraph.yaml")).unwrap();
+
+    // The aggregations example uses specVersion 1.1.0 and has blockHandlers,
+    // whereas ethereum-gravatar uses 0.0.5 and has eventHandlers
+    assert!(
+        manifest.contains("specVersion: 1.1.0") || manifest.contains("blockHandlers"),
+        "Manifest should be the aggregations example (expected specVersion 1.1.0 or blockHandlers)"
     );
 }
 

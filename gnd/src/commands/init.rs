@@ -385,23 +385,44 @@ async fn init_from_contract(opt: &InitOpt) -> Result<()> {
     Ok(())
 }
 
+/// Recursively copy a directory and its contents.
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
 /// Initialize a subgraph from an example template.
 fn init_from_example(opt: &InitOpt) -> Result<()> {
-    use std::fs;
-    use std::process::Command;
+    use std::process::{Command, Stdio};
 
-    let example = opt.from_example.as_deref().unwrap_or("ethereum-gravatar");
+    let example = opt.from_example.as_deref().ok_or_else(|| {
+        anyhow!(
+            "Example name is required. See available examples at:\n\
+             https://github.com/graphprotocol/graph-tooling/tree/main/examples"
+        )
+    })?;
+
+    // Handle legacy example name format
+    let example = match example {
+        "ethereum/gravatar" => "ethereum-gravatar",
+        other => other,
+    };
 
     let subgraph_name = opt.subgraph_name.as_deref().unwrap_or("my-subgraph");
 
     let directory = opt.directory.clone().unwrap_or_else(|| {
         PathBuf::from(subgraph_name.split('/').next_back().unwrap_or("subgraph"))
     });
-
-    step(
-        Step::Generate,
-        &format!("Creating subgraph from example: {}", example),
-    );
 
     // Check if directory already exists
     if directory.exists() {
@@ -411,30 +432,82 @@ fn init_from_example(opt: &InitOpt) -> Result<()> {
         ));
     }
 
-    // Clone the example repository
-    let repo_url = "https://github.com/graphprotocol/example-subgraph.git";
+    // Clone only the specific example using git sparse-checkout
+    let temp_dir = tempfile::tempdir()?;
+    let repo_url = "https://github.com/graphprotocol/graph-tooling";
+    let example_subpath = format!("examples/{}", example);
 
-    step(Step::Load, &format!("Cloning example from {}", repo_url));
+    step(Step::Load, &format!("Fetching example: {}", example));
 
+    // Initialize empty repo with sparse checkout
     let status = Command::new("git")
-        .args([
-            "clone",
-            "--depth",
-            "1",
-            repo_url,
-            &directory.to_string_lossy(),
-        ])
+        .current_dir(temp_dir.path())
+        .args(["init"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .status()?;
 
     if !status.success() {
-        return Err(anyhow!("Failed to clone example repository"));
+        return Err(anyhow!("Failed to initialize git repository"));
     }
 
-    // Remove .git directory to start fresh
-    let git_dir = directory.join(".git");
-    if git_dir.exists() {
-        fs::remove_dir_all(&git_dir)?;
+    // Configure sparse checkout for just the example directory
+    Command::new("git")
+        .current_dir(temp_dir.path())
+        .args(["sparse-checkout", "init", "--cone"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+
+    Command::new("git")
+        .current_dir(temp_dir.path())
+        .args(["sparse-checkout", "set", &example_subpath])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+
+    // Add remote and fetch only the needed content
+    Command::new("git")
+        .current_dir(temp_dir.path())
+        .args(["remote", "add", "origin", repo_url])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+
+    let fetch_status = Command::new("git")
+        .current_dir(temp_dir.path())
+        .args(["fetch", "--depth=1", "origin", "main"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+
+    if !fetch_status.success() {
+        return Err(anyhow!("Failed to fetch from graph-tooling repository"));
     }
+
+    Command::new("git")
+        .current_dir(temp_dir.path())
+        .args(["checkout", "origin/main"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()?;
+
+    // Verify example exists
+    let example_path = temp_dir.path().join("examples").join(example);
+    if !example_path.exists() {
+        return Err(anyhow!(
+            "Example '{}' not found. See available examples at:\n\
+             https://github.com/graphprotocol/graph-tooling/tree/main/examples",
+            example
+        ));
+    }
+
+    // Copy example to target directory
+    step(
+        Step::Generate,
+        &format!("Creating subgraph from example: {}", example),
+    );
+    copy_dir_recursive(&example_path, &directory)?;
 
     // Initialize fresh git repo unless skipped
     if !opt.skip_git {
@@ -442,6 +515,8 @@ fn init_from_example(opt: &InitOpt) -> Result<()> {
         let _ = Command::new("git")
             .current_dir(&directory)
             .arg("init")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .status();
     }
 
