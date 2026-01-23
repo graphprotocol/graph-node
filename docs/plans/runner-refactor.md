@@ -211,10 +211,10 @@ Each phase is complete when:
 
 ### Phase 1: Extract TriggerRunner Component
 
-- [ ] Create `TriggerRunner` struct with execute method
-- [ ] Replace first trigger loop (lines 616-656)
-- [ ] Replace second trigger loop (lines 754-790)
-- [ ] Verify tests pass
+- [x] Create `TriggerRunner` struct with execute method
+- [x] Replace first trigger loop (lines 616-656)
+- [x] Replace second trigger loop (lines 754-790)
+- [x] Verify tests pass
 
 ### Phase 2: Define RunnerState Enum
 
