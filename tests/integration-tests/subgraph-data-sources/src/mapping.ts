@@ -1,5 +1,5 @@
 import { log, store } from '@graphprotocol/graph-ts';
-import { Block, Block2, Block3 } from '../generated/subgraph-QmRWTEejPDDwALaquFGm6X2GBbbh5osYDXwCRRkoZ6KQhb';
+import { Block, Block2, Block3 } from '../generated/subgraph-Contract';
 import { MirrorBlock, MirrorBlockBytes } from '../generated/schema';
 
 export function handleEntity(block: Block): void {
