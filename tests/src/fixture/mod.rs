@@ -359,7 +359,7 @@ graph::prelude::lazy_static! {
 }
 
 fn test_logger(test_name: &str) -> Logger {
-    graph::log::logger(true).new(o!("test" => test_name.to_string()))
+    crate::output::test_logger(test_name)
 }
 
 #[allow(clippy::await_holding_lock)]

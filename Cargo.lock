@@ -4036,6 +4036,8 @@ dependencies = [
  "serde",
  "serde_yaml",
  "slog",
+ "slog-async",
+ "slog-term",
  "tokio",
  "tokio-stream",
  "tokio-util",
