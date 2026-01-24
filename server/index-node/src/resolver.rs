@@ -352,7 +352,10 @@ where
         ))
     }
 
-    fn resolve_proof_of_indexing(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+    async fn resolve_proof_of_indexing(
+        &self,
+        field: &a::Field,
+    ) -> Result<r::Value, QueryExecutionError> {
         let deployment_id = field
             .get_required::<DeploymentHash>("subgraph")
             .expect("Valid subgraphId required");
@@ -381,7 +384,7 @@ where
         let poi_fut = self
             .store
             .get_proof_of_indexing(&deployment_id, &indexer, block.clone());
-        let poi = match graph::futures03::executor::block_on(poi_fut) {
+        let poi = match poi_fut.await {
             Ok(Some(poi)) => r::Value::String(format!("0x{}", hex::encode(poi))),
             Ok(None) => r::Value::Null,
             Err(e) => {
@@ -791,7 +794,7 @@ where
             field.name.as_str(),
             scalar_type.name.as_str(),
         ) {
-            ("Query", "proofOfIndexing", "Bytes") => self.resolve_proof_of_indexing(field),
+            ("Query", "proofOfIndexing", "Bytes") => self.resolve_proof_of_indexing(field).await,
             ("Query", "blockData", "JSONObject") => self.resolve_block_data(field).await,
             ("Query", "blockHashFromNumber", "Bytes") => {
                 self.resolve_block_hash_from_number(field).await
