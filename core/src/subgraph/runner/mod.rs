@@ -9,7 +9,8 @@ pub use state::{RestartReason, RunnerState, StopReason};
 use self::state::StopReason as SReason;
 use crate::subgraph::context::IndexingContext;
 use crate::subgraph::error::{
-    ClassifyErrorHelper as _, DetailHelper as _, NonDeterministicErrorHelper as _, ProcessingError,
+    ClassifyErrorHelper as _, DetailHelper as _, MappingErrorHelper as _,
+    NonDeterministicErrorHelper as _, ProcessingError,
 };
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
@@ -52,6 +53,20 @@ use std::time::{Duration, Instant};
 use std::vec;
 
 use self::trigger_runner::TriggerRunner;
+
+/// Demote a `PossibleReorg` error to a non-deterministic error (`Unknown`).
+///
+/// This is used when we cannot cleanly restart due to irreversible state changes
+/// (e.g., after `create_dynamic_data_sources`). In such cases, treating the error
+/// as non-deterministic allows retry logic to attempt recovery, though it may
+/// cause unnecessary subgraph failures if the reorg is real.
+///
+/// See also: b21fa73b-6453-4340-99fb-1a78ec62efb1 for future improvement plans.
+fn demote_possible_reorg(e: MappingError) -> ProcessingError {
+    match e {
+        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => ProcessingError::Unknown(e),
+    }
+}
 
 const MINUTE: Duration = Duration::from_secs(60);
 
@@ -763,14 +778,14 @@ where
             let hosts_filter = |_: &'_ TriggerData<C>| -> Box<dyn Iterator<Item = _> + Send> {
                 Box::new(runtime_hosts.iter().map(Arc::as_ref))
             };
+            // Note: PossibleReorg is demoted to Unknown here because we cannot roll back the
+            // effect of `create_dynamic_data_sources`. This could cause unnecessary subgraph
+            // failures - see b21fa73b-6453-4340-99fb-1a78ec62efb1 for details on how this
+            // could be fixed (requires BlockState checkpoints).
             let runnables = self
                 .match_and_decode_many(logger, &block, triggers, hosts_filter)
                 .await
-                .map_err(|e| match e {
-                    MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
-                        ProcessingError::Unknown(e)
-                    }
-                })?;
+                .map_err(demote_possible_reorg)?;
 
             block_state = self
                 .execute_triggers(
@@ -782,17 +797,7 @@ where
                     causality_region,
                 )
                 .await
-                .map_err(|e| {
-                    // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
-                    // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
-                    // way to revert the effect of `create_dynamic_data_sources` so we may return a
-                    // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
-                    match e {
-                        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
-                            ProcessingError::Unknown(e)
-                        }
-                    }
-                })?;
+                .map_err(demote_possible_reorg)?;
         }
 
         Ok(block_state)
@@ -910,45 +915,47 @@ where
             .stopwatch
             .start_section(PROCESS_TRIGGERS_SECTION_NAME);
 
-        let runnables = self.match_triggers(&logger, &block, triggers).await;
+        let runnables = match self
+            .match_triggers(&logger, &block, triggers)
+            .await
+            .into_processing_error()
+        {
+            Ok(r) => r,
+            Err(e) if e.should_restart() => {
+                info!(logger,
+                    "Possible reorg detected, retrying";
+                    "error" => format!("{:#}", e),
+                );
+                // In case of a possible reorg, we want this function to do nothing
+                // and restart the block stream so it has a chance to detect the reorg.
+                // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
+                return Ok(Action::Restart);
+            }
+            Err(e) => return Err(e),
+        };
 
         // === Stage 2: Execute triggers ===
-        let block_state = match runnables {
-            Ok(runnables) => {
-                let res = self
-                    .execute_triggers(
-                        &logger,
-                        &block,
-                        runnables,
-                        block_state,
-                        &proof_of_indexing,
-                        &causality_region,
-                    )
-                    .await;
-
-                match res {
-                    Ok(state) => state,
-                    Err(MappingError::Unknown(e)) => return Err(ProcessingError::Unknown(e)),
-                    Err(MappingError::PossibleReorg(e)) => {
-                        info!(logger,
-                            "Possible reorg detected, retrying";
-                            "error" => format!("{:#}", e),
-                        );
-                        // In case of a possible reorg, we want this function to do nothing
-                        // and restart the block stream so it has a chance to detect the reorg.
-                        // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
-                        return Ok(Action::Restart);
-                    }
-                }
-            }
-            Err(MappingError::Unknown(e)) => return Err(ProcessingError::Unknown(e)),
-            Err(MappingError::PossibleReorg(e)) => {
+        let block_state = match self
+            .execute_triggers(
+                &logger,
+                &block,
+                runnables,
+                block_state,
+                &proof_of_indexing,
+                &causality_region,
+            )
+            .await
+            .into_processing_error()
+        {
+            Ok(s) => s,
+            Err(e) if e.should_restart() => {
                 info!(logger,
                     "Possible reorg detected, retrying";
                     "error" => format!("{:#}", e),
                 );
                 return Ok(Action::Restart);
             }
+            Err(e) => return Err(e),
         };
 
         // === Determine if restart is needed ===
@@ -1383,17 +1390,14 @@ where
                     Err(e) => Err(e),
                 }
             };
-            match process_res {
-                Ok(state) => block_state = state,
-                Err(err) => {
-                    let err = match err {
-                        // Ignoring `PossibleReorg` isn't so bad since the subgraph will retry
-                        // non-deterministic errors.
-                        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => e,
-                    };
-                    return Err(err.context("failed to process trigger".to_string()));
+            // Offchain triggers treat PossibleReorg as a non-deterministic error since
+            // the subgraph will retry anyway. See ProcessingErrorKind for the error
+            // handling invariants.
+            block_state = process_res.map_err(|e| match e {
+                MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
+                    e.context("failed to process trigger")
                 }
-            }
+            })?;
 
             anyhow::ensure!(
                 !block_state.has_created_on_chain_data_sources(),
