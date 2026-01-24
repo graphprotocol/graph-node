@@ -22,13 +22,14 @@ use graph::{
             PruneReporter, PruneRequest, SubgraphFork,
         },
     },
-    data::query::QueryTarget,
-    data::subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
+    data::{
+        query::QueryTarget,
+        subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
+    },
     internal_error,
-    prelude::StoreEvent,
     prelude::{
         anyhow, lazy_static, o, ApiVersion, BlockNumber, BlockPtr, ChainStore, DeploymentHash,
-        EntityOperation, Logger, MetricsRegistry, NodeId, PartialBlockPtr, StoreError,
+        EntityOperation, Logger, MetricsRegistry, NodeId, PartialBlockPtr, StoreError, StoreEvent,
         SubgraphDeploymentEntity, SubgraphName, SubgraphStore as SubgraphStoreTrait,
         SubgraphVersionSwitchingMode,
     },
@@ -1110,21 +1111,19 @@ impl Inner {
         join_all(self.stores.values().map(|store| store.vacuum())).await
     }
 
-    pub async fn rewind(
-        &self,
-        id: DeploymentHash,
-        block_ptr_to: BlockPtr,
-    ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id).await?;
+    pub async fn rewind(&self, id: DeploymentId, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+        let site = self.find_site(id).await?;
+        let store = self.for_site(&site)?;
         store.rewind(site, block_ptr_to).await
     }
 
     pub async fn truncate(
         &self,
-        id: DeploymentHash,
+        id: DeploymentId,
         block_ptr_to: BlockPtr,
     ) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id).await?;
+        let site = self.find_site(id).await?;
+        let store = self.for_site(&site)?;
         store.truncate(site, block_ptr_to).await
     }
 
