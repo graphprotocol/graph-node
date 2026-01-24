@@ -265,12 +265,14 @@ Each phase is complete when:
 
 ### Phase 7: Module Organization
 
-- [ ] Create `runner/` directory
-- [ ] Move `state.rs`, `pipeline.rs`, `trigger_runner.rs` into it
-- [ ] Update `runner.rs` to re-export from module
-- [ ] Update imports in dependent files
-- [ ] Verify tests pass
-- [ ] `just lint` shows zero warnings
+- [x] Create `runner/` directory
+- [x] Move `state.rs`, `pipeline.rs`, `trigger_runner.rs` into it
+- [x] Update `runner.rs` to re-export from module
+- [x] Update imports in dependent files
+- [x] Verify tests pass
+- [x] `just lint` shows zero warnings
+
+**Note:** Phase 7 was completed as part of earlier phases during the natural evolution of the refactor.
 
 ## Notes
 
