@@ -15,7 +15,7 @@ use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::{status, DeploymentFeatures};
 use graph::data::value::Object;
-use graph::futures03::TryFutureExt;
+use graph::futures03::{future, TryFutureExt};
 use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
@@ -417,28 +417,29 @@ where
             return Err(QueryExecutionError::TooExpensive);
         }
 
-        let mut public_poi_results = vec![];
-        for request in requests {
-            let (poi_result, request) = match self
-                .store
-                .get_public_proof_of_indexing(&request.deployment, request.block_number, self)
-                .await
-            {
-                Ok(Some(poi)) => (Some(poi), request),
-                Ok(None) => (None, request),
-                Err(e) => {
-                    error!(
-                        self.logger,
-                        "Failed to query public proof of indexing";
-                        "subgraph" => &request.deployment,
-                        "block" => format!("{}", request.block_number),
-                        "error" => format!("{:?}", e)
-                    );
-                    (None, request)
-                }
-            };
+        // Process all POI requests in parallel for better throughput
+        let poi_futures: Vec<_> = requests
+            .into_iter()
+            .map(|request| async move {
+                let poi_result = match self
+                    .store
+                    .get_public_proof_of_indexing(&request.deployment, request.block_number, self)
+                    .await
+                {
+                    Ok(Some(poi)) => Some(poi),
+                    Ok(None) => None,
+                    Err(e) => {
+                        error!(
+                            self.logger,
+                            "Failed to query public proof of indexing";
+                            "subgraph" => &request.deployment,
+                            "block" => format!("{}", request.block_number),
+                            "error" => format!("{:?}", e)
+                        );
+                        None
+                    }
+                };
 
-            public_poi_results.push(
                 PublicProofOfIndexingResult {
                     deployment: request.deployment,
                     block: match poi_result {
@@ -447,9 +448,11 @@ where
                     },
                     proof_of_indexing: poi_result.map(|(_, poi)| poi),
                 }
-                .into_value(),
-            )
-        }
+                .into_value()
+            })
+            .collect();
+
+        let public_poi_results = future::join_all(poi_futures).await;
 
         Ok(r::Value::List(public_poi_results))
     }
