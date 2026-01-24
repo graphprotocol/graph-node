@@ -970,6 +970,12 @@ where
         let needs_restart = created_data_sources_needs_restart || has_expired_data_sources;
 
         // === Stage 3: Process dynamic data sources ===
+        // Create a checkpoint before dynamic DS processing for potential rollback.
+        // Currently not used for actual rollback, but available for future improvements
+        // to properly handle PossibleReorg errors during dynamic DS creation.
+        // See: b21fa73b-6453-4340-99fb-1a78ec62efb1
+        let _checkpoint = block_state.checkpoint();
+
         let block_state = {
             let _section = self
                 .metrics
