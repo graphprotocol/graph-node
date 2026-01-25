@@ -236,13 +236,13 @@ Each phase is complete when:
 
 ### Phase 4: Define Pipeline Stages
 
-- [ ] Extract `match_triggers()` stage method
-- [ ] Extract `execute_triggers()` stage method
-- [ ] Extract `process_dynamic_data_sources()` stage method
-- [ ] Extract `process_offchain_triggers()` stage method
-- [ ] Extract `persist_block_state()` stage method
-- [ ] Rewrite `process_block` to call stages in sequence
-- [ ] Verify tests pass
+- [x] Extract `match_triggers()` stage method
+- [x] Extract `execute_triggers()` stage method
+- [x] Extract `process_dynamic_data_sources()` stage method
+- [x] Extract `process_offchain_triggers()` stage method
+- [x] Extract `persist_block_state()` stage method
+- [x] Rewrite `process_block` to call stages in sequence
+- [x] Verify tests pass
 
 ### Phase 5: Consolidate Error Handling
 
