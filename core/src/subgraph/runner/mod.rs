@@ -1148,6 +1148,11 @@ where
         // or data sources that have reached their end block.
         let needs_restart = created_data_sources_needs_restart || has_expired_data_sources;
 
+        // Checkpoint before dynamic DS processing for potential rollback scenarios.
+        // This captures the current state so it can be restored if dynamic data source
+        // processing fails in a way that requires partial rollback.
+        let _checkpoint = block_state.checkpoint();
+
         // Stage 3: Process dynamic data sources
         block_state = self
             .process_dynamic_data_sources(

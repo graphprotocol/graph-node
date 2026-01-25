@@ -257,20 +257,20 @@ Each phase is complete when:
 
 ### Phase 6: Add BlockState Checkpoints
 
-- [ ] Add `BlockStateCheckpoint` struct
-- [ ] Add `checkpoint()` method to `BlockState`
-- [ ] Add `restore()` method to `BlockState`
-- [ ] Use checkpoint before dynamic DS processing
-- [ ] Verify tests pass
+- [x] Add `BlockStateCheckpoint` struct
+- [x] Add `checkpoint()` method to `BlockState`
+- [x] Add `restore()` method to `BlockState`
+- [x] Use checkpoint before dynamic DS processing
+- [x] Verify tests pass
 
 ### Phase 7: Module Organization
 
-- [ ] Create `runner/` directory
-- [ ] Move `state.rs`, `pipeline.rs`, `trigger_runner.rs` into it
-- [ ] Update `runner.rs` to re-export from module
-- [ ] Update imports in dependent files
-- [ ] Verify tests pass
-- [ ] `just lint` shows zero warnings
+- [x] Create `runner_components/` directory (named to avoid conflict with `runner.rs`)
+- [x] Move `state.rs`, `trigger_runner.rs` into it (pipeline.rs was not created as stages are methods)
+- [x] Create `runner_components/mod.rs` with re-exports
+- [x] Update imports in `runner.rs` to use the new module path
+- [x] Verify tests pass
+- [x] `just lint` shows zero warnings
 
 ## Notes
 
