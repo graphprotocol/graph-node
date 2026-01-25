@@ -178,4 +178,48 @@ impl BlockState {
     pub fn persist_data_source(&mut self, ds: StoredDynamicDataSource) {
         self.persisted_data_sources.push(ds)
     }
+
+    /// Create a lightweight checkpoint for rollback.
+    ///
+    /// This captures the current counts of created and persisted data sources,
+    /// allowing a partial rollback via `restore()`. Note that entity cache changes
+    /// cannot be easily checkpointed; rollback clears the cache (acceptable per
+    /// current behavior).
+    pub fn checkpoint(&self) -> BlockStateCheckpoint {
+        assert!(!self.in_handler);
+        BlockStateCheckpoint {
+            created_data_sources_count: self.created_data_sources.len(),
+            persisted_data_sources_count: self.persisted_data_sources.len(),
+            processed_data_sources_count: self.processed_data_sources.len(),
+            deterministic_errors_count: self.deterministic_errors.len(),
+        }
+    }
+
+    /// Restore state to a previously captured checkpoint (partial rollback).
+    ///
+    /// This truncates the data source vectors to their checkpoint sizes.
+    /// Entity cache is NOT restored - caller should handle cache state if needed.
+    pub fn restore(&mut self, checkpoint: BlockStateCheckpoint) {
+        assert!(!self.in_handler);
+        self.created_data_sources
+            .truncate(checkpoint.created_data_sources_count);
+        self.persisted_data_sources
+            .truncate(checkpoint.persisted_data_sources_count);
+        self.processed_data_sources
+            .truncate(checkpoint.processed_data_sources_count);
+        self.deterministic_errors
+            .truncate(checkpoint.deterministic_errors_count);
+    }
+}
+
+/// A lightweight checkpoint for `BlockState` rollback.
+///
+/// Captures counts of mutable vectors in `BlockState` to enable partial rollback.
+/// Used before processing dynamic data sources to allow recovery if needed.
+#[derive(Debug, Clone, Copy)]
+pub struct BlockStateCheckpoint {
+    created_data_sources_count: usize,
+    persisted_data_sources_count: usize,
+    processed_data_sources_count: usize,
+    deterministic_errors_count: usize,
 }
