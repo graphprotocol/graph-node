@@ -257,11 +257,11 @@ Each phase is complete when:
 
 ### Phase 6: Add BlockState Checkpoints
 
-- [ ] Add `BlockStateCheckpoint` struct
-- [ ] Add `checkpoint()` method to `BlockState`
-- [ ] Add `restore()` method to `BlockState`
-- [ ] Use checkpoint before dynamic DS processing
-- [ ] Verify tests pass
+- [x] Add `BlockStateCheckpoint` struct
+- [x] Add `checkpoint()` method to `BlockState`
+- [x] Add `restore()` method to `BlockState`
+- [x] Use checkpoint before dynamic DS processing
+- [x] Verify tests pass
 
 ### Phase 7: Module Organization
 
