@@ -246,14 +246,14 @@ Each phase is complete when:
 
 ### Phase 5: Consolidate Error Handling
 
-- [ ] Add `ProcessingErrorKind` enum
-- [ ] Add `kind()` method to `ProcessingError`
-- [ ] Add helper methods (`should_stop_processing()`, `should_restart()`, `is_retryable()`)
-- [ ] Replace scattered error checks in `process_block`
-- [ ] Replace scattered error checks in dynamic DS handling
-- [ ] Replace scattered error checks in `handle_offchain_triggers`
-- [ ] Document error handling invariants
-- [ ] Verify tests pass
+- [x] Add `ProcessingErrorKind` enum
+- [x] Add `kind()` method to `ProcessingError`
+- [x] Add helper methods (`should_stop_processing()`, `should_restart()`, `is_retryable()`)
+- [x] Replace scattered error checks in `process_block`
+- [x] Replace scattered error checks in dynamic DS handling (preserved existing behavior per spec)
+- [x] Replace scattered error checks in `handle_offchain_triggers` (preserved existing behavior per spec)
+- [x] Document error handling invariants
+- [x] Verify tests pass
 
 ### Phase 6: Add BlockState Checkpoints
 

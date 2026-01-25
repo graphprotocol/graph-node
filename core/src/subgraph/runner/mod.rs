@@ -4,6 +4,7 @@ mod trigger_runner;
 use crate::subgraph::context::IndexingContext;
 use crate::subgraph::error::{
     ClassifyErrorHelper as _, DetailHelper as _, NonDeterministicErrorHelper as _, ProcessingError,
+    ProcessingErrorKind,
 };
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
@@ -1128,21 +1129,10 @@ where
 
             // Some form of unknown or non-deterministic error ocurred.
             Err(MappingError::Unknown(e)) => return Err(ProcessingError::Unknown(e)),
-            Err(MappingError::PossibleReorg(e)) => {
-                info!(logger,
-                    "Possible reorg detected, retrying";
-                    "error" => format!("{:#}", e),
-                );
 
-                // In case of a possible reorg, we want this function to do nothing and restart the
-                // block stream so it has a chance to detect the reorg.
-                //
-                // The state is unchanged at this point, except for having cleared the entity cache.
-                // Losing the cache is a bit annoying but not an issue for correctness.
-                //
-                // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
-                return Ok(Action::Restart);
-            }
+            // Possible blockchain reorg detected - signal restart via ProcessingError::PossibleReorg.
+            // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
+            Err(MappingError::PossibleReorg(e)) => return Err(ProcessingError::PossibleReorg(e)),
         }
 
         // Check if there are any datasources that have expired in this block. ie: the end_block
@@ -1355,36 +1345,104 @@ where
 
                 Ok(action)
             }
-            Err(ProcessingError::Canceled) => {
-                debug!(self.logger, "Subgraph block stream shut down cleanly");
-                Ok(Action::Stop)
-            }
+            // Handle errors based on their kind using the unified error classification.
+            //
+            // Error handling invariants:
+            // - Deterministic: Stop processing, persist PoI only, fail subgraph
+            // - NonDeterministic: Retry with backoff, may succeed on retry
+            // - PossibleReorg: Restart cleanly without persisting (don't fail subgraph)
+            // - Canceled: Clean shutdown, no error recording
+            Err(e) => match e.kind() {
+                ProcessingErrorKind::Canceled => {
+                    debug!(self.logger, "Subgraph block stream shut down cleanly");
+                    Ok(Action::Stop)
+                }
 
-            // Handle unexpected stream errors by marking the subgraph as failed.
-            Err(e) => {
-                self.metrics.subgraph.deployment_status.failed();
-                let last_good_block = self
-                    .inputs
-                    .store
-                    .block_ptr()
-                    .map(|ptr| ptr.number)
-                    .unwrap_or(0);
-                self.revert_state_to(last_good_block)?;
+                ProcessingErrorKind::PossibleReorg => {
+                    // Possible reorg detected - restart the block stream cleanly.
+                    // Don't persist anything and don't mark subgraph as failed.
+                    // The block stream restart will allow detection of the actual reorg.
+                    info!(self.logger,
+                        "Possible reorg detected, restarting block stream";
+                        "error" => format!("{:#}", e),
+                    );
 
-                let message = format!("{:#}", e).replace('\n', "\t");
-                let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
-                let deterministic = e.is_deterministic();
+                    // Revert in-memory state to last good block but don't touch the store
+                    let last_good_block = self
+                        .inputs
+                        .store
+                        .block_ptr()
+                        .map(|ptr| ptr.number)
+                        .unwrap_or(0);
+                    self.revert_state_to(last_good_block)?;
 
-                let error = SubgraphError {
-                    subgraph_id: self.inputs.deployment.hash.clone(),
-                    message,
-                    block_ptr: Some(block_ptr),
-                    handler: None,
-                    deterministic,
-                };
+                    Ok(Action::Restart)
+                }
 
-                match deterministic {
-                    true => {
+                ProcessingErrorKind::Deterministic => {
+                    // Deterministic error - fail the subgraph permanently.
+                    self.metrics.subgraph.deployment_status.failed();
+                    let last_good_block = self
+                        .inputs
+                        .store
+                        .block_ptr()
+                        .map(|ptr| ptr.number)
+                        .unwrap_or(0);
+                    self.revert_state_to(last_good_block)?;
+
+                    let message = format!("{:#}", e).replace('\n', "\t");
+                    let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
+
+                    let error = SubgraphError {
+                        subgraph_id: self.inputs.deployment.hash.clone(),
+                        message,
+                        block_ptr: Some(block_ptr),
+                        handler: None,
+                        deterministic: true,
+                    };
+
+                    // Fail subgraph:
+                    // - Change status/health.
+                    // - Save the error to the database.
+                    self.inputs
+                        .store
+                        .fail_subgraph(error)
+                        .await
+                        .context("Failed to set subgraph status to `failed`")?;
+
+                    Err(err)
+                }
+
+                ProcessingErrorKind::NonDeterministic => {
+                    // Non-deterministic error - retry with backoff.
+                    self.metrics.subgraph.deployment_status.failed();
+                    let last_good_block = self
+                        .inputs
+                        .store
+                        .block_ptr()
+                        .map(|ptr| ptr.number)
+                        .unwrap_or(0);
+                    self.revert_state_to(last_good_block)?;
+
+                    let message = format!("{:#}", e).replace('\n', "\t");
+
+                    let error = SubgraphError {
+                        subgraph_id: self.inputs.deployment.hash.clone(),
+                        message: message.clone(),
+                        block_ptr: Some(block_ptr),
+                        handler: None,
+                        deterministic: false,
+                    };
+
+                    // Shouldn't fail subgraph if it's already failed for non-deterministic
+                    // reasons.
+                    //
+                    // If we don't do this check we would keep adding the same error to the
+                    // database.
+                    let should_fail_subgraph =
+                        self.inputs.store.health().await? != SubgraphHealth::Failed;
+
+                    if should_fail_subgraph {
                         // Fail subgraph:
                         // - Change status/health.
                         // - Save the error to the database.
@@ -1393,46 +1451,22 @@ where
                             .fail_subgraph(error)
                             .await
                             .context("Failed to set subgraph status to `failed`")?;
-
-                        Err(err)
                     }
-                    false => {
-                        // Shouldn't fail subgraph if it's already failed for non-deterministic
-                        // reasons.
-                        //
-                        // If we don't do this check we would keep adding the same error to the
-                        // database.
-                        let should_fail_subgraph =
-                            self.inputs.store.health().await? != SubgraphHealth::Failed;
 
-                        if should_fail_subgraph {
-                            // Fail subgraph:
-                            // - Change status/health.
-                            // - Save the error to the database.
-                            self.inputs
-                                .store
-                                .fail_subgraph(error)
-                                .await
-                                .context("Failed to set subgraph status to `failed`")?;
-                        }
+                    // Retry logic below:
+                    error!(self.logger, "Subgraph failed with non-deterministic error: {}", message;
+                        "attempt" => self.state.backoff.attempt,
+                        "retry_delay_s" => self.state.backoff.delay().as_secs());
 
-                        // Retry logic below:
+                    // Sleep before restarting.
+                    self.state.backoff.sleep_async().await;
 
-                        let message = format!("{:#}", e).replace('\n', "\t");
-                        error!(self.logger, "Subgraph failed with non-deterministic error: {}", message;
-                            "attempt" => self.state.backoff.attempt,
-                            "retry_delay_s" => self.state.backoff.delay().as_secs());
+                    self.state.should_try_unfail_non_deterministic = true;
 
-                        // Sleep before restarting.
-                        self.state.backoff.sleep_async().await;
-
-                        self.state.should_try_unfail_non_deterministic = true;
-
-                        // And restart the subgraph.
-                        Ok(Action::Restart)
-                    }
+                    // And restart the subgraph.
+                    Ok(Action::Restart)
                 }
-            }
+            },
         }
     }
 
