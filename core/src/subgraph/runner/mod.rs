@@ -1,3 +1,4 @@
+mod state;
 mod trigger_runner;
 
 use crate::subgraph::context::IndexingContext;
@@ -44,6 +45,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::vec;
 
+use self::state::RunnerState;
 use self::trigger_runner::TriggerRunner;
 
 const MINUTE: Duration = Duration::from_secs(60);
@@ -65,6 +67,11 @@ where
     logger: Logger,
     pub metrics: RunnerMetrics,
     cancel_handle: Option<CancelHandle>,
+    /// The current state in the runner's state machine.
+    /// This field is introduced as part of the runner refactor and will be used
+    /// to drive the main loop once Phase 3 is complete.
+    #[allow(dead_code)]
+    runner_state: RunnerState<C>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -105,6 +112,7 @@ where
             logger,
             metrics,
             cancel_handle: None,
+            runner_state: RunnerState::Initializing,
         }
     }
 
