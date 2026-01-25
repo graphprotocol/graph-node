@@ -226,10 +226,10 @@ Each phase is complete when:
 
 ### Phase 3: Refactor run_inner to State Machine
 
-- [ ] Extract `initialize()` method
-- [ ] Extract `await_block()` method
-- [ ] Extract `restart()` method
-- [ ] Extract `finalize()` method
+- [x] Extract `initialize()` method
+- [x] Extract `await_block()` method
+- [x] Extract `restart()` method
+- [x] Extract `finalize()` method
 - [ ] Rewrite `run_inner` as state machine loop
 - [ ] Remove nested loop structure
 - [ ] Verify tests pass
