@@ -68,9 +68,7 @@ where
     pub metrics: RunnerMetrics,
     cancel_handle: Option<CancelHandle>,
     /// The current state in the runner's state machine.
-    /// This field is introduced as part of the runner refactor and will be used
-    /// to drive the main loop once Phase 3 is complete.
-    #[allow(dead_code)]
+    /// This field drives the main loop of the runner.
     runner_state: RunnerState<C>,
 }
 
@@ -263,10 +261,6 @@ where
     /// Returns the next state to transition to:
     /// - `Restarting` to start the block stream (normal case)
     /// - `Stopped` if the max end block was already reached
-    ///
-    /// NOTE: This method is part of the Phase 3 runner refactor. It will be used
-    /// to drive the state machine loop once all extraction methods are complete.
-    #[allow(dead_code)]
     async fn initialize(&mut self) -> Result<RunnerState<C>, SubgraphRunnerError> {
         self.update_deployment_synced_metric();
 
@@ -325,10 +319,6 @@ where
     /// - `Reverting` for revert events
     /// - `Stopped` when the stream ends or is canceled
     /// - Returns back to `AwaitingBlock` for non-fatal errors that allow continuation
-    ///
-    /// NOTE: This method is part of the Phase 3 runner refactor. It will be used
-    /// to drive the state machine loop once all extraction methods are complete.
-    #[allow(dead_code)]
     async fn await_block(
         &mut self,
         mut block_stream: Cancelable<Box<dyn BlockStream<C>>>,
@@ -360,11 +350,17 @@ where
 
         match event {
             Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => {
-                Ok(RunnerState::ProcessingBlock { block, cursor })
+                Ok(RunnerState::ProcessingBlock {
+                    block_stream,
+                    block,
+                    cursor,
+                })
             }
-            Some(Ok(BlockStreamEvent::Revert(to_ptr, cursor))) => {
-                Ok(RunnerState::Reverting { to_ptr, cursor })
-            }
+            Some(Ok(BlockStreamEvent::Revert(to_ptr, cursor))) => Ok(RunnerState::Reverting {
+                block_stream,
+                to_ptr,
+                cursor,
+            }),
             // Log and drop the errors from the block_stream
             // The block stream will continue attempting to produce blocks
             Some(Err(e)) => {
@@ -417,10 +413,6 @@ where
     ///
     /// Returns the next state to transition to:
     /// - `AwaitingBlock` with the new block stream (normal case)
-    ///
-    /// NOTE: This method is part of the Phase 3 runner refactor. It will be used
-    /// to drive the state machine loop once all extraction methods are complete.
-    #[allow(dead_code)]
     async fn restart(
         &mut self,
         reason: RestartReason,
@@ -451,10 +443,6 @@ where
     /// This method handles cleanup tasks when the runner stops:
     /// - Flushing the store to ensure all changes are persisted
     /// - Logging the stop reason
-    ///
-    /// NOTE: This method is part of the Phase 3 runner refactor. It will be used
-    /// to drive the state machine loop once all extraction methods are complete.
-    #[allow(dead_code)]
     async fn finalize(self, reason: StopReason) -> Result<Self, SubgraphRunnerError> {
         match reason {
             StopReason::MaxEndBlockReached => {
@@ -482,124 +470,183 @@ where
         self.run_inner(false).await.map(|_| ())
     }
 
+    /// Main state machine loop for the subgraph runner.
+    ///
+    /// This method drives the runner through its state machine, transitioning
+    /// between states based on events and actions. The state machine replaces
+    /// the previous nested loop structure with explicit state transitions.
+    ///
+    /// ## State Machine
+    ///
+    /// The runner starts in `Initializing` and transitions through states:
+    /// - `Initializing` → `Restarting` (or `Stopped` if max end block reached)
+    /// - `Restarting` → `AwaitingBlock`
+    /// - `AwaitingBlock` → `ProcessingBlock`, `Reverting`, or `Stopped`
+    /// - `ProcessingBlock` → `AwaitingBlock` or `Restarting`
+    /// - `Reverting` → `AwaitingBlock` or `Restarting`
+    /// - `Stopped` → terminal (returns)
     async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, SubgraphRunnerError> {
-        self.update_deployment_synced_metric();
+        // Start in Initializing state
+        self.runner_state = RunnerState::Initializing;
 
-        // If a subgraph failed for deterministic reasons, before start indexing, we first
-        // revert the deployment head. It should lead to the same result since the error was
-        // deterministic.
-        if let Some(current_ptr) = self.inputs.store.block_ptr() {
-            if let Some(parent_ptr) = self
-                .inputs
-                .triggers_adapter
-                .parent_ptr(&current_ptr)
-                .await?
-            {
-                // This reverts the deployment head to the parent_ptr if
-                // deterministic errors happened.
-                //
-                // There's no point in calling it if we have no current or parent block
-                // pointers, because there would be: no block to revert to or to search
-                // errors from (first execution).
-                //
-                // We attempt to unfail deterministic errors to mitigate deterministic
-                // errors caused by wrong data being consumed from the providers. It has
-                // been a frequent case in the past so this helps recover on a larger scale.
-                let _outcome = self
-                    .inputs
-                    .store
-                    .unfail_deterministic_error(&current_ptr, &parent_ptr)
-                    .await?;
-            }
-
-            // Stop subgraph when we reach maximum endblock.
-            if let Some(max_end_block) = self.inputs.max_end_block {
-                if max_end_block <= current_ptr.block_number() {
-                    info!(self.logger, "Stopping subgraph as we reached maximum endBlock";
-                                "max_end_block" => max_end_block,
-                                "current_block" => current_ptr.block_number());
-                    self.inputs.store.flush().await?;
-                    return Ok(self);
-                }
-            }
-        }
+        // Track whether we've started processing blocks (not just initialized).
+        // This is used for break_on_restart logic - we should only stop on restart
+        // after we've actually started processing, not on the initial "restart"
+        // which is really the first start of the block stream.
+        let mut has_processed_blocks = false;
 
         loop {
-            debug!(self.logger, "Starting or restarting subgraph");
+            self.runner_state = match std::mem::take(&mut self.runner_state) {
+                RunnerState::Initializing => self.initialize().await?,
 
-            let mut block_stream = self.start_block_stream().await?;
-
-            debug!(self.logger, "Started block stream");
-
-            self.metrics.subgraph.deployment_status.running();
-
-            // Process events from the stream as long as no restart is needed
-            loop {
-                let event = {
-                    let _section = self.metrics.stream.stopwatch.start_section("scan_blocks");
-
-                    block_stream.next().await
-                };
-
-                // TODO: move cancel handle to the Context
-                // This will require some code refactor in how the BlockStream is created
-                let block_start = Instant::now();
-
-                let action = self.handle_stream_event(event).await.inspect(|res| {
-                    self.metrics
-                        .subgraph
-                        .observe_block_processed(block_start.elapsed(), res.block_finished());
-                })?;
-
-                self.update_deployment_synced_metric();
-
-                // It is possible that the subgraph was unassigned, but the runner was in
-                // a retry delay state and did not observe the cancel signal.
-                if self.is_canceled() {
-                    // It is also possible that the runner was in a retry delay state while
-                    // the subgraph was reassigned and a new runner was started.
-                    if self.ctx.instances.contains(&self.inputs.deployment.id) {
-                        warn!(
-                            self.logger,
-                            "Terminating the subgraph runner because a newer one is active. \
-                             Possible reassignment detected while the runner was in a non-cancellable pending state",
-                        );
-                        return Err(SubgraphRunnerError::Duplicate);
+                RunnerState::Restarting { reason } => {
+                    if break_on_restart && has_processed_blocks {
+                        // In test mode, stop on restart after first block processing
+                        info!(self.logger, "Stopping subgraph on break");
+                        RunnerState::Stopped {
+                            reason: StopReason::Canceled,
+                        }
+                    } else {
+                        self.restart(reason).await?
                     }
-
-                    warn!(
-                        self.logger,
-                        "Terminating the subgraph runner because subgraph was unassigned",
-                    );
-                    return Ok(self);
                 }
 
-                match action {
-                    Action::Continue => continue,
-                    Action::Stop => {
-                        info!(self.logger, "Stopping subgraph");
-                        self.inputs.store.flush().await?;
-                        return Ok(self);
-                    }
-                    Action::Restart if break_on_restart => {
-                        info!(self.logger, "Stopping subgraph on break");
-                        self.inputs.store.flush().await?;
-                        return Ok(self);
-                    }
-                    Action::Restart => {
-                        // Restart the store to clear any errors that it
-                        // might have encountered and use that from now on
-                        let store = self.inputs.store.cheap_clone();
-                        if let Some(store) = store.restart().await? {
-                            let last_good_block =
-                                store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
-                            self.revert_state_to(last_good_block)?;
-                            self.inputs = Arc::new(self.inputs.with_store(store));
-                        }
-                        break;
-                    }
-                };
+                RunnerState::AwaitingBlock { block_stream } => {
+                    self.await_block(block_stream).await?
+                }
+
+                RunnerState::ProcessingBlock {
+                    block_stream,
+                    block,
+                    cursor,
+                } => {
+                    has_processed_blocks = true;
+                    self.process_block_state(block_stream, block, cursor)
+                        .await?
+                }
+
+                RunnerState::Reverting {
+                    block_stream,
+                    to_ptr,
+                    cursor,
+                } => {
+                    self.handle_revert_state(block_stream, to_ptr, cursor)
+                        .await?
+                }
+
+                RunnerState::Stopped { reason } => {
+                    return self.finalize(reason).await;
+                }
+            };
+        }
+    }
+
+    /// Process a block and determine the next state.
+    ///
+    /// This is the state machine wrapper around `process_block` that handles
+    /// the block processing action and determines state transitions.
+    async fn process_block_state(
+        &mut self,
+        block_stream: Cancelable<Box<dyn BlockStream<C>>>,
+        block: BlockWithTriggers<C>,
+        cursor: FirehoseCursor,
+    ) -> Result<RunnerState<C>, SubgraphRunnerError> {
+        let block_ptr = block.ptr();
+        self.metrics
+            .stream
+            .deployment_head
+            .set(block_ptr.number as f64);
+
+        if block.trigger_count() > 0 {
+            self.metrics
+                .subgraph
+                .block_trigger_count
+                .observe(block.trigger_count() as f64);
+        }
+
+        // Check if we should skip this block (optimization for blocks without triggers)
+        if block.trigger_count() == 0
+            && self.state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
+            && !self.inputs.store.is_deployment_synced()
+            && !close_to_chain_head(&block_ptr, &self.inputs.chain.chain_head_ptr().await?, 1000)
+        {
+            // Skip this block and continue with the same stream
+            return Ok(RunnerState::AwaitingBlock { block_stream });
+        } else {
+            self.state.skip_ptr_updates_timer = Instant::now();
+        }
+
+        let block_start = Instant::now();
+
+        let action = {
+            let stopwatch = &self.metrics.stream.stopwatch;
+            let _section = stopwatch.start_section(PROCESS_BLOCK_SECTION_NAME);
+            self.process_block(block, cursor).await
+        };
+
+        let action = self.handle_action(block_start, block_ptr, action).await?;
+
+        self.update_deployment_synced_metric();
+
+        // Check for cancellation
+        if self.is_canceled() {
+            if self.ctx.instances.contains(&self.inputs.deployment.id) {
+                warn!(
+                    self.logger,
+                    "Terminating the subgraph runner because a newer one is active. \
+                     Possible reassignment detected while the runner was in a non-cancellable pending state",
+                );
+                return Err(SubgraphRunnerError::Duplicate);
             }
+
+            warn!(
+                self.logger,
+                "Terminating the subgraph runner because subgraph was unassigned",
+            );
+            return Ok(RunnerState::Stopped {
+                reason: StopReason::Unassigned,
+            });
+        }
+
+        self.metrics
+            .subgraph
+            .observe_block_processed(block_start.elapsed(), action.block_finished());
+
+        // Convert Action to RunnerState
+        match action {
+            Action::Continue => Ok(RunnerState::AwaitingBlock { block_stream }),
+            Action::Restart => Ok(RunnerState::Restarting {
+                reason: RestartReason::DynamicDataSourceCreated,
+            }),
+            Action::Stop => Ok(RunnerState::Stopped {
+                reason: StopReason::MaxEndBlockReached,
+            }),
+        }
+    }
+
+    /// Handle a revert event and determine the next state.
+    ///
+    /// This is the state machine wrapper around `handle_revert` that handles
+    /// the revert action and determines state transitions.
+    async fn handle_revert_state(
+        &mut self,
+        block_stream: Cancelable<Box<dyn BlockStream<C>>>,
+        revert_to_ptr: BlockPtr,
+        cursor: FirehoseCursor,
+    ) -> Result<RunnerState<C>, SubgraphRunnerError> {
+        let stopwatch = &self.metrics.stream.stopwatch;
+        let _section = stopwatch.start_section(HANDLE_REVERT_SECTION_NAME);
+
+        let action = self.handle_revert(revert_to_ptr, cursor).await?;
+
+        match action {
+            Action::Continue => Ok(RunnerState::AwaitingBlock { block_stream }),
+            Action::Restart => Ok(RunnerState::Restarting {
+                reason: RestartReason::DataSourceExpired,
+            }),
+            Action::Stop => Ok(RunnerState::Stopped {
+                reason: StopReason::Canceled,
+            }),
         }
     }
 
@@ -1346,31 +1393,6 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    async fn handle_stream_event(
-        &mut self,
-        event: Option<Result<BlockStreamEvent<C>, CancelableError<BlockStreamError>>>,
-    ) -> Result<Action, Error> {
-        let stopwatch = &self.metrics.stream.stopwatch;
-        let action = match event {
-            Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))) => {
-                let _section = stopwatch.start_section(PROCESS_BLOCK_SECTION_NAME);
-                self.handle_process_block(block, cursor).await?
-            }
-            Some(Ok(BlockStreamEvent::Revert(revert_to_ptr, cursor))) => {
-                let _section = stopwatch.start_section(HANDLE_REVERT_SECTION_NAME);
-                self.handle_revert(revert_to_ptr, cursor).await?
-            }
-            // Log and drop the errors from the block_stream
-            // The block stream will continue attempting to produce blocks
-            Some(Err(e)) => self.handle_err(e).await?,
-            // If the block stream ends, that means that there is no more indexing to do.
-            // Typically block streams produce indefinitely, but tests are an example of finite block streams.
-            None => Action::Stop,
-        };
-
-        Ok(action)
-    }
-
     async fn handle_offchain_triggers(
         &mut self,
         triggers: Vec<offchain::TriggerData>,
@@ -1512,47 +1534,6 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    async fn handle_process_block(
-        &mut self,
-        block: BlockWithTriggers<C>,
-        cursor: FirehoseCursor,
-    ) -> Result<Action, Error> {
-        let block_ptr = block.ptr();
-        self.metrics
-            .stream
-            .deployment_head
-            .set(block_ptr.number as f64);
-
-        if block.trigger_count() > 0 {
-            self.metrics
-                .subgraph
-                .block_trigger_count
-                .observe(block.trigger_count() as f64);
-        }
-
-        if block.trigger_count() == 0
-            && self.state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
-            && !self.inputs.store.is_deployment_synced()
-            && !close_to_chain_head(
-                &block_ptr,
-                &self.inputs.chain.chain_head_ptr().await?,
-                // The "skip ptr updates timer" is ignored when a subgraph is at most 1000 blocks
-                // behind the chain head.
-                1000,
-            )
-        {
-            return Ok(Action::Continue);
-        } else {
-            self.state.skip_ptr_updates_timer = Instant::now();
-        }
-
-        let start = Instant::now();
-
-        let res = self.process_block(block, cursor).await;
-
-        self.handle_action(start, block_ptr, res).await
-    }
-
     async fn handle_revert(
         &mut self,
         revert_to_ptr: BlockPtr,
@@ -1602,51 +1583,6 @@ where
         };
 
         Ok(action)
-    }
-
-    async fn handle_err(
-        &mut self,
-        err: CancelableError<BlockStreamError>,
-    ) -> Result<Action, Error> {
-        if self.is_canceled() {
-            debug!(&self.logger, "Subgraph block stream shut down cleanly");
-            return Ok(Action::Stop);
-        }
-
-        let err = match err {
-            CancelableError::Error(BlockStreamError::Fatal(msg)) => {
-                error!(
-                    &self.logger,
-                    "The block stream encountered a substreams fatal error and will not retry: {}",
-                    msg
-                );
-
-                // If substreams returns a deterministic error we may not necessarily have a specific block
-                // but we should not retry since it will keep failing.
-                self.inputs
-                    .store
-                    .fail_subgraph(SubgraphError {
-                        subgraph_id: self.inputs.deployment.hash.clone(),
-                        message: msg,
-                        block_ptr: None,
-                        handler: None,
-                        deterministic: true,
-                    })
-                    .await
-                    .context("Failed to set subgraph status to `failed`")?;
-
-                return Ok(Action::Stop);
-            }
-            e => e,
-        };
-
-        debug!(
-            &self.logger,
-            "Block stream produced a non-fatal error";
-            "error" => format!("{}", err),
-        );
-
-        Ok(Action::Continue)
     }
 
     /// Determines if the subgraph needs to be restarted.

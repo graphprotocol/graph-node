@@ -2,9 +2,6 @@
 //!
 //! This module defines the explicit state machine that controls the runner's lifecycle,
 //! replacing the previous nested loop structure with clear state transitions.
-//!
-//! NOTE: These types are introduced in Phase 2 of the runner refactor and will be
-//! used to drive the main loop in Phase 3. Until then, they are intentionally unused.
 
 use graph::blockchain::block_stream::{BlockStream, BlockWithTriggers, FirehoseCursor};
 use graph::blockchain::Blockchain;
@@ -38,7 +35,6 @@ use graph::prelude::BlockPtr;
 ///                                                 │
 /// Restarting ─────────────────────────────────────┘
 /// ```
-#[allow(dead_code)]
 #[derive(Default)]
 pub enum RunnerState<C: Blockchain> {
     /// Initial state, ready to start block stream.
@@ -51,13 +47,17 @@ pub enum RunnerState<C: Blockchain> {
     },
 
     /// Processing a block through the pipeline.
+    /// The block stream is kept alive to continue processing after this block.
     ProcessingBlock {
+        block_stream: Cancelable<Box<dyn BlockStream<C>>>,
         block: BlockWithTriggers<C>,
         cursor: FirehoseCursor,
     },
 
     /// Handling a revert event.
+    /// The block stream is kept alive to continue processing after the revert.
     Reverting {
+        block_stream: Cancelable<Box<dyn BlockStream<C>>>,
         to_ptr: BlockPtr,
         cursor: FirehoseCursor,
     },
@@ -70,7 +70,6 @@ pub enum RunnerState<C: Blockchain> {
 }
 
 /// Reasons for restarting the block stream.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestartReason {
     /// New dynamic data source was created that requires filter updates.
@@ -80,11 +79,12 @@ pub enum RestartReason {
     /// Store error occurred and store needs to be restarted.
     StoreError,
     /// Possible reorg detected, need to restart to detect it.
+    /// NOTE: Currently unused but reserved for future error handling consolidation (Phase 5).
+    #[allow(dead_code)]
     PossibleReorg,
 }
 
 /// Reasons for stopping the runner.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StopReason {
     /// The maximum end block was reached.
