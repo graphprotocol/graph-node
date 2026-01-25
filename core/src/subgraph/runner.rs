@@ -4,10 +4,9 @@ use crate::subgraph::error::{
     ProcessingErrorKind,
 };
 use crate::subgraph::inputs::IndexingInputs;
-use crate::subgraph::runner_state::{RestartReason, RunnerState, StopReason};
+use crate::subgraph::runner_components::{RestartReason, RunnerState, StopReason, TriggerRunner};
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
-use crate::subgraph::trigger_runner::TriggerRunner;
 use anyhow::Context as _;
 use graph::blockchain::block_stream::{
     BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,

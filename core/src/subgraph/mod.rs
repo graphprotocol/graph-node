@@ -5,11 +5,10 @@ mod instance_manager;
 mod loader;
 mod registrar;
 mod runner;
-mod runner_state;
+mod runner_components;
 mod state;
 mod stream;
 mod trigger_processor;
-mod trigger_runner;
 
 pub use self::instance_manager::SubgraphInstanceManager;
 pub use self::registrar::SubgraphRegistrar;
