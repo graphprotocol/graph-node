@@ -230,9 +230,9 @@ Each phase is complete when:
 - [x] Extract `await_block()` method
 - [x] Extract `restart()` method
 - [x] Extract `finalize()` method
-- [ ] Rewrite `run_inner` as state machine loop
-- [ ] Remove nested loop structure
-- [ ] Verify tests pass
+- [x] Rewrite `run_inner` as state machine loop
+- [x] Remove nested loop structure
+- [x] Verify tests pass
 
 ### Phase 4: Define Pipeline Stages
 
