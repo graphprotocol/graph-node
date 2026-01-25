@@ -265,12 +265,12 @@ Each phase is complete when:
 
 ### Phase 7: Module Organization
 
-- [ ] Create `runner/` directory
-- [ ] Move `state.rs`, `pipeline.rs`, `trigger_runner.rs` into it
-- [ ] Update `runner.rs` to re-export from module
-- [ ] Update imports in dependent files
-- [ ] Verify tests pass
-- [ ] `just lint` shows zero warnings
+- [x] Create `runner_components/` directory (named to avoid conflict with `runner.rs`)
+- [x] Move `state.rs`, `trigger_runner.rs` into it (pipeline.rs was not created as stages are methods)
+- [x] Create `runner_components/mod.rs` with re-exports
+- [x] Update imports in `runner.rs` to use the new module path
+- [x] Verify tests pass
+- [x] `just lint` shows zero warnings
 
 ## Notes
 
