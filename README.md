@@ -1,7 +1,7 @@
 # Graph Node
 
 [![Build Status](https://github.com/graphprotocol/graph-node/actions/workflows/ci.yml/badge.svg)](https://github.com/graphprotocol/graph-node/actions/workflows/ci.yml?query=branch%3Amaster)
-[![Getting Started Docs](https://img.shields.io/badge/docs-getting--started-brightgreen.svg)](docs/getting-started.md)
+[![Docs](https://img.shields.io/badge/docs-graph--node-green)](https://github.com/graphprotocol/graph-node/tree/master/docs)
 
 ## Overview
 
@@ -29,7 +29,7 @@ This is usually only needed for developers who want to contribute to `graph-node
 To build and run this project, you need to have the following installed on your system:
 
 - Rust (latest stable): Follow [How to install
-  Rust](https://www.rust-lang.org/en-US/install.html). Run `rustup install
+  Rust](https://rust-lang.org/tools/install/). Run `rustup install
 stable` in _this directory_ to make sure all required components are
   installed. The `graph-node` code assumes that the latest available
   `stable` compiler is used.
