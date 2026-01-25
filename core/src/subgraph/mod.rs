@@ -5,6 +5,7 @@ mod instance_manager;
 mod loader;
 mod registrar;
 mod runner;
+mod runner_state;
 mod state;
 mod stream;
 mod trigger_processor;

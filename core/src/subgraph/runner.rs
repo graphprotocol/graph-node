@@ -3,6 +3,7 @@ use crate::subgraph::error::{
     ClassifyErrorHelper as _, DetailHelper as _, NonDeterministicErrorHelper as _, ProcessingError,
 };
 use crate::subgraph::inputs::IndexingInputs;
+use crate::subgraph::runner_state::RunnerState;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use crate::subgraph::trigger_runner::TriggerRunner;
@@ -62,6 +63,11 @@ where
     logger: Logger,
     pub metrics: RunnerMetrics,
     cancel_handle: Option<CancelHandle>,
+    /// The current state in the runner's state machine.
+    /// This field is introduced as part of the runner refactor and will be used
+    /// to drive the main loop once Phase 3 is complete.
+    #[allow(dead_code)]
+    runner_state: RunnerState<C>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -102,6 +108,7 @@ where
             logger,
             metrics,
             cancel_handle: None,
+            runner_state: RunnerState::Initializing,
         }
     }
 
