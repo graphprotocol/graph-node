@@ -147,7 +147,7 @@ impl Query {
         {
             (
                 document
-                    .format(graphql_parser::Style::default().indent(0))
+                    .format(graphql_tools::parser::Style::default().indent(0))
                     .replace('\n', " "),
                 serde_json::to_string(&variables).unwrap_or_default(),
             )

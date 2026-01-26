@@ -3712,7 +3712,7 @@ dependencies = [
  "futures 0.1.31",
  "futures 0.3.31",
  "graph_derive",
- "graphql-parser",
+ "graphql-tools",
  "half",
  "hex",
  "hex-literal",
@@ -4009,7 +4009,7 @@ dependencies = [
  "git-testament",
  "graph",
  "graphman-store",
- "graphql-parser",
+ "graphql-tools",
  "hex",
  "itertools 0.14.0",
  "lazy_static",
@@ -4118,26 +4118,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphql-parser"
-version = "0.4.1"
+name = "graphql-tools"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a818c0d883d7c0801df27be910917750932be279c7bc82dc541b8769425f409"
+checksum = "9a378ccbe227983c1f4aeaafd088d0de9c5e3d5b6cd8e7aa9b0c682582a6c067"
 dependencies = [
  "combine",
- "thiserror 1.0.61",
-]
-
-[[package]]
-name = "graphql-tools"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68fb22726aceab7a8933cdcff4201e1cdbcc7c7394df5bc1ebdcf27b44376433"
-dependencies = [
- "graphql-parser",
+ "itoa",
  "lazy_static",
+ "ryu",
  "serde",
  "serde_json",
  "serde_with",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -4918,9 +4911,9 @@ dependencies = [
 
 [[package]]
 name = "itoa"
-version = "1.0.11"
+version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49f1f14873335454500d59611f1cf4a4b0f786f9ac11f4312a78e4cf2566695b"
+checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 
 [[package]]
 name = "ittapi"
@@ -7025,9 +7018,9 @@ dependencies = [
 
 [[package]]
 name = "ryu"
-version = "1.0.18"
+version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3cb5ba0dc43242ce17de99c180e96db90b235b8a9fdc9543c96d2209116bd9f"
+checksum = "a50f4cf475b65d88e057964e0e9bb1f0aa9bbb2036dc65c64596b42932536984"
 
 [[package]]
 name = "same-file"

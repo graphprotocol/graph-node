@@ -3,7 +3,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use graphql_parser::Pos;
+use graphql_tools::parser::Pos;
 use lazy_static::lazy_static;
 use thiserror::Error;
 
@@ -1288,7 +1288,7 @@ mod tests {
         prelude::{s, DeploymentHash},
         schema::{InputSchema, SCHEMA_TYPE_NAME},
     };
-    use graphql_parser::schema::*;
+    use graphql_tools::parser::schema::*;
     use lazy_static::lazy_static;
 
     use super::ApiSchema;

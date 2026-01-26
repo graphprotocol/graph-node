@@ -329,7 +329,7 @@ impl NullValue for Value {
 
 impl Value {
     pub fn from_query_value(value: &r::Value, ty: &s::Type) -> Result<Value, QueryExecutionError> {
-        use graphql_parser::schema::Type::{ListType, NamedType, NonNullType};
+        use graphql_tools::parser::schema::Type::{ListType, NamedType, NonNullType};
 
         Ok(match (value, ty) {
             // When dealing with non-null types, use the inner type to convert the value

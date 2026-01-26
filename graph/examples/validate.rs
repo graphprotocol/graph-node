@@ -36,7 +36,7 @@ use graph::data::subgraph::SPEC_VERSION_1_1_0;
 use graph::prelude::s;
 use graph::prelude::DeploymentHash;
 use graph::schema::InputSchema;
-use graphql_parser::parse_schema;
+use graphql_tools::parser::parse_schema;
 use serde::Deserialize;
 use std::alloc::GlobalAlloc;
 use std::alloc::Layout;
@@ -147,7 +147,7 @@ struct Opts {
     #[clap(long)]
     api: bool,
     #[clap(
-        short, long, default_value = "validate", 
+        short, long, default_value = "validate",
         value_parser = clap::builder::PossibleValuesParser::new(&["validate", "size"])
     )]
     mode: RunMode,

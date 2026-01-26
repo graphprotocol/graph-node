@@ -177,8 +177,8 @@ pub mod prelude {
     macro_rules! static_graphql {
         ($m:ident, $m2:ident, {$($n:ident,)*}) => {
             pub mod $m {
-                use graphql_parser::$m2 as $m;
-                pub use graphql_parser::Pos;
+                use graphql_tools::parser::$m2 as $m;
+                pub use graphql_tools::parser::Pos;
                 pub use $m::*;
                 $(
                     pub type $n = $m::$n<'static, String>;

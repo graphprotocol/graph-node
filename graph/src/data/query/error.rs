@@ -1,4 +1,4 @@
-use graphql_parser::Pos;
+use graphql_tools::parser::Pos;
 use hex::FromHexError;
 use serde::ser::*;
 use std::collections::HashMap;

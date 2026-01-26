@@ -394,7 +394,7 @@ impl FieldExt for Field {
 
 #[cfg(test)]
 mod directive_finder_tests {
-    use graphql_parser::parse_schema;
+    use graphql_tools::parser::parse_schema;
 
     use super::*;
 

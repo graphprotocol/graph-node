@@ -37,7 +37,7 @@ http-body-util = "0.1"
 hyper-util = { version = "0.1", features = ["full"] }
 futures01 = { package = "futures", version = "0.1.31" }
 lru_time_cache = "0.11"
-graphql-parser = "0.4.1"
+graphql-tools = { workspace = true }
 lazy_static = "1.5.0"
 num-bigint = { version = "=0.2.6", features = ["serde"] }
 num-integer = { version = "=0.1.46" }

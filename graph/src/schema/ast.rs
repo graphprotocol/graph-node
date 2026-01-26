@@ -1,4 +1,4 @@
-use graphql_parser::Pos;
+use graphql_tools::parser::Pos;
 use lazy_static::lazy_static;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -161,7 +161,7 @@ pub fn get_object_type_mut<'a>(
     schema: &'a mut s::Document,
     name: &str,
 ) -> Option<&'a mut s::ObjectType> {
-    use graphql_parser::schema::TypeDefinition::*;
+    use graphql_tools::parser::schema::TypeDefinition::*;
 
     get_named_type_definition_mut(schema, name).and_then(|type_def| match type_def {
         Object(object_type) => Some(object_type),
@@ -174,7 +174,7 @@ pub fn get_interface_type_mut<'a>(
     schema: &'a mut s::Document,
     name: &str,
 ) -> Option<&'a mut s::InterfaceType> {
-    use graphql_parser::schema::TypeDefinition::*;
+    use graphql_tools::parser::schema::TypeDefinition::*;
 
     get_named_type_definition_mut(schema, name).and_then(|type_def| match type_def {
         Interface(interface_type) => Some(interface_type),
