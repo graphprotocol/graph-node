@@ -1,4 +1,5 @@
 use graph::prelude::{Value as GraphValue, *};
+use jsonrpsee::core::middleware::{Headers, HttpMiddleware, MethodKind, Params};
 use jsonrpsee::core::Error as JsonRpcError;
 use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle};
 use jsonrpsee::types::error::CallError;
@@ -8,6 +9,43 @@ use serde_json::{self, Value as JsonValue};
 
 use std::collections::BTreeMap;
 use std::net::{Ipv4Addr, SocketAddr};
+
+/// Middleware for logging JSON-RPC requests.
+///
+/// Logs incoming HTTP requests with remote address and proxy headers,
+/// and logs each JSON-RPC method call with its parameters.
+#[derive(Clone)]
+struct RpcLogger {
+    logger: Logger,
+}
+
+impl HttpMiddleware for RpcLogger {
+    type Instant = ();
+
+    fn on_request(&self, remote_addr: SocketAddr, headers: &Headers) -> Self::Instant {
+        info!(
+            &self.logger,
+            "JSON-RPC request";
+            "remote_addr" => %remote_addr,
+            "x_forwarded_for" => headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()),
+            "x_real_ip" => headers.get("x-real-ip").and_then(|v| v.to_str().ok()),
+            "x_forwarded_proto" => headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok())
+        );
+    }
+
+    fn on_call(&self, method_name: &str, params: Params, _kind: MethodKind) {
+        info!(
+            &self.logger,
+            "JSON-RPC call";
+            "method" => method_name,
+            "params" => ?params
+        );
+    }
+
+    fn on_result(&self, _method_name: &str, _success: bool, _started_at: Self::Instant) {}
+
+    fn on_response(&self, _result: &str, _started_at: Self::Instant) {}
+}
 
 type JsonRpcResult<T> = Result<T, jsonrpsee::core::Error>;
 
@@ -43,7 +81,12 @@ impl JsonRpcServer {
         };
 
         let socket_addr: SocketAddr = (Ipv4Addr::new(0, 0, 0, 0), port).into();
-        let http_server = HttpServerBuilder::default().build(socket_addr).await?;
+        let http_server = HttpServerBuilder::default()
+            .set_middleware(RpcLogger {
+                logger: state.logger.clone(),
+            })
+            .build(socket_addr)
+            .await?;
 
         let mut rpc_module = RpcModule::new(state);
         rpc_module
