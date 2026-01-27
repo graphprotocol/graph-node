@@ -99,6 +99,9 @@ just test-integration
 
 # Run a specific integration test case (e.g., "grafted" test case)
 TEST_CASE=grafted just test-integration
+
+# Override ports if using different service ports (e.g., for local development)
+POSTGRES_TEST_PORT=5432 ETHEREUM_TEST_PORT=8545 IPFS_TEST_PORT=5001 just test-integration
 ```
 
 **⚠️ Test Verification Requirements:**
@@ -112,6 +115,8 @@ TEST_CASE=grafted just test-integration
 - Integration tests take significant time (several minutes)
 - Tests automatically reset the database between runs
 - Logs are written to `tests/integration-tests/graph-node.log`
+- **If a test hangs for >10 minutes**, it's likely stuck - kill with `pkill -9 integration_tests` and check logs
+- CI uses the default ports (3011, 3021, 3001) - local development can override with environment variables
 
 ### Code Quality
 

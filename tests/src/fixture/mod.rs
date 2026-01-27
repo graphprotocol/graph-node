@@ -557,6 +557,7 @@ pub async fn setup_inner<C: Blockchain>(
         stores.network_store.clone(),
         Arc::new(load_manager),
         mock_registry.clone(),
+        Arc::new(graph::components::log_store::NoOpLogStore),
     ));
 
     let indexing_status_service = Arc::new(IndexNodeService::new(

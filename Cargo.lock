@@ -3758,6 +3758,7 @@ dependencies = [
  "stable-hash 0.3.4",
  "stable-hash 0.4.4",
  "strum_macros",
+ "tempfile",
  "thiserror 2.0.17",
  "tiny-keccak 1.5.0",
  "tokio",

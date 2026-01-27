@@ -165,18 +165,86 @@ pub struct Opt {
     #[clap(long, help = "Enable debug logging")]
     pub debug: bool,
 
+    // ============================================
+    // Log Store Configuration - NEW GENERIC ARGS
+    // ============================================
+    #[clap(
+        long = "log-store-backend",
+        value_name = "BACKEND",
+        help = "Log store backend to use (disabled, elasticsearch, loki, file)"
+    )]
+    pub log_store_backend: Option<String>,
+
+    // --- Elasticsearch Configuration ---
+    #[clap(
+        long = "log-store-elasticsearch-url",
+        value_name = "URL",
+        help = "Elasticsearch URL for log storage"
+    )]
+    pub log_store_elasticsearch_url: Option<String>,
+    #[clap(
+        long = "log-store-elasticsearch-user",
+        value_name = "USER",
+        help = "Elasticsearch username for authentication"
+    )]
+    pub log_store_elasticsearch_user: Option<String>,
+    #[clap(
+        long = "log-store-elasticsearch-password",
+        value_name = "PASSWORD",
+        hide_env_values = true,
+        help = "Elasticsearch password for authentication"
+    )]
+    pub log_store_elasticsearch_password: Option<String>,
+    #[clap(
+        long = "log-store-elasticsearch-index",
+        value_name = "INDEX",
+        help = "Elasticsearch index name (default: subgraph)"
+    )]
+    pub log_store_elasticsearch_index: Option<String>,
+
+    // --- Loki Configuration ---
+    #[clap(
+        long = "log-store-loki-url",
+        value_name = "URL",
+        help = "Loki URL for log storage"
+    )]
+    pub log_store_loki_url: Option<String>,
+    #[clap(
+        long = "log-store-loki-tenant-id",
+        value_name = "TENANT_ID",
+        help = "Loki tenant ID for multi-tenancy"
+    )]
+    pub log_store_loki_tenant_id: Option<String>,
+
+    // --- File Configuration ---
+    #[clap(
+        long = "log-store-file-dir",
+        value_name = "DIR",
+        help = "Directory for file-based log storage"
+    )]
+    pub log_store_file_dir: Option<String>,
+    #[clap(
+        long = "log-store-file-retention-hours",
+        value_name = "HOURS",
+        help = "Number of hours to retain log files (0 = disabled, keep all logs; default: 0)"
+    )]
+    pub log_store_file_retention_hours: Option<u32>,
+
+    // ================================================
+    // DEPRECATED - OLD ELASTICSEARCH-SPECIFIC ARGS
+    // ================================================
     #[clap(
         long,
         value_name = "URL",
         env = "ELASTICSEARCH_URL",
-        help = "Elasticsearch service to write subgraph logs to"
+        help = "DEPRECATED: Use --log-store-elasticsearch-url instead. Elasticsearch service to write subgraph logs to"
     )]
     pub elasticsearch_url: Option<String>,
     #[clap(
         long,
         value_name = "USER",
         env = "ELASTICSEARCH_USER",
-        help = "User to use for Elasticsearch logging"
+        help = "DEPRECATED: Use --log-store-elasticsearch-user instead. User to use for Elasticsearch logging"
     )]
     pub elasticsearch_user: Option<String>,
     #[clap(
@@ -184,7 +252,7 @@ pub struct Opt {
         value_name = "PASSWORD",
         env = "ELASTICSEARCH_PASSWORD",
         hide_env_values = true,
-        help = "Password to use for Elasticsearch logging"
+        help = "DEPRECATED: Use --log-store-elasticsearch-password instead. Password to use for Elasticsearch logging"
     )]
     pub elasticsearch_password: Option<String>,
     #[clap(

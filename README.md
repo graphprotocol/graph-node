@@ -114,6 +114,44 @@ Very large `graph-node` instances can also be configured using a
 the `graph-node` needs to connect to multiple chains or if the work of
 indexing and querying needs to be split across [multiple databases](./docs/config.md).
 
+#### Log Storage
+
+`graph-node` supports storing and querying subgraph logs through multiple backends:
+
+- **File**: Local JSON Lines files (recommended for local development)
+- **Elasticsearch**: Enterprise-grade search and analytics (for production)
+- **Loki**: Grafana's log aggregation system (for production)
+- **Disabled**: No log storage (default)
+
+**Quick example (file-based logs for local development):**
+```bash
+mkdir -p ./graph-logs
+
+cargo run -p graph-node --release -- \
+  --postgres-url $POSTGRES_URL \
+  --ethereum-rpc mainnet:archive:https://... \
+  --ipfs 127.0.0.1:5001 \
+  --log-store-backend file \
+  --log-store-file-dir ./graph-logs
+```
+
+Logs are queried via GraphQL at `http://localhost:8000/graphql`:
+```graphql
+query {
+  _logs(subgraphId: "QmYourSubgraphHash", level: ERROR, first: 10) {
+    timestamp
+    level
+    text
+  }
+}
+```
+
+**For complete documentation**, see the **[Log Store Guide](./docs/log-store.md)**, which covers:
+- How to configure each backend (Elasticsearch, Loki, File)
+- Complete GraphQL query examples
+- Choosing the right backend for your use case
+- Performance considerations and best practices
+
 ## Contributing
 
 Please check [CONTRIBUTING.md](CONTRIBUTING.md) for development flow and conventions we use.

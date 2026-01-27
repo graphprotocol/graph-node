@@ -36,6 +36,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::config::Config;
 use crate::helpers::watch_subgraph_updates;
+use crate::log_config_provider::{LogStoreConfigProvider, LogStoreConfigSources};
 use crate::network_setup::Networks;
 use crate::opt::Opt;
 use crate::store_builder::StoreBuilder;
@@ -364,6 +365,7 @@ fn build_graphql_server(
     metrics_registry: Arc<MetricsRegistry>,
     network_store: &Arc<Store>,
     logger_factory: &LoggerFactory,
+    log_store: Arc<dyn graph::components::log_store::LogStore>,
 ) -> GraphQLQueryServer<GraphQlRunner<Store>> {
     let shards: Vec<_> = config.stores.keys().cloned().collect();
     let load_manager = Arc::new(LoadManager::new(
@@ -377,6 +379,7 @@ fn build_graphql_server(
         network_store.clone(),
         load_manager,
         metrics_registry,
+        log_store,
     ));
 
     GraphQLQueryServer::new(logger_factory, graphql_runner.clone())
@@ -440,20 +443,120 @@ pub async fn run(
 
     info!(logger, "Starting up"; "node_id" => &node_id);
 
-    // Optionally, identify the Elasticsearch logging configuration
-    let elastic_config = opt
-        .elasticsearch_url
-        .clone()
-        .map(|endpoint| ElasticLoggingConfig {
-            endpoint,
-            username: opt.elasticsearch_user.clone(),
-            password: opt.elasticsearch_password.clone(),
-            client: reqwest::Client::new(),
-        });
+    // Create log store configuration provider
+    // Build LogStoreConfig from CLI args with backward compatibility
+    let cli_config = if let Some(backend) = opt.log_store_backend.as_ref() {
+        // New generic CLI args used
+        match backend.to_lowercase().as_str() {
+            "elasticsearch" | "elastic" | "es" => {
+                let url = opt
+                    .log_store_elasticsearch_url
+                    .clone()
+                    .or_else(|| {
+                        if opt.elasticsearch_url.is_some() {
+                            warn!(
+                                logger,
+                                "Using deprecated --elasticsearch-url, use --log-store-elasticsearch-url instead"
+                            );
+                        }
+                        opt.elasticsearch_url.clone()
+                    });
+
+                url.map(|endpoint| {
+                    let index = opt
+                        .log_store_elasticsearch_index
+                        .clone()
+                        .or_else(|| std::env::var("GRAPH_LOG_STORE_ELASTICSEARCH_INDEX").ok())
+                        .or_else(|| std::env::var("GRAPH_ELASTIC_SEARCH_INDEX").ok())
+                        .unwrap_or_else(|| "subgraph".to_string());
+
+                    let timeout_secs = std::env::var("GRAPH_LOG_STORE_ELASTICSEARCH_TIMEOUT")
+                        .or_else(|_| std::env::var("GRAPH_ELASTICSEARCH_TIMEOUT"))
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(10);
+
+                    graph::components::log_store::LogStoreConfig::Elasticsearch {
+                        endpoint,
+                        username: opt
+                            .log_store_elasticsearch_user
+                            .clone()
+                            .or_else(|| opt.elasticsearch_user.clone()),
+                        password: opt
+                            .log_store_elasticsearch_password
+                            .clone()
+                            .or_else(|| opt.elasticsearch_password.clone()),
+                        index,
+                        timeout_secs,
+                    }
+                })
+            }
+
+            "loki" => opt.log_store_loki_url.clone().map(|endpoint| {
+                graph::components::log_store::LogStoreConfig::Loki {
+                    endpoint,
+                    tenant_id: opt.log_store_loki_tenant_id.clone(),
+                }
+            }),
+
+            "file" | "files" => opt.log_store_file_dir.clone().map(|directory| {
+                graph::components::log_store::LogStoreConfig::File {
+                    directory: std::path::PathBuf::from(directory),
+                    retention_hours: opt.log_store_file_retention_hours.unwrap_or(0),
+                }
+            }),
+
+            "disabled" | "none" => None,
+
+            other => {
+                warn!(logger, "Invalid log store backend: {}", other);
+                None
+            }
+        }
+    } else if opt.elasticsearch_url.is_some() {
+        // Old Elasticsearch-specific CLI args used (backward compatibility)
+        warn!(
+            logger,
+            "Using deprecated --elasticsearch-url CLI argument, \
+             please use --log-store-backend elasticsearch --log-store-elasticsearch-url instead"
+        );
+
+        let index = opt
+            .log_store_elasticsearch_index
+            .clone()
+            .or_else(|| std::env::var("GRAPH_LOG_STORE_ELASTICSEARCH_INDEX").ok())
+            .or_else(|| std::env::var("GRAPH_ELASTIC_SEARCH_INDEX").ok())
+            .unwrap_or_else(|| "subgraph".to_string());
+
+        let timeout_secs = std::env::var("GRAPH_LOG_STORE_ELASTICSEARCH_TIMEOUT")
+            .or_else(|_| std::env::var("GRAPH_ELASTICSEARCH_TIMEOUT"))
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(10);
+
+        Some(
+            graph::components::log_store::LogStoreConfig::Elasticsearch {
+                endpoint: opt.elasticsearch_url.clone().unwrap(),
+                username: opt.elasticsearch_user.clone(),
+                password: opt.elasticsearch_password.clone(),
+                index,
+                timeout_secs,
+            },
+        )
+    } else {
+        // No CLI config provided
+        None
+    };
+
+    let log_config_provider = LogStoreConfigProvider::new(LogStoreConfigSources { cli_config });
+
+    // Resolve log store (for querying) and config (for drains)
+    // Priority: GRAPH_LOG_STORE env var → CLI config → NoOp/None
+    let (log_store, log_store_config) = log_config_provider.resolve(&logger);
 
     // Create a component and subgraph logger factory
     let logger_factory =
-        LoggerFactory::new(logger.clone(), elastic_config, metrics_registry.clone());
+        LoggerFactory::new(logger.clone(), log_store_config, metrics_registry.clone());
 
     let arweave_resolver = Arc::new(ArweaveClient::new(
         logger.cheap_clone(),
@@ -560,6 +663,7 @@ pub async fn run(
             metrics_registry.clone(),
             &network_store,
             &logger_factory,
+            log_store.clone(),
         );
 
         let index_node_server = IndexNodeServer::new(

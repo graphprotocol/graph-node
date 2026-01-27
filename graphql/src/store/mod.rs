@@ -1,3 +1,4 @@
+pub mod logs;
 mod prefetch;
 mod query;
 mod resolver;
