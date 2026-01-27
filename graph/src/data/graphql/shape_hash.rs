@@ -151,7 +151,6 @@ impl ShapeHash for q::TypeCondition {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use graphql_tools::parser::parse_query;
 
     #[test]
     fn identical_and_different() {
@@ -159,16 +158,16 @@ mod tests {
         const Q2: &str = "{ things(where: { stuff_gt: 42 }) { id } }";
         const Q3: &str = "{ things(where: { stuff_lte: 42 }) { id } }";
         const Q4: &str = "{ things(where: { stuff_gt: 42 }) { id name } }";
-        let q1 = parse_query(Q1)
+        let q1 = q::parse_query(Q1)
             .expect("q1 is syntactically valid")
             .into_static();
-        let q2 = parse_query(Q2)
+        let q2 = q::parse_query(Q2)
             .expect("q2 is syntactically valid")
             .into_static();
-        let q3 = parse_query(Q3)
+        let q3 = q::parse_query(Q3)
             .expect("q3 is syntactically valid")
             .into_static();
-        let q4 = parse_query(Q4)
+        let q4 = q::parse_query(Q4)
             .expect("q4 is syntactically valid")
             .into_static();
 

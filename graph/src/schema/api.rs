@@ -3,7 +3,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use anyhow::Context;
-use graphql_tools::parser::Pos;
 use lazy_static::lazy_static;
 use thiserror::Error;
 
@@ -284,7 +283,7 @@ fn add_introspection_schema(schema: &mut s::Document) {
         // }
 
         let type_args = vec![s::InputValue {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: "name".to_string(),
             value_type: s::Type::NonNullType(Box::new(s::Type::NamedType("String".to_string()))),
@@ -294,7 +293,7 @@ fn add_introspection_schema(schema: &mut s::Document) {
 
         vec![
             s::Field {
-                position: Pos::default(),
+                position: q::Pos::default(),
                 description: None,
                 name: "__schema".to_string(),
                 arguments: vec![],
@@ -304,7 +303,7 @@ fn add_introspection_schema(schema: &mut s::Document) {
                 directives: vec![],
             },
             s::Field {
-                position: Pos::default(),
+                position: q::Pos::default(),
                 description: None,
                 name: "__type".to_string(),
                 arguments: type_args,
@@ -509,7 +508,7 @@ fn add_order_by_type(
     match api.get_named_type(&type_name) {
         None => {
             let typedef = s::TypeDefinition::Enum(s::EnumType {
-                position: Pos::default(),
+                position: q::Pos::default(),
                 description: None,
                 name: type_name,
                 directives: vec![],
@@ -531,7 +530,7 @@ fn field_enum_values(
     let mut enum_values = vec![];
     for field in fields {
         enum_values.push(s::EnumValue {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: field.name.to_string(),
             directives: vec![],
@@ -552,7 +551,7 @@ fn enum_value_from_child_entity_field(
         None
     } else {
         Some(s::EnumValue {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: format!("{}__{}", parent_field_name, field.name),
             directives: vec![],
@@ -607,7 +606,7 @@ fn filter_type_defn(name: String, mut fields: Vec<s::InputValue>) -> s::Definiti
 
     if !ENV_VARS.graphql.disable_bool_filters {
         fields.push(s::InputValue {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: "and".to_string(),
             value_type: s::Type::ListType(Box::new(s::Type::NamedType(name.clone()))),
@@ -616,7 +615,7 @@ fn filter_type_defn(name: String, mut fields: Vec<s::InputValue>) -> s::Definiti
         });
 
         fields.push(s::InputValue {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: "or".to_string(),
             value_type: s::Type::ListType(Box::new(s::Type::NamedType(name.clone()))),
@@ -626,7 +625,7 @@ fn filter_type_defn(name: String, mut fields: Vec<s::InputValue>) -> s::Definiti
     }
 
     let typedef = s::TypeDefinition::InputObject(s::InputObjectType {
-        position: Pos::default(),
+        position: q::Pos::default(),
         description: None,
         name,
         directives: vec![],
@@ -1032,7 +1031,7 @@ fn field_list_filter_input_values(
 /// Generates a `*_filter` input value for the given field name, suffix and value type.
 fn input_value(name: &str, suffix: &'static str, value_type: s::Type) -> s::InputValue {
     s::InputValue {
-        position: Pos::default(),
+        position: q::Pos::default(),
         description: None,
         name: if suffix.is_empty() {
             name.to_owned()
@@ -1075,7 +1074,7 @@ fn add_query_type(api: &mut s::Document, input_schema: &InputSchema) -> Result<(
     fields.push(meta_field());
 
     let typedef = s::TypeDefinition::Object(s::ObjectType {
-        position: Pos::default(),
+        position: q::Pos::default(),
         description: None,
         name: type_name,
         implements_interfaces: vec![],
@@ -1099,7 +1098,7 @@ fn query_field_for_fulltext(fulltext: &s::Directive) -> Option<s::Field> {
     let mut arguments = vec![
         // text: String
         s::InputValue {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: String::from("text"),
             value_type: s::Type::NonNullType(Box::new(s::Type::NamedType(String::from("String")))),
@@ -1108,7 +1107,7 @@ fn query_field_for_fulltext(fulltext: &s::Directive) -> Option<s::Field> {
         },
         // first: Int
         s::InputValue {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: String::from("first"),
             value_type: s::Type::NamedType(String::from("Int")),
@@ -1117,7 +1116,7 @@ fn query_field_for_fulltext(fulltext: &s::Directive) -> Option<s::Field> {
         },
         // skip: Int
         s::InputValue {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: String::from("skip"),
             value_type: s::Type::NamedType(String::from("Int")),
@@ -1136,7 +1135,7 @@ fn query_field_for_fulltext(fulltext: &s::Directive) -> Option<s::Field> {
     arguments.push(subgraph_error_argument());
 
     Some(s::Field {
-        position: Pos::default(),
+        position: q::Pos::default(),
         description: None,
         name,
         arguments,
@@ -1149,7 +1148,7 @@ fn query_field_for_fulltext(fulltext: &s::Directive) -> Option<s::Field> {
 
 fn block_argument() -> s::InputValue {
     s::InputValue {
-        position: Pos::default(),
+        position: q::Pos::default(),
         description: Some(
             "The block at which the query should be executed. \
              Can either be a `{ hash: Bytes }` value containing a block hash, \
@@ -1169,7 +1168,7 @@ fn block_argument() -> s::InputValue {
 
 fn block_changed_filter_argument() -> s::InputValue {
     s::InputValue {
-        position: Pos::default(),
+        position: q::Pos::default(),
         description: Some("Filter for the block changed event.".to_owned()),
         name: "_change_block".to_string(),
         value_type: s::Type::NamedType(CHANGE_BLOCK_FILTER_NAME.to_owned()),
@@ -1180,7 +1179,7 @@ fn block_changed_filter_argument() -> s::InputValue {
 
 fn subgraph_error_argument() -> s::InputValue {
     s::InputValue {
-        position: Pos::default(),
+        position: q::Pos::default(),
         description: Some(
             "Set to `allow` to receive data even if the subgraph has skipped over errors while syncing."
                 .to_owned(),
@@ -1199,7 +1198,7 @@ fn query_fields_for_type(type_name: &str, ops: FilterOps) -> Vec<s::Field> {
 
     let mut by_id_arguments = vec![
         s::InputValue {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: "id".to_string(),
             value_type: s::Type::NonNullType(Box::new(s::Type::NamedType("ID".to_string()))),
@@ -1216,7 +1215,7 @@ fn query_fields_for_type(type_name: &str, ops: FilterOps) -> Vec<s::Field> {
     let (singular, plural) = camel_cased_names(type_name);
     vec![
         s::Field {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: singular,
             arguments: by_id_arguments,
@@ -1224,7 +1223,7 @@ fn query_fields_for_type(type_name: &str, ops: FilterOps) -> Vec<s::Field> {
             directives: vec![],
         },
         s::Field {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: None,
             name: plural,
             arguments: collection_arguments,
@@ -1243,7 +1242,7 @@ fn query_fields_for_agg_type(type_name: &str) -> Vec<s::Field> {
 
     let (_, plural) = camel_cased_names(type_name);
     vec![s::Field {
-        position: Pos::default(),
+        position: q::Pos::default(),
         description: Some(format!("Collection of aggregated `{}` values", type_name)),
         name: plural,
         arguments: collection_arguments,
@@ -1257,13 +1256,13 @@ fn query_fields_for_agg_type(type_name: &str) -> Vec<s::Field> {
 fn meta_field() -> s::Field {
     lazy_static! {
         static ref META_FIELD: s::Field = s::Field {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: Some("Access to subgraph metadata".to_string()),
             name: META_FIELD_NAME.to_string(),
             arguments: vec![
                 // block: BlockHeight
                 s::InputValue {
-                    position: Pos::default(),
+                    position: q::Pos::default(),
                     description: None,
                     name: String::from("block"),
                     value_type: s::Type::NamedType(BLOCK_HEIGHT.to_string()),
@@ -1288,7 +1287,6 @@ mod tests {
         prelude::{s, DeploymentHash},
         schema::{InputSchema, SCHEMA_TYPE_NAME},
     };
-    use graphql_tools::parser::schema::*;
     use lazy_static::lazy_static;
 
     use super::ApiSchema;
@@ -1316,7 +1314,7 @@ mod tests {
             .expect("Query type is missing in derived API schema");
 
         match query_type {
-            TypeDefinition::Object(t) => ast::get_field(t, name),
+            s::TypeDefinition::Object(t) => ast::get_field(t, name),
             _ => None,
         }
         .unwrap_or_else(|| panic!("Schema should contain a field named `{}`", name))
@@ -1357,7 +1355,7 @@ mod tests {
             .get_named_type("OrderDirection")
             .expect("OrderDirection type is missing in derived API schema");
         let enum_type = match order_direction {
-            TypeDefinition::Enum(t) => Some(t),
+            s::TypeDefinition::Enum(t) => Some(t),
             _ => None,
         }
         .expect("OrderDirection type is not an enum");
@@ -1387,7 +1385,7 @@ mod tests {
             .expect("User_orderBy type is missing in derived API schema");
 
         let enum_type = match user_order_by {
-            TypeDefinition::Enum(t) => Some(t),
+            s::TypeDefinition::Enum(t) => Some(t),
             _ => None,
         }
         .expect("User_orderBy type is not an enum");
@@ -1486,7 +1484,7 @@ mod tests {
             .expect("User_orderBy type is missing in derived API schema");
 
         let enum_type = match user_order_by {
-            TypeDefinition::Enum(t) => Some(t),
+            s::TypeDefinition::Enum(t) => Some(t),
             _ => None,
         }
         .expect("User_orderBy type is not an enum");
@@ -1528,7 +1526,7 @@ mod tests {
             .expect("Meal_orderBy type is missing in derived API schema");
 
         let enum_type = match meal_order_by {
-            TypeDefinition::Enum(t) => Some(t),
+            s::TypeDefinition::Enum(t) => Some(t),
             _ => None,
         }
         .expect("Meal_orderBy type is not an enum");
@@ -1546,7 +1544,7 @@ mod tests {
             .expect("Recipe_orderBy type is missing in derived API schema");
 
         let enum_type = match recipe_order_by {
-            TypeDefinition::Enum(t) => Some(t),
+            s::TypeDefinition::Enum(t) => Some(t),
             _ => None,
         }
         .expect("Recipe_orderBy type is not an enum");
@@ -1607,7 +1605,7 @@ mod tests {
             .expect("User_filter type is missing in derived API schema");
 
         let user_filter_type = match user_filter {
-            TypeDefinition::InputObject(t) => Some(t),
+            s::TypeDefinition::InputObject(t) => Some(t),
             _ => None,
         }
         .expect("User_filter type is not an input object");
@@ -1712,7 +1710,7 @@ mod tests {
             .expect("Pet_filter type is missing in derived API schema");
 
         let pet_filter_type = match pet_filter {
-            TypeDefinition::InputObject(t) => Some(t),
+            s::TypeDefinition::InputObject(t) => Some(t),
             _ => None,
         }
         .expect("Pet_filter type is not an input object");
@@ -1782,7 +1780,7 @@ mod tests {
             .expect("_change_block field is missing in User_filter");
 
         match &change_block_filter.value_type {
-            Type::NamedType(name) => assert_eq!(name.as_str(), "BlockChangedFilter"),
+            s::Type::NamedType(name) => assert_eq!(name.as_str(), "BlockChangedFilter"),
             _ => panic!("_change_block field is not a named type"),
         }
 
@@ -1827,7 +1825,7 @@ mod tests {
             .expect("User_filter type is missing in derived API schema");
 
         let user_filter_type = match user_filter {
-            TypeDefinition::InputObject(t) => Some(t),
+            s::TypeDefinition::InputObject(t) => Some(t),
             _ => None,
         }
         .expect("User_filter type is not an input object");
@@ -1905,7 +1903,7 @@ mod tests {
             .expect("_change_block field is missing in User_filter");
 
         match &change_block_filter.value_type {
-            Type::NamedType(name) => assert_eq!(name.as_str(), "BlockChangedFilter"),
+            s::Type::NamedType(name) => assert_eq!(name.as_str(), "BlockChangedFilter"),
             _ => panic!("_change_block field is not a named type"),
         }
 
@@ -1925,14 +1923,14 @@ mod tests {
             .expect("Query type is missing in derived API schema");
 
         let user_singular_field = match query_type {
-            TypeDefinition::Object(t) => ast::get_field(t, "user"),
+            s::TypeDefinition::Object(t) => ast::get_field(t, "user"),
             _ => None,
         }
         .expect("\"user\" field is missing on Query type");
 
         assert_eq!(
             user_singular_field.field_type,
-            Type::NamedType("User".to_string())
+            s::Type::NamedType("User".to_string())
         );
 
         assert_eq!(
@@ -1949,15 +1947,15 @@ mod tests {
         );
 
         let user_plural_field = match query_type {
-            TypeDefinition::Object(t) => ast::get_field(t, "users"),
+            s::TypeDefinition::Object(t) => ast::get_field(t, "users"),
             _ => None,
         }
         .expect("\"users\" field is missing on Query type");
 
         assert_eq!(
             user_plural_field.field_type,
-            Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
-                Box::new(Type::NamedType("User".to_string()))
+            s::Type::NonNullType(Box::new(s::Type::ListType(Box::new(s::Type::NonNullType(
+                Box::new(s::Type::NamedType("User".to_string()))
             )))))
         );
 
@@ -1982,26 +1980,26 @@ mod tests {
         );
 
         let user_profile_singular_field = match query_type {
-            TypeDefinition::Object(t) => ast::get_field(t, "userProfile"),
+            s::TypeDefinition::Object(t) => ast::get_field(t, "userProfile"),
             _ => None,
         }
         .expect("\"userProfile\" field is missing on Query type");
 
         assert_eq!(
             user_profile_singular_field.field_type,
-            Type::NamedType("UserProfile".to_string())
+            s::Type::NamedType("UserProfile".to_string())
         );
 
         let user_profile_plural_field = match query_type {
-            TypeDefinition::Object(t) => ast::get_field(t, "userProfiles"),
+            s::TypeDefinition::Object(t) => ast::get_field(t, "userProfiles"),
             _ => None,
         }
         .expect("\"userProfiles\" field is missing on Query type");
 
         assert_eq!(
             user_profile_plural_field.field_type,
-            Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
-                Box::new(Type::NamedType("UserProfile".to_string()))
+            s::Type::NonNullType(Box::new(s::Type::ListType(Box::new(s::Type::NonNullType(
+                Box::new(s::Type::NamedType("UserProfile".to_string()))
             )))))
         );
     }
@@ -2020,14 +2018,14 @@ mod tests {
             .expect("Query type is missing in derived API schema");
 
         let singular_field = match query_type {
-            TypeDefinition::Object(ref t) => ast::get_field(t, "node"),
+            s::TypeDefinition::Object(ref t) => ast::get_field(t, "node"),
             _ => None,
         }
         .expect("\"node\" field is missing on Query type");
 
         assert_eq!(
             singular_field.field_type,
-            Type::NamedType("Node".to_string())
+            s::Type::NamedType("Node".to_string())
         );
 
         assert_eq!(
@@ -2044,15 +2042,15 @@ mod tests {
         );
 
         let plural_field = match query_type {
-            TypeDefinition::Object(ref t) => ast::get_field(t, "nodes"),
+            s::TypeDefinition::Object(ref t) => ast::get_field(t, "nodes"),
             _ => None,
         }
         .expect("\"nodes\" field is missing on Query type");
 
         assert_eq!(
             plural_field.field_type,
-            Type::NonNullType(Box::new(Type::ListType(Box::new(Type::NonNullType(
-                Box::new(Type::NamedType("Node".to_string()))
+            s::Type::NonNullType(Box::new(s::Type::ListType(Box::new(s::Type::NonNullType(
+                Box::new(s::Type::NamedType("Node".to_string()))
             )))))
         );
 
@@ -2111,7 +2109,7 @@ type Gravatar @entity {
             .expect("Query type is missing in derived API schema");
 
         let _metadata_field = match query_type {
-            TypeDefinition::Object(t) => ast::get_field(t, &String::from("metadata")),
+            s::TypeDefinition::Object(t) => ast::get_field(t, &String::from("metadata")),
             _ => None,
         }
         .expect("\"metadata\" field is missing on Query type");
@@ -2282,7 +2280,7 @@ type Gravatar @entity {
                 .expect("Query type is missing in derived API schema");
 
             match query_type {
-                TypeDefinition::Object(t) => ast::get_field(t, name),
+                s::TypeDefinition::Object(t) => ast::get_field(t, name),
                 _ => None,
             }
             .unwrap_or_else(|| panic!("Schema should contain a field named `{}`", name))

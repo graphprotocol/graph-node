@@ -1,4 +1,3 @@
-use graphql_tools::parser::Pos;
 use lazy_static::lazy_static;
 use std::ops::Deref;
 use std::str::FromStr;
@@ -189,7 +188,7 @@ pub fn get_field<'a>(
 ) -> Option<&'a s::Field> {
     lazy_static! {
         pub static ref TYPENAME_FIELD: s::Field = s::Field {
-            position: Pos::default(),
+            position: s::Pos::default(),
             description: None,
             name: "__typename".to_owned(),
             field_type: s::Type::NonNullType(Box::new(s::Type::NamedType("String".to_owned()))),
@@ -261,7 +260,7 @@ pub fn get_argument_definitions<'a>(
 ) -> Option<&'a Vec<s::InputValue>> {
     lazy_static! {
         pub static ref NAME_ARGUMENT: Vec<s::InputValue> = vec![s::InputValue {
-            position: Pos::default(),
+            position: s::Pos::default(),
             description: None,
             name: "name".to_owned(),
             value_type: s::Type::NonNullType(Box::new(s::Type::NamedType("String".to_owned()))),

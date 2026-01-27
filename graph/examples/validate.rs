@@ -36,7 +36,6 @@ use graph::data::subgraph::SPEC_VERSION_1_1_0;
 use graph::prelude::s;
 use graph::prelude::DeploymentHash;
 use graph::schema::InputSchema;
-use graphql_tools::parser::parse_schema;
 use serde::Deserialize;
 use std::alloc::GlobalAlloc;
 use std::alloc::Layout;
@@ -157,7 +156,7 @@ struct Opts {
 }
 
 fn parse(raw: &str, name: &str, api: bool) -> Result<DeploymentHash> {
-    let schema = parse_schema(raw)
+    let schema = s::parse_schema(raw)
         .map(|v| v.into_static())
         .map_err(|e| anyhow!("Failed to parse schema sgd{name}: {e}"))?;
     let id = subgraph_id(&schema);
@@ -233,7 +232,7 @@ impl Sizer {
         let elapsed = start.elapsed();
         let txt_size = raw.len();
         let (gql_size, _) = self.size(|| {
-            parse_schema(raw)
+            s::parse_schema(raw)
                 .map(|v| v.into_static())
                 .map_err(Into::into)
         })?;

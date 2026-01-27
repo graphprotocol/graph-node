@@ -41,7 +41,6 @@ serde_yaml.workspace = true
 
 [dev-dependencies]
 clap.workspace = true
-graphql-tools = { workspace = true }
 
 [lints]
 workspace = true

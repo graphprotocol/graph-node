@@ -394,8 +394,6 @@ impl FieldExt for Field {
 
 #[cfg(test)]
 mod directive_finder_tests {
-    use graphql_tools::parser::parse_schema;
-
     use super::*;
 
     const SCHEMA: &str = "
@@ -407,7 +405,7 @@ mod directive_finder_tests {
     /// Makes sure that the DirectiveFinder::find_directive implementation for ObjectiveType and Field works
     #[test]
     fn find_directive_impls() {
-        let ast = parse_schema::<String>(SCHEMA).unwrap();
+        let ast = s::parse_schema::<String>(SCHEMA).unwrap();
         let object_types = ast.get_object_type_definitions();
         assert_eq!(object_types.len(), 1);
         let object_type = object_types[0];
@@ -430,7 +428,7 @@ mod directive_finder_tests {
     /// Makes sure that the DirectiveFinder::is_derived implementation for ObjectiveType and Field works
     #[test]
     fn is_derived_impls() {
-        let ast = parse_schema::<String>(SCHEMA).unwrap();
+        let ast = s::parse_schema::<String>(SCHEMA).unwrap();
         let object_types = ast.get_object_type_definitions();
         assert_eq!(object_types.len(), 1);
         let object_type = object_types[0];

@@ -3,7 +3,6 @@ use crate::data::subgraph::DeploymentHash;
 use crate::prelude::{anyhow, s};
 
 use anyhow::Error;
-use graphql_tools::parser::Pos;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -280,7 +279,7 @@ impl Schema {
     }
 
     pub fn parse(raw: &str, id: DeploymentHash) -> Result<Self, Error> {
-        let document = graphql_tools::parser::parse_schema(raw)?.into_static();
+        let document = s::parse_schema(raw)?.into_static();
 
         Schema::new(id, document).map_err(Into::into)
     }
@@ -302,7 +301,7 @@ impl Schema {
 
             let subgraph_id_directive = s::Directive {
                 name: "subgraphId".to_string(),
-                position: Pos::default(),
+                position: s::Pos::default(),
                 arguments: vec![subgraph_id_argument],
             };
 

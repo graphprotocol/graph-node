@@ -2827,7 +2827,7 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
             fn validate(field: &str, errmsg: &str) {
                 let raw = format!("type A @entity {{ id: ID!\n {} }}\n{}", field, OTHER_TYPES);
 
-                let document = graphql_tools::parser::parse_schema(&raw)
+                let document = s::parse_schema(&raw)
                     .expect("Failed to parse raw schema")
                     .into_static();
                 let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
@@ -2884,8 +2884,7 @@ type Account implements Address @entity { id: ID!, txn: Transaction! @derivedFro
             const ROOT_SCHEMA: &str = "
 type _Schema_ { id: ID! }";
 
-            let document = graphql_tools::parser::parse_schema(ROOT_SCHEMA)
-                .expect("Failed to parse root schema");
+            let document = s::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
             let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
             let schema = Schema::new(LATEST_VERSION, &schema);
             assert_eq!(
@@ -2901,8 +2900,7 @@ type _Schema_ { id: ID! }";
             const ROOT_SCHEMA: &str = "
 type _Schema_ @illegal";
 
-            let document = graphql_tools::parser::parse_schema(ROOT_SCHEMA)
-                .expect("Failed to parse root schema");
+            let document = s::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
             let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
             let schema = Schema::new(LATEST_VERSION, &schema);
             assert_eq!(
@@ -2926,8 +2924,7 @@ type A @entity {
   color: Color
 }"#;
 
-            let document = graphql_tools::parser::parse_schema(ROOT_SCHEMA)
-                .expect("Failed to parse root schema");
+            let document = s::parse_schema(ROOT_SCHEMA).expect("Failed to parse root schema");
             let schema = BaseSchema::new(DeploymentHash::new("id").unwrap(), document).unwrap();
             let schema = Schema::new(LATEST_VERSION, &schema);
             assert_eq!(schema.validate_fields().len(), 0);
@@ -3035,8 +3032,7 @@ type Gravatar @entity {
   imageUrl: String!
 }"#;
 
-            let document =
-                graphql_tools::parser::parse_schema(SCHEMA).expect("Failed to parse schema");
+            let document = s::parse_schema(SCHEMA).expect("Failed to parse schema");
             let schema = BaseSchema::new(DeploymentHash::new("id1").unwrap(), document).unwrap();
             let schema = Schema::new(LATEST_VERSION, &schema);
             assert_eq!(schema.validate_fulltext_directives(), vec![]);

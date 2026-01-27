@@ -176,31 +176,34 @@ pub mod prelude {
 
     macro_rules! static_graphql {
         ($m:ident, $m2:ident, {$($n:ident,)*}) => {
-            pub mod $m {
                 use graphql_tools::parser::$m2 as $m;
                 pub use graphql_tools::parser::Pos;
                 pub use $m::*;
                 $(
                     pub type $n = $m::$n<'static, String>;
                 )*
-            }
         };
     }
 
     // Static graphql mods. These are to be phased out, with a preference
     // toward making graphql generic over text. This helps to ease the
     // transition by providing the old graphql-parse 0.2.x API
-    static_graphql!(q, query, {
-        Document, Value, OperationDefinition, InlineFragment, TypeCondition,
-        FragmentSpread, Field, Selection, SelectionSet, FragmentDefinition,
-        Directive, VariableDefinition, Type, Query,
-    });
-    static_graphql!(s, schema, {
-        Field, Directive, InterfaceType, ObjectType, Value, TypeDefinition,
-        EnumType, Type, Definition, Document, ScalarType, InputValue, DirectiveDefinition,
-        UnionType, InputObjectType, EnumValue,
-    });
-
+    pub mod q {
+        static_graphql!(q, query, {
+            Document, Value, OperationDefinition, InlineFragment, TypeCondition,
+            FragmentSpread, Field, Selection, SelectionSet, FragmentDefinition,
+            Directive, VariableDefinition, Type, Query,
+        });
+        pub use q::parse_query;
+    }
+    pub mod s {
+        static_graphql!(s, schema, {
+            Field, Directive, InterfaceType, ObjectType, Value, TypeDefinition,
+            EnumType, Type, Definition, Document, ScalarType, InputValue, DirectiveDefinition,
+            UnionType, InputObjectType, EnumValue,
+        });
+        pub use s::parse_schema;
+    }
     pub mod r {
         pub use crate::data::value::{Object, Value};
     }
