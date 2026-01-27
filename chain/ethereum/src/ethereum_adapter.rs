@@ -1,4 +1,5 @@
 use alloy::network::AnyRpcBlock;
+use alloy::network::AnyTransactionReceipt;
 use alloy::rpc::types::Block as AlloyRpcBlock;
 use alloy::rpc::types::TransactionReceipt as AlloyReceipt;
 use futures03::{future::BoxFuture, stream::FuturesUnordered};
@@ -132,41 +133,56 @@ pub(crate) fn test_alloy_block_compat(logger: &Logger, value: &json::Value, sour
 
     // Test 1: Strict type (AlloyRpcBlock) - will fail for blocks with typed txns missing chainId
     let strict_result = serde_json::from_value::<AlloyRpcBlock>(inner_block.clone());
-    let strict_status = match &strict_result {
-        Ok(block) => format!("OK txs={}", block.transactions.len()),
-        Err(e) => format!("FAIL err={}", e),
-    };
+    match &strict_result {
+        Ok(block) => {
+            debug!(
+                logger,
+                "alloy_compat_strict path={} format={} block={} OK txs={}",
+                source,
+                format,
+                block_num,
+                block.transactions.len();
+                "hash" => full_hash
+            );
+        }
+        Err(e) => {
+            warn!(
+                logger,
+                "alloy_compat_strict path={} format={} block={} FAIL err={}",
+                source,
+                format,
+                block_num,
+                e;
+                "hash" => full_hash
+            );
+        }
+    }
 
     // Test 2: Lenient type (AnyRpcBlock) - should always work via Unknown fallback
     let any_result = serde_json::from_value::<AnyRpcBlock>(inner_block.clone());
-    let any_status = match &any_result {
-        Ok(block) => format!("OK txs={}", block.transactions.len()),
-        Err(e) => format!("FAIL err={}", e),
-    };
-
-    // Log both results together
-    if strict_result.is_ok() && any_result.is_ok() {
-        debug!(
-            logger,
-            "alloy_compat path={} format={} block={} strict={} any={}",
-            source,
-            format,
-            block_num,
-            strict_status,
-            any_status;
-            "hash" => full_hash
-        );
-    } else {
-        warn!(
-            logger,
-            "alloy_compat path={} format={} block={} strict={} any={}",
-            source,
-            format,
-            block_num,
-            strict_status,
-            any_status;
-            "hash" => full_hash
-        );
+    match &any_result {
+        Ok(block) => {
+            debug!(
+                logger,
+                "alloy_compat_any path={} format={} block={} OK txs={}",
+                source,
+                format,
+                block_num,
+                block.transactions.len();
+                "hash" => full_hash
+            );
+        }
+        Err(e) => {
+            warn!(
+                logger,
+                "alloy_compat_any path={} format={} block={} FAIL err={}",
+                source,
+                format,
+                block_num,
+                e;
+                "hash" => full_hash
+            );
+        }
     }
 }
 
@@ -205,42 +221,86 @@ pub(crate) fn test_alloy_receipts_compat(logger: &Logger, block_value: &json::Va
         }
     };
 
-    let mut ok_count = 0;
-    let mut fail_count = 0;
-    let mut first_error: Option<String> = None;
+    // Test with strict AlloyReceipt (TransactionReceipt)
+    let mut strict_ok = 0;
+    let mut strict_fail = 0;
+    let mut strict_first_error: Option<String> = None;
+
+    // Test with lenient AnyTransactionReceipt
+    let mut any_ok = 0;
+    let mut any_fail = 0;
+    let mut any_first_error: Option<String> = None;
 
     for receipt in receipts {
+        // Strict test
         match serde_json::from_value::<AlloyReceipt>(receipt.clone()) {
-            Ok(_) => ok_count += 1,
+            Ok(_) => strict_ok += 1,
             Err(e) => {
-                fail_count += 1;
-                if first_error.is_none() {
-                    first_error = Some(e.to_string());
+                strict_fail += 1;
+                if strict_first_error.is_none() {
+                    strict_first_error = Some(e.to_string());
+                }
+            }
+        }
+
+        // Lenient test
+        match serde_json::from_value::<AnyTransactionReceipt>(receipt.clone()) {
+            Ok(_) => any_ok += 1,
+            Err(e) => {
+                any_fail += 1;
+                if any_first_error.is_none() {
+                    any_first_error = Some(e.to_string());
                 }
             }
         }
     }
 
-    if fail_count > 0 {
+    // Log strict results
+    if strict_fail > 0 {
         warn!(
             logger,
-            "alloy_compat_receipts path={} format={} block={} ok={} fail={} first_err={}",
+            "alloy_compat_receipts_strict path={} format={} block={} ok={} fail={} first_err={}",
             source,
             format,
             block_num,
-            ok_count,
-            fail_count,
-            first_error.unwrap_or_default();
+            strict_ok,
+            strict_fail,
+            strict_first_error.unwrap_or_default();
             "hash" => full_hash
         );
     } else {
         debug!(
             logger,
-            "alloy_compat_receipts path={} format={} block={} ok={}",
+            "alloy_compat_receipts_strict path={} format={} block={} ok={}",
             source,
             format,
             block_num,
-            ok_count;
+            strict_ok;
+            "hash" => full_hash
+        );
+    }
+
+    // Log lenient results
+    if any_fail > 0 {
+        warn!(
+            logger,
+            "alloy_compat_receipts_any path={} format={} block={} ok={} fail={} first_err={}",
+            source,
+            format,
+            block_num,
+            any_ok,
+            any_fail,
+            any_first_error.unwrap_or_default();
+            "hash" => full_hash
+        );
+    } else {
+        debug!(
+            logger,
+            "alloy_compat_receipts_any path={} format={} block={} ok={}",
+            source,
+            format,
+            block_num,
+            any_ok;
             "hash" => full_hash
         );
     }
