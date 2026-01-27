@@ -1,0 +1,19 @@
+type Gravatar @entity(immutable: false) {
+  id: ID!
+  # This field points at an interface; we allow that a derived field
+  # in a type that implements the interface derives from this field
+  # The test checks that this construct is accepted
+  owner: Account!
+  imageUrl: String!
+}
+
+interface Account {
+  id: ID!
+  gravatars: [Gravatar!]! @derivedFrom(field: "owner")
+}
+
+type UserAccount implements Account @entity(immutable: true) {
+  id: ID!
+  name: String!
+  gravatars: [Gravatar!]! @derivedFrom(field: "owner")
+}

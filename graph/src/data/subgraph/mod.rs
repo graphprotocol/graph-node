@@ -6,6 +6,9 @@ pub mod api_version;
 use alloy::primitives::Address;
 pub use api_version::*;
 
+/// Pure manifest validation functions for use by external tools.
+pub mod manifest_validation;
+
 pub mod features;
 pub mod status;
 
@@ -843,11 +846,13 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         store: Arc<S>,
         validate_graft_base: bool,
     ) -> Result<SubgraphManifest<C>, Vec<SubgraphManifestValidationError>> {
+        use manifest_validation::{validate_has_data_sources, validate_single_network};
+
         let mut errors: Vec<SubgraphManifestValidationError> = vec![];
 
         // Validate that the manifest has at least one data source
-        if self.0.data_sources.is_empty() {
-            errors.push(SubgraphManifestValidationError::NoDataSources);
+        if let Err(e) = validate_has_data_sources(self.0.data_sources.len()) {
+            errors.push(e);
         }
 
         for ds in &self.0.data_sources {
@@ -861,18 +866,10 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             errors.push(different_api_versions.into());
         };
 
-        let mut networks = self
-            .0
-            .data_sources
-            .iter()
-            .filter_map(|d| Some(d.network()?.to_string()))
-            .collect::<Vec<String>>();
-        networks.sort();
-        networks.dedup();
-        match networks.len() {
-            0 => errors.push(SubgraphManifestValidationError::EthereumNetworkRequired),
-            1 => (),
-            _ => errors.push(SubgraphManifestValidationError::MultipleEthereumNetworks),
+        // Validate single network using shared validation
+        let networks: Vec<Option<&str>> = self.0.data_sources.iter().map(|d| d.network()).collect();
+        if let Err(e) = validate_single_network(&networks) {
+            errors.push(e);
         }
 
         if let Some(graft) = &self.0.graft {

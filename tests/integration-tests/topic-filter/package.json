@@ -7,7 +7,6 @@
     "deploy:test": "graph deploy test/block-handlers --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI"
   },
   "devDependencies": {
-    "@graphprotocol/graph-cli": "0.71.0-alpha-20240419180731-51ea29d",
     "@graphprotocol/graph-ts": "0.35.0"
   }
 }

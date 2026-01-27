@@ -1,1 +1,12 @@
+pub mod codegen;
+pub mod commands;
+pub mod compiler;
+pub mod config;
+pub mod formatter;
+pub mod migrations;
+pub mod output;
+pub mod prompt;
+pub mod scaffold;
+pub mod services;
+pub mod validation;
 pub mod watcher;

@@ -26,7 +26,7 @@ use crate::schema::api::api_schema;
 use crate::util::intern::{Atom, AtomPool};
 
 use crate::schema::fulltext::FulltextDefinition;
-use crate::schema::{ApiSchema, AsEntityTypeName, EntityType, Schema};
+use crate::schema::{ApiSchema, AsEntityTypeName, EntityType, Schema, SchemaValidationError};
 
 pub mod sqlexpr;
 
@@ -1051,6 +1051,21 @@ impl InputSchema {
         use crate::data::subgraph::LATEST_VERSION;
 
         Self::parse(LATEST_VERSION, raw, id)
+    }
+
+    pub fn validate(
+        spec_version: &Version,
+        raw: &str,
+        id: DeploymentHash,
+    ) -> Vec<SchemaValidationError> {
+        let schema = match Schema::parse(raw, id.clone()) {
+            Ok(schema) => schema,
+            Err(err) => return vec![SchemaValidationError::InvalidSchema(err.to_string())],
+        };
+        match validations::validate(spec_version, &schema) {
+            Ok(_) => vec![],
+            Err(errors) => errors,
+        }
     }
 
     /// Convenience for tests to construct an `InputSchema`
