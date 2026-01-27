@@ -119,13 +119,6 @@ tokio-util = "0.7.15"
 too_many_arguments = "allow"
 type_complexity = "allow"
 
-# Incremental compilation on Rust 1.58 causes an ICE on build. As soon as graph node builds again, these can be removed.
-[profile.test]
-incremental = false
-
-[profile.dev]
-incremental = false
-
 [profile.release]
 opt-level = 's'
 strip = "debuginfo"
