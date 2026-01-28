@@ -104,7 +104,7 @@ async fn gnd_tests() -> anyhow::Result<()> {
         .enumerate()
         .map(|(index, case)| {
             let subgraph_name = format!("subgraph-{}", num_sources + index);
-            case.check_health_and_test(&contracts, subgraph_name)
+            case.check_health_and_test(subgraph_name)
         })
         .buffered(CONFIG.num_parallel_tests);
 
