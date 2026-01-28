@@ -9,7 +9,7 @@ use web3::{
     api::{Eth, Namespace},
     contract::{tokens::Tokenize, Contract as Web3Contract, Options},
     transports::Http,
-    types::{Address, Block, BlockId, BlockNumber, Bytes, TransactionReceipt, H256},
+    types::{Address, Block, BlockId, BlockNumber, Bytes, TransactionReceipt, H256, U256},
 };
 // web3 version 0.18 does not expose this; once the graph crate updates to
 // version 0.19, we can use web3::signing::SecretKey from the graph crate
@@ -34,19 +34,19 @@ lazy_static! {
             },
             Contract {
                 name: "LimitedContract".to_string(),
-                address: Address::from_str("0xb7f8bc63bbcad18155201308c8f3540b07f84f5e").unwrap(),
+                address: Address::from_str("0x0b306bf915c4d645ff596e518faf3f9669b97016").unwrap(),
             },
             Contract {
                 name: "RevertingContract".to_string(),
-                address: Address::from_str("0xa51c1fc2f0d1a1b8494ed1fe312d7c3a78ed91c0").unwrap(),
+                address: Address::from_str("0x959922be3caee4b8cd9a407cc3ac1c251c2007b1").unwrap(),
             },
             Contract {
                 name: "OverloadedContract".to_string(),
-                address: Address::from_str("0x0dcd1bf9a1b36ce34237eeafef220932846bcd82").unwrap(),
+                address: Address::from_str("0x9a9f2ccfde556a7e9ff0848998aa4a0cfd8863ae").unwrap(),
             },
             Contract {
                 name: "DeclaredCallsContract".to_string(),
-                address: Address::from_str("0x9a676e781a523b5d0c0e43731313a708cb607508").unwrap(),
+                address: Address::from_str("0x68b1d87f95878fe05b998f19b66f4baba5de1aed").unwrap(),
             },
         ]
     };
@@ -194,6 +194,42 @@ impl Contract {
                         )
                         .await
                         .unwrap();
+                }
+                // The topic-filter test needs some events emitted
+                if contract.name == "SimpleContract" {
+                    status!("contracts", "Emitting anotherTrigger from SimpleContract");
+                    let args = &[
+                        (
+                            U256::from(1),
+                            U256::from(2),
+                            U256::from(3),
+                            "abc".to_string(),
+                        ),
+                        (
+                            U256::from(1),
+                            U256::from(1),
+                            U256::from(1),
+                            "abc".to_string(),
+                        ),
+                        (
+                            U256::from(4),
+                            U256::from(2),
+                            U256::from(3),
+                            "abc".to_string(),
+                        ),
+                        (
+                            U256::from(4),
+                            U256::from(4),
+                            U256::from(3),
+                            "abc".to_string(),
+                        ),
+                    ];
+                    for arg in args {
+                        contract
+                            .call("emitAnotherTrigger", arg.clone())
+                            .await
+                            .unwrap();
+                    }
                 }
             } else {
                 status!(

@@ -32,7 +32,6 @@ use graph_tests::{error, status, CONFIG};
 use tokio::process::Child;
 use tokio::task::JoinError;
 use tokio::time::sleep;
-use web3::types::U256;
 
 const SUBGRAPH_LAST_GRAFTING_BLOCK: i32 = 3;
 
@@ -44,7 +43,6 @@ type TestFn = Box<
 
 pub struct TestContext {
     pub subgraph: Subgraph,
-    pub contracts: Vec<Contract>,
 }
 
 pub enum TestStatus {
@@ -234,11 +232,7 @@ impl TestCase {
         Ok(subgraph_name)
     }
 
-    pub async fn check_health_and_test(
-        self,
-        contracts: &[Contract],
-        subgraph_name: String,
-    ) -> TestResult {
+    pub async fn check_health_and_test(self, subgraph_name: String) -> TestResult {
         status!(
             &self.name,
             "Waiting for subgraph ({}) to become ready",
@@ -264,7 +258,6 @@ impl TestCase {
 
         let ctx = TestContext {
             subgraph: subgraph.clone(),
-            contracts: contracts.to_vec(),
         };
 
         status!(&self.name, "Starting test");
@@ -323,7 +316,7 @@ impl TestCase {
                 }
             };
 
-        self.check_health_and_test(contracts, subgraph_name).await
+        self.check_health_and_test(subgraph_name).await
     }
 
     async fn prepare_multiple_sources(
@@ -671,63 +664,7 @@ async fn test_topic_filters(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
 
-    let contract = ctx
-        .contracts
-        .iter()
-        .find(|x| x.name == "SimpleContract")
-        .unwrap();
-
-    contract
-        .call(
-            "emitAnotherTrigger",
-            (
-                U256::from(1),
-                U256::from(2),
-                U256::from(3),
-                "abc".to_string(),
-            ),
-        )
-        .await
-        .unwrap();
-
-    contract
-        .call(
-            "emitAnotherTrigger",
-            (
-                U256::from(1),
-                U256::from(1),
-                U256::from(1),
-                "abc".to_string(),
-            ),
-        )
-        .await
-        .unwrap();
-
-    contract
-        .call(
-            "emitAnotherTrigger",
-            (
-                U256::from(4),
-                U256::from(2),
-                U256::from(3),
-                "abc".to_string(),
-            ),
-        )
-        .await
-        .unwrap();
-
-    contract
-        .call(
-            "emitAnotherTrigger",
-            (
-                U256::from(4),
-                U256::from(4),
-                U256::from(3),
-                "abc".to_string(),
-            ),
-        )
-        .await
-        .unwrap();
+    // Events we need are already emitted from Contract::deploy_all
 
     let exp = json!({
         "anotherTriggerEntities": [
@@ -1210,8 +1147,6 @@ async fn test_missing(_sg: Subgraph) -> anyhow::Result<()> {
 pub async fn test_multiple_subgraph_datasources(ctx: TestContext) -> anyhow::Result<()> {
     let subgraph = ctx.subgraph;
     assert!(subgraph.healthy);
-
-    println!("subgraph: {:?}", subgraph);
 
     // Test querying data aggregated from multiple sources
     let exp = json!({
