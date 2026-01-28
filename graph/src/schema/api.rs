@@ -703,6 +703,11 @@ impl FilterOps {
                     "",
                     s::Type::NamedType("OrderDirection".to_string()),
                 ),
+                input_value(
+                    "current",
+                    "",
+                    s::Type::NamedType("Aggregation_current".to_string()),
+                ),
             ],
         };
 
@@ -2210,6 +2215,8 @@ type Gravatar @entity {
             assert_eq!("Aggregation_interval", interval.value_type.get_base_type());
             let filter = field.argument("where").unwrap();
             assert_eq!(&filter_type, filter.value_type.get_base_type());
+            let current = field.argument("current").unwrap();
+            assert_eq!("Aggregation_current", current.value_type.get_base_type());
 
             let s::TypeDefinition::InputObject(filter) = schema
                 .get_type_definition_from_type(&filter.value_type)
