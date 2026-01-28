@@ -26,5 +26,5 @@ dataSources:
 features:
   - grafting
 graft:
-  base: QmTQbJ234d2Po7xKZS5wKPiYuMYsCAqqY4df5czESjEXn4
+  base: '@base@'
   block: 2

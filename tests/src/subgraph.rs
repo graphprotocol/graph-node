@@ -47,15 +47,40 @@ impl Subgraph {
         Ok(())
     }
 
+    /// Patch source subgraph placeholders in the manifest with their deployment hashes.
+    /// This must be called after `patch()` since it reads from `subgraph.yaml.patched`.
+    pub fn patch_sources(dir: &TestFile, sources: &[(String, String)]) -> anyhow::Result<()> {
+        if sources.is_empty() {
+            return Ok(());
+        }
+
+        let patched_path = dir.path.join("subgraph.yaml.patched");
+        let mut content = fs::read_to_string(&patched_path)?;
+
+        for (placeholder, deployment_hash) in sources {
+            let repl = format!("@{}@", placeholder);
+            content = content.replace(&repl, deployment_hash);
+        }
+
+        fs::write(&patched_path, content)?;
+        Ok(())
+    }
+
     /// Prepare the subgraph for deployment by patching contracts and checking for subgraph datasources
     pub async fn prepare(
         name: &str,
         contracts: &[Contract],
+        sources: Option<&[(String, String)]>,
     ) -> anyhow::Result<(TestFile, String, bool)> {
         let dir = Self::dir(name);
         let name = format!("test/{name}");
 
         Self::patch(&dir, contracts).await?;
+
+        // Patch source subgraph placeholders if provided
+        if let Some(sources) = sources {
+            Self::patch_sources(&dir, sources)?;
+        }
 
         // Check if subgraph has subgraph datasources
         let yaml_content = fs::read_to_string(dir.path.join("subgraph.yaml.patched"))?;
@@ -68,9 +93,15 @@ impl Subgraph {
         Ok((dir, name, has_subgraph_datasource))
     }
 
-    /// Deploy the subgraph by running the required `graph` commands
-    pub async fn deploy(name: &str, contracts: &[Contract]) -> anyhow::Result<String> {
-        let (dir, name, has_subgraph_datasource) = Self::prepare(name, contracts).await?;
+    /// Deploy the subgraph by running the required `graph` commands.
+    /// If `sources` is provided, the deployment hashes will be used to patch
+    /// source subgraph placeholders (e.g., `@source-subgraph@`) in the manifest.
+    pub async fn deploy(
+        name: &str,
+        contracts: &[Contract],
+        sources: Option<&[(String, String)]>,
+    ) -> anyhow::Result<String> {
+        let (dir, name, has_subgraph_datasource) = Self::prepare(name, contracts, sources).await?;
 
         // graph codegen subgraph.yaml
         let mut prog = Command::new(&CONFIG.graph_cli);
