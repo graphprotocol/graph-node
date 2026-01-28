@@ -1398,10 +1398,9 @@ async fn wait_for_blockchain_block(block_number: i32) -> bool {
     while start.elapsed() < STATUS_WAIT {
         let latest_block = Contract::latest_block().await;
         if let Some(latest_block) = latest_block {
-            if let Some(number) = latest_block.number {
-                if number >= block_number.into() {
-                    return true;
-                }
+            let number = latest_block.header.number;
+            if number >= block_number as u64 {
+                return true;
             }
         }
         tokio::time::sleep(REQUEST_REPEATING).await;
