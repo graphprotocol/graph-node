@@ -1053,7 +1053,23 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 // Test alloy deserialization compatibility
                 test_alloy_block_compat(&self.logger, &value, "ancestor_block");
                 test_alloy_receipts_compat(&self.logger, &value, "ancestor_block");
-                json::from_value(value)
+
+                json::from_value(value.clone()).map_err(|e| {
+                    // Extract block info from inner block if wrapper format
+                    let inner = value.get("block").unwrap_or(&value);
+                    let block_num = inner.get("number").and_then(|n| n.as_str());
+                    let block_hash = inner.get("hash").and_then(|h| h.as_str());
+                    warn!(
+                        self.logger,
+                        "Failed to deserialize cached ancestor block #{:?} {:?}: {}. \
+                         This may indicate stale cache data from a previous version. \
+                         Block will be re-fetched.",
+                        block_num,
+                        block_hash,
+                        e
+                    );
+                    e
+                })
             })
             .transpose()?;
         Ok(block.map(|block| {
@@ -1076,8 +1092,26 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                         // Test alloy deserialization compatibility
                         test_alloy_block_compat(&self.logger, value, "parent_ptr");
                         test_alloy_receipts_compat(&self.logger, value, "parent_ptr");
-                        if let Ok(block) = json::from_value::<LightEthereumBlock>(value.clone()) {
-                            return Ok(block.parent_ptr());
+
+                        match json::from_value::<LightEthereumBlock>(value.clone()) {
+                            Ok(block) => {
+                                return Ok(block.parent_ptr());
+                            }
+                            Err(e) => {
+                                // Extract block info from inner block if wrapper format
+                                let inner = value.get("block").unwrap_or(value);
+                                let block_num = inner.get("number").and_then(|n| n.as_str());
+                                let block_hash = inner.get("hash").and_then(|h| h.as_str());
+                                warn!(
+                                    self.logger,
+                                    "Failed to deserialize cached block #{:?} {:?}: {}. \
+                                     This may indicate stale cache data from a previous version. \
+                                     Falling back to Firehose.",
+                                    block_num,
+                                    block_hash,
+                                    e
+                                );
+                            }
                         }
                     }
                 }

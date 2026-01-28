@@ -1941,7 +1941,24 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 // Test alloy deserialization compatibility
                 test_alloy_block_compat(&logger, &value, "load_blocks");
                 test_alloy_receipts_compat(&logger, &value, "load_blocks");
-                json::from_value(value).ok()
+
+                json::from_value(value.clone())
+                    .map_err(|e| {
+                        // Extract block info from inner block if wrapper format
+                        let inner = value.get("block").unwrap_or(&value);
+                        let block_num = inner.get("number").and_then(|n| n.as_str());
+                        let block_hash = inner.get("hash").and_then(|h| h.as_str());
+                        warn!(
+                            &logger,
+                            "Failed to deserialize cached block #{:?} {:?}: {}. \
+                             This may indicate stale cache data from a previous version. \
+                             Block will be re-fetched from RPC.",
+                            block_num,
+                            block_hash,
+                            e
+                        );
+                    })
+                    .ok()
             })
             .map(Arc::new)
             .collect();
