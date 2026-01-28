@@ -1780,13 +1780,15 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
                 json::from_value(value.clone())
                     .map_err(|e| {
-                        let block_num = value.get("number").and_then(|n| n.as_u64());
-                        let block_hash = value.get("hash").and_then(|h| h.as_str());
+                        // Extract block info from inner block if wrapper format
+                        let inner = value.get("block").unwrap_or(&value);
+                        let block_num = inner.get("number").and_then(|n| n.as_str());
+                        let block_hash = inner.get("hash").and_then(|h| h.as_str());
                         warn!(
                             &logger,
                             "Failed to deserialize cached block #{:?} {:?}: {}. \
-                         This may indicate stale cache data from a previous version. \
-                         Block will be re-fetched from RPC.",
+                             This may indicate stale cache data from a previous version. \
+                             Block will be re-fetched from RPC.",
                             block_num,
                             block_hash,
                             e
