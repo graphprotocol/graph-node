@@ -9,6 +9,22 @@ use crate::{
     prelude::*,
 };
 
+/// A lightweight checkpoint of `BlockState` for rollback scenarios.
+///
+/// This captures the lengths of various vectors in `BlockState` so that
+/// the state can be restored to a previous point (e.g., before dynamic
+/// data source processing). Note that the entity cache cannot be easily
+/// checkpointed, so rollback clears the cache (which matches current behavior).
+///
+/// See spec: b21fa73b-6453-4340-99fb-1a78ec62efb1
+#[derive(Debug, Clone)]
+pub struct BlockStateCheckpoint {
+    created_data_sources_count: usize,
+    persisted_data_sources_count: usize,
+    processed_data_sources_count: usize,
+    deterministic_errors_count: usize,
+}
+
 #[derive(Debug, Clone)]
 pub enum InstanceDSTemplate {
     Onchain(DataSourceTemplateInfo),
@@ -177,5 +193,42 @@ impl BlockState {
 
     pub fn persist_data_source(&mut self, ds: StoredDynamicDataSource) {
         self.persisted_data_sources.push(ds)
+    }
+
+    /// Create a lightweight checkpoint for rollback.
+    ///
+    /// This captures the current lengths of the data source and error vectors
+    /// so that the state can be restored to this point if needed.
+    ///
+    /// Note: The entity cache cannot be easily checkpointed. A rollback will
+    /// need to handle the cache separately (typically by clearing it).
+    pub fn checkpoint(&self) -> BlockStateCheckpoint {
+        assert!(!self.in_handler, "Cannot checkpoint while in handler");
+        BlockStateCheckpoint {
+            created_data_sources_count: self.created_data_sources.len(),
+            persisted_data_sources_count: self.persisted_data_sources.len(),
+            processed_data_sources_count: self.processed_data_sources.len(),
+            deterministic_errors_count: self.deterministic_errors.len(),
+        }
+    }
+
+    /// Restore state to a previous checkpoint (partial rollback).
+    ///
+    /// This truncates the data source and error vectors to their lengths
+    /// at the time of the checkpoint.
+    ///
+    /// Note: This does NOT restore the entity cache. The caller is responsible
+    /// for handling the entity cache appropriately (typically by clearing it
+    /// or starting with a fresh cache, which matches current behavior).
+    pub fn restore(&mut self, checkpoint: &BlockStateCheckpoint) {
+        assert!(!self.in_handler, "Cannot restore while in handler");
+        self.created_data_sources
+            .truncate(checkpoint.created_data_sources_count);
+        self.persisted_data_sources
+            .truncate(checkpoint.persisted_data_sources_count);
+        self.processed_data_sources
+            .truncate(checkpoint.processed_data_sources_count);
+        self.deterministic_errors
+            .truncate(checkpoint.deterministic_errors_count);
     }
 }

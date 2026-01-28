@@ -1,6 +1,16 @@
+mod pipeline;
+mod state;
+mod trigger_runner;
+
+// Re-export state types for use by external code and future refactoring phases.
+#[allow(unused_imports)]
+pub use state::{RestartReason, RunnerState, StopReason};
+
+use self::state::StopReason as SReason;
 use crate::subgraph::context::IndexingContext;
 use crate::subgraph::error::{
-    ClassifyErrorHelper as _, DetailHelper as _, NonDeterministicErrorHelper as _, ProcessingError,
+    ClassifyErrorHelper as _, DetailHelper as _, MappingErrorHelper as _,
+    NonDeterministicErrorHelper as _, ProcessingError,
 };
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
@@ -42,6 +52,22 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::vec;
 
+use self::trigger_runner::TriggerRunner;
+
+/// Demote a `PossibleReorg` error to a non-deterministic error (`Unknown`).
+///
+/// This is used when we cannot cleanly restart due to irreversible state changes
+/// (e.g., after `create_dynamic_data_sources`). In such cases, treating the error
+/// as non-deterministic allows retry logic to attempt recovery, though it may
+/// cause unnecessary subgraph failures if the reorg is real.
+///
+/// See also: b21fa73b-6453-4340-99fb-1a78ec62efb1 for future improvement plans.
+fn demote_possible_reorg(e: MappingError) -> ProcessingError {
+    match e {
+        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => ProcessingError::Unknown(e),
+    }
+}
+
 const MINUTE: Duration = Duration::from_secs(60);
 
 const SKIP_PTR_UPDATES_THRESHOLD: Duration = Duration::from_secs(60 * 5);
@@ -61,6 +87,11 @@ where
     logger: Logger,
     pub metrics: RunnerMetrics,
     cancel_handle: Option<CancelHandle>,
+    /// The runner's lifecycle state machine.
+    /// Currently only tracks initialization state; will be fully utilized
+    /// as the state machine refactor progresses in subsequent phases.
+    #[allow(dead_code)]
+    runner_state: RunnerState<C>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -101,6 +132,7 @@ where
             logger,
             metrics,
             cancel_handle: None,
+            runner_state: RunnerState::Initializing,
         }
     }
 
@@ -245,7 +277,15 @@ where
         self.run_inner(false).await.map(|_| ())
     }
 
-    async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, SubgraphRunnerError> {
+    /// Perform initialization tasks before starting the main run loop.
+    ///
+    /// This includes:
+    /// - Attempting to unfail deterministic errors from previous runs
+    /// - Checking if the max end block has already been reached
+    ///
+    /// Returns `Some(stop_reason)` if the subgraph should stop immediately,
+    /// or `None` if initialization succeeded and we should proceed.
+    async fn initialize(&mut self) -> Result<Option<SReason>, Error> {
         self.update_deployment_synced_metric();
 
         // If a subgraph failed for deterministic reasons, before start indexing, we first
@@ -281,87 +321,133 @@ where
                     info!(self.logger, "Stopping subgraph as we reached maximum endBlock";
                                 "max_end_block" => max_end_block,
                                 "current_block" => current_ptr.block_number());
-                    self.inputs.store.flush().await?;
-                    return Ok(self);
+                    return Ok(Some(SReason::MaxEndBlockReached));
                 }
             }
         }
 
+        Ok(None)
+    }
+
+    /// Await the next block stream event and process it.
+    ///
+    /// This method handles:
+    /// - Getting the next event from the block stream
+    /// - Processing the event (block, revert, or error)
+    /// - Checking for cancellation
+    ///
+    /// Returns the `Action` indicating what to do next.
+    async fn await_block(
+        &mut self,
+        block_stream: &mut Cancelable<Box<dyn BlockStream<C>>>,
+    ) -> Result<Action, SubgraphRunnerError> {
+        let event = {
+            let _section = self.metrics.stream.stopwatch.start_section("scan_blocks");
+            block_stream.next().await
+        };
+
+        // TODO: move cancel handle to the Context
+        // This will require some code refactor in how the BlockStream is created
+        let block_start = Instant::now();
+
+        let action = self.handle_stream_event(event).await.inspect(|res| {
+            self.metrics
+                .subgraph
+                .observe_block_processed(block_start.elapsed(), res.block_finished());
+        })?;
+
+        self.update_deployment_synced_metric();
+
+        // Check for cancellation after processing event
+        if self.is_canceled() {
+            return self.check_cancellation();
+        }
+
+        Ok(action)
+    }
+
+    /// Check if the runner has been canceled and return the appropriate action.
+    fn check_cancellation(&self) -> Result<Action, SubgraphRunnerError> {
+        // It is also possible that the runner was in a retry delay state while
+        // the subgraph was reassigned and a new runner was started.
+        if self.ctx.instances.contains(&self.inputs.deployment.id) {
+            warn!(
+                self.logger,
+                "Terminating the subgraph runner because a newer one is active. \
+                 Possible reassignment detected while the runner was in a non-cancellable pending state",
+            );
+            return Err(SubgraphRunnerError::Duplicate);
+        }
+
+        warn!(
+            self.logger,
+            "Terminating the subgraph runner because subgraph was unassigned",
+        );
+        Ok(Action::Stop)
+    }
+
+    /// Restart the block stream after a restart was requested.
+    ///
+    /// This method:
+    /// - Attempts to restart the store to clear any errors
+    /// - Reverts state to the last good block if needed
+    /// - Starts a new block stream
+    async fn restart(&mut self) -> Result<Cancelable<Box<dyn BlockStream<C>>>, Error> {
+        // Restart the store to clear any errors that it
+        // might have encountered and use that from now on
+        let store = self.inputs.store.cheap_clone();
+        if let Some(store) = store.restart().await? {
+            let last_good_block = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
+            self.revert_state_to(last_good_block)?;
+            self.inputs = Arc::new(self.inputs.with_store(store));
+        }
+
+        debug!(self.logger, "Starting or restarting subgraph");
+        let block_stream = self.start_block_stream().await?;
+        debug!(self.logger, "Started block stream");
+        self.metrics.subgraph.deployment_status.running();
+
+        Ok(block_stream)
+    }
+
+    /// Finalize the runner after stopping.
+    ///
+    /// This flushes the store and returns the final result.
+    async fn finalize(self) -> Result<Self, SubgraphRunnerError> {
+        info!(self.logger, "Stopping subgraph");
+        self.inputs.store.flush().await?;
+        Ok(self)
+    }
+
+    async fn run_inner(mut self, break_on_restart: bool) -> Result<Self, SubgraphRunnerError> {
+        // Phase 1: Initialization
+        if let Some(_stop_reason) = self.initialize().await? {
+            return self.finalize().await;
+        }
+
+        // Phase 2: Start initial block stream
+        debug!(self.logger, "Starting or restarting subgraph");
+        let mut block_stream = self.start_block_stream().await?;
+        debug!(self.logger, "Started block stream");
+        self.metrics.subgraph.deployment_status.running();
+
+        // Phase 3: Main event loop
         loop {
-            debug!(self.logger, "Starting or restarting subgraph");
+            let action = self.await_block(&mut block_stream).await?;
 
-            let mut block_stream = self.start_block_stream().await?;
-
-            debug!(self.logger, "Started block stream");
-
-            self.metrics.subgraph.deployment_status.running();
-
-            // Process events from the stream as long as no restart is needed
-            loop {
-                let event = {
-                    let _section = self.metrics.stream.stopwatch.start_section("scan_blocks");
-
-                    block_stream.next().await
-                };
-
-                // TODO: move cancel handle to the Context
-                // This will require some code refactor in how the BlockStream is created
-                let block_start = Instant::now();
-
-                let action = self.handle_stream_event(event).await.inspect(|res| {
-                    self.metrics
-                        .subgraph
-                        .observe_block_processed(block_start.elapsed(), res.block_finished());
-                })?;
-
-                self.update_deployment_synced_metric();
-
-                // It is possible that the subgraph was unassigned, but the runner was in
-                // a retry delay state and did not observe the cancel signal.
-                if self.is_canceled() {
-                    // It is also possible that the runner was in a retry delay state while
-                    // the subgraph was reassigned and a new runner was started.
-                    if self.ctx.instances.contains(&self.inputs.deployment.id) {
-                        warn!(
-                            self.logger,
-                            "Terminating the subgraph runner because a newer one is active. \
-                             Possible reassignment detected while the runner was in a non-cancellable pending state",
-                        );
-                        return Err(SubgraphRunnerError::Duplicate);
-                    }
-
-                    warn!(
-                        self.logger,
-                        "Terminating the subgraph runner because subgraph was unassigned",
-                    );
+            match action {
+                Action::Continue => continue,
+                Action::Stop => {
+                    return self.finalize().await;
+                }
+                Action::Restart if break_on_restart => {
+                    info!(self.logger, "Stopping subgraph on break");
+                    self.inputs.store.flush().await?;
                     return Ok(self);
                 }
-
-                match action {
-                    Action::Continue => continue,
-                    Action::Stop => {
-                        info!(self.logger, "Stopping subgraph");
-                        self.inputs.store.flush().await?;
-                        return Ok(self);
-                    }
-                    Action::Restart if break_on_restart => {
-                        info!(self.logger, "Stopping subgraph on break");
-                        self.inputs.store.flush().await?;
-                        return Ok(self);
-                    }
-                    Action::Restart => {
-                        // Restart the store to clear any errors that it
-                        // might have encountered and use that from now on
-                        let store = self.inputs.store.cheap_clone();
-                        if let Some(store) = store.restart().await? {
-                            let last_good_block =
-                                store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
-                            self.revert_state_to(last_good_block)?;
-                            self.inputs = Arc::new(self.inputs.with_store(store));
-                        }
-                        break;
-                    }
-                };
+                Action::Restart => {
+                    block_stream = self.restart().await?;
+                }
             }
         }
     }
@@ -569,13 +655,78 @@ where
             .await
     }
 
-    /// Processes a block and returns the updated context and a boolean flag indicating
-    /// whether new dynamic data sources have been added to the subgraph.
-    async fn process_block(
+    // ========================================================================
+    // Pipeline Stage Methods
+    // ========================================================================
+
+    /// Pipeline Stage 1: Match and decode triggers.
+    ///
+    /// Matches all triggers in the block to their corresponding handlers
+    /// using the current subgraph instance's hosts.
+    async fn match_triggers<'a>(
+        &'a self,
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        triggers: Vec<Trigger<C>>,
+    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError> {
+        let hosts_filter = |trigger: &TriggerData<C>| self.ctx.instance.hosts_for_trigger(trigger);
+        self.match_and_decode_many(logger, block, triggers, hosts_filter)
+            .await
+    }
+
+    /// Pipeline Stage 2: Execute matched triggers.
+    ///
+    /// Processes each matched trigger in order, accumulating state changes.
+    /// Returns the resulting block state or an error if execution fails.
+    async fn execute_triggers<'a>(
+        &self,
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        runnables: Vec<RunnableTriggers<'a, C>>,
+        block_state: BlockState,
+        proof_of_indexing: &SharedProofOfIndexing,
+        causality_region: &str,
+    ) -> Result<BlockState, MappingError> {
+        let trigger_runner = TriggerRunner::new(
+            self.ctx.trigger_processor.as_ref(),
+            logger,
+            &self.inputs.debug_fork,
+            &self.metrics.subgraph,
+            self.inputs.instrument,
+        );
+
+        trigger_runner
+            .execute(
+                block,
+                runnables,
+                block_state,
+                proof_of_indexing,
+                causality_region,
+            )
+            .await
+    }
+
+    /// Pipeline Stage 3: Process dynamic data sources.
+    ///
+    /// Processes any dynamic data sources created during trigger execution.
+    /// This loop will:
+    /// 1. Instantiate created data sources
+    /// 2. Process those data sources for the current block
+    ///
+    /// The loop continues until no data sources are created or MAX_DATA_SOURCES is hit.
+    ///
+    /// Note that this algorithm processes data sources spawned on the same block
+    /// _breadth first_ on the tree implied by the parent-child relationship
+    /// between data sources.
+    async fn process_dynamic_data_sources(
         &mut self,
-        block: BlockWithTriggers<C>,
-        firehose_cursor: FirehoseCursor,
-    ) -> Result<Action, ProcessingError> {
+        logger: &Logger,
+        block: &Arc<C::Block>,
+        firehose_cursor: &FirehoseCursor,
+        mut block_state: BlockState,
+        proof_of_indexing: &SharedProofOfIndexing,
+        causality_region: &str,
+    ) -> Result<BlockState, ProcessingError> {
         fn log_triggers_found<C: Blockchain>(logger: &Logger, triggers: &[Trigger<C>]) {
             if triggers.len() == 1 {
                 info!(logger, "1 trigger found in this block");
@@ -584,13 +735,163 @@ where
             }
         }
 
+        while block_state.has_created_data_sources() {
+            // Instantiate dynamic data sources, removing them from the block state.
+            let (data_sources, runtime_hosts) =
+                self.create_dynamic_data_sources(block_state.drain_created_data_sources())?;
+
+            let filter = &Arc::new(TriggerFilterWrapper::new(
+                C::TriggerFilter::from_data_sources(
+                    data_sources.iter().filter_map(DataSource::as_onchain),
+                ),
+                vec![],
+            ));
+
+            // TODO: We have to pass a reference to `block` to
+            // `refetch_block`, otherwise the call to
+            // handle_offchain_triggers below gets an error that `block`
+            // has moved. That is extremely fishy since it means that
+            // `handle_offchain_triggers` uses the non-refetched block
+            //
+            // It's also not clear why refetching needs to happen inside
+            // the loop; will firehose really return something different
+            // each time even though the cursor doesn't change?
+            let block = self.refetch_block(logger, block, firehose_cursor).await?;
+
+            // Reprocess the triggers from this block that match the new data sources
+            let block_with_triggers = self
+                .inputs
+                .triggers_adapter
+                .triggers_in_block(logger, block.as_ref().clone(), filter)
+                .await
+                .non_deterministic()?;
+
+            let triggers = block_with_triggers.trigger_data;
+            log_triggers_found::<C>(logger, &triggers);
+
+            // Add entity operations for the new data sources to the block state
+            // and add runtimes for the data sources to the subgraph instance.
+            self.persist_dynamic_data_sources(&mut block_state, data_sources);
+
+            // Process the triggers in each host in the same order the
+            // corresponding data sources have been created.
+            let hosts_filter = |_: &'_ TriggerData<C>| -> Box<dyn Iterator<Item = _> + Send> {
+                Box::new(runtime_hosts.iter().map(Arc::as_ref))
+            };
+            // Note: PossibleReorg is demoted to Unknown here because we cannot roll back the
+            // effect of `create_dynamic_data_sources`. This could cause unnecessary subgraph
+            // failures - see b21fa73b-6453-4340-99fb-1a78ec62efb1 for details on how this
+            // could be fixed (requires BlockState checkpoints).
+            let runnables = self
+                .match_and_decode_many(logger, &block, triggers, hosts_filter)
+                .await
+                .map_err(demote_possible_reorg)?;
+
+            block_state = self
+                .execute_triggers(
+                    logger,
+                    &block,
+                    runnables,
+                    block_state,
+                    proof_of_indexing,
+                    causality_region,
+                )
+                .await
+                .map_err(demote_possible_reorg)?;
+        }
+
+        Ok(block_state)
+    }
+
+    /// Pipeline Stage 4: Process offchain triggers.
+    ///
+    /// Fetches any ready offchain events and processes them. This includes:
+    /// - Getting ready offchain events from the offchain monitor
+    /// - Processing each trigger through the trigger processor
+    /// - Collecting entity modifications and processed data sources
+    ///
+    /// Returns the entity modifications and processed data sources to be
+    /// persisted in the final stage, along with the updated block state.
+    async fn process_offchain_triggers(
+        &mut self,
+        block: &Arc<C::Block>,
+        mut block_state: BlockState,
+    ) -> Result<
+        (
+            Vec<EntityModification>,
+            Vec<StoredDynamicDataSource>,
+            BlockState,
+        ),
+        ProcessingError,
+    > {
+        let offchain_events = self
+            .ctx
+            .offchain_monitor
+            .ready_offchain_events()
+            .non_deterministic()?;
+
+        let (offchain_mods, processed_offchain_data_sources, persisted_off_chain_data_sources) =
+            self.handle_offchain_triggers(offchain_events, block)
+                .await
+                .non_deterministic()?;
+
+        block_state
+            .persisted_data_sources
+            .extend(persisted_off_chain_data_sources);
+
+        Ok((offchain_mods, processed_offchain_data_sources, block_state))
+    }
+
+    /// Pipeline Stage 5: Persist block state.
+    ///
+    /// Transacts all accumulated state changes to the store. This is the final
+    /// stage of block processing and commits all entity modifications, data source
+    /// changes, and proof of indexing updates.
+    async fn persist_block(
+        &mut self,
+        logger: &Logger,
+        block_ptr: BlockPtr,
+        firehose_cursor: FirehoseCursor,
+        block_time: BlockTime,
+        block_state: BlockState,
+        proof_of_indexing: SharedProofOfIndexing,
+        offchain_mods: Vec<EntityModification>,
+        processed_offchain_data_sources: Vec<StoredDynamicDataSource>,
+    ) -> Result<(), ProcessingError> {
+        self.transact_block_state(
+            logger,
+            block_ptr,
+            firehose_cursor,
+            block_time,
+            block_state,
+            proof_of_indexing,
+            offchain_mods,
+            processed_offchain_data_sources,
+        )
+        .await
+    }
+
+    /// Processes a block through the pipeline stages.
+    ///
+    /// The pipeline consists of:
+    /// 1. **Match triggers**: Match block triggers to handlers
+    /// 2. **Execute triggers**: Process matched triggers
+    /// 3. **Process dynamic data sources**: Handle newly created data sources
+    /// 4. **Process offchain triggers**: Handle offchain data source triggers
+    /// 5. **Persist block state**: Commit all changes to the store
+    async fn process_block(
+        &mut self,
+        block: BlockWithTriggers<C>,
+        firehose_cursor: FirehoseCursor,
+    ) -> Result<Action, ProcessingError> {
+        // === Setup block context ===
         let triggers = block.trigger_data;
         let block = Arc::new(block.block);
         let block_ptr = block.ptr();
 
         let logger = self.logger.new(o!(
-                "block_number" => format!("{:?}", block_ptr.number),
-                "block_hash" => format!("{}", block_ptr.hash)
+            "block_number" => format!("{:?}", block_ptr.number),
+            "block_hash" => format!("{}", block_ptr.hash)
         ));
 
         info!(logger, "Start processing block";
@@ -599,226 +900,106 @@ where
         let proof_of_indexing =
             SharedProofOfIndexing::new(block_ptr.number, self.inputs.poi_version);
 
-        // Causality region for onchain triggers.
+        // Causality region for onchain triggers (network-derived string).
         let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
 
-        let mut block_state = BlockState::new(
+        let block_state = BlockState::new(
             self.inputs.store.clone(),
             std::mem::take(&mut self.state.entity_lfu_cache),
         );
 
+        // === Stage 1: Match triggers ===
         let _section = self
             .metrics
             .stream
             .stopwatch
             .start_section(PROCESS_TRIGGERS_SECTION_NAME);
 
-        // Match and decode all triggers in the block
-        let hosts_filter = |trigger: &TriggerData<C>| self.ctx.instance.hosts_for_trigger(trigger);
-        let match_res = self
-            .match_and_decode_many(&logger, &block, triggers, hosts_filter)
-            .await;
-
-        // Process events one after the other, passing in entity operations
-        // collected previously to every new event being processed
-        let mut res = Ok(block_state);
-        match match_res {
-            Ok(runnables) => {
-                for runnable in runnables {
-                    let process_res = self
-                        .ctx
-                        .trigger_processor
-                        .process_trigger(
-                            &self.logger,
-                            runnable.hosted_triggers,
-                            &block,
-                            res.unwrap(),
-                            &proof_of_indexing,
-                            &causality_region,
-                            &self.inputs.debug_fork,
-                            &self.metrics.subgraph,
-                            self.inputs.instrument,
-                        )
-                        .await
-                        .map_err(|e| e.add_trigger_context(&runnable.trigger));
-                    match process_res {
-                        Ok(state) => res = Ok(state),
-                        Err(e) => {
-                            res = Err(e);
-                            break;
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                res = Err(e);
-            }
-        };
-
-        match res {
-            // Triggers processed with no errors or with only deterministic errors.
-            Ok(state) => block_state = state,
-
-            // Some form of unknown or non-deterministic error ocurred.
-            Err(MappingError::Unknown(e)) => return Err(ProcessingError::Unknown(e)),
-            Err(MappingError::PossibleReorg(e)) => {
+        let runnables = match self
+            .match_triggers(&logger, &block, triggers)
+            .await
+            .into_processing_error()
+        {
+            Ok(r) => r,
+            Err(e) if e.should_restart() => {
                 info!(logger,
                     "Possible reorg detected, retrying";
                     "error" => format!("{:#}", e),
                 );
-
-                // In case of a possible reorg, we want this function to do nothing and restart the
-                // block stream so it has a chance to detect the reorg.
-                //
-                // The state is unchanged at this point, except for having cleared the entity cache.
-                // Losing the cache is a bit annoying but not an issue for correctness.
-                //
+                // In case of a possible reorg, we want this function to do nothing
+                // and restart the block stream so it has a chance to detect the reorg.
                 // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
                 return Ok(Action::Restart);
             }
-        }
+            Err(e) => return Err(e),
+        };
 
-        // Check if there are any datasources that have expired in this block. ie: the end_block
-        // of that data source is equal to the block number of the current block.
+        // === Stage 2: Execute triggers ===
+        let block_state = match self
+            .execute_triggers(
+                &logger,
+                &block,
+                runnables,
+                block_state,
+                &proof_of_indexing,
+                &causality_region,
+            )
+            .await
+            .into_processing_error()
+        {
+            Ok(s) => s,
+            Err(e) if e.should_restart() => {
+                info!(logger,
+                    "Possible reorg detected, retrying";
+                    "error" => format!("{:#}", e),
+                );
+                return Ok(Action::Restart);
+            }
+            Err(e) => return Err(e),
+        };
+
+        // === Determine if restart is needed ===
+        // Check if there are any datasources that have expired in this block
         let has_expired_data_sources = self.inputs.end_blocks.contains(&block_ptr.number);
 
-        // If new onchain data sources have been created, and static filters are not in use, it is necessary
-        // to restart the block stream with the new filters.
+        // If new onchain data sources have been created, and static filters are not in use,
+        // we need to restart the block stream with the new filters.
         let created_data_sources_needs_restart =
             !self.is_static_filters_enabled() && block_state.has_created_on_chain_data_sources();
 
-        // Determine if the block stream needs to be restarted due to newly created on-chain data sources
-        // or data sources that have reached their end block.
         let needs_restart = created_data_sources_needs_restart || has_expired_data_sources;
 
-        {
+        // === Stage 3: Process dynamic data sources ===
+        // Create a checkpoint before dynamic DS processing for potential rollback.
+        // Currently not used for actual rollback, but available for future improvements
+        // to properly handle PossibleReorg errors during dynamic DS creation.
+        // See: b21fa73b-6453-4340-99fb-1a78ec62efb1
+        let _checkpoint = block_state.checkpoint();
+
+        let block_state = {
             let _section = self
                 .metrics
                 .stream
                 .stopwatch
                 .start_section(HANDLE_CREATED_DS_SECTION_NAME);
 
-            // This loop will:
-            // 1. Instantiate created data sources.
-            // 2. Process those data sources for the current block.
-            // Until no data sources are created or MAX_DATA_SOURCES is hit.
+            self.process_dynamic_data_sources(
+                &logger,
+                &block,
+                &firehose_cursor,
+                block_state,
+                &proof_of_indexing,
+                &causality_region,
+            )
+            .await?
+        };
 
-            // Note that this algorithm processes data sources spawned on the same block _breadth
-            // first_ on the tree implied by the parent-child relationship between data sources. Only a
-            // very contrived subgraph would be able to observe this.
-            while block_state.has_created_data_sources() {
-                // Instantiate dynamic data sources, removing them from the block state.
-                let (data_sources, runtime_hosts) =
-                    self.create_dynamic_data_sources(block_state.drain_created_data_sources())?;
+        // === Stage 4: Process offchain triggers ===
+        let (offchain_mods, processed_offchain_data_sources, block_state) =
+            self.process_offchain_triggers(&block, block_state).await?;
 
-                let filter = &Arc::new(TriggerFilterWrapper::new(
-                    C::TriggerFilter::from_data_sources(
-                        data_sources.iter().filter_map(DataSource::as_onchain),
-                    ),
-                    vec![],
-                ));
-
-                // TODO: We have to pass a reference to `block` to
-                // `refetch_block`, otherwise the call to
-                // handle_offchain_triggers below gets an error that `block`
-                // has moved. That is extremely fishy since it means that
-                // `handle_offchain_triggers` uses the non-refetched block
-                //
-                // It's also not clear why refetching needs to happen inside
-                // the loop; will firehose really return something diffrent
-                // each time even though the cursor doesn't change?
-                let block = self
-                    .refetch_block(&logger, &block, &firehose_cursor)
-                    .await?;
-
-                // Reprocess the triggers from this block that match the new data sources
-                let block_with_triggers = self
-                    .inputs
-                    .triggers_adapter
-                    .triggers_in_block(&logger, block.as_ref().clone(), filter)
-                    .await
-                    .non_deterministic()?;
-
-                let triggers = block_with_triggers.trigger_data;
-                log_triggers_found(&logger, &triggers);
-
-                // Add entity operations for the new data sources to the block state
-                // and add runtimes for the data sources to the subgraph instance.
-                self.persist_dynamic_data_sources(&mut block_state, data_sources);
-
-                // Process the triggers in each host in the same order the
-                // corresponding data sources have been created.
-                let hosts_filter = |_: &'_ TriggerData<C>| -> Box<dyn Iterator<Item = _> + Send> {
-                    Box::new(runtime_hosts.iter().map(Arc::as_ref))
-                };
-                let match_res: Result<Vec<_>, _> = self
-                    .match_and_decode_many(&logger, &block, triggers, hosts_filter)
-                    .await;
-
-                let mut res = Ok(block_state);
-                match match_res {
-                    Ok(runnables) => {
-                        for runnable in runnables {
-                            let process_res = self
-                                .ctx
-                                .trigger_processor
-                                .process_trigger(
-                                    &self.logger,
-                                    runnable.hosted_triggers,
-                                    &block,
-                                    res.unwrap(),
-                                    &proof_of_indexing,
-                                    &causality_region,
-                                    &self.inputs.debug_fork,
-                                    &self.metrics.subgraph,
-                                    self.inputs.instrument,
-                                )
-                                .await
-                                .map_err(|e| e.add_trigger_context(&runnable.trigger));
-                            match process_res {
-                                Ok(state) => res = Ok(state),
-                                Err(e) => {
-                                    res = Err(e);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        res = Err(e);
-                    }
-                }
-
-                block_state = res.map_err(|e| {
-                    // This treats a `PossibleReorg` as an ordinary error which will fail the subgraph.
-                    // This can cause an unnecessary subgraph failure, to fix it we need to figure out a
-                    // way to revert the effect of `create_dynamic_data_sources` so we may return a
-                    // clean context as in b21fa73b-6453-4340-99fb-1a78ec62efb1.
-                    match e {
-                        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
-                            ProcessingError::Unknown(e)
-                        }
-                    }
-                })?;
-            }
-        }
-
-        // Check for offchain events and process them, including their entity modifications in the
-        // set to be transacted.
-        let offchain_events = self
-            .ctx
-            .offchain_monitor
-            .ready_offchain_events()
-            .non_deterministic()?;
-        let (offchain_mods, processed_offchain_data_sources, persisted_off_chain_data_sources) =
-            self.handle_offchain_triggers(offchain_events, &block)
-                .await
-                .non_deterministic()?;
-        block_state
-            .persisted_data_sources
-            .extend(persisted_off_chain_data_sources);
-
-        self.transact_block_state(
+        // === Stage 5: Persist block state ===
+        self.persist_block(
             &logger,
             block_ptr.clone(),
             firehose_cursor.clone(),
@@ -830,9 +1011,10 @@ where
         )
         .await?;
 
-        match needs_restart {
-            true => Ok(Action::Restart),
-            false => Ok(Action::Continue),
+        if needs_restart {
+            Ok(Action::Restart)
+        } else {
+            Ok(Action::Continue)
         }
     }
 
@@ -1214,17 +1396,14 @@ where
                     Err(e) => Err(e),
                 }
             };
-            match process_res {
-                Ok(state) => block_state = state,
-                Err(err) => {
-                    let err = match err {
-                        // Ignoring `PossibleReorg` isn't so bad since the subgraph will retry
-                        // non-deterministic errors.
-                        MappingError::PossibleReorg(e) | MappingError::Unknown(e) => e,
-                    };
-                    return Err(err.context("failed to process trigger".to_string()));
+            // Offchain triggers treat PossibleReorg as a non-deterministic error since
+            // the subgraph will retry anyway. See ProcessingErrorKind for the error
+            // handling invariants.
+            block_state = process_res.map_err(|e| match e {
+                MappingError::PossibleReorg(e) | MappingError::Unknown(e) => {
+                    e.context("failed to process trigger")
                 }
-            }
+            })?;
 
             anyhow::ensure!(
                 !block_state.has_created_on_chain_data_sources(),
