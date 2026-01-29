@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use async_trait::async_trait;
 use graph::data::query::Trace;
@@ -15,7 +15,7 @@ use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
 use graph::data::subgraph::{status, DeploymentFeatures};
 use graph::data::value::Object;
-use graph::futures03::TryFutureExt;
+use graph::futures03::{future, TryFutureExt};
 use graph::prelude::*;
 use graph_graphql::prelude::{a, ExecutionContext, Resolver};
 
@@ -352,7 +352,10 @@ where
         ))
     }
 
-    fn resolve_proof_of_indexing(&self, field: &a::Field) -> Result<r::Value, QueryExecutionError> {
+    async fn resolve_proof_of_indexing(
+        &self,
+        field: &a::Field,
+    ) -> Result<r::Value, QueryExecutionError> {
         let deployment_id = field
             .get_required::<DeploymentHash>("subgraph")
             .expect("Valid subgraphId required");
@@ -381,7 +384,7 @@ where
         let poi_fut = self
             .store
             .get_proof_of_indexing(&deployment_id, &indexer, block.clone());
-        let poi = match graph::futures03::executor::block_on(poi_fut) {
+        let poi = match poi_fut.await {
             Ok(Some(poi)) => r::Value::String(format!("0x{}", hex::encode(poi))),
             Ok(None) => r::Value::Null,
             Err(e) => {
@@ -414,39 +417,107 @@ where
             return Err(QueryExecutionError::TooExpensive);
         }
 
-        let mut public_poi_results = vec![];
-        for request in requests {
-            let (poi_result, request) = match self
-                .store
-                .get_public_proof_of_indexing(&request.deployment, request.block_number, self)
-                .await
-            {
-                Ok(Some(poi)) => (Some(poi), request),
-                Ok(None) => (None, request),
-                Err(e) => {
-                    error!(
-                        self.logger,
-                        "Failed to query public proof of indexing";
-                        "subgraph" => &request.deployment,
-                        "block" => format!("{}", request.block_number),
-                        "error" => format!("{:?}", e)
-                    );
-                    (None, request)
-                }
-            };
+        // Step 1: Group requests by network and collect block numbers for batch lookup
+        let mut requests_by_network: HashMap<String, Vec<(usize, BlockNumber)>> = HashMap::new();
+        let mut request_networks: Vec<Option<String>> = Vec::with_capacity(requests.len());
 
-            public_poi_results.push(
-                PublicProofOfIndexingResult {
-                    deployment: request.deployment,
-                    block: match poi_result {
-                        Some((ref block, _)) => block.clone(),
-                        None => PartialBlockPtr::from(request.block_number),
-                    },
-                    proof_of_indexing: poi_result.map(|(_, poi)| poi),
+        for (idx, request) in requests.iter().enumerate() {
+            match self.store.network_for_deployment(&request.deployment).await {
+                Ok(network) => {
+                    requests_by_network
+                        .entry(network.clone())
+                        .or_default()
+                        .push((idx, request.block_number));
+                    request_networks.push(Some(network));
                 }
-                .into_value(),
-            )
+                Err(_) => {
+                    request_networks.push(None);
+                }
+            }
         }
+
+        // Step 2: Pre-fetch all block hashes per network in batch
+        let mut block_hash_cache: HashMap<
+            (String, BlockNumber),
+            Vec<graph::blockchain::BlockHash>,
+        > = HashMap::new();
+
+        for (network, network_requests) in &requests_by_network {
+            let block_numbers: Vec<BlockNumber> =
+                network_requests.iter().map(|(_, num)| *num).collect();
+
+            if let Some(chain_store) = self.store.block_store().chain_store(network).await {
+                match chain_store
+                    .block_hashes_by_block_numbers(&block_numbers)
+                    .await
+                {
+                    Ok(hashes) => {
+                        for (num, hash_vec) in hashes {
+                            block_hash_cache.insert((network.clone(), num), hash_vec);
+                        }
+                    }
+                    Err(e) => {
+                        debug!(
+                            self.logger,
+                            "Failed to batch fetch block hashes for network";
+                            "network" => network,
+                            "error" => format!("{:?}", e)
+                        );
+                        // Continue without pre-fetched hashes - will fall back to individual lookups
+                    }
+                }
+            }
+        }
+
+        // Step 3: Process all POI requests in parallel, using cached block hashes
+        let poi_futures: Vec<_> = requests
+            .into_iter()
+            .zip(request_networks.into_iter())
+            .map(|(request, network_opt)| {
+                let cache = &block_hash_cache;
+                async move {
+                    let prefetched_hashes = network_opt
+                        .as_ref()
+                        .and_then(|network| cache.get(&(network.clone(), request.block_number)));
+
+                    let poi_result = match self
+                        .store
+                        .get_public_proof_of_indexing_with_block_hash(
+                            &request.deployment,
+                            request.block_number,
+                            prefetched_hashes,
+                            self,
+                        )
+                        .await
+                    {
+                        Ok(Some(poi)) => Some(poi),
+                        Ok(None) => None,
+                        Err(e) => {
+                            error!(
+                                self.logger,
+                                "Failed to query public proof of indexing";
+                                "subgraph" => &request.deployment,
+                                "block" => format!("{}", request.block_number),
+                                "error" => format!("{:?}", e)
+                            );
+                            None
+                        }
+                    };
+
+                    PublicProofOfIndexingResult {
+                        deployment: request.deployment,
+                        block: match poi_result {
+                            Some((ref block, _)) => block.clone(),
+                            None => PartialBlockPtr::from(request.block_number),
+                        },
+                        proof_of_indexing: poi_result.map(|(_, poi)| poi),
+                    }
+                    .into_value()
+                }
+            })
+            .collect();
+
+        let public_poi_results = future::join_all(poi_futures).await;
 
         Ok(r::Value::List(public_poi_results))
     }
@@ -791,7 +862,7 @@ where
             field.name.as_str(),
             scalar_type.name.as_str(),
         ) {
-            ("Query", "proofOfIndexing", "Bytes") => self.resolve_proof_of_indexing(field),
+            ("Query", "proofOfIndexing", "Bytes") => self.resolve_proof_of_indexing(field).await,
             ("Query", "blockData", "JSONObject") => self.resolve_block_data(field).await,
             ("Query", "blockHashFromNumber", "Bytes") => {
                 self.resolve_block_hash_from_number(field).await

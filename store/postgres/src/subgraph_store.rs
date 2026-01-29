@@ -259,6 +259,33 @@ impl SubgraphStore {
             .await
     }
 
+    pub(crate) async fn get_public_proof_of_indexing_with_block_hash(
+        &self,
+        id: &DeploymentHash,
+        block_number: BlockNumber,
+        prefetched_hashes: Option<&Vec<graph::blockchain::BlockHash>>,
+        block_store: impl BlockStore,
+        fetch_block_ptr: &dyn BlockPtrForNumber,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+        self.inner
+            .get_public_proof_of_indexing_with_block_hash(
+                id,
+                block_number,
+                prefetched_hashes,
+                block_store,
+                fetch_block_ptr,
+            )
+            .await
+    }
+
+    /// Get the network for a deployment
+    pub(crate) async fn network_for_deployment(
+        &self,
+        id: &DeploymentHash,
+    ) -> Result<String, StoreError> {
+        self.inner.network_for_deployment(id).await
+    }
+
     pub fn notification_sender(&self) -> Arc<NotificationSender> {
         self.sender.clone()
     }
@@ -620,6 +647,15 @@ impl Inner {
 
         self.cache_active(&site);
         Ok(site)
+    }
+
+    /// Get the network for a deployment
+    pub(crate) async fn network_for_deployment(
+        &self,
+        id: &DeploymentHash,
+    ) -> Result<String, StoreError> {
+        let site = self.site(id).await?;
+        Ok(site.network.clone())
     }
 
     /// Return the store and site for the active deployment of this
@@ -1150,6 +1186,78 @@ impl Inner {
                 {
                     None => return Ok(None),
                     Some(block_ptr) => block_ptr.hash,
+                }
+            }
+        };
+
+        let block_for_poi_query = BlockPtr::new(block_hash.clone(), block_number);
+        let indexer = Some(Address::ZERO);
+        let poi = store
+            .get_proof_of_indexing(site, &indexer, block_for_poi_query)
+            .await?;
+
+        Ok(poi.map(|poi| {
+            (
+                PartialBlockPtr {
+                    number: block_number,
+                    hash: Some(block_hash),
+                },
+                poi,
+            )
+        }))
+    }
+
+    /// Like `get_public_proof_of_indexing` but accepts optional pre-fetched block hashes
+    /// to avoid redundant database lookups when processing batches of POI requests.
+    pub(crate) async fn get_public_proof_of_indexing_with_block_hash(
+        &self,
+        id: &DeploymentHash,
+        block_number: BlockNumber,
+        prefetched_hashes: Option<&Vec<graph::blockchain::BlockHash>>,
+        block_store: impl BlockStore,
+        fetch_block_ptr: &dyn BlockPtrForNumber,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+        let (store, site) = self.store(id).await?;
+
+        let block_hash = match prefetched_hashes {
+            Some(hashes) if hashes.len() == 1 => {
+                // Use the pre-fetched hash directly
+                hashes[0].clone()
+            }
+            Some(hashes) if hashes.is_empty() => {
+                // No blocks found for this number, try RPC fallback
+                match fetch_block_ptr
+                    .block_ptr_for_number(site.network.clone(), block_number)
+                    .await
+                    .ok()
+                    .flatten()
+                {
+                    None => return Ok(None),
+                    Some(block_ptr) => block_ptr.hash,
+                }
+            }
+            _ => {
+                // Multiple hashes or no pre-fetched data - fall back to standard lookup
+                let chain_store = match block_store.chain_store(&site.network).await {
+                    Some(chain_store) => chain_store,
+                    None => return Ok(None),
+                };
+                let mut hashes = chain_store
+                    .block_hashes_by_block_number(block_number)
+                    .await?;
+
+                if hashes.len() == 1 {
+                    hashes.pop().unwrap()
+                } else {
+                    match fetch_block_ptr
+                        .block_ptr_for_number(site.network.clone(), block_number)
+                        .await
+                        .ok()
+                        .flatten()
+                    {
+                        None => return Ok(None),
+                        Some(block_ptr) => block_ptr.hash,
+                    }
                 }
             }
         };

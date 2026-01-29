@@ -171,6 +171,28 @@ impl StatusStore for Store {
             .await
     }
 
+    async fn get_public_proof_of_indexing_with_block_hash(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block_number: BlockNumber,
+        prefetched_hashes: Option<&Vec<graph::blockchain::BlockHash>>,
+        fetch_block_ptr: &dyn BlockPtrForNumber,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError> {
+        self.subgraph_store
+            .get_public_proof_of_indexing_with_block_hash(
+                subgraph_id,
+                block_number,
+                prefetched_hashes,
+                self.block_store().clone(),
+                fetch_block_ptr,
+            )
+            .await
+    }
+
+    async fn network_for_deployment(&self, id: &DeploymentHash) -> Result<String, StoreError> {
+        self.subgraph_store.network_for_deployment(id).await
+    }
+
     async fn query_permit(&self) -> QueryPermit {
         // Status queries go to the primary shard.
         self.block_store.query_permit_primary().await
