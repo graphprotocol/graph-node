@@ -4,6 +4,7 @@
 //! for each JSON-RPC method.
 
 use std::collections::BTreeMap;
+use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -12,14 +13,23 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::Json;
 use graph::prelude::{
-    DeploymentHash, NodeId, SubgraphName, SubgraphRegistrar, Value as GraphValue, ENV_VARS,
+    DeploymentHash, NodeId, SubgraphName, SubgraphRegistrar, SubgraphRegistrarError, ENV_VARS,
 };
 use serde::Deserialize;
 use serde_json::{self, Value as JsonValue};
-use slog::{info, Logger};
+use slog::{error, info, Logger};
 
-use crate::error::{error_codes, registrar_error_to_jsonrpc};
 use crate::jsonrpc::{JsonRpcError, JsonRpcId, JsonRpcRequest, JsonRpcResponse};
+
+/// Application-specific error codes for subgraph operations.
+mod error_codes {
+    pub const DEPLOY_ERROR: i64 = 0;
+    pub const REMOVE_ERROR: i64 = 1;
+    pub const CREATE_ERROR: i64 = 2;
+    pub const REASSIGN_ERROR: i64 = 3;
+    pub const PAUSE_ERROR: i64 = 4;
+    pub const RESUME_ERROR: i64 = 5;
+}
 
 /// Shared application state for the JSON-RPC server.
 pub struct AppState<R> {
@@ -102,6 +112,33 @@ fn parse_params<T: for<'de> Deserialize<'de>>(
     })
 }
 
+/// Convert a registrar result to a JSON-RPC response.
+fn to_response<P: Debug>(
+    logger: &Logger,
+    method: &str,
+    error_code: i64,
+    params: &P,
+    result: Result<JsonValue, SubgraphRegistrarError>,
+    id: JsonRpcId,
+) -> JsonRpcResponse {
+    match result {
+        Ok(value) => JsonRpcResponse::success(id, value),
+        Err(e) => {
+            error!(logger, "{} failed", method;
+                "error" => format!("{:?}", e),
+                "params" => format!("{:?}", params));
+
+            let message = if let SubgraphRegistrarError::Unknown(_) = e {
+                "internal error".to_owned()
+            } else {
+                e.to_string()
+            };
+
+            JsonRpcResponse::error(id, JsonRpcError::new(error_code, message))
+        }
+    }
+}
+
 /// Handler for `subgraph_create`.
 async fn handle_create<R: SubgraphRegistrar>(
     state: &AppState<R>,
@@ -113,24 +150,20 @@ async fn handle_create<R: SubgraphRegistrar>(
         Err(resp) => return resp,
     };
 
-    info!(&state.logger, "Received subgraph_create request"; "params" => format!("{:?}", params));
+    let result = state
+        .registrar
+        .create_subgraph(params.name.clone())
+        .await
+        .map(|r| serde_json::to_value(r).expect("invalid result"));
 
-    match state.registrar.create_subgraph(params.name.clone()).await {
-        Ok(result) => {
-            let value = serde_json::to_value(result).expect("invalid subgraph creation result");
-            JsonRpcResponse::success(id, value)
-        }
-        Err(e) => {
-            let error = registrar_error_to_jsonrpc(
-                &state.logger,
-                "subgraph_create",
-                e,
-                error_codes::CREATE_ERROR,
-                &params,
-            );
-            JsonRpcResponse::error(id, error)
-        }
-    }
+    to_response(
+        &state.logger,
+        "subgraph_create",
+        error_codes::CREATE_ERROR,
+        &params,
+        result,
+        id,
+    )
 }
 
 /// Handler for `subgraph_deploy`.
@@ -144,12 +177,10 @@ async fn handle_deploy<R: SubgraphRegistrar>(
         Err(resp) => return resp,
     };
 
-    info!(&state.logger, "Received subgraph_deploy request"; "params" => format!("{:?}", params));
-
     let node_id = params.node_id.clone().unwrap_or(state.node_id.clone());
     let routes = subgraph_routes(&params.name, state.http_port);
 
-    match state
+    let result = state
         .registrar
         .create_subgraph_version(
             params.name.clone(),
@@ -164,19 +195,16 @@ async fn handle_deploy<R: SubgraphRegistrar>(
             false,
         )
         .await
-    {
-        Ok(_) => JsonRpcResponse::success(id, routes),
-        Err(e) => {
-            let error = registrar_error_to_jsonrpc(
-                &state.logger,
-                "subgraph_deploy",
-                e,
-                error_codes::DEPLOY_ERROR,
-                &params,
-            );
-            JsonRpcResponse::error(id, error)
-        }
-    }
+        .map(|_| routes);
+
+    to_response(
+        &state.logger,
+        "subgraph_deploy",
+        error_codes::DEPLOY_ERROR,
+        &params,
+        result,
+        id,
+    )
 }
 
 /// Handler for `subgraph_remove`.
@@ -190,21 +218,20 @@ async fn handle_remove<R: SubgraphRegistrar>(
         Err(resp) => return resp,
     };
 
-    info!(&state.logger, "Received subgraph_remove request"; "params" => format!("{:?}", params));
+    let result = state
+        .registrar
+        .remove_subgraph(params.name.clone())
+        .await
+        .map(|_| JsonValue::Null);
 
-    match state.registrar.remove_subgraph(params.name.clone()).await {
-        Ok(_) => JsonRpcResponse::success(id, serde_json::to_value(GraphValue::Null).unwrap()),
-        Err(e) => {
-            let error = registrar_error_to_jsonrpc(
-                &state.logger,
-                "subgraph_remove",
-                e,
-                error_codes::REMOVE_ERROR,
-                &params,
-            );
-            JsonRpcResponse::error(id, error)
-        }
-    }
+    to_response(
+        &state.logger,
+        "subgraph_remove",
+        error_codes::REMOVE_ERROR,
+        &params,
+        result,
+        id,
+    )
 }
 
 /// Handler for `subgraph_reassign`.
@@ -218,25 +245,20 @@ async fn handle_reassign<R: SubgraphRegistrar>(
         Err(resp) => return resp,
     };
 
-    info!(&state.logger, "Received subgraph_reassignment request"; "params" => format!("{:?}", params));
-
-    match state
+    let result = state
         .registrar
         .reassign_subgraph(&params.ipfs_hash, &params.node_id)
         .await
-    {
-        Ok(_) => JsonRpcResponse::success(id, serde_json::to_value(GraphValue::Null).unwrap()),
-        Err(e) => {
-            let error = registrar_error_to_jsonrpc(
-                &state.logger,
-                "subgraph_reassign",
-                e,
-                error_codes::REASSIGN_ERROR,
-                &params,
-            );
-            JsonRpcResponse::error(id, error)
-        }
-    }
+        .map(|_| JsonValue::Null);
+
+    to_response(
+        &state.logger,
+        "subgraph_reassign",
+        error_codes::REASSIGN_ERROR,
+        &params,
+        result,
+        id,
+    )
 }
 
 /// Handler for `subgraph_pause`.
@@ -250,21 +272,20 @@ async fn handle_pause<R: SubgraphRegistrar>(
         Err(resp) => return resp,
     };
 
-    info!(&state.logger, "Received subgraph_pause request"; "params" => format!("{:?}", params));
+    let result = state
+        .registrar
+        .pause_subgraph(&params.deployment)
+        .await
+        .map(|_| JsonValue::Null);
 
-    match state.registrar.pause_subgraph(&params.deployment).await {
-        Ok(_) => JsonRpcResponse::success(id, serde_json::to_value(GraphValue::Null).unwrap()),
-        Err(e) => {
-            let error = registrar_error_to_jsonrpc(
-                &state.logger,
-                "subgraph_pause",
-                e,
-                error_codes::PAUSE_ERROR,
-                &params,
-            );
-            JsonRpcResponse::error(id, error)
-        }
-    }
+    to_response(
+        &state.logger,
+        "subgraph_pause",
+        error_codes::PAUSE_ERROR,
+        &params,
+        result,
+        id,
+    )
 }
 
 /// Handler for `subgraph_resume`.
@@ -278,21 +299,20 @@ async fn handle_resume<R: SubgraphRegistrar>(
         Err(resp) => return resp,
     };
 
-    info!(&state.logger, "Received subgraph_resume request"; "params" => format!("{:?}", params));
+    let result = state
+        .registrar
+        .resume_subgraph(&params.deployment)
+        .await
+        .map(|_| JsonValue::Null);
 
-    match state.registrar.resume_subgraph(&params.deployment).await {
-        Ok(_) => JsonRpcResponse::success(id, serde_json::to_value(GraphValue::Null).unwrap()),
-        Err(e) => {
-            let error = registrar_error_to_jsonrpc(
-                &state.logger,
-                "subgraph_resume",
-                e,
-                error_codes::RESUME_ERROR,
-                &params,
-            );
-            JsonRpcResponse::error(id, error)
-        }
-    }
+    to_response(
+        &state.logger,
+        "subgraph_resume",
+        error_codes::RESUME_ERROR,
+        &params,
+        result,
+        id,
+    )
 }
 
 /// Build the subgraph routes response for deploy.
