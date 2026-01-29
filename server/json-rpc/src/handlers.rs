@@ -145,6 +145,11 @@ async fn handle_create<R: SubgraphRegistrar>(
     request: &JsonRpcRequest,
     id: JsonRpcId,
 ) -> JsonRpcResponse {
+    #[derive(Debug, Deserialize)]
+    pub struct SubgraphCreateParams {
+        pub name: SubgraphName,
+    }
+
     let params: SubgraphCreateParams = match parse_params(request, id.clone()) {
         Ok(p) => p,
         Err(resp) => return resp,
@@ -172,13 +177,21 @@ async fn handle_deploy<R: SubgraphRegistrar>(
     request: &JsonRpcRequest,
     id: JsonRpcId,
 ) -> JsonRpcResponse {
+    #[derive(Debug, Deserialize)]
+    pub struct SubgraphDeployParams {
+        pub name: SubgraphName,
+        pub ipfs_hash: DeploymentHash,
+        pub node_id: Option<NodeId>,
+        pub debug_fork: Option<DeploymentHash>,
+        pub history_blocks: Option<i32>,
+    }
+
     let params: SubgraphDeployParams = match parse_params(request, id.clone()) {
         Ok(p) => p,
         Err(resp) => return resp,
     };
 
     let node_id = params.node_id.clone().unwrap_or(state.node_id.clone());
-    let routes = subgraph_routes(&params.name, state.http_port);
 
     let result = state
         .registrar
@@ -195,7 +208,7 @@ async fn handle_deploy<R: SubgraphRegistrar>(
             false,
         )
         .await
-        .map(|_| routes);
+        .map(|_| subgraph_routes(&params.name, state.http_port));
 
     to_response(
         &state.logger,
@@ -213,6 +226,11 @@ async fn handle_remove<R: SubgraphRegistrar>(
     request: &JsonRpcRequest,
     id: JsonRpcId,
 ) -> JsonRpcResponse {
+    #[derive(Debug, Deserialize)]
+    pub struct SubgraphRemoveParams {
+        pub name: SubgraphName,
+    }
+
     let params: SubgraphRemoveParams = match parse_params(request, id.clone()) {
         Ok(p) => p,
         Err(resp) => return resp,
@@ -240,6 +258,12 @@ async fn handle_reassign<R: SubgraphRegistrar>(
     request: &JsonRpcRequest,
     id: JsonRpcId,
 ) -> JsonRpcResponse {
+    #[derive(Debug, Deserialize)]
+    pub struct SubgraphReassignParams {
+        pub ipfs_hash: DeploymentHash,
+        pub node_id: NodeId,
+    }
+
     let params: SubgraphReassignParams = match parse_params(request, id.clone()) {
         Ok(p) => p,
         Err(resp) => return resp,
@@ -259,6 +283,13 @@ async fn handle_reassign<R: SubgraphRegistrar>(
         result,
         id,
     )
+}
+
+// Parameter structs for pause and resume
+
+#[derive(Debug, Deserialize)]
+pub struct SubgraphPauseParams {
+    pub deployment: DeploymentHash,
 }
 
 /// Handler for `subgraph_pause`.
@@ -333,36 +364,4 @@ fn subgraph_routes(name: &SubgraphName, http_port: u16) -> JsonValue {
     );
 
     serde_json::to_value(map).expect("invalid subgraph routes")
-}
-
-// Parameter structs for each method
-
-#[derive(Debug, Deserialize)]
-pub struct SubgraphCreateParams {
-    pub name: SubgraphName,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SubgraphDeployParams {
-    pub name: SubgraphName,
-    pub ipfs_hash: DeploymentHash,
-    pub node_id: Option<NodeId>,
-    pub debug_fork: Option<DeploymentHash>,
-    pub history_blocks: Option<i32>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SubgraphRemoveParams {
-    pub name: SubgraphName,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SubgraphReassignParams {
-    pub ipfs_hash: DeploymentHash,
-    pub node_id: NodeId,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct SubgraphPauseParams {
-    pub deployment: DeploymentHash,
 }
