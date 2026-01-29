@@ -165,29 +165,6 @@ impl IntoValue for Info {
             subgraph_size,
         } = self;
 
-        fn subgraph_error_to_value(subgraph_error: SubgraphError) -> r::Value {
-            let SubgraphError {
-                subgraph_id,
-                message,
-                block_ptr,
-                handler,
-                deterministic,
-            } = subgraph_error;
-
-            object! {
-                __typename: "SubgraphError",
-                subgraphId: subgraph_id.to_string(),
-                message: message,
-                handler: handler,
-                block: object! {
-                    __typename: "Block",
-                    number: block_ptr.as_ref().map(|x| x.number),
-                    hash: block_ptr.map(|x| r::Value::from(Value::Bytes(x.hash.into()))),
-                },
-                deterministic: deterministic,
-            }
-        }
-
         let non_fatal_errors: Vec<_> = non_fatal_errors
             .into_iter()
             .map(subgraph_error_to_value)
@@ -207,6 +184,86 @@ impl IntoValue for Info {
             node: node,
             historyBlocks: history_blocks,
             subgraphSize: subgraph_size.into_value(),
+        }
+    }
+}
+
+fn subgraph_error_to_value(subgraph_error: SubgraphError) -> r::Value {
+    let SubgraphError {
+        subgraph_id,
+        message,
+        block_ptr,
+        handler,
+        deterministic,
+    } = subgraph_error;
+
+    let block_value = block_ptr
+        .map(|ptr| {
+            object! {
+                __typename: "Block",
+                number: ptr.number,
+                hash: r::Value::from(Value::Bytes(ptr.hash.into())),
+            }
+        })
+        .unwrap_or(r::Value::Null);
+
+    object! {
+        __typename: "SubgraphError",
+        subgraphId: subgraph_id.to_string(),
+        message: message,
+        handler: handler,
+        block: block_value,
+        deterministic: deterministic,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prelude::DeploymentHash;
+    use web3::types::H256;
+
+    #[test]
+    fn subgraph_error_block_is_null_without_pointer() {
+        let deployment =
+            DeploymentHash::new("QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco").unwrap();
+        let value = subgraph_error_to_value(SubgraphError {
+            subgraph_id: deployment,
+            message: "boom".to_string(),
+            block_ptr: None,
+            handler: None,
+            deterministic: true,
+        });
+
+        match value {
+            r::Value::Object(map) => {
+                assert_eq!(map.get("block"), Some(&r::Value::Null));
+            }
+            _ => panic!("expected object"),
+        }
+    }
+
+    #[test]
+    fn subgraph_error_block_contains_data_when_present() {
+        let deployment =
+            DeploymentHash::new("QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco").unwrap();
+        let ptr = BlockPtr::new(H256::zero().into(), 42);
+        let value = subgraph_error_to_value(SubgraphError {
+            subgraph_id: deployment,
+            message: "boom".to_string(),
+            block_ptr: Some(ptr),
+            handler: None,
+            deterministic: true,
+        });
+
+        match value {
+            r::Value::Object(map) => match map.get("block").expect("block field present") {
+                r::Value::Object(block) => {
+                    assert_eq!(block.get("number"), Some(&r::Value::Int(42.into())));
+                }
+                other => panic!("unexpected block value {other:?}"),
+            },
+            _ => panic!("expected object"),
         }
     }
 }
