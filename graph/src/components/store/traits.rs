@@ -602,6 +602,12 @@ pub trait ChainStore: ChainHeadStore {
         number: BlockNumber,
     ) -> Result<Vec<BlockHash>, Error>;
 
+    /// Return the hashes of all blocks with the given numbers (batch version)
+    async fn block_hashes_by_block_numbers(
+        &self,
+        numbers: &[BlockNumber],
+    ) -> Result<HashMap<BlockNumber, Vec<BlockHash>>, Error>;
+
     /// Confirm that block number `number` has hash `hash` and that the store
     /// may purge any other blocks with that number
     async fn confirm_block_hash(
@@ -790,6 +796,19 @@ pub trait StatusStore: Send + Sync + 'static {
         block_number: BlockNumber,
         fetch_block_ptr: &dyn BlockPtrForNumber,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError>;
+
+    /// Like `get_public_proof_of_indexing` but accepts optional pre-fetched block hashes
+    /// to avoid redundant database lookups when processing batches of POI requests.
+    async fn get_public_proof_of_indexing_with_block_hash(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block_number: BlockNumber,
+        prefetched_hashes: Option<&Vec<BlockHash>>,
+        fetch_block_ptr: &dyn BlockPtrForNumber,
+    ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError>;
+
+    /// Get the network for a deployment
+    async fn network_for_deployment(&self, id: &DeploymentHash) -> Result<String, StoreError>;
 }
 
 #[async_trait]

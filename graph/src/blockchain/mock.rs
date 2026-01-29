@@ -550,6 +550,12 @@ impl ChainStore for MockChainStore {
     ) -> Result<Vec<BlockHash>, Error> {
         unimplemented!()
     }
+    async fn block_hashes_by_block_numbers(
+        &self,
+        _numbers: &[BlockNumber],
+    ) -> Result<HashMap<BlockNumber, Vec<BlockHash>>, Error> {
+        unimplemented!()
+    }
     async fn confirm_block_hash(
         &self,
         _number: BlockNumber,

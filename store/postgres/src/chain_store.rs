@@ -739,6 +739,58 @@ mod data {
             }
         }
 
+        /// Return the hashes of all blocks with the given block numbers (batch version)
+        pub(super) async fn block_hashes_by_block_numbers(
+            &self,
+            conn: &mut AsyncPgConnection,
+            chain: &str,
+            numbers: &[BlockNumber],
+        ) -> Result<HashMap<BlockNumber, Vec<BlockHash>>, Error> {
+            if numbers.is_empty() {
+                return Ok(HashMap::new());
+            }
+
+            match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+
+                    let results = b::table
+                        .select((b::number, b::hash))
+                        .filter(b::network_name.eq(chain))
+                        .filter(b::number.eq_any(Vec::from_iter(numbers.iter().map(|&n| n as i64))))
+                        .load::<(i64, String)>(conn)
+                        .await?;
+
+                    let mut map: HashMap<BlockNumber, Vec<BlockHash>> = HashMap::new();
+                    for (num, hash) in results {
+                        let block_hash = hash.parse()?;
+                        map.entry(num as BlockNumber).or_default().push(block_hash);
+                    }
+                    Ok(map)
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    let results = blocks
+                        .table()
+                        .select((blocks.number(), blocks.hash()))
+                        .filter(
+                            blocks
+                                .number()
+                                .eq_any(Vec::from_iter(numbers.iter().map(|&n| n as i64))),
+                        )
+                        .load::<(i64, Vec<u8>)>(conn)
+                        .await?;
+
+                    let mut map: HashMap<BlockNumber, Vec<BlockHash>> = HashMap::new();
+                    for (num, hash) in results {
+                        map.entry(num as BlockNumber)
+                            .or_default()
+                            .push(BlockHash::from(hash));
+                    }
+                    Ok(map)
+                }
+            }
+        }
+
         pub(super) async fn confirm_block_hash(
             &self,
             conn: &mut AsyncPgConnection,
@@ -2968,6 +3020,16 @@ impl ChainStoreTrait for ChainStore {
         let mut conn = self.pool.get_permitted().await?;
         self.storage
             .block_hashes_by_block_number(&mut conn, &self.chain, number)
+            .await
+    }
+
+    async fn block_hashes_by_block_numbers(
+        &self,
+        numbers: &[BlockNumber],
+    ) -> Result<HashMap<BlockNumber, Vec<BlockHash>>, Error> {
+        let mut conn = self.pool.get_permitted().await?;
+        self.storage
+            .block_hashes_by_block_numbers(&mut conn, &self.chain, numbers)
             .await
     }
 
