@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+axum = { workspace = true }
 graph = { path = "../../graph" }
-jsonrpsee = { version = "0.15.1", features = ["http-server"] }
 serde = { workspace = true }
+serde_json = { workspace = true }
+slog = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
