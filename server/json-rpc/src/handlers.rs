@@ -39,15 +39,12 @@ pub async fn jsonrpc_handler<R: SubgraphRegistrar>(
     headers: HeaderMap,
     body: String,
 ) -> impl IntoResponse {
-    // Log the incoming request with proxy headers
-    info!(
-        &state.logger,
-        "JSON-RPC request";
-        "remote_addr" => %remote_addr,
-        "x_forwarded_for" => headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()),
-        "x_real_ip" => headers.get("x-real-ip").and_then(|v| v.to_str().ok()),
-        "x_forwarded_proto" => headers.get("x-forwarded-proto").and_then(|v| v.to_str().ok())
-    );
+    fn header<'a>(headers: &'a HeaderMap, key: &str) -> &'a str {
+        headers
+            .get(key)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("unset")
+    }
 
     // Parse the JSON-RPC request
     let request: JsonRpcRequest = match serde_json::from_str(&body) {
@@ -69,7 +66,11 @@ pub async fn jsonrpc_handler<R: SubgraphRegistrar>(
         &state.logger,
         "JSON-RPC call";
         "method" => &request.method,
-        "params" => ?request.params
+        "params" => ?request.params,
+        "remote_addr" => %remote_addr,
+        "x_forwarded_for" => header(&headers, "x-forwarded-for"),
+        "x_real_ip" => header(&headers, "x-real-ip"),
+        "x_forwarded_proto" => header(&headers, "x-forwarded-proto")
     );
 
     // Dispatch to the appropriate handler
