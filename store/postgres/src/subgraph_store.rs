@@ -365,23 +365,21 @@ impl SubgraphStore {
                 .get(&site.shard)
                 .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
 
-            let mut shard_conn = deployment_store.get_replica_conn(ReplicaId::Main).await?;
-            let needs_check = if site_was_created {
-                true
-            } else {
-                // If deployment does not exist, but site exists it means
-                // that we are recovering from a failed deployment creation with an orphaned site.
-                // In that case, we should check graft compatibility again.
-                let exists = crate::deployment::exists(&mut shard_conn, &site).await?;
-                !exists
-            };
-
             if let Some(graft_base) = graft_base {
-                let base_layout = self.layout(graft_base).await?;
+                // Perform schema compatibility validation when:
+                // - the site was just created (first-time deployment), or
+                // - the site exists but the deployment is missing (recovering from a failed create).
+                // The `exists` DB call is only made if `site_was_created` is false.
+                let should_validate = {
+                    let mut shard_conn = deployment_store.get_replica_conn(ReplicaId::Main).await?;
+                    site_was_created || !crate::deployment::exists(&mut shard_conn, &site).await?
+                };
 
-                if needs_check {
+                if should_validate {
+                    let base_layout = self.layout(graft_base).await?;
                     let entities_with_causality_region =
                         deployment.manifest.entities_with_causality_region.clone();
+                    let mut shard_conn = deployment_store.get_replica_conn(ReplicaId::Main).await?;
                     let catalog = Catalog::for_creation(
                         &mut shard_conn,
                         site.cheap_clone(),
