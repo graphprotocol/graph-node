@@ -1075,32 +1075,42 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .ancestor_block(ptr.clone(), offset, root.clone())
             .await?;
 
-        // First check if we have the ancestor in cache and can deserialize it
+        // First check if we have the ancestor in cache and can deserialize it.
+        // recent_blocks_cache can have full format {"block": {...}, "transaction_receipts": [...]}
+        // or light format (just block fields). We need full format with receipts for
+        // ancestor_block since it's used for trigger processing.
         let block_ptr = match cached {
             Some((json, ptr)) => {
-                // Try to deserialize the cached block
-                match json::from_value::<EthereumBlock>(json.clone()) {
-                    Ok(block) => {
-                        // Successfully cached and deserialized
-                        return Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
-                            ethereum_block: block,
-                            calls: None,
-                        })));
-                    }
-                    Err(e) => {
-                        // Cache hit but deserialization failed
-                        warn!(
-                            self.logger,
-                            "Failed to deserialize cached ancestor block #{} {} (offset {} from #{}): {}. \
-                             This may indicate stale cache data from a previous version. \
-                             Falling back to Firehose/RPC.",
-                            ptr.number,
-                            ptr.hash_hex(),
-                            offset,
-                            ptr_for_log.number,
-                            e
-                        );
-                        ptr
+                if json.get("block").is_none() {
+                    warn!(
+                        self.logger,
+                        "Cached ancestor block #{} {} has light format without receipts. \
+                         Falling back to Firehose/RPC.",
+                        ptr.number,
+                        ptr.hash_hex(),
+                    );
+                    ptr
+                } else {
+                    match json::from_value::<EthereumBlock>(json.clone()) {
+                        Ok(block) => {
+                            return Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
+                                ethereum_block: block,
+                                calls: None,
+                            })));
+                        }
+                        Err(e) => {
+                            warn!(
+                                self.logger,
+                                "Failed to deserialize cached ancestor block #{} {} (offset {} from #{}): {}. \
+                                 Falling back to Firehose/RPC.",
+                                ptr.number,
+                                ptr.hash_hex(),
+                                offset,
+                                ptr_for_log.number,
+                                e
+                            );
+                            ptr
+                        }
                     }
                 }
             }
@@ -1161,15 +1171,17 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 // First try to get the block from the store
                 if let Ok(blocks) = chain_store.blocks(vec![block.hash.clone()]).await {
                     if let Some(cached_json) = blocks.first() {
-                        match json::from_value::<LightEthereumBlock>(cached_json.clone()) {
-                            Ok(block) => {
-                                return Ok(block.parent_ptr());
+                        // recent_blocks_cache can contain full format {"block": {...}, "transaction_receipts": [...]}
+                        // or light format (just block fields). Extract block data for deserialization.
+                        let inner = cached_json.get("block").unwrap_or(cached_json);
+                        match json::from_value::<LightEthereumBlock>(inner.clone()) {
+                            Ok(light_block) => {
+                                return Ok(light_block.parent_ptr());
                             }
                             Err(e) => {
                                 warn!(
                                     self.logger,
                                     "Failed to deserialize cached block #{} {}: {}. \
-                                     This may indicate stale cache data from a previous version. \
                                      Falling back to Firehose.",
                                     block.number,
                                     block.hash_hex(),
