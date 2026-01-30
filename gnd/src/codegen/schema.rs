@@ -140,6 +140,38 @@ impl IdFieldKind {
             _ => IdFieldKind::String,
         }
     }
+
+    /// Returns true if this ID type supports auto-increment (optional constructor arg).
+    pub fn supports_auto(&self) -> bool {
+        matches!(self, IdFieldKind::Int8 | IdFieldKind::Bytes)
+    }
+
+    /// Get the constructor parameter type (with nullability for auto-increment types).
+    pub fn constructor_param_type(&self) -> &'static str {
+        match self {
+            IdFieldKind::String => "string",
+            IdFieldKind::Bytes => "Bytes | null",
+            IdFieldKind::Int8 => "i64", // primitive, can't be nullable
+        }
+    }
+
+    /// Get the default value for constructor parameter (for auto-increment types).
+    pub fn constructor_default(&self) -> Option<&'static str> {
+        match self {
+            IdFieldKind::String => None,
+            IdFieldKind::Bytes => Some("null"),
+            IdFieldKind::Int8 => Some("i64.MIN_VALUE"),
+        }
+    }
+
+    /// Get the condition to check if id was provided (not auto-increment).
+    pub fn auto_check_condition(&self) -> &'static str {
+        match self {
+            IdFieldKind::String => "", // N/A
+            IdFieldKind::Bytes => "id !== null",
+            IdFieldKind::Int8 => "id != i64.MIN_VALUE",
+        }
+    }
 }
 
 /// Get the base type name from a GraphQL type (stripping NonNull and List wrappers).
@@ -365,23 +397,76 @@ impl SchemaCodeGenerator {
     }
 
     fn generate_constructor(&self, id_kind: &IdFieldKind) -> Method {
-        Method::new(
-            "constructor",
-            vec![Param::new("id", NamedType::new(id_kind.type_name()))],
-            None,
-            format!(
-                r#"
+        if id_kind.supports_auto() {
+            // For Int8 and Bytes, make id optional to support auto-increment
+            let param_type = id_kind.constructor_param_type();
+            let default_value = id_kind.constructor_default().unwrap();
+            let check_condition = id_kind.auto_check_condition();
+
+            Method::new(
+                "constructor",
+                vec![Param::with_default(
+                    "id",
+                    TypeExpr::Raw(param_type.to_string()),
+                    default_value,
+                )],
+                None,
+                format!(
+                    r#"
+      super()
+      if ({}) {{
+        this.set('id', {})
+      }}"#,
+                    check_condition,
+                    id_kind.value_from()
+                ),
+            )
+            .with_doc("Leaving out the id argument uses an autoincrementing id.")
+        } else {
+            // For String IDs, keep the existing behavior (required parameter)
+            Method::new(
+                "constructor",
+                vec![Param::new("id", NamedType::new(id_kind.type_name()))],
+                None,
+                format!(
+                    r#"
       super()
       this.set('id', {})"#,
-                id_kind.value_from()
-            ),
-        )
+                    id_kind.value_from()
+                ),
+            )
+        }
     }
 
     fn generate_store_methods(&self, entity_name: &str, id_kind: &IdFieldKind) -> Vec<StoreMethod> {
-        vec![
-            // save() method
-            StoreMethod::Regular(Method::new(
+        // Generate save() method - different for auto-increment vs string IDs
+        let save_method = if id_kind.supports_auto() {
+            // For Int8 and Bytes, check if id is null/unset and use "auto" as the key
+            Method::new(
+                "save",
+                vec![],
+                Some(NamedType::new("void").into()),
+                format!(
+                    r#"
+        let id = this.get('id')
+        if (id == null || id.kind == ValueKind.NULL) {{
+          store.set('{}', 'auto', this)
+        }} else {{
+          assert(id.kind == {},
+                 `Entities of type {} must have an ID of type {} but the id '${{id.displayData()}}' is of type ${{id.displayKind()}}`)
+          store.set('{}', {}, this)
+        }}"#,
+                    entity_name,
+                    id_kind.value_kind(),
+                    entity_name,
+                    id_kind.gql_type_name(),
+                    entity_name,
+                    id_kind.value_to_string()
+                ),
+            )
+        } else {
+            // For String IDs, keep the existing behavior (require ID)
+            Method::new(
                 "save",
                 vec![],
                 Some(NamedType::new("void").into()),
@@ -402,7 +487,11 @@ impl SchemaCodeGenerator {
                     entity_name,
                     id_kind.value_to_string()
                 ),
-            )),
+            )
+        };
+
+        vec![
+            StoreMethod::Regular(save_method),
             // loadInBlock() static method
             StoreMethod::Static(StaticMethod::new(
                 "loadInBlock",
@@ -708,6 +797,162 @@ mod tests {
         assert_eq!(IdFieldKind::String.type_name(), "string");
         assert_eq!(IdFieldKind::Bytes.type_name(), "Bytes");
         assert_eq!(IdFieldKind::Int8.type_name(), "i64");
+    }
+
+    #[test]
+    fn test_auto_increment_support() {
+        // String IDs don't support auto-increment
+        assert!(!IdFieldKind::String.supports_auto());
+        assert!(IdFieldKind::String.constructor_default().is_none());
+
+        // Int8 IDs support auto-increment
+        assert!(IdFieldKind::Int8.supports_auto());
+        assert_eq!(IdFieldKind::Int8.constructor_param_type(), "i64");
+        assert_eq!(
+            IdFieldKind::Int8.constructor_default(),
+            Some("i64.MIN_VALUE")
+        );
+        assert_eq!(
+            IdFieldKind::Int8.auto_check_condition(),
+            "id != i64.MIN_VALUE"
+        );
+
+        // Bytes IDs support auto-increment
+        assert!(IdFieldKind::Bytes.supports_auto());
+        assert_eq!(IdFieldKind::Bytes.constructor_param_type(), "Bytes | null");
+        assert_eq!(IdFieldKind::Bytes.constructor_default(), Some("null"));
+        assert_eq!(IdFieldKind::Bytes.auto_check_condition(), "id !== null");
+    }
+
+    #[test]
+    fn test_int8_id_auto_increment_codegen() {
+        let schema = r#"
+            type Counter @entity {
+                id: Int8!
+                value: BigInt!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
+
+        let classes = gen.generate_types(true);
+        assert_eq!(classes.len(), 1);
+
+        let counter = &classes[0];
+        let output = counter.to_string();
+
+        // Constructor should have optional id with sentinel default
+        assert!(
+            output.contains("constructor(id: i64 = i64.MIN_VALUE)"),
+            "Int8 ID constructor should have default sentinel value, got: {}",
+            output
+        );
+
+        // Constructor should have doc comment
+        assert!(
+            output.contains("Leaving out the id argument uses an autoincrementing id"),
+            "Constructor should have auto-increment doc comment"
+        );
+
+        // Constructor body should conditionally set id
+        assert!(
+            output.contains("if (id != i64.MIN_VALUE)"),
+            "Constructor should check for sentinel value"
+        );
+
+        // save() method should use "auto" when id is null
+        assert!(
+            output.contains("store.set('Counter', 'auto', this)"),
+            "save() should use 'auto' key for auto-increment, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_bytes_id_auto_increment_codegen() {
+        let schema = r#"
+            type Event @entity {
+                id: Bytes!
+                data: String!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
+
+        let classes = gen.generate_types(true);
+        assert_eq!(classes.len(), 1);
+
+        let event = &classes[0];
+        let output = event.to_string();
+
+        // Constructor should have nullable id with null default
+        assert!(
+            output.contains("constructor(id: Bytes | null = null)"),
+            "Bytes ID constructor should have null default, got: {}",
+            output
+        );
+
+        // Constructor should have doc comment
+        assert!(
+            output.contains("Leaving out the id argument uses an autoincrementing id"),
+            "Constructor should have auto-increment doc comment"
+        );
+
+        // Constructor body should conditionally set id
+        assert!(
+            output.contains("if (id !== null)"),
+            "Constructor should check for null"
+        );
+
+        // save() method should use "auto" when id is null
+        assert!(
+            output.contains("store.set('Event', 'auto', this)"),
+            "save() should use 'auto' key for auto-increment, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_string_id_no_auto_increment() {
+        let schema = r#"
+            type User @entity {
+                id: ID!
+                name: String!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
+
+        let classes = gen.generate_types(true);
+        assert_eq!(classes.len(), 1);
+
+        let user = &classes[0];
+        let output = user.to_string();
+
+        // Constructor should have required id (no default)
+        assert!(
+            output.contains("constructor(id: string)"),
+            "String ID constructor should have required parameter, got: {}",
+            output
+        );
+
+        // Constructor should NOT have auto-increment doc comment
+        assert!(
+            !output.contains("autoincrementing"),
+            "String ID should not mention auto-increment"
+        );
+
+        // save() method should NOT use "auto"
+        assert!(
+            !output.contains("'auto'"),
+            "String ID save() should not use 'auto' key"
+        );
+
+        // save() should require ID
+        assert!(
+            output.contains("Cannot save User entity without an ID"),
+            "String ID save() should require ID"
+        );
     }
 
     #[test]

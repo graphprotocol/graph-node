@@ -15,6 +15,8 @@ pub const GENERATED_FILE_NOTE: &str = r#"
 pub struct Param {
     pub name: String,
     pub param_type: Box<TypeExpr>,
+    /// Optional default value for the parameter.
+    pub default_value: Option<String>,
 }
 
 impl Param {
@@ -22,13 +24,30 @@ impl Param {
         Self {
             name: name.into(),
             param_type: Box::new(param_type.into()),
+            default_value: None,
+        }
+    }
+
+    /// Create a parameter with a default value.
+    pub fn with_default(
+        name: impl Into<String>,
+        param_type: impl Into<TypeExpr>,
+        default: impl Into<String>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            param_type: Box::new(param_type.into()),
+            default_value: Some(default.into()),
         }
     }
 }
 
 impl Display for Param {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.name, self.param_type)
+        match &self.default_value {
+            Some(default) => write!(f, "{}: {} = {}", self.name, self.param_type, default),
+            None => write!(f, "{}: {}", self.name, self.param_type),
+        }
     }
 }
 
@@ -200,6 +219,8 @@ pub struct Method {
     pub params: Vec<Param>,
     pub return_type: Option<TypeExpr>,
     pub body: String,
+    /// Optional documentation comment.
+    pub doc: Option<String>,
 }
 
 impl Method {
@@ -214,12 +235,26 @@ impl Method {
             params,
             return_type,
             body: body.into(),
+            doc: None,
         }
+    }
+
+    /// Add a documentation comment to the method.
+    pub fn with_doc(mut self, doc: impl Into<String>) -> Self {
+        self.doc = Some(doc.into());
+        self
     }
 }
 
 impl Display for Method {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Write doc comment if present
+        if let Some(doc) = &self.doc {
+            writeln!(f)?;
+            writeln!(f, "  /**")?;
+            writeln!(f, "   * {}", doc)?;
+            writeln!(f, "   */")?;
+        }
         let params = self
             .params
             .iter()
@@ -231,11 +266,20 @@ impl Display for Method {
             .as_ref()
             .map(|t| format!(": {}", t))
             .unwrap_or_default();
-        write!(
-            f,
-            "\n  {}({}){} {{{}\n  }}\n",
-            self.name, params, return_type, self.body
-        )
+        if self.doc.is_some() {
+            // Already wrote newline for doc
+            write!(
+                f,
+                "  {}({}){} {{{}\n  }}\n",
+                self.name, params, return_type, self.body
+            )
+        } else {
+            write!(
+                f,
+                "\n  {}({}){} {{{}\n  }}\n",
+                self.name, params, return_type, self.body
+            )
+        }
     }
 }
 
