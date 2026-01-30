@@ -90,6 +90,7 @@
             inherit port dataDir;
             initialScript = {
               before = ''
+                CREATE ROLE postgres WITH LOGIN;
                 CREATE USER \"${user}\" WITH PASSWORD '${password}' SUPERUSER;
               '';
             };
@@ -140,6 +141,11 @@
               database = "graph-test";
             };
 
+            # Set PGUSER so psql connects as the OS user (matching initdb's superuser)
+            settings.processes."postgres-unit-init".environment = {
+              PGUSER = builtins.getEnv "USER";
+            };
+
             services.ipfs."ipfs-unit" = {
               enable = true;
               dataDir = "./.data/unit/ipfs";
@@ -170,6 +176,11 @@
               user = "graph-node";
               password = "let-me-in";
               database = "graph-node";
+            };
+
+            # Set PGUSER so psql connects as the OS user (matching initdb's superuser)
+            settings.processes."postgres-integration-init".environment = {
+              PGUSER = builtins.getEnv "USER";
             };
 
             services.ipfs."ipfs-integration" = {
