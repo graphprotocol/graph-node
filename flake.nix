@@ -1,7 +1,7 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-    foundry.url = "github:shazow/foundry.nix";
+    foundry.url = "github:shazow/foundry.nix/b7adb89167832516589c899addcd25ca2a78dcfe";
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -198,6 +198,9 @@
               gasLimit = 100000000000;
               baseFee = 1;
               blockTime = 2;
+              state = "./.data/integration/anvil/state.json";
+              stateInterval = 30;
+              preserveHistoricalStates = true;
             };
           };
         };
