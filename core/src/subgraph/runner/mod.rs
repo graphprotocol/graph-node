@@ -11,7 +11,7 @@ use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
 use anyhow::Context as _;
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
+    BlockStream, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
 use graph::blockchain::{
     Block, BlockTime, Blockchain, DataSource as _, SubgraphFilter, Trigger, TriggerFilter as _,
@@ -34,7 +34,7 @@ use graph::ext::futures::Cancelable;
 use graph::futures03::stream::StreamExt;
 use graph::prelude::{
     anyhow, hex, retry, thiserror, BlockNumber, BlockPtr, BlockState, CancelGuard, CancelHandle,
-    CancelToken as _, CancelableError, CheapClone as _, EntityCache, EntityModification, Error,
+    CancelToken as _, CheapClone as _, EntityCache, EntityModification, Error,
     InstanceDSTemplateInfo, LogCode, RunnerMetrics, RuntimeHostBuilder, StopwatchMetrics,
     StoreError, StreamExtension, UnfailOutcome, Value, ENV_VARS,
 };
@@ -349,22 +349,7 @@ where
             // Log and drop the errors from the block_stream
             // The block stream will continue attempting to produce blocks
             Some(Err(e)) => {
-                // Handle fatal errors by stopping
-                if let CancelableError::Error(BlockStreamError::Fatal(msg)) = &e {
-                    error!(
-                        &self.logger,
-                        "The block stream encountered a substreams fatal error and will not retry: {}",
-                        msg
-                    );
-
-                    self.fail_subgraph(msg.clone(), None, true).await?;
-
-                    return Ok(RunnerState::Stopped {
-                        reason: StopReason::DeterministicError,
-                    });
-                }
-
-                // Non-fatal error: log and continue waiting for blocks
+                // Log error and continue waiting for blocks
                 debug!(
                     &self.logger,
                     "Block stream produced a non-fatal error";
@@ -471,9 +456,6 @@ where
             }
             StopReason::StreamEnded => {
                 info!(self.logger, "Stopping subgraph - stream ended");
-            }
-            StopReason::DeterministicError => {
-                info!(self.logger, "Stopping subgraph - deterministic error");
             }
         }
 
