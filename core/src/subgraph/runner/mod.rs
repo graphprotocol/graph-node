@@ -223,15 +223,11 @@ where
         let block_stream_canceler = CancelGuard::new();
         let block_stream_cancel_handle = block_stream_canceler.handle();
         // TriggerFilter needs to be rebuilt eveytime the blockstream is restarted
-        self.ctx.filter = Some(self.build_filter());
+        let filter = self.build_filter();
 
-        let block_stream = new_block_stream(
-            &self.inputs,
-            self.ctx.filter.clone().unwrap(), // Safe to unwrap as we just called `build_filter` in the previous line
-            &self.metrics.subgraph,
-        )
-        .await?
-        .cancelable(&block_stream_canceler);
+        let block_stream = new_block_stream(&self.inputs, filter, &self.metrics.subgraph)
+            .await?
+            .cancelable(&block_stream_canceler);
 
         self.cancel_handle = Some(block_stream_cancel_handle);
 
@@ -262,7 +258,7 @@ where
     /// Returns the next state to transition to:
     /// - `Restarting` to start the block stream (normal case)
     /// - `Stopped` if the max end block was already reached
-    async fn initialize(&mut self) -> Result<RunnerState<C>, SubgraphRunnerError> {
+    async fn initialize(&self) -> Result<RunnerState<C>, SubgraphRunnerError> {
         self.update_deployment_synced_metric();
 
         // If a subgraph failed for deterministic reasons, before start indexing, we first
