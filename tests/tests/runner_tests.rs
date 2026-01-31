@@ -448,7 +448,7 @@ async fn end_block() -> anyhow::Result<()> {
     ) {
         let runner = ctx.runner(block_ptr.clone()).await;
         let runner = runner.run_for_test(false).await.unwrap();
-        let filter = runner.context().filter.as_ref().unwrap();
+        let filter = runner.build_filter_for_test();
         let addresses = filter
             .chain_filter
             .log()

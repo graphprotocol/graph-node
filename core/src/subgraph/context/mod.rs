@@ -6,7 +6,7 @@ use crate::polling_monitor::{
 use anyhow::{self, Error};
 use bytes::Bytes;
 use graph::{
-    blockchain::{Blockchain, TriggerFilterWrapper},
+    blockchain::Blockchain,
     components::{store::DeploymentId, subgraph::HostMetrics},
     data::subgraph::SubgraphManifest,
     data_source::{
@@ -74,7 +74,6 @@ where
     pub(crate) instance: SubgraphInstance<C, T>,
     pub instances: SubgraphKeepAlive,
     pub offchain_monitor: OffchainMonitor,
-    pub filter: Option<TriggerFilterWrapper<C>>,
     pub(crate) trigger_processor: Box<dyn TriggerProcessor<C, T>>,
     pub(crate) decoder: Box<Decoder<C, T>>,
 }
@@ -101,7 +100,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             instance,
             instances,
             offchain_monitor,
-            filter: None,
             trigger_processor,
             decoder,
         }
