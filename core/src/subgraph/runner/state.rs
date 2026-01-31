@@ -95,6 +95,4 @@ pub enum StopReason {
     Unassigned,
     /// The block stream ended (typically in tests).
     StreamEnded,
-    /// A deterministic error occurred.
-    DeterministicError,
 }

@@ -705,14 +705,6 @@ pub enum BlockStreamError {
     ProtobufDecodingError(#[from] prost::DecodeError),
     #[error("block stream error {0}")]
     Unknown(#[from] anyhow::Error),
-    #[error("block stream fatal error {0}")]
-    Fatal(String),
-}
-
-impl BlockStreamError {
-    pub fn is_deterministic(&self) -> bool {
-        matches!(self, Self::Fatal(_))
-    }
 }
 
 #[derive(Debug)]
