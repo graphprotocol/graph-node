@@ -1,23 +1,25 @@
-use crate::adapter::EthereumAdapter as EthereumAdapterTrait;
+use crate::adapter::EthereumAdapter as _;
 use crate::EthereumAdapter;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::time::sleep;
+use tokio_util::sync::CancellationToken;
+
 #[derive(Debug)]
 pub struct Health {
-    pub provider: Arc<EthereumAdapter>,
-    latency: Arc<RwLock<Duration>>,
-    error_rate: Arc<RwLock<f64>>,
-    consecutive_failures: Arc<RwLock<u32>>,
+    provider: Arc<EthereumAdapter>,
+    latency_nanos: AtomicU64,
+    error_rate_bits: AtomicU64,
+    consecutive_failures: AtomicU32,
 }
 
 impl Health {
     pub fn new(provider: Arc<EthereumAdapter>) -> Self {
         Self {
             provider,
-            latency: Arc::new(RwLock::new(Duration::from_secs(0))),
-            error_rate: Arc::new(RwLock::new(0.0)),
-            consecutive_failures: Arc::new(RwLock::new(0)),
+            latency_nanos: AtomicU64::new(0),
+            error_rate_bits: AtomicU64::new(0f64.to_bits()),
+            consecutive_failures: AtomicU32::new(0),
         }
     }
 
@@ -26,46 +28,50 @@ impl Health {
     }
 
     pub async fn check(&self) {
-        let start_time = Instant::now();
-        // For now, we'll just simulate a health check.
-        // In a real implementation, we would send a request to the provider.
-        let success = self.provider.provider().contains("rpc1"); // Simulate a failure for rpc2
-        let latency = start_time.elapsed();
-
-        self.update_metrics(success, latency);
+        let start = Instant::now();
+        let success = self.provider.health_check().await.is_ok();
+        self.update_metrics(success, start.elapsed());
     }
 
     fn update_metrics(&self, success: bool, latency: Duration) {
-        let mut latency_w = self.latency.write().unwrap();
-        *latency_w = latency;
+        self.latency_nanos
+            .store(latency.as_nanos() as u64, Ordering::Relaxed);
 
-        let mut error_rate_w = self.error_rate.write().unwrap();
-        let mut consecutive_failures_w = self.consecutive_failures.write().unwrap();
+        let prev_error_rate = f64::from_bits(self.error_rate_bits.load(Ordering::Relaxed));
 
         if success {
-            *error_rate_w = *error_rate_w * 0.9; // Decay the error rate
-            *consecutive_failures_w = 0;
+            let new_error_rate = prev_error_rate * 0.9;
+            self.error_rate_bits
+                .store(new_error_rate.to_bits(), Ordering::Relaxed);
+            self.consecutive_failures.store(0, Ordering::Relaxed);
         } else {
-            *error_rate_w = *error_rate_w * 0.9 + 0.1; // Increase the error rate
-            *consecutive_failures_w += 1;
+            let new_error_rate = prev_error_rate * 0.9 + 0.1;
+            self.error_rate_bits
+                .store(new_error_rate.to_bits(), Ordering::Relaxed);
+            self.consecutive_failures.fetch_add(1, Ordering::Relaxed);
         }
     }
 
     pub fn score(&self) -> f64 {
-        let latency = *self.latency.read().unwrap();
-        let error_rate = *self.error_rate.read().unwrap();
-        let consecutive_failures = *self.consecutive_failures.read().unwrap();
+        let latency_secs =
+            Duration::from_nanos(self.latency_nanos.load(Ordering::Relaxed)).as_secs_f64();
+        let error_rate = f64::from_bits(self.error_rate_bits.load(Ordering::Relaxed));
+        let consecutive_failures = self.consecutive_failures.load(Ordering::Relaxed);
 
-        // This is a simple scoring algorithm. A more sophisticated algorithm could be used here.
-        1.0 / (1.0 + latency.as_secs_f64() + error_rate + (consecutive_failures as f64))
+        1.0 / (1.0 + latency_secs + error_rate + (consecutive_failures as f64))
     }
 }
 
-pub async fn health_check_task(health_checkers: Vec<Arc<Health>>) {
+pub async fn health_check_task(health_checkers: Vec<Arc<Health>>, cancel_token: CancellationToken) {
     loop {
-        for health_checker in &health_checkers {
-            health_checker.check().await;
+        tokio::select! {
+            _ = cancel_token.cancelled() => break,
+            _ = async {
+                for hc in &health_checkers {
+                    hc.check().await;
+                }
+                tokio::time::sleep(Duration::from_secs(10)).await;
+            } => {}
         }
-        sleep(Duration::from_secs(10)).await;
     }
 }
