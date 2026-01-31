@@ -49,9 +49,9 @@ ingestor = "index_0"
 # - Weights must be between 0.0 and 1.0 (inclusive)
 # - Weights are relative - they don't need to sum to 1.0
 # - Traffic is distributed proportionally based on weights
-# - Example: weights [0.2, 0.8] = 20% and 80% traffic distribution
-# - Example: weights [1.0, 2.0, 1.0] = 25%, 50%, 25% distribution
+# - Example: weights [0.3, 0.5, 0.2] = 30%, 50%, 20% traffic distribution
 # - At least one provider must have weight > 0.0
+# - Weight is only used for RPC providers; it is ignored for firehose providers
 [chains.mainnet]
 shard = "primary"
 amp = "ethereum-mainnet"
@@ -59,7 +59,7 @@ provider = [
   { label = "mainnet-0", url = "http://rpc.mainnet.io", features = ["archive", "traces"], weight = 0.1 },
   { label = "mainnet-1", details = { type = "web3call", url = "http://rpc.mainnet.io", features = ["archive", "traces"] }, weight = 0.2 },
   { label = "mainnet-2", details = { type = "web3", url = "http://rpc.mainnet.io", features = ["archive", "compression/gzip"] }, weight = 0.3 },
-  { label = "firehose", details = { type = "firehose", url = "http://localhost:9000", features = [] }, weight = 0.3 },
+  { label = "firehose", details = { type = "firehose", url = "http://localhost:9000", features = [] } },
 ]
 
 [chains.ropsten]

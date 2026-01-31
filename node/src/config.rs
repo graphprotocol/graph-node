@@ -815,6 +815,8 @@ const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
 impl Provider {
     fn validate(&mut self) -> Result<()> {
         validate_name(&self.label).context("illegal provider name")?;
+        // Weight of 0.0 is intentional: it disables the provider from weighted selection
+        // while keeping it available for error-retesting and non-weighted fallback paths.
         if self.weight < 0.0 || self.weight > 1.0 {
             bail!("provider {} must have a weight between 0 and 1", self.label);
         }
