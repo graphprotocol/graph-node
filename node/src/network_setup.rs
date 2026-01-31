@@ -27,7 +27,7 @@ use graph::{
 use graph_chain_ethereum as ethereum;
 use graph_store_postgres::{BlockStore, ChainHeadUpdateListener};
 
-use std::{any::Any, cmp::Ordering, sync::Arc, time::Duration};
+use std::{any::Any, cmp::Ordering, collections::HashMap, sync::Arc, time::Duration};
 
 use crate::chain::{
     create_ethereum_networks, create_firehose_networks, networks_as_chains, AnyChainFilter,
@@ -91,13 +91,14 @@ impl AdapterConfiguration {
 }
 
 use graph_chain_ethereum::health::{health_check_task, Health};
+use tokio_util::sync::CancellationToken;
 
 pub struct Networks {
     pub adapters: Vec<AdapterConfiguration>,
     pub rpc_provider_manager: ProviderManager<EthereumNetworkAdapter>,
     pub firehose_provider_manager: ProviderManager<Arc<FirehoseEndpoint>>,
     pub weighted_rpc_steering: bool,
-    pub health_checkers: Vec<Arc<Health>>,
+    pub health_checkers: HashMap<ChainName, Vec<Arc<Health>>>,
 }
 
 impl Networks {
@@ -116,7 +117,7 @@ impl Networks {
                 ProviderCheckStrategy::MarkAsValid,
             ),
             weighted_rpc_steering: false,
-            health_checkers: vec![],
+            health_checkers: HashMap::new(),
         }
     }
 
@@ -260,13 +261,20 @@ impl Networks {
             },
         );
 
-        let health_checkers: Vec<_> = eth_adapters
+        let health_checkers: HashMap<ChainName, Vec<Arc<Health>>> = eth_adapters
             .clone()
-            .flat_map(|(_, adapters)| adapters)
-            .map(|adapter| Arc::new(Health::new(adapter.adapter.clone())))
+            .map(|(chain_id, adapters)| {
+                let checkers = adapters
+                    .iter()
+                    .map(|a| Arc::new(Health::new(a.adapter().clone())))
+                    .collect();
+                (chain_id, checkers)
+            })
             .collect();
         if weighted_rpc_steering {
-            tokio::spawn(health_check_task(health_checkers.clone()));
+            let cancel_token = CancellationToken::new();
+            let all: Vec<_> = health_checkers.values().flatten().cloned().collect();
+            tokio::spawn(health_check_task(all, cancel_token));
         }
 
         let firehose_adapters = adapters
@@ -388,13 +396,22 @@ impl Networks {
             .flat_map(|eth_c| eth_c.call_only.clone())
             .collect_vec();
 
+        let chain_checkers: std::collections::HashMap<String, Arc<Health>> = self
+            .health_checkers
+            .get(&chain_id)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|h| (h.provider().to_string(), h))
+            .collect();
+
         EthereumNetworkAdapters::new(
             chain_id,
             self.rpc_provider_manager.clone(),
             eth_adapters,
             None,
             self.weighted_rpc_steering,
-            self.health_checkers.clone(),
+            chain_checkers,
         )
     }
 }
