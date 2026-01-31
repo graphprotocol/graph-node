@@ -329,24 +329,8 @@ where
             block_stream.next().await
         };
 
-        // Check for cancellation after receiving the event
         if self.is_canceled() {
-            if self.ctx.instances.contains(&self.inputs.deployment.id) {
-                warn!(
-                    self.logger,
-                    "Terminating the subgraph runner because a newer one is active. \
-                     Possible reassignment detected while the runner was in a non-cancellable pending state",
-                );
-                return Err(SubgraphRunnerError::Duplicate);
-            }
-
-            warn!(
-                self.logger,
-                "Terminating the subgraph runner because subgraph was unassigned",
-            );
-            return Ok(RunnerState::Stopped {
-                reason: StopReason::Unassigned,
-            });
+            return self.cancel();
         }
 
         match event {
@@ -393,6 +377,24 @@ where
                 reason: StopReason::StreamEnded,
             }),
         }
+    }
+
+    fn cancel(&mut self) -> Result<RunnerState<C>, SubgraphRunnerError> {
+        if self.ctx.instances.contains(&self.inputs.deployment.id) {
+            warn!(
+                self.logger,
+                "Terminating the subgraph runner because a newer one is active. \
+                     Possible reassignment detected while the runner was in a non-cancellable pending state",
+            );
+            return Err(SubgraphRunnerError::Duplicate);
+        }
+        warn!(
+            self.logger,
+            "Terminating the subgraph runner because subgraph was unassigned",
+        );
+        Ok(RunnerState::Stopped {
+            reason: StopReason::Unassigned,
+        })
     }
 
     /// Construct a SubgraphError and mark the subgraph as failed in the store.
@@ -601,24 +603,8 @@ where
 
         self.update_deployment_synced_metric();
 
-        // Check for cancellation
         if self.is_canceled() {
-            if self.ctx.instances.contains(&self.inputs.deployment.id) {
-                warn!(
-                    self.logger,
-                    "Terminating the subgraph runner because a newer one is active. \
-                     Possible reassignment detected while the runner was in a non-cancellable pending state",
-                );
-                return Err(SubgraphRunnerError::Duplicate);
-            }
-
-            warn!(
-                self.logger,
-                "Terminating the subgraph runner because subgraph was unassigned",
-            );
-            return Ok(RunnerState::Stopped {
-                reason: StopReason::Unassigned,
-            });
+            return self.cancel();
         }
 
         self.metrics
