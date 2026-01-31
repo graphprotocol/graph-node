@@ -25,7 +25,7 @@ use graph::components::{
     subgraph::{MappingError, PoICausalityRegion, ProofOfIndexing, SharedProofOfIndexing},
 };
 use graph::data::store::scalar::Bytes;
-use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth};
+use graph::data::subgraph::schema::SubgraphError;
 use graph::data_source::{
     offchain, CausalityRegion, DataSource, DataSourceCreationError, TriggerData,
 };
@@ -373,17 +373,7 @@ where
                         msg
                     );
 
-                    self.inputs
-                        .store
-                        .fail_subgraph(SubgraphError {
-                            subgraph_id: self.inputs.deployment.hash.clone(),
-                            message: msg.clone(),
-                            block_ptr: None,
-                            handler: None,
-                            deterministic: true,
-                        })
-                        .await
-                        .context("Failed to set subgraph status to `failed`")?;
+                    self.fail_subgraph(msg.clone(), None, true).await?;
 
                     return Ok(RunnerState::Stopped {
                         reason: StopReason::DeterministicError,
@@ -403,6 +393,28 @@ where
                 reason: StopReason::StreamEnded,
             }),
         }
+    }
+
+    /// Construct a SubgraphError and mark the subgraph as failed in the store.
+    async fn fail_subgraph(
+        &mut self,
+        message: String,
+        block_ptr: Option<BlockPtr>,
+        deterministic: bool,
+    ) -> Result<(), SubgraphRunnerError> {
+        let error = SubgraphError {
+            subgraph_id: self.inputs.deployment.hash.clone(),
+            message,
+            block_ptr,
+            handler: None,
+            deterministic,
+        };
+        self.inputs
+            .store
+            .fail_subgraph(error)
+            .await
+            .context("Failed to set subgraph status to `failed`")?;
+        Ok(())
     }
 
     /// Handle a restart by potentially restarting the store and starting a new block stream.
@@ -1398,22 +1410,7 @@ where
                     let message = format!("{:#}", e).replace('\n', "\t");
                     let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
 
-                    let error = SubgraphError {
-                        subgraph_id: self.inputs.deployment.hash.clone(),
-                        message,
-                        block_ptr: Some(block_ptr),
-                        handler: None,
-                        deterministic: true,
-                    };
-
-                    // Fail subgraph:
-                    // - Change status/health.
-                    // - Save the error to the database.
-                    self.inputs
-                        .store
-                        .fail_subgraph(error)
-                        .await
-                        .context("Failed to set subgraph status to `failed`")?;
+                    self.fail_subgraph(message, Some(block_ptr), true).await?;
 
                     Err(err)
                 }
@@ -1431,37 +1428,18 @@ where
 
                     let message = format!("{:#}", e).replace('\n', "\t");
 
-                    let error = SubgraphError {
-                        subgraph_id: self.inputs.deployment.hash.clone(),
-                        message: message.clone(),
-                        block_ptr: Some(block_ptr),
-                        handler: None,
-                        deterministic: false,
-                    };
+                    error!(self.logger, "Subgraph failed with non-deterministic error: {}", message;
+                        "attempt" => self.state.backoff.attempt,
+                        "retry_delay_s" => self.state.backoff.delay().as_secs());
 
                     // Shouldn't fail subgraph if it's already failed for non-deterministic
                     // reasons.
                     //
                     // If we don't do this check we would keep adding the same error to the
                     // database.
-                    let should_fail_subgraph =
-                        self.inputs.store.health().await? != SubgraphHealth::Failed;
-
-                    if should_fail_subgraph {
-                        // Fail subgraph:
-                        // - Change status/health.
-                        // - Save the error to the database.
-                        self.inputs
-                            .store
-                            .fail_subgraph(error)
-                            .await
-                            .context("Failed to set subgraph status to `failed`")?;
+                    if !self.inputs.store.health().await?.is_failed() {
+                        self.fail_subgraph(message, Some(block_ptr), false).await?;
                     }
-
-                    // Retry logic below:
-                    error!(self.logger, "Subgraph failed with non-deterministic error: {}", message;
-                        "attempt" => self.state.backoff.attempt,
-                        "retry_delay_s" => self.state.backoff.delay().as_secs());
 
                     // Sleep before restarting.
                     self.state.backoff.sleep_async().await;
