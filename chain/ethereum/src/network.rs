@@ -14,6 +14,7 @@ use graph::prelude::rand::{
     Rng,
 };
 use itertools::Itertools;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub use graph::impl_slog_value;
@@ -29,7 +30,7 @@ pub const DEFAULT_ADAPTER_ERROR_RETEST_PERCENT: f64 = 0.2;
 pub struct EthereumNetworkAdapter {
     endpoint_metrics: Arc<EndpointMetrics>,
     pub capabilities: NodeCapabilities,
-    pub adapter: Arc<EthereumAdapter>,
+    adapter: Arc<EthereumAdapter>,
     /// The maximum number of times this adapter can be used. We use the
     /// strong_count on `adapter` to determine whether the adapter is above
     /// that limit. That's a somewhat imprecise but convenient way to
@@ -70,6 +71,10 @@ impl EthereumNetworkAdapter {
         }
     }
 
+    pub fn adapter(&self) -> &Arc<EthereumAdapter> {
+        &self.adapter
+    }
+
     #[cfg(debug_assertions)]
     fn is_call_only(&self) -> bool {
         self.adapter.is_call_only()
@@ -97,7 +102,7 @@ pub struct EthereumNetworkAdapters {
     // Percentage of request that should be used to retest errored adapters.
     retest_percent: f64,
     weighted: bool,
-    health_checkers: Vec<Arc<Health>>,
+    health_checkers: HashMap<String, Arc<Health>>,
 }
 
 impl EthereumNetworkAdapters {
@@ -108,7 +113,7 @@ impl EthereumNetworkAdapters {
             call_only_adapters: vec![],
             retest_percent: DEFAULT_ADAPTER_ERROR_RETEST_PERCENT,
             weighted: false,
-            health_checkers: vec![],
+            health_checkers: HashMap::new(),
         }
     }
 
@@ -135,7 +140,7 @@ impl EthereumNetworkAdapters {
             ProviderCheckStrategy::MarkAsValid,
         );
 
-        Self::new(chain_id, provider, call_only, None, false, vec![])
+        Self::new(chain_id, provider, call_only, None, false, HashMap::new())
     }
 
     pub fn new(
@@ -144,7 +149,7 @@ impl EthereumNetworkAdapters {
         call_only_adapters: Vec<EthereumNetworkAdapter>,
         retest_percent: Option<f64>,
         weighted: bool,
-        health_checkers: Vec<Arc<Health>>,
+        health_checkers: HashMap<String, Arc<Health>>,
     ) -> Self {
         #[cfg(debug_assertions)]
         call_only_adapters.iter().for_each(|a| {
@@ -233,7 +238,7 @@ impl EthereumNetworkAdapters {
                 .max_by_key(|a| a.current_error_count())
                 .filter(|a| a.current_error_count() > 0)
             {
-                return Ok(most_errored.adapter.clone());
+                return Ok(most_errored.adapter().clone());
             }
         }
 
@@ -267,29 +272,21 @@ impl EthereumNetworkAdapters {
         input: &[&EthereumNetworkAdapter],
         required_capabilities: &NodeCapabilities,
     ) -> Result<Arc<EthereumAdapter>, Error> {
-        if input.is_empty() {
-            return Err(anyhow!(
-                "A matching Ethereum network with {:?} was not found.",
-                required_capabilities
-            ));
-        }
-
         let weights: Vec<_> = input
             .iter()
             .map(|a| {
-                let health_checker = self
+                let score = self
                     .health_checkers
-                    .iter()
-                    .find(|h| h.provider() == a.provider());
-                let score = health_checker.map_or(1.0, |h| h.score());
+                    .get(a.provider())
+                    .map_or(1.0, |h| h.score());
                 a.weight * score
             })
             .collect();
         if let Ok(dist) = WeightedIndex::new(&weights) {
             let idx = dist.sample(&mut rand::rng());
-            Ok(input[idx].adapter.clone())
+            Ok(input[idx].adapter().clone())
         } else {
-            // Fallback to random selection if weights are invalid
+            // Fallback to random selection if weights are invalid (e.g., all zeros or empty)
             Self::select_random_adapter(input, required_capabilities)
         }
     }
@@ -303,12 +300,9 @@ impl EthereumNetworkAdapters {
         input: &[&EthereumNetworkAdapter],
         required_capabilities: &NodeCapabilities,
     ) -> Result<Arc<EthereumAdapter>, Error> {
-        let choices = input
-            .iter()
-            .copied()
-            .choose_multiple(&mut rand::rng(), 3);
+        let choices = input.iter().copied().choose_multiple(&mut rand::rng(), 3);
         if let Some(adapter) = choices.iter().min_by_key(|a| a.current_error_count()) {
-            Ok(adapter.adapter.clone())
+            Ok(adapter.adapter().clone())
         } else {
             Err(anyhow!(
                 "A matching Ethereum network with {:?} was not found.",
@@ -349,7 +343,7 @@ impl EthereumNetworkAdapters {
             .await
             .map(|mut adapters| adapters.next())
             .unwrap_or_default()
-            .map(|ethereum_network_adapter| ethereum_network_adapter.adapter.clone())
+            .map(|ethereum_network_adapter| ethereum_network_adapter.adapter().clone())
     }
 
     /// call_or_cheapest will bypass ProviderManagers' validation in order to remain non async.
@@ -381,21 +375,21 @@ impl EthereumNetworkAdapters {
         let adapters = self
             .call_only_adapters
             .iter()
-            .min_by_key(|x| Arc::strong_count(&x.adapter))
+            .min_by_key(|x| Arc::strong_count(x.adapter()))
             .ok_or(anyhow!("no available call only endpoints"))?;
 
         // TODO: This will probably blow up a lot sooner than [limit] amount of
         // subgraphs, since we probably use a few instances.
         if !adapters
             .limit
-            .has_capacity(Arc::strong_count(&adapters.adapter))
+            .has_capacity(Arc::strong_count(adapters.adapter()))
         {
             bail!("call only adapter has reached the concurrency limit");
         }
 
         // Cloning here ensure we have the correct count at any given time, if we return a reference it can be cloned later
         // which could cause a high number of endpoints to be given away before accounting for them.
-        Ok(Some(adapters.adapter.clone()))
+        Ok(Some(adapters.adapter().clone()))
     }
 }
 
@@ -413,6 +407,7 @@ mod tests {
     use graph::{
         endpoint::EndpointMetrics, firehose::SubgraphLimit, prelude::MetricsRegistry, url::Url,
     };
+    use std::collections::HashMap;
     use std::sync::Arc;
 
     use crate::{
@@ -823,26 +818,26 @@ mod tests {
                 SubgraphLimit::Unlimited
             };
 
-            no_retest_adapters.push(EthereumNetworkAdapter {
-                endpoint_metrics: metrics.clone(),
-                capabilities: NodeCapabilities {
+            no_retest_adapters.push(EthereumNetworkAdapter::new(
+                metrics.clone(),
+                NodeCapabilities {
                     archive: true,
                     traces: false,
                 },
-                adapter: adapter.clone(),
-                limit: limit.clone(),
-                weight: 1.0,
-            });
-            always_retest_adapters.push(EthereumNetworkAdapter {
-                endpoint_metrics: metrics.clone(),
-                capabilities: NodeCapabilities {
+                adapter.clone(),
+                limit.clone(),
+                1.0,
+            ));
+            always_retest_adapters.push(EthereumNetworkAdapter::new(
+                metrics.clone(),
+                NodeCapabilities {
                     archive: true,
                     traces: false,
                 },
                 adapter,
                 limit,
-                weight: 1.0,
-            });
+                1.0,
+            ));
         });
         let manager = ProviderManager::<EthereumNetworkAdapter>::new(
             logger,
@@ -864,7 +859,7 @@ mod tests {
             vec![],
             Some(0f64),
             false,
-            vec![],
+            HashMap::new(),
         );
 
         let always_retest_adapters = EthereumNetworkAdapters::new(
@@ -873,7 +868,7 @@ mod tests {
             vec![],
             Some(1f64),
             false,
-            vec![],
+            HashMap::new(),
         );
 
         assert_eq!(
@@ -921,26 +916,25 @@ mod tests {
         metrics.report_for_test(&ProviderName::from(error_provider), false);
 
         let mut no_retest_adapters = vec![];
-        no_retest_adapters.push(EthereumNetworkAdapter {
-            endpoint_metrics: metrics.clone(),
-            capabilities: NodeCapabilities {
+        no_retest_adapters.push(EthereumNetworkAdapter::new(
+            metrics.clone(),
+            NodeCapabilities {
                 archive: true,
                 traces: false,
             },
-            adapter: fake_adapter(&logger, error_provider, &provider_metrics, &metrics, false)
-                .await,
-            limit: SubgraphLimit::Unlimited,
-            weight: 1.0,
-        });
+            fake_adapter(&logger, error_provider, &provider_metrics, &metrics, false).await,
+            SubgraphLimit::Unlimited,
+            1.0,
+        ));
 
         let mut always_retest_adapters = vec![];
-        always_retest_adapters.push(EthereumNetworkAdapter {
-            endpoint_metrics: metrics.clone(),
-            capabilities: NodeCapabilities {
+        always_retest_adapters.push(EthereumNetworkAdapter::new(
+            metrics.clone(),
+            NodeCapabilities {
                 archive: true,
                 traces: false,
             },
-            adapter: fake_adapter(
+            fake_adapter(
                 &logger,
                 no_error_provider,
                 &provider_metrics,
@@ -948,9 +942,9 @@ mod tests {
                 false,
             )
             .await,
-            limit: SubgraphLimit::Unlimited,
-            weight: 1.0,
-        });
+            SubgraphLimit::Unlimited,
+            1.0,
+        ));
         let manager = ProviderManager::<EthereumNetworkAdapter>::new(
             logger.clone(),
             always_retest_adapters
@@ -966,7 +960,7 @@ mod tests {
             vec![],
             Some(1f64),
             false,
-            vec![],
+            HashMap::new(),
         );
 
         assert_eq!(
@@ -996,7 +990,7 @@ mod tests {
             vec![],
             Some(0f64),
             false,
-            vec![],
+            HashMap::new(),
         );
         assert_eq!(
             no_retest_adapters
@@ -1011,13 +1005,13 @@ mod tests {
         );
 
         let mut no_available_adapter = vec![];
-        no_available_adapter.push(EthereumNetworkAdapter {
-            endpoint_metrics: metrics.clone(),
-            capabilities: NodeCapabilities {
+        no_available_adapter.push(EthereumNetworkAdapter::new(
+            metrics.clone(),
+            NodeCapabilities {
                 archive: true,
                 traces: false,
             },
-            adapter: fake_adapter(
+            fake_adapter(
                 &logger,
                 no_error_provider,
                 &provider_metrics,
@@ -1025,9 +1019,9 @@ mod tests {
                 false,
             )
             .await,
-            limit: SubgraphLimit::Disabled,
-            weight: 1.0,
-        });
+            SubgraphLimit::Disabled,
+            1.0,
+        ));
         let manager = ProviderManager::new(
             logger,
             vec![(chain_id.clone(), no_available_adapter.to_vec())].into_iter(),
@@ -1035,7 +1029,7 @@ mod tests {
         );
 
         let no_available_adapter =
-            EthereumNetworkAdapters::new(chain_id, manager, vec![], None, false, vec![]);
+            EthereumNetworkAdapters::new(chain_id, manager, vec![], None, false, HashMap::new());
         let res = no_available_adapter
             .cheapest_with(&NodeCapabilities {
                 archive: true,
@@ -1141,7 +1135,20 @@ mod tests {
         let health_checker1 = Arc::new(Health::new(adapter1.clone()));
         let health_checker2 = Arc::new(Health::new(adapter2.clone()));
 
-        adapters.health_checkers = vec![health_checker1.clone(), health_checker2.clone()];
+        // Verify health checkers start with a perfect score of 1.0
+        assert_eq!(health_checker1.score(), 1.0);
+        assert_eq!(health_checker2.score(), 1.0);
+
+        let mut health_map = HashMap::new();
+        health_map.insert(
+            health_checker1.provider().to_string(),
+            health_checker1.clone(),
+        );
+        health_map.insert(
+            health_checker2.provider().to_string(),
+            health_checker2.clone(),
+        );
+        adapters.health_checkers = health_map;
         adapters.weighted = true;
 
         let mut adapter1_count = 0;
