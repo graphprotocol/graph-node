@@ -57,7 +57,7 @@ use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 
@@ -1129,6 +1129,16 @@ impl EthereumAdapter {
         // the same block number.
         debug!(&logger, "Requesting hashes for blocks {:?}", blocks);
         Box::new(self.load_block_ptrs_rpc(logger, blocks).collect())
+    }
+
+    /// Lightweight health check that calls `eth_blockNumber` with a fixed 5s timeout.
+    pub async fn health_check(&self) -> Result<u64, Error> {
+        let alloy = self.alloy.clone();
+        tokio::time::timeout(Duration::from_secs(5), async move {
+            alloy.get_block_number().await.map_err(Error::from)
+        })
+        .await
+        .map_err(|_| anyhow!("health check timed out"))?
     }
 
     pub async fn chain_id(&self) -> Result<u64, Error> {
