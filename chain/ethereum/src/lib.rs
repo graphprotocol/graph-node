@@ -14,7 +14,7 @@ mod transport;
 pub use self::capabilities::NodeCapabilities;
 pub use self::ethereum_adapter::EthereumAdapter;
 pub use self::runtime::RuntimeAdapter;
-pub use self::transport::Transport;
+pub use self::transport::{Compression, Transport};
 pub use env::ENV_VARS;
 
 pub use buffered_call_cache::BufferedCallCache;

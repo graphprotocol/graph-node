@@ -2,7 +2,6 @@ use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
     components::network_provider::ChainName,
-    endpoint::Compression,
     env::ENV_VARS,
     firehose::{SubgraphLimit, SUBGRAPHS_PER_CONN},
     itertools::Itertools,
@@ -18,7 +17,7 @@ use graph::{
     },
 };
 use graph_chain_ethereum as ethereum;
-use graph_chain_ethereum::NodeCapabilities;
+use graph_chain_ethereum::{Compression, NodeCapabilities};
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use graph::http::{HeaderMap, Uri};
@@ -517,7 +516,6 @@ impl ChainSection {
                         features,
                         headers: Default::default(),
                         rules: vec![],
-                        compression: Compression::None,
                     }),
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
@@ -696,10 +694,6 @@ pub struct Web3Provider {
 
     #[serde(default, rename = "match")]
     rules: Vec<Web3Rule>,
-
-    /// Compression method for RPC requests and responses
-    #[serde(default)]
-    pub compression: Compression,
 }
 
 impl Web3Provider {
@@ -707,6 +701,18 @@ impl Web3Provider {
         NodeCapabilities {
             archive: self.features.contains("archive"),
             traces: self.features.contains("traces"),
+        }
+    }
+
+    pub fn compression(&self) -> Compression {
+        if self.features.contains("compression/gzip") {
+            Compression::Gzip
+        } else if self.features.contains("compression/brotli") {
+            Compression::Brotli
+        } else if self.features.contains("compression/deflate") {
+            Compression::Deflate
+        } else {
+            Compression::None
         }
     }
 
@@ -721,7 +727,15 @@ impl Web3Provider {
 /// - `no_eip1898`: Provider doesn't support EIP-1898 (block parameter by hash/number object)
 /// - `no_eip2718`: Provider doesn't return the `type` field in transaction receipts.
 ///   When set, receipts are patched to add `"type": "0x0"` for legacy transaction compatibility.
-const PROVIDER_FEATURES: [&str; 4] = ["traces", "archive", "no_eip1898", "no_eip2718"];
+const PROVIDER_FEATURES: [&str; 7] = [
+    "traces",
+    "archive",
+    "no_eip1898",
+    "no_eip2718",
+    "compression/gzip",
+    "compression/brotli",
+    "compression/deflate",
+];
 const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
 
 impl Provider {
@@ -780,6 +794,18 @@ impl Provider {
                             PROVIDER_FEATURES.join(", ")
                         ));
                     }
+                }
+
+                let compression_count = web3
+                    .features
+                    .iter()
+                    .filter(|f| f.starts_with("compression/"))
+                    .count();
+                if compression_count > 1 {
+                    return Err(anyhow!(
+                        "at most one compression method allowed for provider {}",
+                        self.label
+                    ));
                 }
 
                 web3.url = shellexpand::env(&web3.url)?.into_owned();
@@ -897,7 +923,6 @@ impl<'de> Deserialize<'de> for Provider {
                             .ok_or_else(|| serde::de::Error::missing_field("features"))?,
                         headers: headers.unwrap_or_else(HeaderMap::new),
                         rules: nodes,
-                        compression: Compression::None,
                     }),
                 };
 
@@ -1210,11 +1235,11 @@ mod tests {
         Chain, Config, FirehoseProvider, Provider, ProviderDetails, Shard, Transport, Web3Provider,
     };
     use graph::blockchain::BlockchainKind;
-    use graph::endpoint::Compression;
     use graph::firehose::SubgraphLimit;
     use graph::http::{HeaderMap, HeaderValue};
     use graph::prelude::regex::Regex;
     use graph::prelude::{toml, NodeId};
+    use graph_chain_ethereum::Compression;
     use std::collections::BTreeSet;
     use std::fs::read_to_string;
     use std::path::{Path, PathBuf};
@@ -1299,7 +1324,6 @@ mod tests {
                     features: BTreeSet::new(),
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
-                    compression: Compression::None,
                 }),
             },
             actual
@@ -1326,7 +1350,6 @@ mod tests {
                     features: BTreeSet::new(),
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
-                    compression: Compression::None,
                 }),
             },
             actual
@@ -1388,7 +1411,6 @@ mod tests {
                     features,
                     headers,
                     rules: Vec::new(),
-                    compression: Compression::None,
                 }),
             },
             actual
@@ -1414,7 +1436,6 @@ mod tests {
                     features: BTreeSet::new(),
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
-                    compression: Compression::None,
                 }),
             },
             actual
@@ -1625,7 +1646,6 @@ mod tests {
                     features: BTreeSet::new(),
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
-                    compression: Compression::None,
                 }),
             },
             actual
@@ -1639,14 +1659,18 @@ mod tests {
     }
 
     #[test]
-    fn it_parses_web3_provider_with_compression() {
-        let actual = toml::from_str(
+    fn it_parses_web3_provider_with_gzip_compression_feature() {
+        let actual: Provider = toml::from_str(
             r#"
             label = "compressed"
-            details = { type = "web3", url = "http://localhost:8545", features = ["archive"], compression = "gzip" }
+            details = { type = "web3", url = "http://localhost:8545", features = ["archive", "compression/gzip"] }
         "#,
         )
         .unwrap();
+
+        let mut features = BTreeSet::new();
+        features.insert("archive".to_string());
+        features.insert("compression/gzip".to_string());
 
         assert_eq!(
             Provider {
@@ -1654,47 +1678,94 @@ mod tests {
                 details: ProviderDetails::Web3(Web3Provider {
                     transport: Transport::Rpc,
                     url: "http://localhost:8545".to_owned(),
-                    features: {
-                        let mut features = BTreeSet::new();
-                        features.insert("archive".to_string());
-                        features
-                    },
+                    features,
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
-                    compression: Compression::Gzip,
                 }),
             },
             actual
         );
+
+        match actual.details {
+            ProviderDetails::Web3(ref web3) => {
+                assert_eq!(web3.compression(), Compression::Gzip);
+            }
+            _ => panic!("expected Web3 provider"),
+        }
     }
 
     #[test]
-    fn it_parses_web3_provider_with_no_compression() {
-        let actual = toml::from_str(
+    fn it_parses_web3_provider_with_brotli_compression_feature() {
+        let actual: Provider = toml::from_str(
             r#"
-            label = "uncompressed"
-            details = { type = "web3", url = "http://localhost:8545", features = ["archive"], compression = "none" }
+            label = "compressed"
+            details = { type = "web3", url = "http://localhost:8545", features = ["archive", "compression/brotli"] }
         "#,
         )
         .unwrap();
 
-        assert_eq!(
-            Provider {
-                label: "uncompressed".to_owned(),
-                details: ProviderDetails::Web3(Web3Provider {
-                    transport: Transport::Rpc,
-                    url: "http://localhost:8545".to_owned(),
-                    features: {
-                        let mut features = BTreeSet::new();
-                        features.insert("archive".to_string());
-                        features
-                    },
-                    headers: HeaderMap::new(),
-                    rules: Vec::new(),
-                    compression: Compression::None,
-                }),
-            },
-            actual
+        match actual.details {
+            ProviderDetails::Web3(ref web3) => {
+                assert_eq!(web3.compression(), Compression::Brotli);
+            }
+            _ => panic!("expected Web3 provider"),
+        }
+    }
+
+    #[test]
+    fn it_parses_web3_provider_with_deflate_compression_feature() {
+        let actual: Provider = toml::from_str(
+            r#"
+            label = "compressed"
+            details = { type = "web3", url = "http://localhost:8545", features = ["archive", "compression/deflate"] }
+        "#,
+        )
+        .unwrap();
+
+        match actual.details {
+            ProviderDetails::Web3(ref web3) => {
+                assert_eq!(web3.compression(), Compression::Deflate);
+            }
+            _ => panic!("expected Web3 provider"),
+        }
+    }
+
+    #[test]
+    fn it_parses_web3_provider_without_compression_feature() {
+        let actual: Provider = toml::from_str(
+            r#"
+            label = "uncompressed"
+            details = { type = "web3", url = "http://localhost:8545", features = ["archive"] }
+        "#,
+        )
+        .unwrap();
+
+        match actual.details {
+            ProviderDetails::Web3(ref web3) => {
+                assert_eq!(web3.compression(), Compression::None);
+            }
+            _ => panic!("expected Web3 provider"),
+        }
+    }
+
+    #[test]
+    fn it_rejects_multiple_compression_features() {
+        let mut actual: Provider = toml::from_str(
+            r#"
+            label = "multi-comp"
+            details = { type = "web3", url = "http://localhost:8545", features = ["compression/gzip", "compression/brotli"] }
+        "#,
+        )
+        .unwrap();
+
+        let err = actual.validate();
+        assert!(err.is_err());
+        let err = err.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("at most one compression method allowed"),
+            "result: {:?}",
+            err
         );
     }
 

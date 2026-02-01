@@ -314,7 +314,7 @@ mod tests {
     use graph::components::network_provider::ProviderManager;
     use graph::components::network_provider::ProviderName;
     use graph::data::value::Word;
-    use graph::endpoint::Compression;
+
     use graph::http::HeaderMap;
     use graph::{
         endpoint::EndpointMetrics,
@@ -325,7 +325,9 @@ mod tests {
     };
     use std::sync::Arc;
 
-    use crate::{EthereumAdapter, EthereumAdapterTrait, ProviderEthRpcMetrics, Transport};
+    use crate::{
+        Compression, EthereumAdapter, EthereumAdapterTrait, ProviderEthRpcMetrics, Transport,
+    };
 
     use super::{EthereumNetworkAdapter, EthereumNetworkAdapters, NodeCapabilities};
 

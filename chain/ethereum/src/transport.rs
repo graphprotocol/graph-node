@@ -1,6 +1,6 @@
 use alloy::transports::{TransportError, TransportErrorKind, TransportFut};
 use graph::components::network_provider::ProviderName;
-use graph::endpoint::{Compression, ConnectionType, EndpointMetrics, RequestLabels};
+use graph::endpoint::{ConnectionType, EndpointMetrics, RequestLabels};
 use graph::prelude::alloy::rpc::json_rpc::{RequestPacket, ResponsePacket};
 use graph::prelude::alloy::transports::{ipc::IpcConnect, ws::WsConnect};
 use graph::prelude::*;
@@ -9,6 +9,27 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tower::Service;
+
+/// Compression method for RPC requests.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Compression {
+    #[default]
+    None,
+    Gzip,
+    Brotli,
+    Deflate,
+}
+
+impl std::fmt::Display for Compression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Compression::None => write!(f, "none"),
+            Compression::Gzip => write!(f, "gzip"),
+            Compression::Brotli => write!(f, "brotli"),
+            Compression::Deflate => write!(f, "deflate"),
+        }
+    }
+}
 
 /// Abstraction over different transport types for Alloy providers.
 #[derive(Clone, Debug)]
@@ -53,8 +74,17 @@ impl Transport {
     ) -> Self {
         let mut client_builder = reqwest::Client::builder().default_headers(headers);
 
-        if matches!(compression, Compression::Gzip) {
-            client_builder = client_builder.gzip(true);
+        match compression {
+            Compression::None => {}
+            Compression::Gzip => {
+                client_builder = client_builder.gzip(true);
+            }
+            Compression::Brotli => {
+                client_builder = client_builder.brotli(true);
+            }
+            Compression::Deflate => {
+                client_builder = client_builder.deflate(true);
+            }
         }
 
         let client = client_builder.build().expect("Failed to build HTTP client");
