@@ -363,7 +363,7 @@ impl TestContext {
 
     pub fn rewind(&self, block_ptr_to: BlockPtr) {
         self.store
-            .rewind(self.deployment.hash.clone(), block_ptr_to)
+            .rewind(self.deployment.id.into(), block_ptr_to)
             .unwrap()
     }
 }
