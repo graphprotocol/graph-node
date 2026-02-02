@@ -709,7 +709,13 @@ impl Web3Provider {
     }
 }
 
-const PROVIDER_FEATURES: [&str; 3] = ["traces", "archive", "no_eip1898"];
+/// Supported provider features:
+/// - `traces`: Provider supports debug_traceBlockByNumber for call tracing
+/// - `archive`: Provider is an archive node with full historical state
+/// - `no_eip1898`: Provider doesn't support EIP-1898 (block parameter by hash/number object)
+/// - `no_eip2718`: Provider doesn't return the `type` field in transaction receipts.
+///   When set, receipts are patched to add `"type": "0x0"` for legacy transaction compatibility.
+const PROVIDER_FEATURES: [&str; 4] = ["traces", "archive", "no_eip1898", "no_eip2718"];
 const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
 
 impl Provider {

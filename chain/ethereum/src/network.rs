@@ -394,6 +394,7 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            false,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -497,6 +498,7 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            false,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -568,6 +570,7 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            false,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -632,6 +635,7 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            false,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -919,6 +923,7 @@ mod tests {
             HeaderMap::new(),
             endpoint_metrics.clone(),
             "",
+            false,
         );
 
         Arc::new(
