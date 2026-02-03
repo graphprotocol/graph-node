@@ -196,6 +196,14 @@ pub fn prompt_index_events() -> Result<bool> {
         .map_err(Into::into)
 }
 
+/// Prompt for whether to add another contract to the subgraph.
+pub fn prompt_add_another_contract(network: &str) -> Result<bool> {
+    Confirm::new(&format!("Add another contract from {}?", network))
+        .with_default(false)
+        .prompt()
+        .map_err(Into::into)
+}
+
 /// Prompt for the source type (contract, example, subgraph).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SourceType {

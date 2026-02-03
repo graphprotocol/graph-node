@@ -17,11 +17,13 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
 use graphql_parser::schema as gql;
 
+use crate::commands::add::{run_add, AddOpt};
 use crate::config::networks::update_networks_file;
 use crate::output::{step, with_spinner, Step};
 use crate::prompt::{
-    get_subgraph_basename, prompt_directory_with_confirm, prompt_subgraph_slug_with_confirm,
-    InitForm, SourceType,
+    get_subgraph_basename, prompt_add_another_contract, prompt_contract_address,
+    prompt_contract_name, prompt_directory_with_confirm, prompt_start_block,
+    prompt_subgraph_slug_with_confirm, InitForm, SourceType,
 };
 use crate::scaffold::{generate_scaffold, init_git, install_dependencies, ScaffoldOptions};
 use crate::services::{ContractInfo, ContractService, IpfsClient, NetworksRegistry};
@@ -387,6 +389,11 @@ async fn init_from_contract(opt: &InitOpt) -> Result<()> {
         &format!("Subgraph created at {}", directory.display()),
     );
 
+    // Prompt to add more contracts if in interactive mode
+    if io::stdin().is_terminal() {
+        add_more_contracts_loop(&directory, network).await?;
+    }
+
     println!();
     println!("Next steps:");
     println!("  cd {}", directory.display());
@@ -394,6 +401,73 @@ async fn init_from_contract(opt: &InitOpt) -> Result<()> {
     println!("  gnd build");
 
     Ok(())
+}
+
+/// Loop to add more contracts interactively.
+async fn add_more_contracts_loop(directory: &Path, network: &str) -> Result<()> {
+    while prompt_add_another_contract(network)? {
+        // Prompt for contract address
+        let address = prompt_contract_address()?;
+
+        // Fetch contract info to get defaults
+        let fetched_info = fetch_contract_info_for_add(network, &address).await;
+
+        // Prompt for contract name with fetched default
+        let default_name = fetched_info.as_ref().map(|i| i.name.as_str());
+        let contract_name = prompt_contract_name(default_name)?;
+
+        // Prompt for start block with fetched default
+        let default_start_block = fetched_info.as_ref().and_then(|i| i.start_block);
+        let start_block = prompt_start_block(default_start_block)?;
+
+        // Run the add command
+        let add_opt = AddOpt {
+            address,
+            manifest: directory.join("subgraph.yaml"),
+            abi: None,
+            contract_name: Some(contract_name),
+            merge_entities: true, // Merge by default when adding during init
+            network_file: PathBuf::from("networks.json"),
+            start_block: start_block.map(|b| b.to_string()),
+        };
+
+        if let Err(e) = run_add(add_opt).await {
+            eprintln!("Warning: Failed to add contract: {}", e);
+            // Continue the loop to allow trying again or adding a different contract
+        }
+    }
+
+    Ok(())
+}
+
+/// Fetch contract info for the add-another-contract flow.
+async fn fetch_contract_info_for_add(network: &str, address: &str) -> Option<ContractInfo> {
+    step(
+        Step::Load,
+        &format!("Fetching contract info for {} on {}", address, network),
+    );
+
+    let service = match ContractService::load().await {
+        Ok(s) => s,
+        Err(e) => {
+            step(
+                Step::Warn,
+                &format!("Could not load contract service: {}", e),
+            );
+            return None;
+        }
+    };
+
+    match service.get_contract_info(network, address).await {
+        Ok(info) => {
+            step(Step::Done, &format!("Found contract: {}", info.name));
+            Some(info)
+        }
+        Err(e) => {
+            step(Step::Warn, &format!("Could not fetch contract info: {}", e));
+            None
+        }
+    }
 }
 
 /// Recursively copy a directory and its contents.
