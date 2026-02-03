@@ -395,9 +395,16 @@ pub struct InitForm {
     pub source_type: SourceType,
     pub contract_address: Option<String>,
     pub contract_name: String,
+    /// User-confirmed start block. May differ from the fetched default in
+    /// `contract_info` if the user modified it when prompted.
     pub start_block: Option<u64>,
     pub index_events: bool,
     pub abi_path: Option<String>,
+    /// Cached contract info fetched during interactive prompts, to avoid
+    /// re-fetching. Primarily used for the ABI; the `start_block` here is
+    /// the original fetched value before user confirmation (use
+    /// `self.start_block` for the final value).
+    pub contract_info: Option<ContractInfo>,
 }
 
 impl InitForm {
@@ -454,6 +461,7 @@ impl InitForm {
                 start_block: None,
                 index_events: false,
                 abi_path: None,
+                contract_info: None,
             });
         }
 
@@ -544,6 +552,7 @@ impl InitForm {
             start_block,
             index_events,
             abi_path,
+            contract_info: fetched_info,
         })
     }
 }

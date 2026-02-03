@@ -146,7 +146,7 @@ pub async fn run_init(opt: InitOpt) -> Result<()> {
     };
 
     match source {
-        ScaffoldSource::Contract => init_from_contract(&opt).await,
+        ScaffoldSource::Contract => init_from_contract(&opt, None).await,
         ScaffoldSource::Example => init_from_example(&opt),
         ScaffoldSource::Subgraph => init_from_subgraph(&opt).await,
     }
@@ -232,7 +232,7 @@ async fn run_interactive(opt: InitOpt) -> Result<()> {
                 skip_git: opt.skip_git,
                 ..Default::default()
             };
-            init_from_contract(&contract_opt).await
+            init_from_contract(&contract_opt, form.contract_info).await
         }
     }
 }
@@ -244,7 +244,10 @@ enum ScaffoldSource {
 }
 
 /// Initialize a subgraph from a contract address.
-async fn init_from_contract(opt: &InitOpt) -> Result<()> {
+///
+/// If `prefetched` is provided, it will be used instead of fetching contract info again.
+/// This avoids duplicate network requests when running in interactive mode.
+async fn init_from_contract(opt: &InitOpt, prefetched: Option<ContractInfo>) -> Result<()> {
     let address = opt
         .from_contract
         .as_ref()
@@ -260,14 +263,14 @@ async fn init_from_contract(opt: &InitOpt) -> Result<()> {
 
     let network = opt.network.as_deref().unwrap_or("mainnet");
 
-    step(
-        Step::Load,
-        &format!("Fetching contract info from {} on {}", address, network),
-    );
-
     let contract_info = {
         // Load ABI from file if provided
         if let Some(abi_path) = &opt.abi {
+            step(
+                Step::Load,
+                &format!("Loading contract ABI from {}", abi_path.display()),
+            );
+
             let abi_str = fs::read_to_string(abi_path)
                 .with_context(|| format!("Failed to read ABI file: {}", abi_path.display()))?;
             let abi: serde_json::Value = serde_json::from_str(&abi_str)
@@ -294,8 +297,16 @@ async fn init_from_contract(opt: &InitOpt) -> Result<()> {
                 name,
                 start_block,
             }
+        } else if let Some(info) = prefetched {
+            // Use pre-fetched contract info from interactive prompts
+            info
         } else {
             // Fetch ABI from Etherscan/Sourcify
+            step(
+                Step::Load,
+                &format!("Fetching contract info from {} on {}", address, network),
+            );
+
             let service = ContractService::load()
                 .await
                 .context("Failed to load contract service")?;
