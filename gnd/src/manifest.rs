@@ -245,12 +245,21 @@ fn parse_abis(abis_value: Option<&serde_json::Value>) -> Vec<Abi> {
         .unwrap_or_default()
 }
 
+/// Get the directory containing a manifest file.
+///
+/// This handles the edge case where `manifest_path` is a bare filename
+/// like `"subgraph.yaml"` - in that case, `parent()` returns an empty
+/// path, so we fall back to `"."` (current directory).
+pub fn manifest_dir(manifest_path: &Path) -> &Path {
+    manifest_path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."))
+}
+
 /// Resolve a path relative to the manifest file.
 pub fn resolve_path(manifest: &Path, path: &str) -> PathBuf {
-    manifest
-        .parent()
-        .map(|p| p.join(path))
-        .unwrap_or_else(|| PathBuf::from(path))
+    manifest_dir(manifest).join(path)
 }
 
 #[cfg(test)]
@@ -259,11 +268,40 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    fn test_manifest_dir_with_directory() {
+        let manifest = PathBuf::from("/home/user/project/subgraph.yaml");
+        assert_eq!(manifest_dir(&manifest), Path::new("/home/user/project"));
+    }
+
+    #[test]
+    fn test_manifest_dir_bare_filename() {
+        // When manifest_path is just "subgraph.yaml", parent() returns Some("")
+        // which is empty, so we should fall back to "."
+        let manifest = PathBuf::from("subgraph.yaml");
+        assert_eq!(manifest_dir(&manifest), Path::new("."));
+    }
+
+    #[test]
+    fn test_manifest_dir_relative_path() {
+        let manifest = PathBuf::from("./subgraph.yaml");
+        assert_eq!(manifest_dir(&manifest), Path::new("."));
+    }
+
+    #[test]
     fn test_resolve_path() {
         let manifest = PathBuf::from("/home/user/project/subgraph.yaml");
         let path = "src/mapping.ts";
         let resolved = resolve_path(&manifest, path);
         assert_eq!(resolved, PathBuf::from("/home/user/project/src/mapping.ts"));
+    }
+
+    #[test]
+    fn test_resolve_path_bare_filename() {
+        // When manifest is just "subgraph.yaml", paths should resolve relative to "."
+        let manifest = PathBuf::from("subgraph.yaml");
+        let path = "src/mapping.ts";
+        let resolved = resolve_path(&manifest, path);
+        assert_eq!(resolved, PathBuf::from("./src/mapping.ts"));
     }
 
     #[test]

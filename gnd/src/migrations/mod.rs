@@ -74,7 +74,7 @@ fn all_migrations() -> Vec<Box<dyn Migration>> {
 pub fn apply_migrations(manifest_path: &Path) -> Result<()> {
     step(Step::Load, "Apply migrations");
 
-    let source_dir = manifest_path.parent().unwrap_or_else(|| Path::new("."));
+    let source_dir = crate::manifest::manifest_dir(manifest_path);
 
     let ctx = MigrationContext {
         manifest_path,

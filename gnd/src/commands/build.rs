@@ -146,12 +146,7 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
 
     // Load the manifest
     let manifest = load_manifest(&opt.manifest)?;
-    let source_dir = opt
-        .manifest
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or_else(|| Path::new("."))
-        .to_path_buf();
+    let source_dir = crate::manifest::manifest_dir(&opt.manifest).to_path_buf();
 
     // Validate manifest structure
     let manifest_errors = validate_manifest(&manifest, &source_dir);

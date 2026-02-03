@@ -94,7 +94,7 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
     let (abi, contract_name, start_block) = get_contract_info(&opt, &network).await?;
 
     // Get project directory
-    let project_dir = opt.manifest.parent().unwrap_or(Path::new("."));
+    let project_dir = crate::manifest::manifest_dir(&opt.manifest);
 
     // Create scaffold options for code generation
     let scaffold_options = ScaffoldOptions {
