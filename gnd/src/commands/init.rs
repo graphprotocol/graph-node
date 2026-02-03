@@ -103,10 +103,6 @@ pub struct InitOpt {
     #[clap(long)]
     pub abi: Option<PathBuf>,
 
-    /// Path to the SPKG file (for Substreams)
-    #[clap(long)]
-    pub spkg: Option<PathBuf>,
-
     /// Network the contract is deployed to
     #[clap(long)]
     pub network: Option<String>,
@@ -1124,7 +1120,6 @@ mod tests {
         assert!(!opt.skip_git);
         assert!(opt.start_block.is_none());
         assert!(opt.abi.is_none());
-        assert!(opt.spkg.is_none());
         assert!(opt.network.is_none());
         assert!(opt.ipfs.is_none());
     }
