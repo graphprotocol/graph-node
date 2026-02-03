@@ -6,7 +6,7 @@ use super::ScaffoldOptions;
 pub fn generate_manifest(options: &ScaffoldOptions) -> String {
     let contract_name = &options.contract_name;
     let network = &options.network;
-    let mapping_file = format!("./{}.ts", super::to_kebab_case(contract_name));
+    let mapping_file = format!("./src/{}.ts", super::to_kebab_case(contract_name));
     let abi_file = format!("./abis/{}.json", contract_name);
 
     let mut source = format!(

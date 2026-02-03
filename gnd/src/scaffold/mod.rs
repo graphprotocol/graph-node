@@ -16,6 +16,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use anyhow::{anyhow, Context, Result};
+use inflector::Inflector;
 use serde_json::Value as JsonValue;
 
 use crate::formatter::format_typescript;
@@ -230,19 +231,9 @@ generated/
 }
 
 /// Convert a string to kebab-case.
-fn to_kebab_case(s: &str) -> String {
-    let mut result = String::new();
-    for (i, c) in s.chars().enumerate() {
-        if c.is_uppercase() {
-            if i > 0 {
-                result.push('-');
-            }
-            result.push(c.to_lowercase().next().unwrap_or(c));
-        } else {
-            result.push(c);
-        }
-    }
-    result
+/// Uses Inflector which correctly handles acronyms (ERC20 → erc20, not e-r-c20).
+pub(crate) fn to_kebab_case(s: &str) -> String {
+    s.to_kebab_case()
 }
 
 #[cfg(test)]
@@ -251,10 +242,12 @@ mod tests {
 
     #[test]
     fn test_to_kebab_case() {
+        // Inflector correctly handles acronyms - consecutive uppercase letters stay together
         assert_eq!(to_kebab_case("MyContract"), "my-contract");
-        assert_eq!(to_kebab_case("ERC20"), "e-r-c20");
+        assert_eq!(to_kebab_case("ERC20"), "erc20");
         assert_eq!(to_kebab_case("contract"), "contract");
-        assert_eq!(to_kebab_case("ABCToken"), "a-b-c-token");
+        assert_eq!(to_kebab_case("ABCToken"), "abc-token");
+        assert_eq!(to_kebab_case("ERC20Token"), "erc20-token");
     }
 
     #[test]
