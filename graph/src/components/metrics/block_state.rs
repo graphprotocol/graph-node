@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{anyhow, Result};
 use futures03::future::join_all;
-use object_store::{gcp::GoogleCloudStorageBuilder, path::Path, ObjectStore};
+use object_store::{gcp::GoogleCloudStorageBuilder, path::Path, ObjectStoreExt as _};
 use serde::Serialize;
 use slog::{error, info, Logger};
 use url::Url;
