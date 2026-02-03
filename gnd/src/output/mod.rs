@@ -19,6 +19,8 @@ pub enum Step {
     Deploy,
     /// Done with all steps
     Done,
+    /// Warning (non-fatal)
+    Warn,
 }
 
 /// Print a standalone step without a spinner.
@@ -33,6 +35,7 @@ pub fn step(step_type: Step, message: &str) {
         Step::Skip => style("→").dim(),
         Step::Deploy => style("→").cyan(),
         Step::Done => style("✔").green(),
+        Step::Warn => style("⚠").yellow(),
     };
     println!("{} {}", symbol, message);
 }

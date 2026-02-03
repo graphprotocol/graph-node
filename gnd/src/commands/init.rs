@@ -204,7 +204,8 @@ async fn run_interactive(opt: InitOpt) -> Result<()> {
         start_block,
         opt.index_events,
         opt.abi.clone().map(|p| p.to_string_lossy().to_string()),
-    )?;
+    )
+    .await?;
 
     // Execute based on source type
     match form.source_type {

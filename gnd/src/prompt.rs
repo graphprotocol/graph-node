@@ -8,7 +8,8 @@ use console::{style, Term};
 use inquire::validator::Validation;
 use inquire::{Autocomplete, Confirm, CustomUserError, Select, Text};
 
-use crate::services::{Network, NetworksRegistry};
+use crate::output::{step, Step};
+use crate::services::{ContractInfo, ContractService, Network, NetworksRegistry};
 
 /// Format a network for display.
 fn format_network(network: &Network) -> String {
@@ -347,8 +348,14 @@ pub struct InitForm {
 
 impl InitForm {
     /// Run the interactive form, filling in missing values.
+    ///
+    /// The flow for contract mode is:
+    /// 1. Prompt for network (if not provided)
+    /// 2. Prompt for contract address (if not provided)
+    /// 3. Fetch contract info from Etherscan/Sourcify (ABI, name, start block)
+    /// 4. Use fetched values as defaults for remaining prompts
     #[allow(clippy::too_many_arguments)]
-    pub fn run_interactive(
+    pub async fn run_interactive(
         registry: &NetworksRegistry,
         // Pre-filled values from CLI args
         network: Option<String>,
@@ -398,22 +405,34 @@ impl InitForm {
 
         // For contract mode, we need network, address, etc.
 
-        // Network
+        // Step 1: Network
         let network = match network {
             Some(n) => n,
             None => prompt_network_interactive(registry)?,
         };
 
-        // Contract address
+        // Step 2: Contract address
         let contract_address = match from_contract {
             Some(addr) => addr,
             None => prompt_contract_address()?,
         };
 
-        // Contract name
+        // Step 3: Fetch contract info immediately after getting address
+        // This allows us to use fetched values as defaults for remaining prompts
+        let fetched_info = if abi_path.is_none() {
+            fetch_contract_info_interactive(&network, &contract_address).await
+        } else {
+            None
+        };
+
+        // Step 4: Contract name (use fetched name as default)
+        let default_contract_name = fetched_info
+            .as_ref()
+            .map(|info| info.name.clone())
+            .or_else(|| contract_name.clone());
         let contract_name = match contract_name {
             Some(n) => n,
-            None => prompt_contract_name(None)?,
+            None => prompt_contract_name(default_contract_name.as_deref())?,
         };
 
         // Subgraph name
@@ -430,17 +449,28 @@ impl InitForm {
             None => prompt_directory(Some(&default_dir))?,
         };
 
-        // ABI path (optional)
+        // ABI path - only prompt if we didn't fetch it successfully
         let abi_path = match abi_path {
             Some(p) => Some(p),
-            None => prompt_abi_path()?,
+            None => {
+                if fetched_info.is_some() {
+                    // We successfully fetched the ABI, no need to prompt
+                    None
+                } else {
+                    prompt_abi_path()?
+                }
+            }
         };
 
-        // Start block
+        // Start block (use fetched start block as default)
+        let default_start_block = fetched_info
+            .as_ref()
+            .and_then(|info| info.start_block)
+            .or(start_block);
         let start_block = if start_block.is_some() {
             start_block
         } else {
-            prompt_start_block(None)?
+            prompt_start_block(default_start_block)?
         };
 
         // Index events
@@ -461,6 +491,46 @@ impl InitForm {
             index_events,
             abi_path,
         })
+    }
+}
+
+/// Fetch contract info from Etherscan/Sourcify with status feedback.
+///
+/// Returns None if fetching fails (the prompts will fall back to manual entry).
+async fn fetch_contract_info_interactive(network: &str, address: &str) -> Option<ContractInfo> {
+    step(
+        Step::Load,
+        &format!("Fetching contract info for {} on {}", address, network),
+    );
+
+    // Load the contract service
+    let service = match ContractService::load().await {
+        Ok(s) => s,
+        Err(e) => {
+            step(
+                Step::Warn,
+                &format!("Could not load contract service: {}", e),
+            );
+            return None;
+        }
+    };
+
+    // Fetch the contract info
+    match service.get_contract_info(network, address).await {
+        Ok(info) => {
+            step(Step::Done, &format!("Found contract: {}", info.name));
+            Some(info)
+        }
+        Err(e) => {
+            step(
+                Step::Warn,
+                &format!(
+                    "Could not fetch contract info: {}. You'll need to provide an ABI file.",
+                    e
+                ),
+            );
+            None
+        }
     }
 }
 
