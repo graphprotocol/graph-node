@@ -17,6 +17,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
 use graphql_parser::schema as gql;
 
+use crate::config::networks::update_networks_file;
 use crate::output::{step, with_spinner, Step};
 use crate::prompt::{
     get_subgraph_basename, prompt_directory_with_confirm, prompt_subgraph_slug_with_confirm,
@@ -361,6 +362,16 @@ async fn init_from_contract(opt: &InitOpt) -> Result<()> {
     };
 
     generate_scaffold(&directory, &scaffold_options)?;
+
+    // Create networks.json with the contract configuration
+    let networks_path = directory.join("networks.json");
+    update_networks_file(
+        &networks_path,
+        network,
+        &contract_name,
+        address,
+        start_block,
+    )?;
 
     // Initialize git unless skipped
     if !opt.skip_git {

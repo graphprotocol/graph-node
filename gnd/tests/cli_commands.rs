@@ -282,6 +282,20 @@ fn test_init_from_contract_with_abi() {
         manifest.contains("SimpleContract"),
         "Manifest should contain contract name"
     );
+
+    // Verify networks.json was created with contract config
+    let networks_path = subgraph_dir.join("networks.json");
+    assert!(networks_path.exists(), "networks.json should exist");
+
+    let networks: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&networks_path).unwrap()).unwrap();
+    assert!(
+        networks["mainnet"]["SimpleContract"]["address"]
+            .as_str()
+            .unwrap()
+            .contains("0x5fbdb2315678afecb367f032d93f642f64180aa3"),
+        "networks.json should contain contract address"
+    );
 }
 
 #[test]
