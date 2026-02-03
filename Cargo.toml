@@ -57,7 +57,7 @@ diesel = { version = "2.2.7", features = [
 diesel-async = { version = "0.7.4", features = ["deadpool", "async-connection-wrapper", "tokio", "postgres"] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
 diesel-dynamic-schema = { version = "0.2.3", features = ["postgres"] }
-diesel_derives = "2.3.6"
+diesel_derives = "2.3.7"
 diesel_migrations = "2.3.1"
 envconfig = "0.11.1"
 graph = { path = "./graph" }

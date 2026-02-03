@@ -2798,9 +2798,9 @@ dependencies = [
 
 [[package]]
 name = "diesel_derives"
-version = "2.3.6"
+version = "2.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c30b2969f923fa1f73744b92bb7df60b858df8832742d9a3aceb79236c0be1d2"
+checksum = "47618bf0fac06bb670c036e48404c26a865e6a71af4114dfd97dfe89936e404e"
 dependencies = [
  "diesel_table_macro_syntax",
  "dsl_auto_type",
