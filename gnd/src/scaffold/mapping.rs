@@ -115,18 +115,18 @@ fn generate_first_placeholder_handler(
     format!(
         r#"
 export function handle{event_name}(event: {event_name}Event): void {{
-  // Entities can be loaded from the store using a string ID; this ID
-  // needs to be unique across all entities of the same type
-  let entity = ExampleEntity.load(
-    event.transaction.hash.concat(Bytes.fromByteArray(Bytes.fromBigInt(event.logIndex)))
+  // Entities can be loaded from the store using their id; using 'Bytes' as
+  // the id type is more efficient than 'ID' or 'String' and should be used
+  // whenever possible.
+  const id = event.transaction.hash.concat(
+    Bytes.fromByteArray(Bytes.fromBigInt(event.logIndex))
   )
+  let entity = ExampleEntity.load(id)
 
   // Entities only exist after they have been saved to the store;
   // `null` checks allow to create entities on demand
   if (!entity) {{
-    entity = new ExampleEntity(
-      event.transaction.hash.concat(Bytes.fromByteArray(Bytes.fromBigInt(event.logIndex)))
-    )
+    entity = new ExampleEntity(id)
 
     // Entity fields can be set using simple assignments
     entity.count = BigInt.fromI32(0)
@@ -138,12 +138,6 @@ export function handle{event_name}(event: {event_name}Event): void {{
   // Entity fields can be set based on event parameters
 {field_assignments}
   entity.save()
-
-  // Note: If a handler doesn't require existing field values, it is faster
-  // _not_ to load the entity from the store. Instead, create it only once with
-  // `new Entity(...)`, set the fields that should be updated and save the
-  // entity back to the store. Fields that were not set or unset remain
-  // unchanged, allowing for partial updates to be applied.
 
   // It is also possible to access smart contracts from mappings. For
   // example, the contract that has emitted the event can be connected to

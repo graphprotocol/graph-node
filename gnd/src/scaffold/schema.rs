@@ -33,6 +33,7 @@ pub fn generate_schema(options: &ScaffoldOptions) -> String {
 /// Uses first 2 event params if available, with type comments.
 fn generate_example_entity(inputs: &[EventInput]) -> String {
     let mut fields = String::new();
+    fields.push_str("  # Use Bytes when possible for better performance\n");
     fields.push_str("  id: Bytes!\n");
     fields.push_str("  count: BigInt!\n");
 
@@ -47,7 +48,8 @@ fn generate_example_entity(inputs: &[EventInput]) -> String {
     }
 
     format!(
-        "type ExampleEntity @entity(immutable: true) {{\n{}}}\n",
+        "# Declare entity types as immutable when possible for better performance\n\
+         type ExampleEntity @entity(immutable: true) {{\n{}}}\n",
         fields
     )
 }
@@ -72,7 +74,8 @@ fn generate_event_entity(event_name: &str, inputs: &[EventInput]) -> String {
     fields.push_str("  transactionHash: Bytes!");
 
     format!(
-        "type {} @entity(immutable: true) {{\n{}\n}}",
+        "# Declare entity types as immutable when possible for better performance\n\
+         type {} @entity(immutable: true) {{\n{}\n}}",
         event_name, fields
     )
 }
