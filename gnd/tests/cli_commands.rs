@@ -497,7 +497,7 @@ fn test_build_after_codegen() {
         temp_dir.path(),
     );
 
-    // Install dependencies (required for build)
+    // Install dependencies (required for codegen and build)
     let npm_install = Command::new("npm")
         .arg("install")
         .current_dir(&subgraph_dir)
@@ -508,7 +508,22 @@ fn test_build_after_codegen() {
         return;
     }
 
-    // Run build (includes codegen)
+    // Run codegen first to generate types
+    let codegen_output = run_gnd(&["codegen", "--skip-migrations"], &subgraph_dir);
+    if !codegen_output.status.success() {
+        let stdout = String::from_utf8_lossy(&codegen_output.stdout);
+        let stderr = String::from_utf8_lossy(&codegen_output.stderr);
+        if stderr.contains("Cannot find module") || stderr.contains("graph-ts") {
+            eprintln!("Skipping test_build_after_codegen: dependencies not available");
+            return;
+        }
+        panic!(
+            "gnd codegen failed:\nstdout: {}\nstderr: {}",
+            stdout, stderr
+        );
+    }
+
+    // Run build (codegen already done)
     let output = run_gnd(&["build", "--skip-migrations"], &subgraph_dir);
 
     if !output.status.success() {
