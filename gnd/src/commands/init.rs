@@ -23,7 +23,7 @@ use crate::output::{step, with_spinner, Step};
 use crate::prompt::{
     get_subgraph_basename, prompt_add_another_contract, prompt_contract_address,
     prompt_contract_name, prompt_directory_with_confirm, prompt_start_block,
-    prompt_subgraph_slug_with_confirm, InitForm, SourceType,
+    prompt_subgraph_slug_with_confirm, resolve_directory_collision, InitForm, SourceType,
 };
 use crate::scaffold::{generate_scaffold, init_git, install_dependencies, ScaffoldOptions};
 use crate::services::{ContractInfo, ContractService, IpfsClient, NetworksRegistry};
@@ -325,7 +325,7 @@ async fn init_from_contract(opt: &InitOpt) -> Result<()> {
         .unwrap_or_else(|| format!("user/{}", contract_name.to_lowercase()));
 
     // Determine directory
-    let directory = opt.directory.clone().unwrap_or_else(|| {
+    let initial_directory = opt.directory.clone().unwrap_or_else(|| {
         PathBuf::from(
             subgraph_name
                 .split('/')
@@ -334,13 +334,8 @@ async fn init_from_contract(opt: &InitOpt) -> Result<()> {
         )
     });
 
-    // Check if directory already exists
-    if directory.exists() {
-        return Err(anyhow!(
-            "Directory '{}' already exists. Please choose a different name or remove the existing directory.",
-            directory.display()
-        ));
-    }
+    // Resolve directory collision by prompting for a new name if needed
+    let directory = PathBuf::from(resolve_directory_collision(&initial_directory)?);
 
     // Determine start block
     let start_block = opt
@@ -524,7 +519,7 @@ fn init_from_example(opt: &InitOpt) -> Result<()> {
     };
 
     // Determine directory - prompt if not provided and in terminal
-    let directory = if let Some(dir) = &opt.directory {
+    let initial_directory = if let Some(dir) = &opt.directory {
         dir.clone()
     } else if io::stdin().is_terminal() {
         let default_dir = get_subgraph_basename(&subgraph_name);
@@ -533,13 +528,8 @@ fn init_from_example(opt: &InitOpt) -> Result<()> {
         PathBuf::from(get_subgraph_basename(&subgraph_name))
     };
 
-    // Check if directory already exists
-    if directory.exists() {
-        return Err(anyhow!(
-            "Directory '{}' already exists. Please choose a different name or remove the existing directory.",
-            directory.display()
-        ));
-    }
+    // Resolve directory collision by prompting for a new name if needed
+    let directory = PathBuf::from(resolve_directory_collision(&initial_directory)?);
 
     // Clone example with spinner
     clone_example_with_spinner(example, &directory)?;
@@ -948,17 +938,12 @@ async fn init_from_subgraph(opt: &InitOpt) -> Result<()> {
         .unwrap_or_else(|| "composed-subgraph".to_string());
 
     // Determine directory
-    let directory = opt.directory.clone().unwrap_or_else(|| {
+    let initial_directory = opt.directory.clone().unwrap_or_else(|| {
         PathBuf::from(subgraph_name.split('/').next_back().unwrap_or("subgraph"))
     });
 
-    // Check if directory already exists
-    if directory.exists() {
-        return Err(anyhow!(
-            "Directory '{}' already exists. Please choose a different name or remove the existing directory.",
-            directory.display()
-        ));
-    }
+    // Resolve directory collision by prompting for a new name if needed
+    let directory = PathBuf::from(resolve_directory_collision(&initial_directory)?);
 
     // Generate scaffold with immutable entities
     let scaffold_options = ScaffoldOptions {

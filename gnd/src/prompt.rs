@@ -3,6 +3,8 @@
 //! This module provides wrappers around the `inquire` crate to provide
 //! consistent prompting behavior similar to the TypeScript graph-cli.
 
+use std::path::Path;
+
 use anyhow::Result;
 use console::{style, Term};
 use inquire::validator::Validation;
@@ -319,6 +321,50 @@ pub fn prompt_directory_with_confirm(default: Option<&str>) -> Result<String> {
     );
 
     Ok(dir)
+}
+
+/// Resolve directory collision by prompting for a new directory name.
+///
+/// If the given directory already exists, asks the user for an alternative
+/// directory name instead of failing with an error. Continues prompting
+/// until a non-existent directory is chosen.
+///
+/// Returns the resolved directory path as a String.
+pub fn resolve_directory_collision(initial_dir: &Path) -> Result<String> {
+    if !initial_dir.exists() {
+        return Ok(initial_dir.to_str().unwrap_or("subgraph").to_string());
+    }
+
+    // Directory exists, warn and prompt for a new name
+    eprintln!(
+        "{} Directory '{}' already exists",
+        style("!").yellow(),
+        initial_dir.display()
+    );
+
+    loop {
+        let dir = Text::new("Enter a different directory name:")
+            .with_help_message("Choose a directory that doesn't exist")
+            .with_validator(|input: &str| {
+                if input.trim().is_empty() {
+                    Ok(Validation::Invalid("Directory cannot be empty".into()))
+                } else {
+                    Ok(Validation::Valid)
+                }
+            })
+            .prompt()?;
+
+        let path = Path::new(&dir);
+        if path.exists() {
+            eprintln!(
+                "{} Directory '{}' also exists, please try another name",
+                style("!").yellow(),
+                dir
+            );
+        } else {
+            return Ok(dir);
+        }
+    }
 }
 
 /// Format a subgraph name to be valid.
