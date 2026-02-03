@@ -8,31 +8,27 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
-use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use ethabi::Contract;
 use graphql_parser::schema as gql;
-use notify::{recommended_watcher, RecursiveMode, Watcher};
 use semver::Version;
 
 use crate::codegen::{
-    AbiCodeGenerator, Class, ModuleImports, SchemaCodeGenerator, Template, TemplateCodeGenerator,
-    TemplateKind, GENERATED_FILE_NOTE,
+    AbiCodeGenerator, Class, ModuleImports, SchemaCodeGenerator, Template as CodegenTemplate,
+    TemplateCodeGenerator, TemplateKind, GENERATED_FILE_NOTE,
 };
 use crate::formatter::try_format_typescript;
+use crate::manifest::{load_manifest, resolve_path, DataSource, Manifest, Template};
 use crate::migrations;
 use crate::output::{step, Step};
 use crate::services::IpfsClient;
 use crate::validation::{format_schema_errors, validate_schema};
+use crate::watch::watch_and_run;
 
 /// Default IPFS URL.
 const DEFAULT_IPFS_URL: &str = "https://api.thegraph.com/ipfs/api/v0";
-
-/// Delay between file change detection and regeneration to batch multiple events.
-const WATCH_DEBOUNCE: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Debug, Parser)]
 #[clap(about = "Generate AssemblyScript types for a subgraph")]
@@ -69,76 +65,16 @@ pub async fn run_codegen(opt: CodegenOpt) -> Result<()> {
 
 /// Watch subgraph files and regenerate types on changes.
 async fn watch_and_generate(opt: &CodegenOpt) -> Result<()> {
-    // Do initial generation
-    if let Err(e) = generate_types(opt).await {
-        eprintln!("Error during initial generation: {}", e);
-    }
-
-    // Get files to watch
+    // Get files to watch (need to load manifest first)
     let manifest = load_manifest(&opt.manifest)?;
     let files_to_watch = get_files_to_watch(&opt.manifest, &manifest);
 
-    println!("\nWatching subgraph files for changes...");
-    println!("Press Ctrl+C to stop.\n");
-
-    // Set up file watcher
-    let (tx, rx) = mpsc::channel();
-
-    let mut watcher = recommended_watcher(move |res| {
-        if let Ok(event) = res {
-            let _ = tx.send(event);
-        }
-    })
-    .map_err(|e| anyhow!("Failed to create file watcher: {}", e))?;
-
-    // Watch directories containing the files
-    let mut watched_dirs = std::collections::HashSet::new();
-    for file in &files_to_watch {
-        if let Some(dir) = file.parent() {
-            if watched_dirs.insert(dir.to_path_buf()) {
-                watcher
-                    .watch(dir, RecursiveMode::NonRecursive)
-                    .map_err(|e| anyhow!("Failed to watch {}: {}", dir.display(), e))?;
-            }
-        }
-    }
-
-    // Event loop
-    loop {
-        match rx.recv() {
-            Ok(event) => {
-                // Check if the event is for a file we care about
-                let relevant = event.paths.iter().any(|p| {
-                    files_to_watch.iter().any(|f| {
-                        p.file_name() == f.file_name()
-                            || p.ends_with(f.file_name().unwrap_or_default())
-                    })
-                });
-
-                if relevant {
-                    // Debounce: wait a bit and drain any pending events
-                    std::thread::sleep(WATCH_DEBOUNCE);
-                    while rx.try_recv().is_ok() {}
-
-                    // Get the changed file for logging
-                    let changed = event
-                        .paths
-                        .first()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-
-                    println!("\nFile change detected: {}\n", changed);
-
-                    if let Err(e) = generate_types(opt).await {
-                        eprintln!("Error during regeneration: {}", e);
-                    }
-                }
-            }
-            Err(_) => {
-                return Err(anyhow!("File watcher channel closed"));
-            }
-        }
-    }
+    watch_and_run(
+        files_to_watch,
+        "Watching subgraph files for changes...",
+        || generate_types(opt),
+    )
+    .await
 }
 
 /// Get the list of files to watch for changes.
@@ -206,9 +142,13 @@ async fn generate_types(opt: &CodegenOpt) -> Result<()> {
     }
 
     // Generate types for subgraph data sources
-    if !manifest.subgraph_sources.is_empty() {
-        generate_subgraph_source_types(&manifest.subgraph_sources, &opt.output_dir, &opt.ipfs)
-            .await?;
+    let subgraph_sources: Vec<&DataSource> = manifest
+        .data_sources
+        .iter()
+        .filter(|ds| ds.is_subgraph_source())
+        .collect();
+    if !subgraph_sources.is_empty() {
+        generate_subgraph_source_types(&subgraph_sources, &opt.output_dir, &opt.ipfs).await?;
     }
 
     step(Step::Done, "Types generated successfully");
@@ -428,21 +368,21 @@ fn generate_abi_types(name: &str, abi_path: &Path, output_dir: &Path) -> Result<
 }
 
 /// Generate types for data source templates.
-fn generate_template_types(templates: &[ManifestTemplate], output_dir: &Path) -> Result<()> {
+fn generate_template_types(templates: &[Template], output_dir: &Path) -> Result<()> {
     step(Step::Generate, "Generate types for data source templates");
 
-    let templates: Vec<Template> = templates
+    let codegen_templates: Vec<CodegenTemplate> = templates
         .iter()
         .filter_map(|t| {
-            TemplateKind::from_str_kind(&t.kind).map(|kind| Template::new(&t.name, kind))
+            TemplateKind::from_str_kind(&t.kind).map(|kind| CodegenTemplate::new(&t.name, kind))
         })
         .collect();
 
-    if templates.is_empty() {
+    if codegen_templates.is_empty() {
         return Ok(());
     }
 
-    let generator = TemplateCodeGenerator::new(templates);
+    let generator = TemplateCodeGenerator::new(codegen_templates);
     let imports = generator.generate_module_imports();
     let classes = generator.generate_types();
 
@@ -465,7 +405,7 @@ fn generate_template_types(templates: &[ManifestTemplate], output_dir: &Path) ->
 /// For each subgraph data source, this fetches the referenced subgraph's schema
 /// from IPFS and generates entity types (without store methods).
 async fn generate_subgraph_source_types(
-    subgraph_sources: &[SubgraphSource],
+    subgraph_sources: &[&DataSource],
     output_dir: &Path,
     ipfs_url: &str,
 ) -> Result<()> {
@@ -485,16 +425,16 @@ async fn generate_subgraph_source_types(
     }
 
     for source in subgraph_sources {
+        // source_address is guaranteed to be Some because of is_subgraph_source() filter
+        let address = source.source_address.as_ref().unwrap();
+
         step(
             Step::Load,
-            &format!(
-                "Fetch schema for subgraph {} ({})",
-                source.name, source.address
-            ),
+            &format!("Fetch schema for subgraph {} ({})", source.name, address),
         );
 
         // Fetch schema from IPFS using block_in_place to allow blocking in async context
-        let schema_str = ipfs_client.fetch_subgraph_schema(&source.address).await?;
+        let schema_str = ipfs_client.fetch_subgraph_schema(address).await?;
 
         // Parse the schema
         let ast: gql::Document<'_, String> = gql::parse_schema(&schema_str)
@@ -502,10 +442,7 @@ async fn generate_subgraph_source_types(
 
         step(
             Step::Generate,
-            &format!(
-                "Generate types for subgraph {} ({})",
-                source.name, source.address
-            ),
+            &format!("Generate types for subgraph {} ({})", source.name, address),
         );
 
         // Generate entity types WITHOUT store methods (false = no store methods)
@@ -514,7 +451,7 @@ async fn generate_subgraph_source_types(
             Err(e) => {
                 eprintln!(
                     "Warning: Failed to create schema generator for subgraph {} ({}): {}",
-                    source.name, source.address, e
+                    source.name, address, e
                 );
                 continue;
             }
@@ -563,224 +500,11 @@ fn generate_file(imports: &[ModuleImports], classes: &[Class]) -> String {
     output
 }
 
-/// Resolve a path relative to the manifest file.
-fn resolve_path(manifest: &Path, path: &str) -> PathBuf {
-    manifest
-        .parent()
-        .map(|p| p.join(path))
-        .unwrap_or_else(|| PathBuf::from(path))
-}
-
-// ============================================================================
-// Simplified manifest parsing
-// ============================================================================
-
-/// A simplified subgraph manifest structure.
-#[derive(Debug)]
-struct Manifest {
-    spec_version: Version,
-    schema: Option<String>,
-    data_sources: Vec<DataSource>,
-    templates: Vec<ManifestTemplate>,
-    /// Subgraph data sources (kind: subgraph) with IPFS addresses
-    subgraph_sources: Vec<SubgraphSource>,
-}
-
-#[derive(Debug)]
-struct DataSource {
-    name: String,
-    abis: Vec<Abi>,
-}
-
-/// A subgraph data source (kind: subgraph).
-/// These reference another subgraph by its IPFS deployment ID.
-#[derive(Debug)]
-struct SubgraphSource {
-    /// The data source name from the manifest
-    name: String,
-    /// The IPFS hash (deployment ID) of the referenced subgraph
-    address: String,
-}
-
-#[derive(Debug)]
-struct Abi {
-    name: String,
-    file: String,
-}
-
-#[derive(Debug)]
-struct ManifestTemplate {
-    name: String,
-    kind: String,
-    abis: Vec<Abi>,
-}
-
-/// Load a subgraph manifest from a YAML file.
-fn load_manifest(path: &Path) -> Result<Manifest> {
-    step(
-        Step::Load,
-        &format!("Load subgraph from {}", path.display()),
-    );
-
-    let manifest_str =
-        fs::read_to_string(path).with_context(|| format!("Failed to read manifest: {:?}", path))?;
-
-    let value: serde_json::Value = serde_yaml::from_str(&manifest_str)
-        .with_context(|| format!("Failed to parse manifest YAML: {:?}", path))?;
-
-    // Extract spec version (default to 0.0.4 if not specified)
-    let spec_version_str = value
-        .get("specVersion")
-        .and_then(|v| v.as_str())
-        .unwrap_or("0.0.4");
-
-    let spec_version = Version::parse(spec_version_str).unwrap_or_else(|_| Version::new(0, 0, 4));
-
-    // Extract schema path
-    let schema = value
-        .get("schema")
-        .and_then(|s| s.get("file"))
-        .and_then(|f| f.as_str())
-        .map(String::from);
-
-    // Extract data sources and subgraph sources
-    let mut data_sources = Vec::new();
-    let mut subgraph_sources = Vec::new();
-
-    if let Some(ds_array) = value.get("dataSources").and_then(|ds| ds.as_array()) {
-        for ds in ds_array {
-            let kind = ds.get("kind").and_then(|k| k.as_str()).unwrap_or("");
-
-            if kind == "subgraph" {
-                // Subgraph data source - extract the name and IPFS address
-                let name = ds
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("unnamed")
-                    .to_string();
-
-                if let Some(address) = ds
-                    .get("source")
-                    .and_then(|s| s.get("address"))
-                    .and_then(|a| a.as_str())
-                {
-                    subgraph_sources.push(SubgraphSource {
-                        name,
-                        address: address.to_string(),
-                    });
-                }
-            } else {
-                // Regular data source (ethereum/contract, etc.) - extract ABIs
-                if let Some(name) = ds.get("name").and_then(|n| n.as_str()) {
-                    let abis = ds
-                        .get("mapping")
-                        .and_then(|m| m.get("abis"))
-                        .and_then(|a| a.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|abi| {
-                                    let name = abi.get("name")?.as_str()?.to_string();
-                                    let file = abi.get("file")?.as_str()?.to_string();
-                                    Some(Abi { name, file })
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    data_sources.push(DataSource {
-                        name: name.to_string(),
-                        abis,
-                    });
-                }
-            }
-        }
-    }
-
-    // Extract templates
-    let templates = value
-        .get("templates")
-        .and_then(|t| t.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|t| {
-                    let name = t.get("name")?.as_str()?.to_string();
-                    let kind = t.get("kind")?.as_str()?.to_string();
-                    let abis = t
-                        .get("mapping")
-                        .and_then(|m| m.get("abis"))
-                        .and_then(|a| a.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|abi| {
-                                    let name = abi.get("name")?.as_str()?.to_string();
-                                    let file = abi.get("file")?.as_str()?.to_string();
-                                    Some(Abi { name, file })
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    Some(ManifestTemplate { name, kind, abis })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Ok(Manifest {
-        spec_version,
-        schema,
-        data_sources,
-        templates,
-        subgraph_sources,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
-
-    #[test]
-    fn test_resolve_path() {
-        let manifest = PathBuf::from("/home/user/project/subgraph.yaml");
-        let path = "schema.graphql";
-        let resolved = resolve_path(&manifest, path);
-        assert_eq!(resolved, PathBuf::from("/home/user/project/schema.graphql"));
-    }
-
-    #[test]
-    fn test_load_manifest() {
-        let temp_dir = TempDir::new().unwrap();
-        let manifest_path = temp_dir.path().join("subgraph.yaml");
-
-        let manifest_content = r#"
-specVersion: 0.0.4
-schema:
-  file: ./schema.graphql
-dataSources:
-  - kind: ethereum/contract
-    name: Token
-    mapping:
-      kind: ethereum/events
-      abis:
-        - name: ERC20
-          file: ./abis/ERC20.json
-templates:
-  - kind: ethereum/contract
-    name: DynamicToken
-"#;
-
-        fs::write(&manifest_path, manifest_content).unwrap();
-
-        let manifest = load_manifest(&manifest_path).unwrap();
-        assert_eq!(manifest.spec_version, Version::new(0, 0, 4));
-        assert_eq!(manifest.schema, Some("./schema.graphql".to_string()));
-        assert_eq!(manifest.data_sources.len(), 1);
-        assert_eq!(manifest.data_sources[0].name, "Token");
-        assert_eq!(manifest.data_sources[0].abis.len(), 1);
-        assert_eq!(manifest.data_sources[0].abis[0].name, "ERC20");
-        assert_eq!(manifest.templates.len(), 1);
-        assert_eq!(manifest.templates[0].name, "DynamicToken");
-    }
 
     #[test]
     fn test_generate_file() {

@@ -4,29 +4,24 @@
 //! copies all required files to the build directory, and optionally uploads
 //! the result to IPFS.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
-use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
-use notify::{recommended_watcher, RecursiveMode, Watcher};
-use semver::Version;
 use sha1::{Digest, Sha1};
 
 use crate::compiler::{compile_mapping, find_graph_ts, AscCompileOptions};
 use crate::config::{apply_network_config, get_network_config, load_networks_config};
+use crate::manifest::{load_manifest, resolve_path, DataSource, Manifest, Template};
 use crate::migrations;
 use crate::output::{step, Step};
 use crate::services::IpfsClient;
 use crate::validation::{
     format_manifest_errors, format_schema_errors, validate_manifest, validate_schema,
 };
-
-/// Delay between file change detection and rebuild to batch multiple events.
-const WATCH_DEBOUNCE: Duration = Duration::from_millis(500);
+use crate::watch::watch_and_run;
 
 #[derive(Clone, Debug, Parser)]
 #[clap(about = "Build a subgraph and (optionally) upload it to IPFS")]
@@ -96,76 +91,16 @@ pub async fn run_build(opt: BuildOpt) -> Result<Option<String>> {
 
 /// Watch subgraph files and rebuild on changes.
 async fn watch_and_build(opt: &BuildOpt) -> Result<()> {
-    // Do initial build
-    if let Err(e) = build_subgraph(opt).await {
-        eprintln!("Error during initial build: {}", e);
-    }
-
-    // Get files to watch
+    // Get files to watch (need to load manifest first)
     let manifest = load_manifest(&opt.manifest)?;
     let files_to_watch = get_files_to_watch(&opt.manifest, &manifest);
 
-    println!("\nWatching subgraph files for changes...");
-    println!("Press Ctrl+C to stop.\n");
-
-    // Set up file watcher
-    let (tx, rx) = mpsc::channel();
-
-    let mut watcher = recommended_watcher(move |res| {
-        if let Ok(event) = res {
-            let _ = tx.send(event);
-        }
-    })
-    .map_err(|e| anyhow!("Failed to create file watcher: {}", e))?;
-
-    // Watch directories containing the files
-    let mut watched_dirs = HashSet::new();
-    for file in &files_to_watch {
-        if let Some(dir) = file.parent() {
-            if watched_dirs.insert(dir.to_path_buf()) {
-                watcher
-                    .watch(dir, RecursiveMode::NonRecursive)
-                    .map_err(|e| anyhow!("Failed to watch {}: {}", dir.display(), e))?;
-            }
-        }
-    }
-
-    // Event loop
-    loop {
-        match rx.recv() {
-            Ok(event) => {
-                // Check if the event is for a file we care about
-                let relevant = event.paths.iter().any(|p| {
-                    files_to_watch.iter().any(|f| {
-                        p.file_name() == f.file_name()
-                            || p.ends_with(f.file_name().unwrap_or_default())
-                    })
-                });
-
-                if relevant {
-                    // Debounce: wait a bit and drain any pending events
-                    std::thread::sleep(WATCH_DEBOUNCE);
-                    while rx.try_recv().is_ok() {}
-
-                    // Get the changed file for logging
-                    let changed = event
-                        .paths
-                        .first()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_else(|| "unknown".to_string());
-
-                    println!("\nFile change detected: {}\n", changed);
-
-                    if let Err(e) = build_subgraph(opt).await {
-                        eprintln!("Error during rebuild: {}", e);
-                    }
-                }
-            }
-            Err(_) => {
-                return Err(anyhow!("File watcher channel closed"));
-            }
-        }
-    }
+    watch_and_run(
+        files_to_watch,
+        "Watching subgraph files for changes...",
+        || async { build_subgraph(opt).await.map(|_| ()) },
+    )
+    .await
 }
 
 /// Get the list of files to watch for changes.
@@ -267,16 +202,18 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
     for ds in &manifest.data_sources {
         if let Some(mapping) = &ds.mapping_file {
             let mapping_path = resolve_path(&opt.manifest, mapping);
-            compile_data_source_mapping(
+            let output_subdir = opt.output_dir.join(&ds.name);
+            compile_mapping_to_dir(
                 &ds.name,
                 &mapping_path,
                 &source_dir,
-                &opt.output_dir,
+                &output_subdir,
                 &libs,
                 &global_file,
                 &opt.output_format,
                 &mut compiled_files,
                 opt.skip_asc_version_check,
+                "data source",
             )?;
         }
     }
@@ -285,16 +222,18 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
     for template in &manifest.templates {
         if let Some(mapping) = &template.mapping_file {
             let mapping_path = resolve_path(&opt.manifest, mapping);
-            compile_template_mapping(
+            let output_subdir = opt.output_dir.join("templates").join(&template.name);
+            compile_mapping_to_dir(
                 &template.name,
                 &mapping_path,
                 &source_dir,
-                &opt.output_dir,
+                &output_subdir,
                 &libs,
                 &global_file,
                 &opt.output_format,
                 &mut compiled_files,
                 opt.skip_asc_version_check,
+                "data source template",
             )?;
         }
     }
@@ -309,7 +248,8 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
     for ds in &manifest.data_sources {
         for abi in &ds.abis {
             let abi_path = resolve_path(&opt.manifest, &abi.file);
-            copy_abi(&abi.name, &abi_path, &ds.name, &opt.output_dir)?;
+            let output_subdir = opt.output_dir.join(&ds.name);
+            copy_abi_to_dir(&abi.name, &abi_path, &output_subdir)?;
         }
     }
 
@@ -317,7 +257,8 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
     for template in &manifest.templates {
         for abi in &template.abis {
             let abi_path = resolve_path(&opt.manifest, &abi.file);
-            copy_template_abi(&abi.name, &abi_path, &template.name, &opt.output_dir)?;
+            let output_subdir = opt.output_dir.join("templates").join(&template.name);
+            copy_abi_to_dir(&abi.name, &abi_path, &output_subdir)?;
         }
     }
 
@@ -623,98 +564,44 @@ fn update_template_ipfs_paths(
     }
 }
 
-/// Compile a data source mapping.
-#[allow(clippy::too_many_arguments)]
-fn compile_data_source_mapping(
-    ds_name: &str,
-    mapping_path: &Path,
-    source_dir: &Path,
-    output_dir: &Path,
-    libs: &str,
-    global_file: &Path,
-    output_format: &str,
-    compiled_files: &mut HashMap<String, PathBuf>,
-    skip_version_check: bool,
-) -> Result<()> {
-    let cache_key = file_hash(mapping_path)?;
-
-    let output_subdir = output_dir.join(ds_name);
-    fs::create_dir_all(&output_subdir)?;
-
-    let extension = if output_format == "wasm" {
+/// Get the file extension for the output format.
+fn output_extension(output_format: &str) -> &'static str {
+    if output_format == "wasm" {
         "wasm"
     } else {
         "wast"
-    };
-    let output_file = output_subdir.join(format!("{}.{}", ds_name, extension));
-
-    // Check if already compiled - copy existing WASM file if so
-    if let Some(existing_wasm) = compiled_files.get(&cache_key) {
-        step(
-            Step::Skip,
-            &format!("Compile data source: {} (already compiled)", ds_name),
-        );
-        fs::copy(existing_wasm, &output_file).with_context(|| {
-            format!(
-                "Failed to copy WASM from {} to {}",
-                existing_wasm.display(),
-                output_file.display()
-            )
-        })?;
-        return Ok(());
     }
-
-    step(Step::Generate, &format!("Compile data source: {}", ds_name));
-
-    let options = AscCompileOptions {
-        input_file: mapping_path.to_path_buf(),
-        base_dir: source_dir.to_path_buf(),
-        libs: libs.to_string(),
-        global_file: global_file.to_path_buf(),
-        output_file: output_file.clone(),
-        output_format: output_format.to_string(),
-        skip_version_check,
-    };
-
-    compile_mapping(&options)?;
-    compiled_files.insert(cache_key, output_file);
-
-    Ok(())
 }
 
-/// Compile a template mapping.
+/// Compile a mapping to a specific output directory.
+///
+/// This unified function handles both data source and template mappings.
+/// The caller specifies the output directory and display name.
 #[allow(clippy::too_many_arguments)]
-fn compile_template_mapping(
-    template_name: &str,
+fn compile_mapping_to_dir(
+    name: &str,
     mapping_path: &Path,
     source_dir: &Path,
-    output_dir: &Path,
+    output_subdir: &Path,
     libs: &str,
     global_file: &Path,
     output_format: &str,
     compiled_files: &mut HashMap<String, PathBuf>,
     skip_version_check: bool,
+    item_type: &str, // "data source" or "data source template"
 ) -> Result<()> {
     let cache_key = file_hash(mapping_path)?;
 
-    let output_subdir = output_dir.join("templates").join(template_name);
-    fs::create_dir_all(&output_subdir)?;
+    fs::create_dir_all(output_subdir)?;
 
-    let extension = if output_format == "wasm" {
-        "wasm"
-    } else {
-        "wast"
-    };
-    let output_file = output_subdir.join(format!("{}.{}", template_name, extension));
+    let extension = output_extension(output_format);
+    let output_file = output_subdir.join(format!("{}.{}", name, extension));
 
     // Check if already compiled - copy existing WASM file if so
     if let Some(existing_wasm) = compiled_files.get(&cache_key) {
         step(
             Step::Skip,
-            &format!(
-                "Compile data source template: {} (already compiled)",
-                template_name
-            ),
+            &format!("Compile {}: {} (already compiled)", item_type, name),
         );
         fs::copy(existing_wasm, &output_file).with_context(|| {
             format!(
@@ -726,10 +613,7 @@ fn compile_template_mapping(
         return Ok(());
     }
 
-    step(
-        Step::Generate,
-        &format!("Compile data source template: {}", template_name),
-    );
+    step(Step::Generate, &format!("Compile {}: {}", item_type, name));
 
     let options = AscCompileOptions {
         input_file: mapping_path.to_path_buf(),
@@ -770,10 +654,12 @@ fn copy_schema(schema_path: &Path, output_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Copy an ABI file to the output directory.
-fn copy_abi(abi_name: &str, abi_path: &Path, ds_name: &str, output_dir: &Path) -> Result<()> {
-    let output_subdir = output_dir.join(ds_name);
-    fs::create_dir_all(&output_subdir)?;
+/// Copy an ABI file to the specified output directory.
+///
+/// This unified function handles both data source and template ABIs.
+/// The caller specifies the output directory.
+fn copy_abi_to_dir(abi_name: &str, abi_path: &Path, output_subdir: &Path) -> Result<()> {
+    fs::create_dir_all(output_subdir)?;
 
     let abi_filename = format!("{}.json", abi_name);
     let output_path = output_subdir.join(&abi_filename);
@@ -781,39 +667,6 @@ fn copy_abi(abi_name: &str, abi_path: &Path, ds_name: &str, output_dir: &Path) -
     step(
         Step::Write,
         &format!("Copy ABI {} to {}", abi_name, output_path.display()),
-    );
-
-    fs::copy(abi_path, &output_path).with_context(|| {
-        format!(
-            "Failed to copy ABI from {} to {}",
-            abi_path.display(),
-            output_path.display()
-        )
-    })?;
-
-    Ok(())
-}
-
-/// Copy a template ABI file to the output directory.
-fn copy_template_abi(
-    abi_name: &str,
-    abi_path: &Path,
-    template_name: &str,
-    output_dir: &Path,
-) -> Result<()> {
-    let output_subdir = output_dir.join("templates").join(template_name);
-    fs::create_dir_all(&output_subdir)?;
-
-    let abi_filename = format!("{}.json", abi_name);
-    let output_path = output_subdir.join(&abi_filename);
-
-    step(
-        Step::Write,
-        &format!(
-            "Copy template ABI {} to {}",
-            abi_name,
-            output_path.display()
-        ),
     );
 
     fs::copy(abi_path, &output_path).with_context(|| {
@@ -896,11 +749,7 @@ fn update_data_source_paths(ds: &mut serde_yaml::Value, ds_name: &str, output_fo
     // Update mapping file path
     if let Some(mapping) = ds.get_mut("mapping") {
         if let Some(file) = mapping.get_mut("file") {
-            let extension = if output_format == "wasm" {
-                "wasm"
-            } else {
-                "wast"
-            };
+            let extension = output_extension(output_format);
             *file = serde_yaml::Value::String(format!("{}/{}.{}", ds_name, ds_name, extension));
         }
 
@@ -933,11 +782,7 @@ fn update_template_paths(
     // Update mapping file path
     if let Some(mapping) = template.get_mut("mapping") {
         if let Some(file) = mapping.get_mut("file") {
-            let extension = if output_format == "wasm" {
-                "wasm"
-            } else {
-                "wast"
-            };
+            let extension = output_extension(output_format);
             *file = serde_yaml::Value::String(format!(
                 "templates/{}/{}.{}",
                 template_name, template_name, extension
@@ -1020,341 +865,10 @@ fn file_hash(path: &Path) -> Result<String> {
     Ok(format!("{:x}", result))
 }
 
-/// Resolve a path relative to the manifest file.
-fn resolve_path(manifest: &Path, path: &str) -> PathBuf {
-    manifest
-        .parent()
-        .map(|p| p.join(path))
-        .unwrap_or_else(|| PathBuf::from(path))
-}
-
-// ============================================================================
-// Simplified manifest parsing
-// ============================================================================
-
-/// A simplified subgraph manifest structure.
-#[derive(Debug)]
-pub(crate) struct Manifest {
-    pub spec_version: Version,
-    pub schema: Option<String>,
-    #[allow(dead_code)]
-    pub features: Vec<String>,
-    #[allow(dead_code)]
-    pub graft: Option<GraftConfig>,
-    pub data_sources: Vec<DataSource>,
-    pub templates: Vec<Template>,
-}
-
-/// Graft configuration.
-#[derive(Debug)]
-#[allow(dead_code)]
-pub(crate) struct GraftConfig {
-    pub base: String,
-    pub block: u64,
-}
-
-#[derive(Debug)]
-pub(crate) struct DataSource {
-    pub name: String,
-    #[allow(dead_code)]
-    pub kind: String,
-    pub network: Option<String>,
-    pub mapping_file: Option<String>,
-    pub api_version: Option<Version>,
-    pub abis: Vec<Abi>,
-}
-
-#[derive(Debug)]
-pub(crate) struct Template {
-    pub name: String,
-    #[allow(dead_code)]
-    pub kind: String,
-    pub network: Option<String>,
-    pub mapping_file: Option<String>,
-    pub api_version: Option<Version>,
-    pub abis: Vec<Abi>,
-}
-
-#[derive(Debug)]
-pub(crate) struct Abi {
-    pub name: String,
-    pub file: String,
-}
-
-/// Load a subgraph manifest from a YAML file.
-pub(crate) fn load_manifest(path: &Path) -> Result<Manifest> {
-    step(
-        Step::Load,
-        &format!("Load subgraph from {}", path.display()),
-    );
-
-    let manifest_str =
-        fs::read_to_string(path).with_context(|| format!("Failed to read manifest: {:?}", path))?;
-
-    let value: serde_json::Value = serde_yaml::from_str(&manifest_str)
-        .with_context(|| format!("Failed to parse manifest YAML: {:?}", path))?;
-
-    // Extract spec version (default to 0.0.4 if not specified)
-    let spec_version_str = value
-        .get("specVersion")
-        .and_then(|v| v.as_str())
-        .unwrap_or("0.0.4");
-
-    let spec_version = Version::parse(spec_version_str).unwrap_or_else(|_| Version::new(0, 0, 4));
-
-    // Extract schema path
-    let schema = value
-        .get("schema")
-        .and_then(|s| s.get("file"))
-        .and_then(|f| f.as_str())
-        .map(String::from);
-
-    // Extract features
-    let features = value
-        .get("features")
-        .and_then(|f| f.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|f| f.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
-
-    // Extract graft config
-    let graft = value.get("graft").and_then(|g| {
-        let base = g.get("base")?.as_str()?.to_string();
-        let block = g.get("block")?.as_u64().unwrap_or(0);
-        Some(GraftConfig { base, block })
-    });
-
-    // Extract data sources
-    let data_sources = value
-        .get("dataSources")
-        .and_then(|ds| ds.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|ds| {
-                    let name = ds.get("name")?.as_str()?.to_string();
-                    let kind = ds
-                        .get("kind")
-                        .and_then(|k| k.as_str())
-                        .unwrap_or("ethereum/contract")
-                        .to_string();
-                    let network = ds.get("network").and_then(|n| n.as_str()).map(String::from);
-                    let mapping_file = ds
-                        .get("mapping")
-                        .and_then(|m| m.get("file"))
-                        .and_then(|f| f.as_str())
-                        .map(String::from);
-                    let api_version = ds
-                        .get("mapping")
-                        .and_then(|m| m.get("apiVersion"))
-                        .and_then(|v| v.as_str())
-                        .and_then(|v| Version::parse(v).ok());
-                    let abis = ds
-                        .get("mapping")
-                        .and_then(|m| m.get("abis"))
-                        .and_then(|a| a.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|abi| {
-                                    let name = abi.get("name")?.as_str()?.to_string();
-                                    let file = abi.get("file")?.as_str()?.to_string();
-                                    Some(Abi { name, file })
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    Some(DataSource {
-                        name,
-                        kind,
-                        network,
-                        mapping_file,
-                        api_version,
-                        abis,
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    // Extract templates
-    let templates = value
-        .get("templates")
-        .and_then(|t| t.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|t| {
-                    let name = t.get("name")?.as_str()?.to_string();
-                    let kind = t
-                        .get("kind")
-                        .and_then(|k| k.as_str())
-                        .unwrap_or("ethereum/contract")
-                        .to_string();
-                    let network = t.get("network").and_then(|n| n.as_str()).map(String::from);
-                    let mapping_file = t
-                        .get("mapping")
-                        .and_then(|m| m.get("file"))
-                        .and_then(|f| f.as_str())
-                        .map(String::from);
-                    let api_version = t
-                        .get("mapping")
-                        .and_then(|m| m.get("apiVersion"))
-                        .and_then(|v| v.as_str())
-                        .and_then(|v| Version::parse(v).ok());
-                    let abis = t
-                        .get("mapping")
-                        .and_then(|m| m.get("abis"))
-                        .and_then(|a| a.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|abi| {
-                                    let name = abi.get("name")?.as_str()?.to_string();
-                                    let file = abi.get("file")?.as_str()?.to_string();
-                                    Some(Abi { name, file })
-                                })
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    Some(Template {
-                        name,
-                        kind,
-                        network,
-                        mapping_file,
-                        api_version,
-                        abis,
-                    })
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    Ok(Manifest {
-        spec_version,
-        schema,
-        features,
-        graft,
-        data_sources,
-        templates,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
-
-    #[test]
-    fn test_resolve_path() {
-        let manifest = PathBuf::from("/home/user/project/subgraph.yaml");
-        let path = "src/mapping.ts";
-        let resolved = resolve_path(&manifest, path);
-        assert_eq!(resolved, PathBuf::from("/home/user/project/src/mapping.ts"));
-    }
-
-    #[test]
-    fn test_load_manifest() {
-        let temp_dir = TempDir::new().unwrap();
-        let manifest_path = temp_dir.path().join("subgraph.yaml");
-
-        let manifest_content = r#"
-specVersion: 0.0.4
-schema:
-  file: ./schema.graphql
-dataSources:
-  - kind: ethereum/contract
-    name: Token
-    network: mainnet
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.6
-      file: ./src/mapping.ts
-      abis:
-        - name: ERC20
-          file: ./abis/ERC20.json
-templates:
-  - kind: ethereum/contract
-    name: DynamicToken
-    network: mainnet
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.6
-      file: ./src/dynamic.ts
-"#;
-
-        fs::write(&manifest_path, manifest_content).unwrap();
-
-        let manifest = load_manifest(&manifest_path).unwrap();
-        assert_eq!(manifest.spec_version, Version::new(0, 0, 4));
-        assert_eq!(manifest.schema, Some("./schema.graphql".to_string()));
-        assert_eq!(manifest.data_sources.len(), 1);
-        assert_eq!(manifest.data_sources[0].name, "Token");
-        assert_eq!(manifest.data_sources[0].kind, "ethereum/contract");
-        assert_eq!(
-            manifest.data_sources[0].network,
-            Some("mainnet".to_string())
-        );
-        assert_eq!(
-            manifest.data_sources[0].api_version,
-            Some(Version::new(0, 0, 6))
-        );
-        assert_eq!(
-            manifest.data_sources[0].mapping_file,
-            Some("./src/mapping.ts".to_string())
-        );
-        assert_eq!(manifest.data_sources[0].abis.len(), 1);
-        assert_eq!(manifest.data_sources[0].abis[0].name, "ERC20");
-        assert_eq!(manifest.templates.len(), 1);
-        assert_eq!(manifest.templates[0].name, "DynamicToken");
-        assert_eq!(manifest.templates[0].kind, "ethereum/contract");
-        assert_eq!(manifest.templates[0].network, Some("mainnet".to_string()));
-        assert_eq!(
-            manifest.templates[0].api_version,
-            Some(Version::new(0, 0, 6))
-        );
-    }
-
-    #[test]
-    fn test_load_manifest_with_graft_and_features() {
-        let temp_dir = TempDir::new().unwrap();
-        let manifest_path = temp_dir.path().join("subgraph.yaml");
-
-        let manifest_content = r#"
-specVersion: 0.0.6
-features:
-  - nonFatalErrors
-  - fullTextSearch
-graft:
-  base: QmXYZ123
-  block: 12345
-schema:
-  file: ./schema.graphql
-dataSources:
-  - kind: ethereum/contract
-    name: Token
-    network: mainnet
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.6
-      file: ./src/mapping.ts
-      abis:
-        - name: ERC20
-          file: ./abis/ERC20.json
-"#;
-
-        fs::write(&manifest_path, manifest_content).unwrap();
-
-        let manifest = load_manifest(&manifest_path).unwrap();
-        assert_eq!(manifest.spec_version, Version::new(0, 0, 6));
-        assert_eq!(
-            manifest.features,
-            vec!["nonFatalErrors".to_string(), "fullTextSearch".to_string()]
-        );
-        assert!(manifest.graft.is_some());
-        let graft = manifest.graft.unwrap();
-        assert_eq!(graft.base, "QmXYZ123");
-        assert_eq!(graft.block, 12345);
-    }
 
     #[test]
     fn test_file_hash() {

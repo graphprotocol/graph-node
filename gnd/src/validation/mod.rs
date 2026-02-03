@@ -14,7 +14,7 @@ use graph::prelude::DeploymentHash;
 use graph::schema::{InputSchema, SchemaValidationError};
 use semver::Version;
 
-use crate::commands::{Abi, DataSource, Manifest, Template};
+use crate::manifest::{Abi, DataSource, Manifest, Template};
 
 /// Validate a GraphQL schema using graph-node's InputSchema validation.
 ///
@@ -102,7 +102,7 @@ pub(crate) fn validate_manifest(
     let mut errors = Vec::new();
 
     // Validate using shared validation functions
-    if let Err(e) = manifest_validation::validate_has_data_sources(manifest.data_sources.len()) {
+    if let Err(e) = manifest_validation::validate_has_data_sources(manifest.total_source_count()) {
         errors.push(e.into());
     }
 
@@ -425,6 +425,19 @@ type Post @entity {
             mapping_file: Some(format!("src/{}.ts", name)),
             api_version,
             abis: vec![],
+            source_address: None,
+        }
+    }
+
+    fn create_subgraph_data_source(name: &str, address: &str) -> DataSource {
+        DataSource {
+            name: name.to_string(),
+            kind: "subgraph".to_string(),
+            network: None,
+            mapping_file: None,
+            api_version: None,
+            abis: vec![],
+            source_address: Some(address.to_string()),
         }
     }
 
@@ -439,6 +452,43 @@ type Post @entity {
             e,
             ManifestValidationError::Shared(e) if matches!(e.as_ref(), SubgraphManifestValidationError::NoDataSources)
         )));
+    }
+
+    #[test]
+    fn test_validate_manifest_only_subgraph_sources() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create schema file
+        fs::write(
+            temp_dir.path().join("schema.graphql"),
+            "type T @entity { id: ID! }",
+        )
+        .unwrap();
+
+        // Manifest with only subgraph sources (no regular data sources)
+        let data_sources = vec![create_subgraph_data_source(
+            "SourceSubgraph",
+            "QmSourceHash123",
+        )];
+        let manifest = Manifest {
+            spec_version: Version::new(1, 0, 0),
+            schema: Some("schema.graphql".to_string()),
+            features: vec![],
+            graft: None,
+            data_sources,
+            templates: vec![],
+        };
+
+        let errors = validate_manifest(&manifest, temp_dir.path());
+
+        // Should NOT have "no data sources" error since we have subgraph sources
+        assert!(
+            !errors.iter().any(|e| matches!(
+                e,
+                ManifestValidationError::Shared(e) if matches!(e.as_ref(), SubgraphManifestValidationError::NoDataSources)
+            )),
+            "Manifest with subgraph sources should not fail 'no data sources' validation"
+        );
     }
 
     #[test]
