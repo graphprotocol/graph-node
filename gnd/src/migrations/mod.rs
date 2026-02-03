@@ -72,7 +72,13 @@ fn all_migrations() -> Vec<Box<dyn Migration>> {
 /// Migrations are applied in order, with each migration checking if it should
 /// be applied before making changes. The manifest file is modified in-place.
 pub fn apply_migrations(manifest_path: &Path) -> Result<()> {
-    step(Step::Load, "Apply migrations");
+    let mut apply_printed = false;
+    let mut print_apply = || {
+        if !apply_printed {
+            step(Step::Generate, "Applying migrations");
+            apply_printed = true;
+        }
+    };
 
     let source_dir = crate::manifest::manifest_dir(manifest_path);
 
@@ -84,6 +90,7 @@ pub fn apply_migrations(manifest_path: &Path) -> Result<()> {
     for migration in all_migrations() {
         match migration.check(&ctx)? {
             MigrationCheck::ShouldApply => {
+                print_apply();
                 step(
                     Step::Generate,
                     &format!("Apply migration: {}", migration.name()),
@@ -91,9 +98,10 @@ pub fn apply_migrations(manifest_path: &Path) -> Result<()> {
                 migration.apply(&ctx)?;
             }
             MigrationCheck::Skip => {
-                step(Step::Skip, &format!("Skip migration: {}", migration.name()));
+                // No need to bother the user
             }
             MigrationCheck::SkipWithReason(reason) => {
+                print_apply();
                 step(
                     Step::Skip,
                     &format!("Skip migration: {} ({})", migration.name(), reason),
