@@ -168,7 +168,11 @@ impl IdFieldKind {
     pub fn auto_check_condition(&self) -> &'static str {
         match self {
             IdFieldKind::String => "", // N/A
-            IdFieldKind::Bytes => "id !== null",
+            // For Bytes we end up generating 'if (id) { .. }' Using 'id !=
+            // null' crashes the AssemblyScript compiler  0.19.23 because id
+            // has type 'Bytes | null' and the compiler doesn't strip the
+            // null from the type in the body of the if
+            IdFieldKind::Bytes => "id",
             IdFieldKind::Int8 => "id != i64.MIN_VALUE",
         }
     }
@@ -821,7 +825,7 @@ mod tests {
         assert!(IdFieldKind::Bytes.supports_auto());
         assert_eq!(IdFieldKind::Bytes.constructor_param_type(), "Bytes | null");
         assert_eq!(IdFieldKind::Bytes.constructor_default(), Some("null"));
-        assert_eq!(IdFieldKind::Bytes.auto_check_condition(), "id !== null");
+        assert_eq!(IdFieldKind::Bytes.auto_check_condition(), "id");
     }
 
     #[test]
@@ -900,7 +904,7 @@ mod tests {
 
         // Constructor body should conditionally set id
         assert!(
-            output.contains("if (id !== null)"),
+            output.contains("if (id)"),
             "Constructor should check for null"
         );
 
