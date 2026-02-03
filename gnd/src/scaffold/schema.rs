@@ -7,9 +7,14 @@ use super::ScaffoldOptions;
 pub fn generate_schema(options: &ScaffoldOptions) -> String {
     let events = extract_events_from_abi(options);
 
-    if events.is_empty() || !options.index_events {
-        // Generate example entity
-        return generate_example_entity();
+    if events.is_empty() {
+        // Generate example entity with no event params
+        return generate_example_entity(&[]);
+    }
+
+    if !options.index_events {
+        // Generate example entity with first event's params
+        return generate_example_entity(&events[0].inputs);
     }
 
     // Generate entity for each event
@@ -24,17 +29,27 @@ pub fn generate_schema(options: &ScaffoldOptions) -> String {
     schema.trim_end().to_string()
 }
 
-/// Generate an example entity when no events are found.
-fn generate_example_entity() -> String {
-    r#"type ExampleEntity @entity {
-  id: Bytes!
-  count: BigInt!
-  blockNumber: BigInt!
-  blockTimestamp: BigInt!
-  transactionHash: Bytes!
-}
-"#
-    .to_string()
+/// Generate an example entity for placeholder mode.
+/// Uses first 2 event params if available, with type comments.
+fn generate_example_entity(inputs: &[EventInput]) -> String {
+    let mut fields = String::new();
+    fields.push_str("  id: Bytes!\n");
+    fields.push_str("  count: BigInt!\n");
+
+    // Include first 2 event params with type comments
+    for input in inputs.iter().take(2) {
+        let field_name = sanitize_field_name(&input.name);
+        let graphql_type = solidity_to_graphql(&input.solidity_type);
+        fields.push_str(&format!(
+            "  {}: {}! # {}\n",
+            field_name, graphql_type, input.solidity_type
+        ));
+    }
+
+    format!(
+        "type ExampleEntity @entity(immutable: true) {{\n{}}}\n",
+        fields
+    )
 }
 
 /// Generate an entity type for an event.
@@ -56,7 +71,10 @@ fn generate_event_entity(event_name: &str, inputs: &[EventInput]) -> String {
     fields.push_str("  blockTimestamp: BigInt!\n");
     fields.push_str("  transactionHash: Bytes!");
 
-    format!("type {} @entity {{\n{}\n}}", event_name, fields)
+    format!(
+        "type {} @entity(immutable: true) {{\n{}\n}}",
+        event_name, fields
+    )
 }
 
 /// Convert Solidity type to GraphQL type.
@@ -146,11 +164,74 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn test_generate_example_entity() {
-        let schema = generate_example_entity();
-        assert!(schema.contains("type ExampleEntity @entity"));
+    fn test_generate_example_entity_no_inputs() {
+        let schema = generate_example_entity(&[]);
+        assert!(schema.contains("type ExampleEntity @entity(immutable: true)"));
         assert!(schema.contains("id: Bytes!"));
-        assert!(schema.contains("blockNumber: BigInt!"));
+        assert!(schema.contains("count: BigInt!"));
+        // Should not contain block fields
+        assert!(!schema.contains("blockNumber"));
+        assert!(!schema.contains("blockTimestamp"));
+        assert!(!schema.contains("transactionHash"));
+    }
+
+    #[test]
+    fn test_generate_example_entity_with_inputs() {
+        let inputs = vec![
+            EventInput {
+                name: "from".to_string(),
+                solidity_type: "address".to_string(),
+                indexed: true,
+            },
+            EventInput {
+                name: "to".to_string(),
+                solidity_type: "address".to_string(),
+                indexed: true,
+            },
+            EventInput {
+                name: "value".to_string(),
+                solidity_type: "uint256".to_string(),
+                indexed: false,
+            },
+        ];
+
+        let schema = generate_example_entity(&inputs);
+        assert!(schema.contains("type ExampleEntity @entity(immutable: true)"));
+        assert!(schema.contains("id: Bytes!"));
+        assert!(schema.contains("count: BigInt!"));
+        // First 2 params with type comments
+        assert!(schema.contains("from: Bytes! # address"));
+        assert!(schema.contains("to: Bytes! # address"));
+        // Third param should NOT be included (only first 2)
+        assert!(!schema.contains("value: BigInt!"));
+    }
+
+    #[test]
+    fn test_generate_schema_placeholder_mode() {
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Transfer",
+                "inputs": [
+                    {"name": "from", "type": "address", "indexed": true},
+                    {"name": "to", "type": "address", "indexed": true},
+                    {"name": "value", "type": "uint256", "indexed": false}
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            abi: Some(abi),
+            index_events: false, // placeholder mode
+            ..Default::default()
+        };
+
+        let schema = generate_schema(&options);
+
+        assert!(schema.contains("type ExampleEntity @entity(immutable: true)"));
+        // First 2 event params with type comments
+        assert!(schema.contains("from: Bytes! # address"));
+        assert!(schema.contains("to: Bytes! # address"));
     }
 
     #[test]
@@ -175,7 +256,7 @@ mod tests {
 
         let schema = generate_schema(&options);
 
-        assert!(schema.contains("type Transfer @entity"));
+        assert!(schema.contains("type Transfer @entity(immutable: true)"));
         assert!(schema.contains("from: Bytes!"));
         assert!(schema.contains("to: Bytes!"));
         assert!(schema.contains("value: BigInt!"));

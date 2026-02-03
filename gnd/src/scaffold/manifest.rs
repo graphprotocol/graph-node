@@ -9,14 +9,13 @@ pub fn generate_manifest(options: &ScaffoldOptions) -> String {
     let mapping_file = format!("./src/{}.ts", super::to_kebab_case(contract_name));
     let abi_file = format!("./abis/{}.json", contract_name);
 
-    let mut source = format!(
-        r#"      abi: {contract_name}
-"#
-    );
+    let mut source = String::new();
 
     if let Some(address) = &options.address {
         source.push_str(&format!("      address: \"{}\"\n", address));
     }
+
+    source.push_str(&format!("      abi: {contract_name}\n"));
 
     if let Some(start_block) = options.start_block {
         source.push_str(&format!("      startBlock: {}\n", start_block));
@@ -69,7 +68,7 @@ fn get_event_handlers(options: &ScaffoldOptions) -> String {
     for event in events {
         let handler_name = format!("handle{}", event.name);
         handlers.push_str(&format!(
-            "\n        - event: {}\n          handler: {}\n",
+            "\n        - event: {}\n          handler: {}",
             event.signature, handler_name
         ));
     }
@@ -85,15 +84,12 @@ fn get_entities(options: &ScaffoldOptions) -> String {
         return "\n        - ExampleEntity".to_string();
     }
 
-    if options.index_events {
-        let mut entities = String::new();
-        for event in events {
-            entities.push_str(&format!("\n        - {}", event.name));
-        }
-        entities
-    } else {
-        "\n        - ExampleEntity".to_string()
+    // Always use event names from ABI, regardless of index_events
+    let mut entities = String::new();
+    for event in events {
+        entities.push_str(&format!("\n        - {}", event.name));
     }
+    entities
 }
 
 /// Event info extracted from ABI.
@@ -215,6 +211,66 @@ mod tests {
         assert!(manifest.contains("name: MyToken"));
         assert!(manifest.contains("0x1234567890123456789012345678901234567890"));
         assert!(manifest.contains("startBlock: 12345678"));
+
+        // Verify address comes before abi
+        let address_pos = manifest.find("address:").unwrap();
+        let abi_pos = manifest.find("abi: MyToken").unwrap();
+        assert!(address_pos < abi_pos, "address should come before abi");
+    }
+
+    #[test]
+    fn test_get_entities_uses_event_names() {
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Transfer",
+                "inputs": []
+            },
+            {
+                "type": "event",
+                "name": "Approval",
+                "inputs": []
+            }
+        ]);
+
+        // Even with index_events=false, entities should be event names
+        let options = ScaffoldOptions {
+            abi: Some(abi),
+            index_events: false,
+            ..Default::default()
+        };
+
+        let manifest = generate_manifest(&options);
+        assert!(manifest.contains("- Transfer"));
+        assert!(manifest.contains("- Approval"));
+        // Should NOT contain ExampleEntity
+        assert!(!manifest.contains("ExampleEntity"));
+    }
+
+    #[test]
+    fn test_event_handlers_no_blank_lines() {
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Transfer",
+                "inputs": []
+            },
+            {
+                "type": "event",
+                "name": "Approval",
+                "inputs": []
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            abi: Some(abi),
+            ..Default::default()
+        };
+
+        let manifest = generate_manifest(&options);
+
+        // Check there are no double newlines in the eventHandlers section
+        assert!(!manifest.contains("handler: handleTransfer\n\n"));
     }
 
     #[test]
