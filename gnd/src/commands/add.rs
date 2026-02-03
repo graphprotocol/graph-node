@@ -11,6 +11,7 @@ use clap::Parser;
 use inflector::Inflector;
 use serde_json::Value as JsonValue;
 
+use crate::config::networks::update_networks_file;
 use crate::formatter::format_typescript;
 use crate::output::{step, Step};
 use crate::scaffold::manifest::{extract_events_from_abi, EventInfo};
@@ -40,9 +41,9 @@ pub struct AddOpt {
     #[clap(long)]
     pub merge_entities: bool,
 
-    /// Network the contract is deployed to
-    #[clap(long)]
-    pub network: Option<String>,
+    /// Path to the networks.json file
+    #[clap(long, default_value = "networks.json")]
+    pub network_file: PathBuf,
 
     /// Block number to start indexing from
     #[clap(long)]
@@ -79,19 +80,14 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
     let manifest: serde_yaml::Value = serde_yaml::from_str(&manifest_content)
         .with_context(|| format!("Failed to parse manifest: {}", opt.manifest.display()))?;
 
-    // Get network from manifest or flag
-    let network = opt
-        .network
-        .clone()
-        .or_else(|| {
-            manifest
-                .get("dataSources")
-                .and_then(|ds| ds.as_sequence())
-                .and_then(|seq| seq.first())
-                .and_then(|first| first.get("network"))
-                .and_then(|n| n.as_str())
-                .map(String::from)
-        })
+    // Get network from manifest's first data source
+    let network = manifest
+        .get("dataSources")
+        .and_then(|ds| ds.as_sequence())
+        .and_then(|seq| seq.first())
+        .and_then(|first| first.get("network"))
+        .and_then(|n| n.as_str())
+        .map(String::from)
         .unwrap_or_else(|| "mainnet".to_string());
 
     // Fetch or load ABI
@@ -132,6 +128,20 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
         start_block,
         &events,
     )?;
+
+    // Update networks.json
+    let networks_path = project_dir.join(&opt.network_file);
+    update_networks_file(
+        &networks_path,
+        &network,
+        &contract_name,
+        &opt.address,
+        start_block,
+    )?;
+    step(
+        Step::Write,
+        &format!("Updated {}", opt.network_file.display()),
+    );
 
     step(Step::Done, &format!("Added data source: {}", contract_name));
 
@@ -595,7 +605,7 @@ mod tests {
             abi: None,
             contract_name: None,
             merge_entities: false,
-            network: None,
+            network_file: PathBuf::from("networks.json"),
             start_block: None,
         };
 
@@ -748,7 +758,7 @@ mod tests {
             abi: None,
             contract_name: None,
             merge_entities: false,
-            network: None,
+            network_file: PathBuf::from("networks.json"),
             start_block: None,
         };
 
