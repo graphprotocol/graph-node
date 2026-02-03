@@ -113,9 +113,6 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
     // Add ABI file
     add_abi_file(project_dir, &contract_name, &abi)?;
 
-    // Add schema entities (append to schema.graphql)
-    add_schema_entities(project_dir, &events, opt.merge_entities)?;
-
     // Add mapping file
     add_mapping_file(project_dir, &contract_name, &events)?;
 
@@ -227,110 +224,6 @@ fn add_abi_file(project_dir: &Path, contract_name: &str, abi: &JsonValue) -> Res
     fs::write(&abi_file, abi_str).context("Failed to write ABI file")?;
 
     Ok(())
-}
-
-/// Add entity types to schema.graphql.
-fn add_schema_entities(
-    project_dir: &Path,
-    events: &[EventInfo],
-    merge_entities: bool,
-) -> Result<()> {
-    let schema_file = project_dir.join("schema.graphql");
-
-    let existing_schema = if schema_file.exists() {
-        fs::read_to_string(&schema_file).context("Failed to read schema.graphql")?
-    } else {
-        String::new()
-    };
-
-    // Generate entity types for events
-    let mut new_entities = String::new();
-    for event in events {
-        let entity_name = &event.name;
-
-        // Check if entity already exists
-        let entity_pattern = format!("type {} @entity", entity_name);
-        if existing_schema.contains(&entity_pattern) {
-            if merge_entities {
-                step(
-                    Step::Skip,
-                    &format!("Entity {} already exists (merging)", entity_name),
-                );
-                continue;
-            } else {
-                return Err(anyhow!(
-                    "Entity '{}' already exists in schema.graphql. Use --merge-entities to skip existing entities.",
-                    entity_name
-                ));
-            }
-        }
-
-        new_entities.push_str(&generate_event_entity(event));
-        new_entities.push_str("\n\n");
-    }
-
-    if new_entities.is_empty() {
-        step(Step::Skip, "No new entities to add");
-        return Ok(());
-    }
-
-    // Append to schema
-    let updated_schema = if existing_schema.is_empty() {
-        new_entities.trim_end().to_string()
-    } else {
-        format!(
-            "{}\n\n{}",
-            existing_schema.trim_end(),
-            new_entities.trim_end()
-        )
-    };
-
-    step(Step::Write, "Updating schema.graphql");
-    fs::write(&schema_file, updated_schema).context("Failed to write schema.graphql")?;
-
-    Ok(())
-}
-
-/// Generate an entity type for an event.
-fn generate_event_entity(event: &EventInfo) -> String {
-    let mut fields = String::new();
-    fields.push_str("  id: Bytes!\n");
-
-    for input in &event.inputs {
-        let field_name = sanitize_field_name(&input.name);
-        let graphql_type = solidity_to_graphql(&input.solidity_type);
-        fields.push_str(&format!("  {}: {}!\n", field_name, graphql_type));
-    }
-
-    fields.push_str("  blockNumber: BigInt!\n");
-    fields.push_str("  blockTimestamp: BigInt!\n");
-    fields.push_str("  transactionHash: Bytes!");
-
-    format!("type {} @entity {{\n{}\n}}", event.name, fields)
-}
-
-/// Convert Solidity type to GraphQL type.
-fn solidity_to_graphql(solidity_type: &str) -> &'static str {
-    if solidity_type.ends_with("[]") {
-        let inner = solidity_type.strip_suffix("[]").unwrap();
-        return match solidity_to_graphql(inner) {
-            "Bytes" => "[Bytes!]",
-            "BigInt" => "[BigInt!]",
-            "String" => "[String!]",
-            "Boolean" => "[Boolean!]",
-            _ => "[Bytes!]",
-        };
-    }
-
-    match solidity_type {
-        "address" => "Bytes",
-        "bool" => "Boolean",
-        "string" => "String",
-        "bytes" => "Bytes",
-        t if t.starts_with("bytes") => "Bytes",
-        t if t.starts_with("uint") || t.starts_with("int") => "BigInt",
-        _ => "Bytes",
-    }
 }
 
 /// Sanitize a field name for GraphQL.
@@ -618,23 +511,6 @@ mod tests {
     }
 
     #[test]
-    fn test_solidity_to_graphql() {
-        assert_eq!(solidity_to_graphql("address"), "Bytes");
-        assert_eq!(solidity_to_graphql("bool"), "Boolean");
-        assert_eq!(solidity_to_graphql("string"), "String");
-        assert_eq!(solidity_to_graphql("bytes"), "Bytes");
-        assert_eq!(solidity_to_graphql("bytes32"), "Bytes");
-        assert_eq!(solidity_to_graphql("uint256"), "BigInt");
-        assert_eq!(solidity_to_graphql("int128"), "BigInt");
-        assert_eq!(solidity_to_graphql("uint8"), "BigInt");
-        // Array types
-        assert_eq!(solidity_to_graphql("address[]"), "[Bytes!]");
-        assert_eq!(solidity_to_graphql("uint256[]"), "[BigInt!]");
-        assert_eq!(solidity_to_graphql("bool[]"), "[Boolean!]");
-        assert_eq!(solidity_to_graphql("string[]"), "[String!]");
-    }
-
-    #[test]
     fn test_sanitize_field_name() {
         assert_eq!(sanitize_field_name("owner"), "owner");
         assert_eq!(sanitize_field_name("Owner"), "owner");
@@ -651,41 +527,6 @@ mod tests {
         assert_eq!("Contract".to_kebab_case(), "contract");
         assert_eq!("contract".to_kebab_case(), "contract");
         assert_eq!("ERC20Token".to_kebab_case(), "erc20-token");
-    }
-
-    #[test]
-    fn test_generate_event_entity() {
-        let event = EventInfo {
-            name: "Transfer".to_string(),
-            signature: "Transfer(address,address,uint256)".to_string(),
-            inputs: vec![
-                EventInput {
-                    name: "from".to_string(),
-                    solidity_type: "address".to_string(),
-                    indexed: true,
-                },
-                EventInput {
-                    name: "to".to_string(),
-                    solidity_type: "address".to_string(),
-                    indexed: true,
-                },
-                EventInput {
-                    name: "value".to_string(),
-                    solidity_type: "uint256".to_string(),
-                    indexed: false,
-                },
-            ],
-        };
-
-        let entity = generate_event_entity(&event);
-        assert!(entity.contains("type Transfer @entity"));
-        assert!(entity.contains("id: Bytes!"));
-        assert!(entity.contains("from: Bytes!"));
-        assert!(entity.contains("to: Bytes!"));
-        assert!(entity.contains("value: BigInt!"));
-        assert!(entity.contains("blockNumber: BigInt!"));
-        assert!(entity.contains("blockTimestamp: BigInt!"));
-        assert!(entity.contains("transactionHash: Bytes!"));
     }
 
     #[test]
