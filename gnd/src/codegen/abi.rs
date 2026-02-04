@@ -12,6 +12,7 @@ use regex::Regex;
 use serde_json::Value as JsonValue;
 
 use super::typescript::{self as ts, Class, ClassMember, Method, ModuleImports, Param as TsParam};
+use crate::shared::{capitalize, handle_reserved_word};
 
 /// Represents component name information extracted from ABI JSON.
 /// This is needed because ethabi's `ParamType::Tuple` loses the component names.
@@ -125,69 +126,6 @@ fn parse_abi_component_names(abi_json: &str) -> HashMap<ComponentLookupKey, Comp
     }
 
     result
-}
-
-/// Reserved words in AssemblyScript that need to be escaped.
-const RESERVED_WORDS: &[&str] = &[
-    "await",
-    "break",
-    "case",
-    "catch",
-    "class",
-    "const",
-    "continue",
-    "debugger",
-    "delete",
-    "do",
-    "else",
-    "enum",
-    "export",
-    "extends",
-    "false",
-    "finally",
-    "function",
-    "if",
-    "implements",
-    "import",
-    "in",
-    "interface",
-    "let",
-    "new",
-    "package",
-    "private",
-    "protected",
-    "public",
-    "return",
-    "super",
-    "switch",
-    "static",
-    "this",
-    "throw",
-    "true",
-    "try",
-    "typeof",
-    "var",
-    "while",
-    "with",
-    "yield",
-];
-
-/// Handle reserved words by appending an underscore.
-fn handle_reserved_word(name: &str) -> String {
-    if RESERVED_WORDS.contains(&name) {
-        format!("{}_", name)
-    } else {
-        name.to_string()
-    }
-}
-
-/// Capitalize the first letter of a string.
-fn capitalize(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-    }
 }
 
 const GRAPH_TS_MODULE: &str = "@graphprotocol/graph-ts";

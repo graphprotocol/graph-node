@@ -9,6 +9,7 @@ pub mod output;
 pub mod prompt;
 pub mod scaffold;
 pub mod services;
+pub mod shared;
 pub mod validation;
 pub mod watch;
 pub mod watcher;

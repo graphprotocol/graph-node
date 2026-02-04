@@ -10,64 +10,7 @@ use super::typescript::{
     self as ts, ArrayType, Class, Method, ModuleImports, NamedType, NullableType, Param,
     StaticMethod, TypeExpr,
 };
-
-/// Reserved words in AssemblyScript that need to be escaped.
-const RESERVED_WORDS: &[&str] = &[
-    "break",
-    "case",
-    "catch",
-    "class",
-    "const",
-    "continue",
-    "debugger",
-    "default",
-    "delete",
-    "do",
-    "else",
-    "enum",
-    "export",
-    "extends",
-    "false",
-    "finally",
-    "for",
-    "function",
-    "if",
-    "implements",
-    "import",
-    "in",
-    "instanceof",
-    "interface",
-    "let",
-    "new",
-    "null",
-    "package",
-    "private",
-    "protected",
-    "public",
-    "return",
-    "static",
-    "super",
-    "switch",
-    "this",
-    "throw",
-    "true",
-    "try",
-    "typeof",
-    "var",
-    "void",
-    "while",
-    "with",
-    "yield",
-];
-
-/// Handle reserved words by appending an underscore.
-fn handle_reserved_word(name: &str) -> String {
-    if RESERVED_WORDS.contains(&name) {
-        format!("{}_", name)
-    } else {
-        name.to_string()
-    }
-}
+use crate::shared::handle_reserved_word;
 
 /// Type of the ID field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
