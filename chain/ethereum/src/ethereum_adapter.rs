@@ -1621,13 +1621,26 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     .map_err(|e| {
                         let block_num = inner.get("number").and_then(|n| n.as_str());
                         let block_hash = inner.get("hash").and_then(|h| h.as_str());
+                        let raw_json = value.to_string();
+                        let truncated = if raw_json.len() > 500 {
+                            format!("{}...(truncated)", &raw_json[..500])
+                        } else {
+                            raw_json
+                        };
+                        let top_level_keys: Vec<_> = value
+                            .as_object()
+                            .map(|obj| obj.keys().cloned().collect())
+                            .unwrap_or_default();
                         warn!(
                             &logger,
                             "Failed to deserialize cached block #{:?} {:?}: {}. \
-                         Block will be re-fetched from RPC.",
+                         Block will be re-fetched from RPC. \
+                         Top-level keys: {:?}, Raw JSON: {}",
                             block_num,
                             block_hash,
-                            e
+                            e,
+                            top_level_keys,
+                            truncated
                         );
                     })
                     .ok()

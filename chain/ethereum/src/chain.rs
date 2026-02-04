@@ -1179,13 +1179,26 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                                 return Ok(light_block.parent_ptr());
                             }
                             Err(e) => {
+                                let raw_json = cached_json.to_string();
+                                let truncated = if raw_json.len() > 500 {
+                                    format!("{}...(truncated)", &raw_json[..500])
+                                } else {
+                                    raw_json
+                                };
+                                let top_level_keys: Vec<_> = cached_json
+                                    .as_object()
+                                    .map(|obj| obj.keys().cloned().collect())
+                                    .unwrap_or_default();
                                 warn!(
                                     self.logger,
                                     "Failed to deserialize cached block #{} {}: {}. \
-                                     Falling back to Firehose.",
+                                     Falling back to Firehose. \
+                                     Top-level keys: {:?}, Raw JSON: {}",
                                     block.number,
                                     block.hash_hex(),
-                                    e
+                                    e,
+                                    top_level_keys,
+                                    truncated
                                 );
                             }
                         }
