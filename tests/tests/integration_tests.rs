@@ -865,25 +865,23 @@ async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
 
     assert!(subgraph.healthy);
 
-    // Fixed block hashes from deterministic Anvil config
-    let block_hashes: Vec<&str> = vec![
-        "e26fccbd24dcc76074b432becf29cad3bcba11a8467a7b770fad109c2b5d14c2",
-        "249dbcbee975c22f8c9cc937536945ca463568c42d8933a3f54129dec352e46b",
-        "408675f81c409dede08d0eeb2b3420a73b067c4fa8c5f0fc49ce369289467c33",
-    ];
+    // Fetch block hashes from the chain
+    let mut block_hashes: Vec<String> = Vec::new();
+    for i in 1..4 {
+        let hash = get_block_hash(i)
+            .await
+            .ok_or_else(|| anyhow!("Failed to get block hash for block {}", i))?;
+        block_hashes.push(hash);
+    }
 
     // The deployment hash is dynamic (depends on the base subgraph's hash)
     let deployment_hash = DeploymentHash::new(&subgraph.deployment).unwrap();
 
-    // Compute the expected POI values dynamically
+    // Compute the expected POIs using the actual block hashes
     let expected_pois = compute_expected_pois(&deployment_hash, &block_hashes);
 
     for i in 1..4 {
-        let block_hash = get_block_hash(i).await.unwrap();
-        // We need to make sure that the preconditions for POI are fulfilled
-        // namely that the blockchain produced the proper block hashes for the
-        // blocks of which we will check the POI.
-        assert_eq!(block_hash, block_hashes[(i - 1) as usize]);
+        let block_hash = &block_hashes[(i - 1) as usize];
 
         const FETCH_POI: &str = r#"
         query proofOfIndexing($subgraph: String!, $blockNumber: Int!, $blockHash: String!, $indexer: String!) {
@@ -937,7 +935,7 @@ async fn test_subgraph_grafting(ctx: TestContext) -> anyhow::Result<()> {
 /// POI algorithm transition:
 /// - Blocks 0-2: Legacy POI digests (from base subgraph)
 /// - Block 3+: Fast POI algorithm with transition from Legacy
-fn compute_expected_pois(deployment_hash: &DeploymentHash, block_hashes: &[&str]) -> Vec<String> {
+fn compute_expected_pois(deployment_hash: &DeploymentHash, block_hashes: &[String]) -> Vec<String> {
     let logger = Logger::root(Discard, o!());
     let causality_region = "ethereum/test";
 
