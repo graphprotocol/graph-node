@@ -171,7 +171,7 @@ jobs:
         run: pnpm install
 
       - name: Start anvil
-        run: anvil --gas-limit 100000000000 --base-fee 1 --block-time 2 --timestamp 1743944919 --port 3021 &
+        run: anvil --gas-limit 100000000000 --base-fee 1 --timestamp 1743944919 --port 3021 &
 
       - name: Build graph-node
         run: just build --test integration_tests

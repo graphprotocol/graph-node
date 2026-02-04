@@ -5,7 +5,7 @@ use graph::prelude::{
         json_abi::JsonAbi,
         network::{Ethereum, TransactionBuilder},
         primitives::{Address, Bytes, U256},
-        providers::{Provider, ProviderBuilder, WalletProvider},
+        providers::{ext::AnvilApi, Provider, ProviderBuilder, WalletProvider},
         rpc::types::{Block, TransactionReceipt, TransactionRequest},
         signers::local::PrivateKeySigner,
     },
@@ -279,5 +279,41 @@ impl Contract {
             .await
             .ok()
             .flatten()
+    }
+
+    /// Mine the specified number of empty blocks using Anvil's evm_mine RPC.
+    pub async fn mine_blocks(count: u64) -> anyhow::Result<u64> {
+        let provider = Self::provider();
+
+        for _ in 0..count {
+            provider
+                .evm_mine(None)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to mine block: {}", e))?;
+        }
+
+        let block = provider
+            .get_block_number()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get block number: {}", e))?;
+
+        Ok(block)
+    }
+
+    /// Ensure the blockchain has reached at least the specified block number.
+    /// Mines empty blocks if needed.
+    pub async fn ensure_block(target_block: u64) -> anyhow::Result<()> {
+        let provider = Self::provider();
+        let current = provider
+            .get_block_number()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get block number: {}", e))?;
+
+        if current < target_block {
+            let blocks_needed = target_block - current;
+            Self::mine_blocks(blocks_needed).await?;
+        }
+
+        Ok(())
     }
 }

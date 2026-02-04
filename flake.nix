@@ -197,7 +197,7 @@
               timestamp = 1743944919;
               gasLimit = 100000000000;
               baseFee = 1;
-              blockTime = 2;
+              blockTime = null;
               state = "./.data/integration/anvil/state.json";
               stateInterval = 30;
               preserveHistoricalStates = true;

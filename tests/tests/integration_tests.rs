@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::time::{self, Duration, Instant};
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Context, Result};
 use graph::components::subgraph::{
@@ -1388,24 +1388,6 @@ async fn test_declared_calls_struct_fields(ctx: TestContext) -> anyhow::Result<(
     Ok(())
 }
 
-async fn wait_for_blockchain_block(block_number: i32) -> bool {
-    // Wait up to 5 minutes for the expected block to appear
-    const STATUS_WAIT: Duration = Duration::from_secs(300);
-    const REQUEST_REPEATING: Duration = time::Duration::from_secs(1);
-    let start = Instant::now();
-    while start.elapsed() < STATUS_WAIT {
-        let latest_block = Contract::latest_block().await;
-        if let Some(latest_block) = latest_block {
-            let number = latest_block.header.number;
-            if number >= block_number as u64 {
-                return true;
-            }
-        }
-        tokio::time::sleep(REQUEST_REPEATING).await;
-    }
-    false
-}
-
 /// The main test entrypoint.
 #[graph::test]
 async fn integration_tests() -> anyhow::Result<()> {
@@ -1452,10 +1434,17 @@ async fn integration_tests() -> anyhow::Result<()> {
         cases
     };
 
-    // Here we wait for a block in the blockchain in order not to influence
-    // block hashes for all the blocks until the end of the grafting tests.
-    // Currently the last used block for grafting test is the block 3.
-    assert!(wait_for_blockchain_block(SUBGRAPH_LAST_GRAFTING_BLOCK).await);
+    // Mine empty blocks to reach the required block number for grafting tests.
+    // This ensures deterministic block hashes for blocks 1-3 before any
+    // contract deployments occur.
+    status!(
+        "setup",
+        "Mining blocks to reach block {}",
+        SUBGRAPH_LAST_GRAFTING_BLOCK
+    );
+    Contract::ensure_block(SUBGRAPH_LAST_GRAFTING_BLOCK as u64)
+        .await
+        .context("Failed to mine initial blocks for grafting test")?;
 
     let contracts = Contract::deploy_all().await?;
 
