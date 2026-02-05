@@ -134,8 +134,12 @@ A `provider` is an object with the following characteristics:
   - `no_eip2718`: provider doesn't return the `type` field in transaction receipts
     (pre-EIP-2718 chains). When set, receipts are patched to add
     `"type": "0x0"` for legacy transaction compatibility.
+  - `compression/<method>`: provider supports compression for RPC requests,
+    where `<method>` is the compression method supported by the provider,
+    one of `gzip`, `brotli`, `deflate`, or `none` (the default).
 
   For Firehose providers: `compression` and `filters`
+
 - `headers`: HTTP headers to be added on every request. Defaults to none.
 - `limit`: the maximum number of subgraphs that can use this provider.
   Defaults to unlimited. At least one provider should be unlimited,
