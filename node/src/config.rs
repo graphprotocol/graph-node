@@ -48,6 +48,7 @@ pub struct Opt {
     pub ethereum_ws: Vec<String>,
     pub ethereum_ipc: Vec<String>,
     pub unsafe_config: bool,
+    pub weighted_rpc_steering: bool,
 }
 
 impl Default for Opt {
@@ -64,6 +65,7 @@ impl Default for Opt {
             ethereum_ws: vec![],
             ethereum_ipc: vec![],
             unsafe_config: false,
+            weighted_rpc_steering: false,
         }
     }
 }
@@ -73,6 +75,8 @@ pub struct Config {
     #[serde(skip, default = "default_node_id")]
     pub node: NodeId,
     pub general: Option<GeneralSection>,
+    #[serde(default)]
+    pub weighted_rpc_steering: bool,
     #[serde(rename = "store")]
     pub stores: BTreeMap<String, Shard>,
     pub chains: ChainSection,
@@ -196,6 +200,7 @@ impl Config {
         Ok(Config {
             node,
             general: None,
+            weighted_rpc_steering: opt.weighted_rpc_steering,
             stores,
             chains,
             deployment,
@@ -517,6 +522,7 @@ impl ChainSection {
                         headers: Default::default(),
                         rules: vec![],
                     }),
+                    weight: 1.0,
                 };
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
@@ -558,6 +564,16 @@ impl Chain {
             return Err(anyhow!("Provider labels must be unique"));
         }
 
+        // Check that not all provider weights are zero
+        if !self.providers.is_empty() {
+            let all_zero_weights = self.providers.iter().all(|p| p.weight == 0.0);
+            if all_zero_weights {
+                return Err(anyhow!(
+                    "All provider weights are 0.0; at least one provider must have a weight > 0.0"
+                ));
+            }
+        }
+
         // `Config` validates that `self.shard` references a configured shard
         for provider in self.providers.iter_mut() {
             provider.validate()?
@@ -592,6 +608,7 @@ fn btree_map_to_http_headers(kvs: BTreeMap<String, String>) -> HeaderMap {
 pub struct Provider {
     pub label: String,
     pub details: ProviderDetails,
+    pub weight: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -721,6 +738,11 @@ const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
 impl Provider {
     fn validate(&mut self) -> Result<()> {
         validate_name(&self.label).context("illegal provider name")?;
+        // Weight of 0.0 is intentional: it disables the provider from weighted selection
+        // while keeping it available for error-retesting and non-weighted fallback paths.
+        if self.weight < 0.0 || self.weight > 1.0 {
+            bail!("provider {} must have a weight between 0 and 1", self.label);
+        }
 
         match self.details {
             ProviderDetails::Firehose(ref mut firehose) => {
@@ -814,6 +836,7 @@ impl<'de> Deserialize<'de> for Provider {
             {
                 let mut label = None;
                 let mut details = None;
+                let mut weight = None;
 
                 let mut url = None;
                 let mut transport = None;
@@ -834,6 +857,12 @@ impl<'de> Deserialize<'de> for Provider {
                                 return Err(serde::de::Error::duplicate_field("details"));
                             }
                             details = Some(map.next_value()?);
+                        }
+                        ProviderField::Weight => {
+                            if weight.is_some() {
+                                return Err(serde::de::Error::duplicate_field("weight"));
+                            }
+                            weight = Some(map.next_value()?);
                         }
                         ProviderField::Url => {
                             if url.is_some() {
@@ -894,13 +923,18 @@ impl<'de> Deserialize<'de> for Provider {
                     }),
                 };
 
-                Ok(Provider { label, details })
+                Ok(Provider {
+                    label,
+                    details,
+                    weight: weight.unwrap_or(1.0),
+                })
             }
         }
 
         const FIELDS: &[&str] = &[
             "label",
             "details",
+            "weight",
             "transport",
             "url",
             "features",
@@ -915,6 +949,7 @@ impl<'de> Deserialize<'de> for Provider {
 enum ProviderField {
     Label,
     Details,
+    Weight,
     Match,
 
     // Deprecated fields
@@ -1292,6 +1327,7 @@ mod tests {
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
                 }),
+                weight: 1.0,
             },
             actual
         );
@@ -1318,6 +1354,7 @@ mod tests {
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
                 }),
+                weight: 1.0,
             },
             actual
         );
@@ -1379,6 +1416,7 @@ mod tests {
                     headers,
                     rules: Vec::new(),
                 }),
+                weight: 1.0,
             },
             actual
         );
@@ -1404,6 +1442,7 @@ mod tests {
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
                 }),
+                weight: 1.0,
             },
             actual
         );
@@ -1445,6 +1484,7 @@ mod tests {
                     conn_pool_size: 20,
                     rules: vec![],
                 }),
+                weight: 1.0,
             },
             actual
         );
@@ -1484,6 +1524,7 @@ mod tests {
                     conn_pool_size: 20,
                     rules: vec![],
                 }),
+                weight: 1.0,
             },
             actual
         );
@@ -1523,6 +1564,7 @@ mod tests {
                         }
                     ],
                 }),
+                weight: 1.0,
             },
             actual
         );
@@ -1614,6 +1656,7 @@ mod tests {
                     headers: HeaderMap::new(),
                     rules: Vec::new(),
                 }),
+                weight: 1.0,
             },
             actual
         );

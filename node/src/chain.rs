@@ -244,6 +244,7 @@ pub async fn create_ethereum_networks_for_chain(
                 .await,
             ),
             web3.limit_for(&config.node),
+            provider.weight,
         );
 
         if call_only {
@@ -428,6 +429,7 @@ mod test {
             ethereum_ws: vec![],
             ethereum_ipc: vec![],
             unsafe_config: false,
+            weighted_rpc_steering: false,
         };
 
         let metrics = Arc::new(EndpointMetrics::mock());
