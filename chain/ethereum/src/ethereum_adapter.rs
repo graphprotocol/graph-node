@@ -65,6 +65,7 @@ use crate::adapter::EthereumRpcError;
 use crate::adapter::ProviderStatus;
 use crate::call_helper::interpret_eth_call_error;
 use crate::chain::BlockFinality;
+use crate::json_patch;
 use crate::trigger::{LogPosition, LogRef};
 use crate::Chain;
 use crate::NodeCapabilities;
@@ -1613,20 +1614,24 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|value| {
-                // recent_blocks_cache can contain full format {"block": {...}, "transaction_receipts": [...]}
-                // or light format (just block fields). Extract block data for deserialization.
-                let inner = value.get("block").unwrap_or(&value);
-                json::from_value(inner.clone())
+            .filter_map(|mut value| {
+                // Cached JSON formats: see chain.rs ancestor_block() for documentation.
+                // Shallow blocks have "data": null - skip silently.
+                if value.get("data") == Some(&json::Value::Null) {
+                    return None;
+                }
+                let mut inner = value
+                    .as_object_mut()
+                    .and_then(|obj| obj.remove("block"))
+                    .unwrap_or(value);
+                // Some cached blocks are missing the transaction `type` field.
+                // Patch with type: 0x0 (legacy) so alloy can deserialize.
+                json_patch::patch_block_transactions(&mut inner);
+                json::from_value(inner)
                     .map_err(|e| {
-                        let block_num = inner.get("number").and_then(|n| n.as_str());
-                        let block_hash = inner.get("hash").and_then(|h| h.as_str());
                         warn!(
                             &logger,
-                            "Failed to deserialize cached block #{:?} {:?}: {}. \
-                         Block will be re-fetched from RPC.",
-                            block_num,
-                            block_hash,
+                            "Failed to deserialize cached block: {}. Block will be re-fetched from RPC.",
                             e
                         );
                     })
