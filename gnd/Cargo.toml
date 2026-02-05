@@ -21,6 +21,13 @@ graph = { path = "../graph" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-core = { path = "../core" }
 graph-node = { path = "../node" }
+graph-chain-ethereum = { path = "../chain/ethereum" }
+graph-graphql = { path = "../graphql" }
+graph-store-postgres = { path = "../store/postgres" }
+
+# Test command dependencies
+hex = "0.4"
+async-trait = { workspace = true }
 
 # Direct dependencies from current dev.rs
 anyhow = { workspace = true }
