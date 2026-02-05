@@ -136,7 +136,7 @@ A `provider` is an object with the following characteristics:
     `"type": "0x0"` for legacy transaction compatibility.
   - `compression/<method>`: provider supports compression for RPC requests,
     where `<method>` is the compression method supported by the provider,
-    one of `gzip`, `brotli`, `deflate`, or `none` (the default).
+    one of `gzip`, `brotli`, or `deflate`. The default is no compression.
 
   For Firehose providers: `compression` and `filters`
 
