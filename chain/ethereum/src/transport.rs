@@ -1,3 +1,4 @@
+use crate::json_patch;
 use alloy::transports::{TransportError, TransportErrorKind, TransportFut};
 use graph::components::network_provider::ProviderName;
 use graph::endpoint::{ConnectionType, EndpointMetrics, RequestLabels};
@@ -182,34 +183,10 @@ impl PatchingHttp {
         method == "eth_getTransactionReceipt" || method == "eth_getBlockReceipts"
     }
 
-    fn patch_receipt(receipt: &mut Value) -> bool {
-        if let Value::Object(obj) = receipt {
-            if !obj.contains_key("type") {
-                obj.insert("type".to_string(), Value::String("0x0".to_string()));
-                return true;
-            }
-        }
-        false
-    }
-
-    fn patch_result(result: &mut Value) -> bool {
-        match result {
-            Value::Object(_) => Self::patch_receipt(result),
-            Value::Array(arr) => {
-                let mut patched = false;
-                for r in arr {
-                    patched |= Self::patch_receipt(r);
-                }
-                patched
-            }
-            _ => false,
-        }
-    }
-
     fn patch_rpc_response(response: &mut Value) -> bool {
         response
             .get_mut("result")
-            .map(Self::patch_result)
+            .map(json_patch::patch_receipts)
             .unwrap_or(false)
     }
 
@@ -296,21 +273,6 @@ impl Service<RequestPacket> for PatchingHttp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn patch_receipt_adds_missing_type() {
-        let mut receipt = json!({"status": "0x1", "gasUsed": "0x5208"});
-        assert!(PatchingHttp::patch_receipt(&mut receipt));
-        assert_eq!(receipt["type"], "0x0");
-    }
-
-    #[test]
-    fn patch_receipt_skips_existing_type() {
-        let mut receipt = json!({"status": "0x1", "type": "0x2"});
-        assert!(!PatchingHttp::patch_receipt(&mut receipt));
-        assert_eq!(receipt["type"], "0x2");
-    }
 
     #[test]
     fn patch_response_single() {

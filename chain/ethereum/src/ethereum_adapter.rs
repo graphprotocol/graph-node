@@ -47,8 +47,8 @@ use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
-        debug, error, hex, info, retry, serde_json as json, trace, warn, BlockNumber, ChainStore,
-        CheapClone, DynTryFuture, Error, EthereumCallCache, Logger, TimeoutError,
+        debug, error, hex, info, retry, trace, warn, BlockNumber, ChainStore, CheapClone,
+        DynTryFuture, Error, EthereumCallCache, Logger, TimeoutError,
     },
 };
 use itertools::Itertools;
@@ -66,6 +66,7 @@ use crate::adapter::EthereumRpcError;
 use crate::adapter::ProviderStatus;
 use crate::call_helper::interpret_eth_call_error;
 use crate::chain::BlockFinality;
+use crate::json_block::EthereumJsonBlock;
 use crate::trigger::{LogPosition, LogRef};
 use crate::Chain;
 use crate::NodeCapabilities;
@@ -1641,25 +1642,22 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .unwrap_or_default()
             .into_iter()
             .filter_map(|value| {
-                // recent_blocks_cache can contain full format {"block": {...}, "transaction_receipts": [...]}
-                // or light format (just block fields). Extract block data for deserialization.
-                let inner = value.get("block").unwrap_or(&value);
-                json::from_value(inner.clone())
+                let json_block = EthereumJsonBlock::new(value);
+                if json_block.is_shallow() {
+                    return None;
+                }
+                json_block
+                    .into_light_block()
                     .map_err(|e| {
-                        let block_num = inner.get("number").and_then(|n| n.as_str());
-                        let block_hash = inner.get("hash").and_then(|h| h.as_str());
                         warn!(
                             &logger,
-                            "Failed to deserialize cached block #{:?} {:?}: {}. \
-                         Block will be re-fetched from RPC.",
-                            block_num,
-                            block_hash,
+                            "Failed to deserialize cached block: {}. Block will be re-fetched from RPC.",
                             e
                         );
                     })
                     .ok()
             })
-            .map(|b| Arc::new(LightEthereumBlock::new(b)))
+            .map(Arc::new)
             .collect();
 
         let missing_blocks = Vec::from_iter(

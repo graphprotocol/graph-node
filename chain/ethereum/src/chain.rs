@@ -46,6 +46,7 @@ use crate::codec::HeaderOnlyBlock;
 use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::ingestor::PollingBlockIngestor;
+use crate::json_block::EthereumJsonBlock;
 use crate::network::EthereumNetworkAdapters;
 use crate::polling_block_stream::PollingBlockStream;
 use crate::runtime::runtime_adapter::eth_call_gas;
@@ -1076,22 +1077,32 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .await?;
 
         // First check if we have the ancestor in cache and can deserialize it.
-        // recent_blocks_cache can have full format {"block": {...}, "transaction_receipts": [...]}
-        // or light format (just block fields). We need full format with receipts for
-        // ancestor_block since it's used for trigger processing.
+        // The cached JSON can be in one of three formats:
+        // 1. Full RPC format: {"block": {...}, "transaction_receipts": [...]}
+        // 2. Shallow/header-only: {"timestamp": "...", "data": null} - only timestamp, no block data
+        // 3. Legacy direct: block fields at root level {hash, number, transactions, ...}
+        // We need full format with receipts for ancestor_block (used for trigger processing).
         let block_ptr = match cached {
             Some((json, ptr)) => {
-                if json.get("block").is_none() {
-                    warn!(
+                let json_block = EthereumJsonBlock::new(json);
+                if json_block.is_shallow() {
+                    trace!(
                         self.logger,
-                        "Cached ancestor block #{} {} has light format without receipts. \
-                         Falling back to Firehose/RPC.",
+                        "Cached block #{} {} is shallow (header-only). Falling back to Firehose/RPC.",
+                        ptr.number,
+                        ptr.hash_hex(),
+                    );
+                    ptr
+                } else if json_block.is_legacy_format() {
+                    trace!(
+                        self.logger,
+                        "Cached block #{} {} is legacy light format. Falling back to Firehose/RPC.",
                         ptr.number,
                         ptr.hash_hex(),
                     );
                     ptr
                 } else {
-                    match json::from_value::<EthereumBlock>(json.clone()) {
+                    match json_block.into_full_block() {
                         Ok(block) => {
                             return Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
                                 ethereum_block: block,
@@ -1169,24 +1180,32 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             ChainClient::Firehose(endpoints) => {
                 let chain_store = self.chain_store.cheap_clone();
                 // First try to get the block from the store
+                // See ancestor_block() for documentation of the 3 cached JSON formats.
                 if let Ok(blocks) = chain_store.blocks(vec![block.hash.clone()]).await {
-                    if let Some(cached_json) = blocks.first() {
-                        // recent_blocks_cache can contain full format {"block": {...}, "transaction_receipts": [...]}
-                        // or light format (just block fields). Extract block data for deserialization.
-                        let inner = cached_json.get("block").unwrap_or(cached_json);
-                        match json::from_value::<LightEthereumBlock>(inner.clone()) {
-                            Ok(light_block) => {
-                                return Ok(light_block.parent_ptr());
-                            }
-                            Err(e) => {
-                                warn!(
-                                    self.logger,
-                                    "Failed to deserialize cached block #{} {}: {}. \
-                                     Falling back to Firehose.",
-                                    block.number,
-                                    block.hash_hex(),
-                                    e
-                                );
+                    if let Some(cached_json) = blocks.into_iter().next() {
+                        let json_block = EthereumJsonBlock::new(cached_json);
+                        if json_block.is_shallow() {
+                            trace!(
+                                self.logger,
+                                "Cached block #{} {} is shallow. Falling back to Firehose.",
+                                block.number,
+                                block.hash_hex(),
+                            );
+                        } else {
+                            match json_block.into_light_block() {
+                                Ok(light_block) => {
+                                    return Ok(light_block.parent_ptr());
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        self.logger,
+                                        "Failed to deserialize cached block #{} {}: {}. \
+                                         Falling back to Firehose.",
+                                        block.number,
+                                        block.hash_hex(),
+                                        e
+                                    );
+                                }
                             }
                         }
                     }
