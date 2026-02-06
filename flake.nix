@@ -1,7 +1,7 @@
 {
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-    foundry.url = "github:shazow/foundry.nix";
+    foundry.url = "github:shazow/foundry.nix/b7adb89167832516589c899addcd25ca2a78dcfe";
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -90,6 +90,7 @@
             inherit port dataDir;
             initialScript = {
               before = ''
+                CREATE ROLE postgres WITH LOGIN;
                 CREATE USER \"${user}\" WITH PASSWORD '${password}' SUPERUSER;
               '';
             };
@@ -140,6 +141,11 @@
               database = "graph-test";
             };
 
+            # Set PGUSER so psql connects as the OS user (matching initdb's superuser)
+            settings.processes."postgres-unit-init".environment = {
+              PGUSER = builtins.getEnv "USER";
+            };
+
             services.ipfs."ipfs-unit" = {
               enable = true;
               dataDir = "./.data/unit/ipfs";
@@ -172,6 +178,11 @@
               database = "graph-node";
             };
 
+            # Set PGUSER so psql connects as the OS user (matching initdb's superuser)
+            settings.processes."postgres-integration-init".environment = {
+              PGUSER = builtins.getEnv "USER";
+            };
+
             services.ipfs."ipfs-integration" = {
               enable = true;
               dataDir = "./.data/integration/ipfs";
@@ -186,7 +197,10 @@
               timestamp = 1743944919;
               gasLimit = 100000000000;
               baseFee = 1;
-              blockTime = 2;
+              blockTime = null;
+              state = "./.data/integration/anvil/state.json";
+              stateInterval = 30;
+              preserveHistoricalStates = true;
             };
           };
         };

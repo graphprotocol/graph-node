@@ -308,12 +308,6 @@ importers:
         specifier: 0.31.0
         version: 0.31.0
 
-  tests/runner-tests/substreams:
-    devDependencies:
-      '@graphprotocol/graph-cli':
-        specifier: 0.61.0
-        version: 0.61.0(@types/node@24.3.0)(bufferutil@4.0.9)(encoding@0.1.13)(node-fetch@2.7.0(encoding@0.1.13))(typescript@5.9.2)(utf-8-validate@5.0.10)
-
   tests/runner-tests/typename:
     devDependencies:
       '@graphprotocol/graph-cli':
@@ -416,11 +410,6 @@ packages:
 
   '@graphprotocol/graph-cli@0.60.0':
     resolution: {integrity: sha512-8tGaQJ0EzAPtkDXCAijFGoVdJXM+pKFlGxjiU31TdG5bS4cIUoSB6yWojVsFFod0yETAwf+giel/0/8sudYsDw==}
-    engines: {node: '>=14'}
-    hasBin: true
-
-  '@graphprotocol/graph-cli@0.61.0':
-    resolution: {integrity: sha512-gc3+DioZ/K40sQCt6DsNvbqfPTc9ZysuSz3I9MJ++bD6SftaSSweWwfpPysDMzDuxvUAhLAsJ6QjBACPngT2Kw==}
     engines: {node: '>=14'}
     hasBin: true
 
@@ -3410,47 +3399,6 @@ snapshots:
       - utf-8-validate
 
   '@graphprotocol/graph-cli@0.60.0(@types/node@24.3.0)(bufferutil@4.0.9)(encoding@0.1.13)(node-fetch@2.7.0(encoding@0.1.13))(typescript@5.9.2)(utf-8-validate@5.0.10)':
-    dependencies:
-      '@float-capital/float-subgraph-uncrashable': 0.0.0-internal-testing.5
-      '@oclif/core': 2.8.6(@types/node@24.3.0)(typescript@5.9.2)
-      '@oclif/plugin-autocomplete': 2.3.10(@types/node@24.3.0)(typescript@5.9.2)
-      '@oclif/plugin-not-found': 2.4.3(@types/node@24.3.0)(typescript@5.9.2)
-      '@whatwg-node/fetch': 0.8.8
-      assemblyscript: 0.19.23
-      binary-install-raw: 0.0.13(debug@4.3.4)
-      chalk: 3.0.0
-      chokidar: 3.5.3
-      debug: 4.3.4(supports-color@8.1.1)
-      docker-compose: 0.23.19
-      dockerode: 2.5.8
-      fs-extra: 9.1.0
-      glob: 9.3.5
-      gluegun: 5.1.2(debug@4.3.4)
-      graphql: 15.5.0
-      immutable: 4.2.1
-      ipfs-http-client: 55.0.0(encoding@0.1.13)(node-fetch@2.7.0(encoding@0.1.13))
-      jayson: 4.0.0(bufferutil@4.0.9)(utf-8-validate@5.0.10)
-      js-yaml: 3.14.1
-      prettier: 1.19.1
-      request: 2.88.2
-      semver: 7.4.0
-      sync-request: 6.1.0
-      tmp-promise: 3.0.3
-      web3-eth-abi: 1.7.0
-      which: 2.0.2
-      yaml: 1.10.2
-    transitivePeerDependencies:
-      - '@swc/core'
-      - '@swc/wasm'
-      - '@types/node'
-      - bufferutil
-      - encoding
-      - node-fetch
-      - supports-color
-      - typescript
-      - utf-8-validate
-
-  '@graphprotocol/graph-cli@0.61.0(@types/node@24.3.0)(bufferutil@4.0.9)(encoding@0.1.13)(node-fetch@2.7.0(encoding@0.1.13))(typescript@5.9.2)(utf-8-validate@5.0.10)':
     dependencies:
       '@float-capital/float-subgraph-uncrashable': 0.0.0-internal-testing.5
       '@oclif/core': 2.8.6(@types/node@24.3.0)(typescript@5.9.2)

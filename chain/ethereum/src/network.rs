@@ -314,6 +314,7 @@ mod tests {
     use graph::components::network_provider::ProviderManager;
     use graph::components::network_provider::ProviderName;
     use graph::data::value::Word;
+
     use graph::http::HeaderMap;
     use graph::{
         endpoint::EndpointMetrics,
@@ -324,7 +325,9 @@ mod tests {
     };
     use std::sync::Arc;
 
-    use crate::{EthereumAdapter, EthereumAdapterTrait, ProviderEthRpcMetrics, Transport};
+    use crate::{
+        Compression, EthereumAdapter, EthereumAdapterTrait, ProviderEthRpcMetrics, Transport,
+    };
 
     use super::{EthereumNetworkAdapter, EthereumNetworkAdapters, NodeCapabilities};
 
@@ -394,6 +397,8 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            false,
+            Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -497,6 +502,8 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            false,
+            Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -568,6 +575,8 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            false,
+            Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -632,6 +641,8 @@ mod tests {
             HeaderMap::new(),
             metrics.clone(),
             "",
+            false,
+            Compression::None,
         );
         let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
 
@@ -919,6 +930,8 @@ mod tests {
             HeaderMap::new(),
             endpoint_metrics.clone(),
             "",
+            false,
+            Compression::None,
         );
 
         Arc::new(

@@ -1,5 +1,5 @@
 type AnotherTriggerEntity @entity {
-  id: ID!
+  id: Int8!
   a: BigInt
   b: BigInt
   c: BigInt

@@ -127,8 +127,19 @@ A `provider` is an object with the following characteristics:
 - `transport`: one of `rpc`, `ws`, and `ipc`. Defaults to `rpc`.
 - `url`: the URL for the provider
 - `features`: an array of features that the provider supports, either empty
-  or any combination of `traces` and `archive` for Web3 providers, or
-  `compression` and `filters` for Firehose providers
+  or any combination of the following for Web3 providers:
+  - `traces`: provider supports `debug_traceBlockByNumber` for call tracing
+  - `archive`: provider is an archive node with full historical state
+  - `no_eip1898`: provider doesn't support EIP-1898 (block parameter by hash/number object)
+  - `no_eip2718`: provider doesn't return the `type` field in transaction receipts
+    (pre-EIP-2718 chains). When set, receipts are patched to add
+    `"type": "0x0"` for legacy transaction compatibility.
+  - `compression/<method>`: provider supports compression for RPC requests,
+    where `<method>` is the compression method supported by the provider,
+    one of `gzip`, `brotli`, or `deflate`. The default is no compression.
+
+  For Firehose providers: `compression` and `filters`
+
 - `headers`: HTTP headers to be added on every request. Defaults to none.
 - `limit`: the maximum number of subgraphs that can use this provider.
   Defaults to unlimited. At least one provider should be unlimited,

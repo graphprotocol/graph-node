@@ -303,6 +303,37 @@ impl EntityModification {
     }
 }
 
+/// A map from entity ids to the index of the last modification for that id.
+/// If `ENV_VARS.store.write_batch_memoize` is `false`, this map is never
+/// written to and always empty
+#[derive(Debug, CacheWeight)]
+struct LastMod {
+    /// If `ENV_VARS.store.write_batch_memoize` is `false`, we never write
+    /// into this map
+    map: HashMap<Id, usize>,
+}
+
+impl LastMod {
+    fn new() -> LastMod {
+        LastMod {
+            map: HashMap::new(),
+        }
+    }
+
+    fn get(&self, id: &Id) -> Option<&usize> {
+        if ENV_VARS.store.write_batch_memoize {
+            return self.map.get(id);
+        }
+        None
+    }
+
+    fn insert(&mut self, id: Id, idx: usize) {
+        if ENV_VARS.store.write_batch_memoize {
+            self.map.insert(id, idx);
+        }
+    }
+}
+
 /// A list of entity changes grouped by the entity type
 #[derive(Debug, CacheWeight)]
 pub struct RowGroup {
@@ -315,8 +346,8 @@ pub struct RowGroup {
     immutable: bool,
 
     /// Map the `key.entity_id` of all entries in `rows` to the index with
-    /// the most recent entry for that id to speed up lookups
-    last_mod: HashMap<Id, usize>,
+    /// the most recent entry for that id to speed up lookups.
+    last_mod: LastMod,
 }
 
 impl RowGroup {
@@ -325,7 +356,7 @@ impl RowGroup {
             entity_type,
             rows: Vec::new(),
             immutable,
-            last_mod: HashMap::new(),
+            last_mod: LastMod::new(),
         }
     }
 
@@ -382,8 +413,9 @@ impl RowGroup {
     }
 
     pub fn last_op(&self, key: &EntityKey, at: BlockNumber) -> Option<EntityOp<'_>> {
-        if ENV_VARS.store.write_batch_memoize {
-            let idx = *self.last_mod.get(&key.entity_id)?;
+        // If we have `key` in `last_mod`, use that and return the
+        // corresponding op. If not, fall through to a more expensive search
+        if let Some(&idx) = self.last_mod.get(&key.entity_id) {
             if let Some(op) = self.rows.get(idx).and_then(|emod| {
                 if emod.block() <= at {
                     Some(emod.as_entity_op(at))
@@ -430,12 +462,10 @@ impl RowGroup {
 
     /// Find the most recent entry for `id`
     fn prev_row_mut(&mut self, id: &Id) -> Option<&mut EntityModification> {
-        if ENV_VARS.store.write_batch_memoize {
-            let idx = *self.last_mod.get(id)?;
-            self.rows.get_mut(idx)
-        } else {
-            self.rows.iter_mut().rfind(|emod| emod.id() == id)
+        if let Some(&idx) = self.last_mod.get(id) {
+            return self.rows.get_mut(idx);
         }
+        self.rows.iter_mut().rfind(|emod| emod.id() == id)
     }
 
     /// Append `row` to `self.rows` by combining it with a previously
@@ -997,7 +1027,7 @@ mod test {
     };
     use lazy_static::lazy_static;
 
-    use super::RowGroup;
+    use super::{LastMod, RowGroup};
 
     #[track_caller]
     fn check_runs(values: &[usize], blocks: &[BlockNumber], exp: &[(BlockNumber, &[usize])]) {
@@ -1015,13 +1045,15 @@ mod test {
                 block: *block,
             })
             .collect();
-        let last_mod = rows
-            .iter()
-            .enumerate()
-            .fold(HashMap::new(), |mut map, (idx, emod)| {
-                map.insert(emod.id().clone(), idx);
-                map
-            });
+        let last_mod = LastMod {
+            map: rows
+                .iter()
+                .enumerate()
+                .fold(HashMap::new(), |mut map, (idx, emod)| {
+                    map.insert(emod.id().clone(), idx);
+                    map
+                }),
+        };
 
         let group = RowGroup {
             entity_type: ENTRY_TYPE.clone(),

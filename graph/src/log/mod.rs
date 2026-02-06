@@ -17,12 +17,15 @@ macro_rules! impl_slog_value {
     };
 }
 
-use atty;
 use slog::*;
 use slog_async;
 use slog_envlogger;
 use slog_term::*;
-use std::{fmt, io, result};
+use std::{
+    fmt,
+    io::{self, IsTerminal},
+    result,
+};
 
 use crate::prelude::ENV_VARS;
 
@@ -36,7 +39,7 @@ pub fn logger(show_debug: bool) -> Logger {
 }
 
 pub fn logger_with_levels(show_debug: bool, levels: Option<&str>) -> Logger {
-    let use_color = atty::is(atty::Stream::Stdout);
+    let use_color = io::stdout().is_terminal();
     let decorator = slog_term::TermDecorator::new().build();
     let drain = CustomFormat::new(decorator, use_color).fuse();
     let drain = slog_envlogger::LogBuilder::new(drain)

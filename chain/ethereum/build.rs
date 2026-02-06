@@ -1,7 +1,7 @@
 fn main() {
     println!("cargo:rerun-if-changed=proto");
 
-    tonic_build::configure()
+    tonic_prost_build::configure()
         .out_dir("src/protobuf")
         .protoc_arg("--experimental_allow_proto3_optional")
         .compile_protos(&["proto/ethereum.proto"], &["proto"])

@@ -78,7 +78,6 @@ pub mod prelude {
     pub use ::anyhow;
     pub use alloy;
     pub use anyhow::{anyhow, Context as _, Error};
-    pub use atty;
     pub use chrono;
     pub use diesel;
     pub use envconfig;

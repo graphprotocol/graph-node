@@ -20,15 +20,7 @@ serde = { workspace = true }
 serde_yaml = { workspace = true }
 slog = { workspace = true }
 tokio = { version = "1.49.0", features = ["rt", "macros", "process"] }
-# Once graph upgrades to web3 0.19, we don't need this anymore. The version
-# here needs to be kept in sync with the web3 version that the graph crate
-# uses until then
-secp256k1 = { version = "0.21", features = ["recovery"] }
 tokio-util.workspace = true
-web3 = { git = "https://github.com/graphprotocol/rust-web3", branch = "graph-patches-onto-0.18", features = [
-    "arbitrary_precision",
-    "test",
-] }
 
 [dev-dependencies]
 anyhow = "1.0.100"

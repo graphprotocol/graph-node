@@ -185,7 +185,6 @@ impl DeploymentStore {
         schema: &InputSchema,
         deployment: DeploymentCreate,
         site: Arc<Site>,
-        graft_base: Option<Arc<Layout>>,
         replace: bool,
         on_sync: OnSync,
         index_def: Option<IndexList>,
@@ -218,7 +217,7 @@ impl DeploymentStore {
                     let query = format!("create schema {}", &site.namespace);
                     conn.batch_execute(&query).await?;
 
-                    let layout = Layout::create_relational_schema(
+                    let _ = Layout::create_relational_schema(
                         conn,
                         site.clone(),
                         schema,
@@ -226,19 +225,6 @@ impl DeploymentStore {
                         index_def,
                     )
                     .await?;
-                    // See if we are grafting and check that the graft is permissible
-                    if let Some(base) = graft_base {
-                        let errors = layout.can_copy_from(&base);
-                        if !errors.is_empty() {
-                            return Err(StoreError::Unknown(anyhow!(
-                                "The subgraph `{}` cannot be used as the graft base \
-                             for `{}` because the schemas are incompatible:\n    - {}",
-                                &base.catalog.site.namespace,
-                                &layout.catalog.site.namespace,
-                                errors.join("\n    - ")
-                            )));
-                        }
-                    }
 
                     // Create data sources table
                     if site.schema_version.private_data_sources() {

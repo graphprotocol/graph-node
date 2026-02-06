@@ -206,21 +206,26 @@ pub async fn create_ethereum_networks_for_chain(
         }
 
         let logger = logger.new(o!("provider" => provider.label.clone()));
+        let compression = web3.compression();
         info!(
             logger,
             "Creating transport";
             "url" => &web3.url,
-            "capabilities" => capabilities
+            "capabilities" => capabilities,
+            "compression" => compression.to_string()
         );
 
         use crate::config::Transport::*;
 
+        let no_eip2718 = web3.features.contains("no_eip2718");
         let transport = match web3.transport {
             Rpc => Transport::new_rpc(
                 Url::parse(&web3.url)?,
                 web3.headers.clone(),
                 endpoint_metrics.cheap_clone(),
                 &provider.label,
+                no_eip2718,
+                compression,
             ),
             Ipc => Transport::new_ipc(&web3.url).await,
             Ws => Transport::new_ws(&web3.url).await,

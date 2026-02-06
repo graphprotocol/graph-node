@@ -1,7 +1,10 @@
-use std::{io, sync::Mutex};
+use std::{
+    io::{self, IsTerminal as _},
+    sync::Mutex,
+};
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 
-use graph::prelude::{atty, lazy_static};
+use graph::prelude::lazy_static;
 
 use super::CmdResult;
 
@@ -27,7 +30,7 @@ impl Terminal {
             "always" => ColorChoice::Always,
             "ansi" => ColorChoice::AlwaysAnsi,
             "auto" => {
-                if atty::is(atty::Stream::Stdout) {
+                if io::stdout().is_terminal() {
                     ColorChoice::Auto
                 } else {
                     ColorChoice::Never

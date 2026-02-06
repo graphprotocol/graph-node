@@ -1,15 +1,35 @@
+use alloy::transports::{TransportError, TransportErrorKind, TransportFut};
 use graph::components::network_provider::ProviderName;
 use graph::endpoint::{ConnectionType, EndpointMetrics, RequestLabels};
 use graph::prelude::alloy::rpc::json_rpc::{RequestPacket, ResponsePacket};
+use graph::prelude::alloy::transports::{ipc::IpcConnect, ws::WsConnect};
 use graph::prelude::*;
 use graph::url::Url;
+use serde_json::Value;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tower::Service;
 
-use alloy::transports::{TransportError, TransportFut};
+/// Compression method for RPC requests.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Compression {
+    #[default]
+    None,
+    Gzip,
+    Brotli,
+    Deflate,
+}
 
-use graph::prelude::alloy::transports::{http::Http, ipc::IpcConnect, ws::WsConnect};
+impl std::fmt::Display for Compression {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Compression::None => write!(f, "none"),
+            Compression::Gzip => write!(f, "gzip"),
+            Compression::Brotli => write!(f, "brotli"),
+            Compression::Deflate => write!(f, "deflate"),
+        }
+    }
+}
 
 /// Abstraction over different transport types for Alloy providers.
 #[derive(Clone, Debug)]
@@ -41,19 +61,37 @@ impl Transport {
     }
 
     /// Creates a JSON-RPC over HTTP transport.
+    ///
+    /// Set `no_eip2718` to true for chains that don't return the `type` field
+    /// in transaction receipts (pre-EIP-2718 chains). Use provider feature `no_eip2718`.
     pub fn new_rpc(
         rpc: Url,
         headers: graph::http::HeaderMap,
         metrics: Arc<EndpointMetrics>,
         provider: impl AsRef<str>,
+        no_eip2718: bool,
+        compression: Compression,
     ) -> Self {
-        let client = reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("Failed to build HTTP client");
+        let mut client_builder = reqwest::Client::builder().default_headers(headers);
 
-        let http_transport = Http::with_client(client, rpc);
-        let metrics_transport = MetricsHttp::new(http_transport, metrics, provider.as_ref().into());
+        match compression {
+            Compression::None => {}
+            Compression::Gzip => {
+                client_builder = client_builder.gzip(true);
+            }
+            Compression::Brotli => {
+                client_builder = client_builder.brotli(true);
+            }
+            Compression::Deflate => {
+                client_builder = client_builder.deflate(true);
+            }
+        }
+
+        let client = client_builder.build().expect("Failed to build HTTP client");
+
+        let patching_transport = PatchingHttp::new(client, rpc, no_eip2718);
+        let metrics_transport =
+            MetricsHttp::new(patching_transport, metrics, provider.as_ref().into());
         let rpc_client = alloy::rpc::client::RpcClient::new(metrics_transport, false);
 
         Transport::RPC(rpc_client)
@@ -63,17 +101,13 @@ impl Transport {
 /// Custom HTTP transport wrapper that collects metrics
 #[derive(Clone)]
 pub struct MetricsHttp {
-    inner: Http<reqwest::Client>,
+    inner: PatchingHttp,
     metrics: Arc<EndpointMetrics>,
     provider: ProviderName,
 }
 
 impl MetricsHttp {
-    pub fn new(
-        inner: Http<reqwest::Client>,
-        metrics: Arc<EndpointMetrics>,
-        provider: ProviderName,
-    ) -> Self {
+    pub fn new(inner: PatchingHttp, metrics: Arc<EndpointMetrics>, provider: ProviderName) -> Self {
         Self {
             inner,
             metrics,
@@ -123,5 +157,181 @@ impl Service<RequestPacket> for MetricsHttp {
 
             result
         })
+    }
+}
+
+/// HTTP transport that patches receipts for chains that don't support EIP-2718 (typed transactions).
+/// When `no_eip2718` is set, adds missing `type` field to receipts.
+#[derive(Clone)]
+pub struct PatchingHttp {
+    client: reqwest::Client,
+    url: Url,
+    no_eip2718: bool,
+}
+
+impl PatchingHttp {
+    pub fn new(client: reqwest::Client, url: Url, no_eip2718: bool) -> Self {
+        Self {
+            client,
+            url,
+            no_eip2718,
+        }
+    }
+
+    fn is_receipt_method(method: &str) -> bool {
+        method == "eth_getTransactionReceipt" || method == "eth_getBlockReceipts"
+    }
+
+    fn patch_receipt(receipt: &mut Value) -> bool {
+        if let Value::Object(obj) = receipt {
+            if !obj.contains_key("type") {
+                obj.insert("type".to_string(), Value::String("0x0".to_string()));
+                return true;
+            }
+        }
+        false
+    }
+
+    fn patch_result(result: &mut Value) -> bool {
+        match result {
+            Value::Object(_) => Self::patch_receipt(result),
+            Value::Array(arr) => {
+                let mut patched = false;
+                for r in arr {
+                    patched |= Self::patch_receipt(r);
+                }
+                patched
+            }
+            _ => false,
+        }
+    }
+
+    fn patch_rpc_response(response: &mut Value) -> bool {
+        response
+            .get_mut("result")
+            .map(Self::patch_result)
+            .unwrap_or(false)
+    }
+
+    fn patch_response(body: &[u8]) -> Option<Vec<u8>> {
+        let mut json: Value = serde_json::from_slice(body).ok()?;
+
+        let patched = match &mut json {
+            Value::Object(_) => Self::patch_rpc_response(&mut json),
+            Value::Array(batch) => {
+                let mut patched = false;
+                for r in batch {
+                    patched |= Self::patch_rpc_response(r);
+                }
+                patched
+            }
+            _ => false,
+        };
+
+        if patched {
+            serde_json::to_vec(&json).ok()
+        } else {
+            None
+        }
+    }
+}
+
+impl Service<RequestPacket> for PatchingHttp {
+    type Response = ResponsePacket;
+    type Error = TransportError;
+    type Future = TransportFut<'static>;
+
+    fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn call(&mut self, request: RequestPacket) -> Self::Future {
+        let client = self.client.clone();
+        let url = self.url.clone();
+        let no_eip2718 = self.no_eip2718;
+
+        let should_patch = if no_eip2718 {
+            match &request {
+                RequestPacket::Single(req) => Self::is_receipt_method(req.method()),
+                RequestPacket::Batch(reqs) => {
+                    reqs.iter().any(|r| Self::is_receipt_method(r.method()))
+                }
+            }
+        } else {
+            false
+        };
+
+        Box::pin(async move {
+            let resp = client
+                .post(url)
+                .json(&request)
+                .headers(request.headers())
+                .send()
+                .await
+                .map_err(TransportErrorKind::custom)?;
+
+            let status = resp.status();
+            let body = resp.bytes().await.map_err(TransportErrorKind::custom)?;
+
+            if !status.is_success() {
+                return Err(TransportErrorKind::http_error(
+                    status.as_u16(),
+                    String::from_utf8_lossy(&body).into_owned(),
+                ));
+            }
+
+            if should_patch {
+                if let Some(patched) = Self::patch_response(&body) {
+                    return serde_json::from_slice(&patched).map_err(|err| {
+                        TransportError::deser_err(err, String::from_utf8_lossy(&patched))
+                    });
+                }
+            }
+            serde_json::from_slice(&body)
+                .map_err(|err| TransportError::deser_err(err, String::from_utf8_lossy(&body)))
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn patch_receipt_adds_missing_type() {
+        let mut receipt = json!({"status": "0x1", "gasUsed": "0x5208"});
+        assert!(PatchingHttp::patch_receipt(&mut receipt));
+        assert_eq!(receipt["type"], "0x0");
+    }
+
+    #[test]
+    fn patch_receipt_skips_existing_type() {
+        let mut receipt = json!({"status": "0x1", "type": "0x2"});
+        assert!(!PatchingHttp::patch_receipt(&mut receipt));
+        assert_eq!(receipt["type"], "0x2");
+    }
+
+    #[test]
+    fn patch_response_single() {
+        let body = br#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1"}}"#;
+        let patched = PatchingHttp::patch_response(body).unwrap();
+        let json: Value = serde_json::from_slice(&patched).unwrap();
+        assert_eq!(json["result"]["type"], "0x0");
+    }
+
+    #[test]
+    fn patch_response_returns_none_when_type_exists() {
+        let body = br#"{"jsonrpc":"2.0","id":1,"result":{"status":"0x1","type":"0x2"}}"#;
+        assert!(PatchingHttp::patch_response(body).is_none());
+    }
+
+    #[test]
+    fn patch_response_batch() {
+        let body = br#"[{"jsonrpc":"2.0","id":1,"result":{"status":"0x1"}},{"jsonrpc":"2.0","id":2,"result":{"status":"0x1"}}]"#;
+        let patched = PatchingHttp::patch_response(body).unwrap();
+        let json: Value = serde_json::from_slice(&patched).unwrap();
+        assert_eq!(json[0]["result"]["type"], "0x0");
+        assert_eq!(json[1]["result"]["type"], "0x0");
     }
 }

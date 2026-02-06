@@ -17,7 +17,7 @@ use graph::{
     },
 };
 use graph_chain_ethereum as ethereum;
-use graph_chain_ethereum::NodeCapabilities;
+use graph_chain_ethereum::{Compression, NodeCapabilities};
 use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
 
 use graph::http::{HeaderMap, Uri};
@@ -704,12 +704,38 @@ impl Web3Provider {
         }
     }
 
+    pub fn compression(&self) -> Compression {
+        if self.features.contains("compression/gzip") {
+            Compression::Gzip
+        } else if self.features.contains("compression/brotli") {
+            Compression::Brotli
+        } else if self.features.contains("compression/deflate") {
+            Compression::Deflate
+        } else {
+            Compression::None
+        }
+    }
+
     pub fn limit_for(&self, node: &NodeId) -> SubgraphLimit {
         self.rules.limit_for(node)
     }
 }
 
-const PROVIDER_FEATURES: [&str; 3] = ["traces", "archive", "no_eip1898"];
+/// Supported provider features:
+/// - `traces`: Provider supports debug_traceBlockByNumber for call tracing
+/// - `archive`: Provider is an archive node with full historical state
+/// - `no_eip1898`: Provider doesn't support EIP-1898 (block parameter by hash/number object)
+/// - `no_eip2718`: Provider doesn't return the `type` field in transaction receipts.
+///   When set, receipts are patched to add `"type": "0x0"` for legacy transaction compatibility.
+const PROVIDER_FEATURES: [&str; 7] = [
+    "traces",
+    "archive",
+    "no_eip1898",
+    "no_eip2718",
+    "compression/gzip",
+    "compression/brotli",
+    "compression/deflate",
+];
 const DEFAULT_PROVIDER_FEATURES: [&str; 2] = ["traces", "archive"];
 
 impl Provider {
@@ -768,6 +794,18 @@ impl Provider {
                             PROVIDER_FEATURES.join(", ")
                         ));
                     }
+                }
+
+                let compression_count = web3
+                    .features
+                    .iter()
+                    .filter(|f| f.starts_with("compression/"))
+                    .count();
+                if compression_count > 1 {
+                    return Err(anyhow!(
+                        "at most one compression method allowed for provider {}",
+                        self.label
+                    ));
                 }
 
                 web3.url = shellexpand::env(&web3.url)?.into_owned();
@@ -1201,6 +1239,7 @@ mod tests {
     use graph::http::{HeaderMap, HeaderValue};
     use graph::prelude::regex::Regex;
     use graph::prelude::{toml, NodeId};
+    use graph_chain_ethereum::Compression;
     use std::collections::BTreeSet;
     use std::fs::read_to_string;
     use std::path::{Path, PathBuf};
@@ -1617,6 +1656,117 @@ mod tests {
     fn web3rules_have_the_right_order() {
         assert!(SubgraphLimit::Unlimited > SubgraphLimit::Limit(10));
         assert!(SubgraphLimit::Limit(10) > SubgraphLimit::Disabled);
+    }
+
+    #[test]
+    fn it_parses_web3_provider_with_gzip_compression_feature() {
+        let actual: Provider = toml::from_str(
+            r#"
+            label = "compressed"
+            details = { type = "web3", url = "http://localhost:8545", features = ["archive", "compression/gzip"] }
+        "#,
+        )
+        .unwrap();
+
+        let mut features = BTreeSet::new();
+        features.insert("archive".to_string());
+        features.insert("compression/gzip".to_string());
+
+        assert_eq!(
+            Provider {
+                label: "compressed".to_owned(),
+                details: ProviderDetails::Web3(Web3Provider {
+                    transport: Transport::Rpc,
+                    url: "http://localhost:8545".to_owned(),
+                    features,
+                    headers: HeaderMap::new(),
+                    rules: Vec::new(),
+                }),
+            },
+            actual
+        );
+
+        match actual.details {
+            ProviderDetails::Web3(ref web3) => {
+                assert_eq!(web3.compression(), Compression::Gzip);
+            }
+            _ => panic!("expected Web3 provider"),
+        }
+    }
+
+    #[test]
+    fn it_parses_web3_provider_with_brotli_compression_feature() {
+        let actual: Provider = toml::from_str(
+            r#"
+            label = "compressed"
+            details = { type = "web3", url = "http://localhost:8545", features = ["archive", "compression/brotli"] }
+        "#,
+        )
+        .unwrap();
+
+        match actual.details {
+            ProviderDetails::Web3(ref web3) => {
+                assert_eq!(web3.compression(), Compression::Brotli);
+            }
+            _ => panic!("expected Web3 provider"),
+        }
+    }
+
+    #[test]
+    fn it_parses_web3_provider_with_deflate_compression_feature() {
+        let actual: Provider = toml::from_str(
+            r#"
+            label = "compressed"
+            details = { type = "web3", url = "http://localhost:8545", features = ["archive", "compression/deflate"] }
+        "#,
+        )
+        .unwrap();
+
+        match actual.details {
+            ProviderDetails::Web3(ref web3) => {
+                assert_eq!(web3.compression(), Compression::Deflate);
+            }
+            _ => panic!("expected Web3 provider"),
+        }
+    }
+
+    #[test]
+    fn it_parses_web3_provider_without_compression_feature() {
+        let actual: Provider = toml::from_str(
+            r#"
+            label = "uncompressed"
+            details = { type = "web3", url = "http://localhost:8545", features = ["archive"] }
+        "#,
+        )
+        .unwrap();
+
+        match actual.details {
+            ProviderDetails::Web3(ref web3) => {
+                assert_eq!(web3.compression(), Compression::None);
+            }
+            _ => panic!("expected Web3 provider"),
+        }
+    }
+
+    #[test]
+    fn it_rejects_multiple_compression_features() {
+        let mut actual: Provider = toml::from_str(
+            r#"
+            label = "multi-comp"
+            details = { type = "web3", url = "http://localhost:8545", features = ["compression/gzip", "compression/brotli"] }
+        "#,
+        )
+        .unwrap();
+
+        let err = actual.validate();
+        assert!(err.is_err());
+        let err = err.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("at most one compression method allowed"),
+            "result: {:?}",
+            err
+        );
     }
 
     #[test]
