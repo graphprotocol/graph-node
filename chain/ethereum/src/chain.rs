@@ -46,7 +46,7 @@ use crate::codec::HeaderOnlyBlock;
 use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::ingestor::PollingBlockIngestor;
-use crate::json_patch;
+use crate::json_block::EthereumJsonBlock;
 use crate::network::EthereumNetworkAdapters;
 use crate::polling_block_stream::PollingBlockStream;
 use crate::runtime::runtime_adapter::eth_call_gas;
@@ -1084,8 +1084,8 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         // We need full format with receipts for ancestor_block (used for trigger processing).
         let block_ptr = match cached {
             Some((json, ptr)) => {
-                // Shallow blocks have "data": null - no block data to deserialize
-                if json.get("data") == Some(&json::Value::Null) {
+                let json_block = EthereumJsonBlock::new(json);
+                if json_block.is_shallow() {
                     trace!(
                         self.logger,
                         "Cached block #{} {} is shallow (header-only). Falling back to Firehose/RPC.",
@@ -1093,7 +1093,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                         ptr.hash_hex(),
                     );
                     ptr
-                } else if json.get("block").is_none() {
+                } else if json_block.is_legacy_format() {
                     trace!(
                         self.logger,
                         "Cached block #{} {} is legacy light format. Falling back to Firehose/RPC.",
@@ -1102,17 +1102,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     );
                     ptr
                 } else {
-                    // Some cached blocks are missing the transaction `type` field
-                    // because graph-node's rust-web3 fork didn't have that field. Patch them
-                    // with type: 0x0 (legacy) so alloy can deserialize them.
-                    let mut json = json;
-                    if let Some(block) = json.get_mut("block") {
-                        json_patch::patch_block_transactions(block);
-                    }
-                    if let Some(receipts) = json.get_mut("transaction_receipts") {
-                        json_patch::patch_receipts(receipts);
-                    }
-                    match json::from_value::<EthereumBlock>(json) {
+                    match json_block.into_full_block::<EthereumBlock>() {
                         Ok(block) => {
                             return Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
                                 ethereum_block: block,
@@ -1192,9 +1182,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 // First try to get the block from the store
                 // See ancestor_block() for documentation of the 3 cached JSON formats.
                 if let Ok(blocks) = chain_store.blocks(vec![block.hash.clone()]).await {
-                    if let Some(cached_json) = blocks.first() {
-                        // Shallow blocks have "data": null - no block data to deserialize
-                        if cached_json.get("data") == Some(&json::Value::Null) {
+                    if let Some(cached_json) = blocks.into_iter().next() {
+                        let json_block = EthereumJsonBlock::new(cached_json);
+                        if json_block.is_shallow() {
                             trace!(
                                 self.logger,
                                 "Cached block #{} {} is shallow. Falling back to Firehose.",
@@ -1202,11 +1192,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                                 block.hash_hex(),
                             );
                         } else {
-                            let mut inner = cached_json.get("block").unwrap_or(cached_json).clone();
-                            // Some cached blocks are missing the transaction `type`
-                            // field. Patch with type: 0x0 (legacy) so alloy can deserialize.
-                            json_patch::patch_block_transactions(&mut inner);
-                            match json::from_value::<LightEthereumBlock>(inner) {
+                            match json_block.into_light_block::<LightEthereumBlock>() {
                                 Ok(light_block) => {
                                     return Ok(light_block.parent_ptr());
                                 }

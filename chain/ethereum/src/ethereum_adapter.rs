@@ -46,8 +46,8 @@ use graph::{
     blockchain::{block_stream::BlockWithTriggers, BlockPtr, IngestorError},
     prelude::{
         anyhow::{self, anyhow, bail, ensure, Context},
-        debug, error, hex, info, retry, serde_json as json, trace, warn, BlockNumber, ChainStore,
-        CheapClone, DynTryFuture, Error, EthereumCallCache, Logger, TimeoutError,
+        debug, error, hex, info, retry, trace, warn, BlockNumber, ChainStore, CheapClone,
+        DynTryFuture, Error, EthereumCallCache, Logger, TimeoutError,
     },
 };
 use itertools::Itertools;
@@ -65,7 +65,7 @@ use crate::adapter::EthereumRpcError;
 use crate::adapter::ProviderStatus;
 use crate::call_helper::interpret_eth_call_error;
 use crate::chain::BlockFinality;
-use crate::json_patch;
+use crate::json_block::EthereumJsonBlock;
 use crate::trigger::{LogPosition, LogRef};
 use crate::Chain;
 use crate::NodeCapabilities;
@@ -1614,20 +1614,13 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|mut value| {
-                // Cached JSON formats: see chain.rs ancestor_block() for documentation.
-                // Shallow blocks have "data": null - skip silently.
-                if value.get("data") == Some(&json::Value::Null) {
+            .filter_map(|value| {
+                let json_block = EthereumJsonBlock::new(value);
+                if json_block.is_shallow() {
                     return None;
                 }
-                let mut inner = value
-                    .as_object_mut()
-                    .and_then(|obj| obj.remove("block"))
-                    .unwrap_or(value);
-                // Some cached blocks are missing the transaction `type` field.
-                // Patch with type: 0x0 (legacy) so alloy can deserialize.
-                json_patch::patch_block_transactions(&mut inner);
-                json::from_value(inner)
+                json_block
+                    .into_light_block()
                     .map_err(|e| {
                         warn!(
                             &logger,

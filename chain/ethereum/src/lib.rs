@@ -7,6 +7,7 @@ mod data_source;
 mod env;
 mod ethereum_adapter;
 mod ingestor;
+mod json_block;
 mod json_patch;
 mod polling_block_stream;
 pub mod runtime;
