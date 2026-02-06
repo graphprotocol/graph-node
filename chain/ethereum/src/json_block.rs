@@ -50,9 +50,3 @@ impl EthereumJsonBlock {
         json::from_value(inner)
     }
 }
-
-impl From<Value> for EthereumJsonBlock {
-    fn from(value: Value) -> Self {
-        Self::new(value)
-    }
-}
