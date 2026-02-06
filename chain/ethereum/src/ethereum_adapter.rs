@@ -1630,7 +1630,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     })
                     .ok()
             })
-            .map(|b| Arc::new(LightEthereumBlock::new(b)))
+            .map(Arc::new)
             .collect();
 
         let missing_blocks = Vec::from_iter(

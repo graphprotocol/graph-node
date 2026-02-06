@@ -1,5 +1,5 @@
 use graph::prelude::serde_json::{self as json, Value};
-use serde::de::DeserializeOwned;
+use graph::prelude::{EthereumBlock, LightEthereumBlock};
 
 use crate::json_patch;
 
@@ -28,12 +28,12 @@ impl EthereumJsonBlock {
         }
     }
 
-    pub fn into_full_block<T: DeserializeOwned>(mut self) -> Result<T, json::Error> {
+    pub fn into_full_block(mut self) -> Result<EthereumBlock, json::Error> {
         self.patch();
         json::from_value(self.0)
     }
 
-    pub fn into_light_block<T: DeserializeOwned>(mut self) -> Result<T, json::Error> {
+    pub fn into_light_block(mut self) -> Result<LightEthereumBlock, json::Error> {
         let mut inner = self
             .0
             .as_object_mut()

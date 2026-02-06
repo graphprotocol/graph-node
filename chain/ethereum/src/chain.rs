@@ -1102,7 +1102,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     );
                     ptr
                 } else {
-                    match json_block.into_full_block::<EthereumBlock>() {
+                    match json_block.into_full_block() {
                         Ok(block) => {
                             return Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
                                 ethereum_block: block,
@@ -1192,7 +1192,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                                 block.hash_hex(),
                             );
                         } else {
-                            match json_block.into_light_block::<LightEthereumBlock>() {
+                            match json_block.into_light_block() {
                                 Ok(light_block) => {
                                     return Ok(light_block.parent_ptr());
                                 }
