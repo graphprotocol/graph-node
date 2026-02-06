@@ -10,6 +10,7 @@ use crate::blockchain::{BlockTime, ChainIdentifier, ExtendedBlockPtr};
 use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::network_provider::ChainName;
 use crate::components::server::index_node::VersionInfo;
+use crate::components::subgraph::ProofOfIndexingVersion;
 use crate::components::subgraph::SubgraphVersionSwitchingMode;
 use crate::components::transaction_receipt;
 use crate::components::versions::ApiVersion;
@@ -741,6 +742,28 @@ pub trait QueryStore: Send + Sync {
     fn deployment_id(&self) -> DeploymentId;
 }
 
+/// A single POI digest entry from the `poi2$` table, representing the
+/// accumulated digest for a causality region over a block range.
+#[derive(Clone, Debug)]
+pub struct PoiDigestEntry {
+    /// The causality region identifier (the entity id in poi2$)
+    pub id: Id,
+    /// The accumulated digest bytes
+    pub digest: Vec<u8>,
+    /// Start of the block range (inclusive)
+    pub start_block: BlockNumber,
+    /// End of the block range (exclusive, i32::MAX if open-ended)
+    pub end_block: BlockNumber,
+}
+
+/// The full POI digest history for a deployment, containing all digest
+/// entries and the POI version needed to compute proofs.
+#[derive(Clone, Debug)]
+pub struct PoiDigestHistory {
+    pub entries: Vec<PoiDigestEntry>,
+    pub poi_version: ProofOfIndexingVersion,
+}
+
 /// A view of the store that can provide information about the indexing status
 /// of any subgraph and any deployment
 #[async_trait]
@@ -790,6 +813,19 @@ pub trait StatusStore: Send + Sync + 'static {
         block_number: BlockNumber,
         fetch_block_ptr: &dyn BlockPtrForNumber,
     ) -> Result<Option<(PartialBlockPtr, [u8; 32])>, StoreError>;
+
+    /// Retrieve the full POI digest history for a deployment within a block
+    /// range. Returns all `poi2$` entries whose block ranges overlap the
+    /// given range, along with the deployment's `ProofOfIndexingVersion`.
+    /// Returns `None` if the deployment doesn't exist or has no POI data.
+    async fn get_poi_digest_history(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block_range: std::ops::Range<BlockNumber>,
+    ) -> Result<Option<PoiDigestHistory>, StoreError>;
+
+    /// Get the network for a deployment
+    async fn network_for_deployment(&self, id: &DeploymentHash) -> Result<String, StoreError>;
 }
 
 #[async_trait]

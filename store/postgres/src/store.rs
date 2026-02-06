@@ -171,6 +171,20 @@ impl StatusStore for Store {
             .await
     }
 
+    async fn get_poi_digest_history(
+        &self,
+        subgraph_id: &DeploymentHash,
+        block_range: std::ops::Range<BlockNumber>,
+    ) -> Result<Option<graph::components::store::PoiDigestHistory>, StoreError> {
+        self.subgraph_store
+            .get_poi_digest_history(subgraph_id, block_range)
+            .await
+    }
+
+    async fn network_for_deployment(&self, id: &DeploymentHash) -> Result<String, StoreError> {
+        self.subgraph_store.network_for_deployment(id).await
+    }
+
     async fn query_permit(&self) -> QueryPermit {
         // Status queries go to the primary shard.
         self.block_store.query_permit_primary().await

@@ -19,7 +19,7 @@ use graph::{
         server::index_node::VersionInfo,
         store::{
             self, BlockPtrForNumber, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait,
-            PruneReporter, PruneRequest, SubgraphFork,
+            PoiDigestHistory, PruneReporter, PruneRequest, SubgraphFork,
         },
     },
     data::query::QueryTarget,
@@ -245,6 +245,21 @@ impl SubgraphStore {
         block: BlockPtr,
     ) -> Result<Option<[u8; 32]>, StoreError> {
         self.inner.get_proof_of_indexing(id, indexer, block).await
+    }
+
+    pub(crate) async fn get_poi_digest_history(
+        &self,
+        id: &DeploymentHash,
+        block_range: std::ops::Range<BlockNumber>,
+    ) -> Result<Option<PoiDigestHistory>, StoreError> {
+        self.inner.get_poi_digest_history(id, block_range).await
+    }
+
+    pub(crate) async fn network_for_deployment(
+        &self,
+        id: &DeploymentHash,
+    ) -> Result<String, StoreError> {
+        self.inner.network_for_deployment(id).await
     }
 
     pub(crate) async fn get_public_proof_of_indexing(
@@ -1117,6 +1132,23 @@ impl Inner {
     ) -> Result<Option<[u8; 32]>, StoreError> {
         let (store, site) = self.store(id).await?;
         store.get_proof_of_indexing(site, indexer, block).await
+    }
+
+    pub(crate) async fn get_poi_digest_history(
+        &self,
+        id: &DeploymentHash,
+        block_range: std::ops::Range<BlockNumber>,
+    ) -> Result<Option<PoiDigestHistory>, StoreError> {
+        let (store, site) = self.store(id).await?;
+        store.get_poi_digest_history(site, block_range).await
+    }
+
+    pub(crate) async fn network_for_deployment(
+        &self,
+        id: &DeploymentHash,
+    ) -> Result<String, StoreError> {
+        let site = self.site(id).await?;
+        Ok(site.network.clone())
     }
 
     pub(crate) async fn get_public_proof_of_indexing(
