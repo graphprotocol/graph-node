@@ -1251,8 +1251,8 @@ where
                 return Err(anyhow!("{}", err));
             }
 
-            // Capture vid_seq before as_modifications consumes the EntityCache,
-            // so the next trigger continues from where this one left off.
+            // Carry forward the vid sequence so the next iteration doesn't
+            // reset to RESERVED_VIDS and produce duplicate VIDs.
             next_vid_seq = block_state.entity_cache.vid_seq;
 
             mods.extend(
