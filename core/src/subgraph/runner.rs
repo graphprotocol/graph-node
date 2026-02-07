@@ -810,8 +810,9 @@ where
             .offchain_monitor
             .ready_offchain_events()
             .non_deterministic()?;
+        let onchain_vid_seq = block_state.entity_cache.vid_seq;
         let (offchain_mods, processed_offchain_data_sources, persisted_off_chain_data_sources) =
-            self.handle_offchain_triggers(offchain_events, &block)
+            self.handle_offchain_triggers(offchain_events, &block, onchain_vid_seq)
                 .await
                 .non_deterministic()?;
         block_state
@@ -1161,6 +1162,7 @@ where
         &mut self,
         triggers: Vec<offchain::TriggerData>,
         block: &Arc<C::Block>,
+        mut next_vid_seq: u32,
     ) -> Result<
         (
             Vec<EntityModification>,
@@ -1178,6 +1180,11 @@ where
             // get causality region isolation.
             let schema = ReadStore::input_schema(&self.inputs.store);
             let mut block_state = BlockState::new(EmptyStore::new(schema), LfuCache::new());
+
+            // Continue the vid sequence from the previous trigger (or from
+            // onchain processing) so that each offchain trigger does not
+            // reset to RESERVED_VIDS and produce duplicate VIDs.
+            block_state.entity_cache.vid_seq = next_vid_seq;
 
             // PoI ignores offchain events.
             // See also: poi-ignores-offchain
@@ -1243,6 +1250,10 @@ where
             if let Some(err) = block_state.deterministic_errors.into_iter().next() {
                 return Err(anyhow!("{}", err));
             }
+
+            // Capture vid_seq before as_modifications consumes the EntityCache,
+            // so the next trigger continues from where this one left off.
+            next_vid_seq = block_state.entity_cache.vid_seq;
 
             mods.extend(
                 block_state
