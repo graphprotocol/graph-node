@@ -170,7 +170,7 @@ impl TablePair {
         let column_list = Arc::new(self.column_list());
 
         // Determine the last vid that we need to copy
-        let range = VidRange::for_prune(conn, &self.src, final_block + 1, BLOCK_NUMBER_MAX).await?;
+        let range = VidRange::for_prune(conn, &self.src, final_block, BLOCK_NUMBER_MAX).await?;
         let mut batcher = VidBatcher::load(conn, &self.src.nsp, &self.src, range).await?;
         tracker.start_copy_nonfinal(conn, &self.src, range).await?;
 
