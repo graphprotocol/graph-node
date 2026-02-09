@@ -647,15 +647,13 @@ impl CreateIndex {
     }
 
     pub fn fields_exist_in_dest(&self, dest_table: &Table) -> bool {
-        fn column_exists<'a>(it: &mut impl Iterator<Item = &'a str>, column_name: &str) -> bool {
-            it.any(|c| *c == *column_name)
+        fn column_exists(dest_table: &Table, column_name: &str) -> bool {
+            dest_table
+                .columns
+                .iter()
+                .any(|c| c.name.as_str() == column_name)
         }
 
-        fn some_column_contained<'a>(expr: &str, it: &mut impl Iterator<Item = &'a str>) -> bool {
-            it.any(|c| expr.contains(c))
-        }
-
-        let cols = &mut dest_table.columns.iter().map(|i| i.name.as_str());
         match self {
             CreateIndex::Unknown { defn: _ } => return true,
             CreateIndex::Parsed {
@@ -665,12 +663,12 @@ impl CreateIndex {
                 for c in parsed_cols {
                     match c {
                         Expr::Column(column_name) => {
-                            if !column_exists(cols, column_name) {
+                            if !column_exists(dest_table, column_name) {
                                 return false;
                             }
                         }
                         Expr::Prefix(column_name, _) => {
-                            if !column_exists(cols, column_name) {
+                            if !column_exists(dest_table, column_name) {
                                 return false;
                             }
                         }
@@ -686,18 +684,15 @@ impl CreateIndex {
                             }
                         }
                         Expr::Unknown(expression) => {
-                            if some_column_contained(
-                                expression,
-                                &mut (vec!["block_range"]).into_iter(),
-                            ) && dest_table.immutable
-                            {
+                            if expression.contains("block_range") && dest_table.immutable {
                                 return false;
                             }
-                            if !some_column_contained(expression, cols)
-                                && !some_column_contained(
-                                    expression,
-                                    &mut (vec!["block_range", "vid"]).into_iter(),
-                                )
+                            if !dest_table
+                                .columns
+                                .iter()
+                                .any(|c| expression.contains(c.name.as_str()))
+                                && !expression.contains("block_range")
+                                && !expression.contains("vid")
                             {
                                 return false;
                             }
@@ -1154,4 +1149,63 @@ fn parse() {
         cond: Some(TestCond::Unknown("decimals > (5)::numeric")),
     };
     parse_one(sql, exp);
+}
+
+#[cfg(test)]
+fn test_layout(gql: &str) -> Layout {
+    use std::collections::BTreeSet;
+    use std::sync::Arc;
+
+    use graph::prelude::DeploymentHash;
+    use graph::schema::InputSchema;
+
+    use crate::layout_for_tests::{make_dummy_site, Namespace};
+    use crate::relational::Catalog;
+
+    let subgraph = DeploymentHash::new("subgraph").unwrap();
+    let schema = InputSchema::parse_latest(gql, subgraph.clone()).expect("Test schema invalid");
+    let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
+    let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
+    let catalog =
+        Catalog::for_tests(site.clone(), BTreeSet::new()).expect("Can not create catalog");
+    Layout::new(site, &schema, catalog).expect("Failed to construct Layout")
+}
+
+#[test]
+fn fields_exist_in_dest_out_of_order() {
+    let gql = "type Thing @entity {
+        id: Bytes!
+        early: String!
+        mid: String!
+        late: String!
+    }";
+    let layout = test_layout(gql);
+    let table = layout
+        .table_for_entity(&layout.input_schema.entity_type("Thing").unwrap())
+        .unwrap();
+
+    // Index references columns in reverse order vs the table definition.
+    // Table columns: id, early, mid, late
+    // Index columns: late, mid, early
+    // The consuming iterator finds 'late', advances past 'mid' and 'early',
+    // then can't find 'mid' because the iterator is already past it.
+    let index = CreateIndex::Parsed {
+        unique: false,
+        name: "test_reverse".to_string(),
+        nsp: "sgd0815".to_string(),
+        table: "thing".to_string(),
+        method: Method::BTree,
+        columns: vec![
+            Expr::Column("late".to_string()),
+            Expr::Column("mid".to_string()),
+            Expr::Column("early".to_string()),
+        ],
+        cond: None,
+        with: None,
+    };
+
+    assert!(
+        index.fields_exist_in_dest(table),
+        "index columns exist in table regardless of order"
+    );
 }
