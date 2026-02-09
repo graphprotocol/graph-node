@@ -1043,7 +1043,9 @@ impl PruneRequest {
             ));
         }
 
-        let earliest_block = latest_block - history_blocks;
+        // We need to add + 1 to `earliset_block` because the lower bound is inclusive
+        // and otherwise we would end up with `history_blocks + 1` blocks of history instead of `history_blocks`
+        let earliest_block = latest_block - history_blocks + 1;
         let final_block = latest_block - reorg_threshold;
 
         Ok(Self {
