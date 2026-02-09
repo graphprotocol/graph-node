@@ -163,7 +163,7 @@ impl TablePair {
         let column_list = self.column_list();
 
         // Determine the last vid that we need to copy
-        let range = VidRange::for_prune(conn, &self.src, final_block + 1, BLOCK_NUMBER_MAX)?;
+        let range = VidRange::for_prune(conn, &self.src, final_block, BLOCK_NUMBER_MAX)?;
         let mut batcher = VidBatcher::load(conn, &self.src.nsp, &self.src, range)?;
         tracker.start_copy_nonfinal(conn, &self.src, range)?;
 
