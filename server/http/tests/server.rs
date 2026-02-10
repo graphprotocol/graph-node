@@ -86,7 +86,7 @@ mod test {
     use super::*;
     use graph::http::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
     use graph::hyper::header::{ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS};
-    use graph::prelude::reqwest::{Client, Response};
+    use reqwest::{Client, Response};
 
     lazy_static! {
         static ref USERS: DeploymentHash = DeploymentHash::new("users").unwrap();

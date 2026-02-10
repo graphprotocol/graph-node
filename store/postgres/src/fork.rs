@@ -9,8 +9,8 @@ use graph::{
     components::store::SubgraphFork as SubgraphForkTrait,
     internal_error,
     prelude::{
-        anyhow, info, r::Value as RValue, reqwest, serde_json, DeploymentHash, Entity, Logger,
-        Serialize, StoreError, Value, ValueType,
+        anyhow, info, r::Value as RValue, serde_json, DeploymentHash, Entity, Logger, Serialize,
+        StoreError, Value, ValueType,
     },
     schema::Field,
     url::Url,

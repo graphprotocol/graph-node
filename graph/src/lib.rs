@@ -86,7 +86,6 @@ pub mod prelude {
     pub use prost;
     pub use rand;
     pub use regex;
-    pub use reqwest;
     pub use serde;
     pub use serde_derive::{Deserialize, Serialize};
     pub use serde_json;

@@ -8,6 +8,7 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 graph = { path = "../../graph" }
 graph-graphql = { path = "../../graphql" }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 graph-core = { path = "../../core" }

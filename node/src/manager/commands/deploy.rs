@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use graph::prelude::{
     anyhow::{anyhow, bail, Result},
-    reqwest,
     serde_json::{json, Value},
     SubgraphName, SubgraphStore,
 };

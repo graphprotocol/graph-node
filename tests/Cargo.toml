@@ -16,6 +16,7 @@ graph-graphql = { path = "../graphql" }
 graph-store-postgres = { path = "../store/postgres" }
 graph-server-index-node = { path = "../server/index-node" }
 graph-runtime-wasm = { path = "../runtime/wasm" }
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 slog = { workspace = true }

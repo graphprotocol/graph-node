@@ -32,6 +32,7 @@ graph-server-metrics = { path = "../server/metrics" }
 graph-store-postgres = { path = "../store/postgres" }
 graphman-server = { workspace = true }
 graphman = { workspace = true }
+reqwest = { workspace = true }
 serde = { workspace = true }
 shellexpand = "3.1.1"
 termcolor = "1.4.1"
