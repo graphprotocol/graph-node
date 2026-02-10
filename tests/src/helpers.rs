@@ -5,8 +5,8 @@ use std::process::Command;
 
 use anyhow::{bail, Context};
 use graph::itertools::Itertools;
+use graph::prelude::serde_json;
 use graph::prelude::serde_json::{json, Value};
-use graph::prelude::{reqwest, serde_json};
 
 /// Parses stdout bytes into a prefixed String
 pub fn pretty_output(blob: &[u8], prefix: &str) -> String {

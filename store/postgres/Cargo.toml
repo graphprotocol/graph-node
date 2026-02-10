@@ -25,6 +25,7 @@ postgres = "0.19.1"
 openssl = { version = "0.10.75", features = ["vendored"] }
 postgres-openssl = "0.5.2"
 rand.workspace = true
+reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }

@@ -6,7 +6,7 @@ use tokio::process::{Child, Command};
 
 use graph::prelude::anyhow::Context;
 use graph::prelude::diesel::connection::SimpleConnection;
-use graph::prelude::{lazy_static, reqwest};
+use graph::prelude::lazy_static;
 use tokio::time::sleep;
 
 use crate::helpers::TestFile;
