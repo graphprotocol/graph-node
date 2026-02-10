@@ -56,8 +56,6 @@ pub enum StoreError {
     ForkFailure(String),
     #[error("subgraph writer poisoned by previous error")]
     Poisoned,
-    #[error("subgraph not found: {0}")]
-    SubgraphNotFound(String),
     #[error("panic in subgraph writer: {0}")]
     WriterPanic(JoinError),
     #[error(
@@ -121,7 +119,6 @@ impl Clone for StoreError {
             Self::DatabaseUnavailable => Self::DatabaseUnavailable,
             Self::ForkFailure(arg0) => Self::ForkFailure(arg0.clone()),
             Self::Poisoned => Self::Poisoned,
-            Self::SubgraphNotFound(arg0) => Self::SubgraphNotFound(arg0.clone()),
             Self::WriterPanic(arg0) => Self::Unknown(anyhow!("writer panic: {}", arg0)),
             Self::UnsupportedDeploymentSchemaVersion(arg0) => {
                 Self::UnsupportedDeploymentSchemaVersion(*arg0)
@@ -205,7 +202,6 @@ impl StoreError {
             | Canceled
             | DatabaseUnavailable
             | ForkFailure(_)
-            | SubgraphNotFound(_)
             | Poisoned
             | WriterPanic(_)
             | UnsupportedDeploymentSchemaVersion(_)

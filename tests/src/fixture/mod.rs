@@ -627,12 +627,7 @@ pub async fn cleanup(
     hash: &DeploymentHash,
 ) -> Result<(), Error> {
     let locators = subgraph_store.locators(hash).await?;
-    // Remove subgraph if it exists, ignore not found errors
-    match subgraph_store.remove_subgraph(name.clone()).await {
-        Ok(_) | Err(graph::prelude::StoreError::SubgraphNotFound(_)) => {}
-        Err(e) => return Err(e.into()),
-    }
-
+    subgraph_store.remove_subgraph(name.clone()).await?;
     for locator in locators {
         subgraph_store.remove_deployment(locator.id.into()).await?;
     }
