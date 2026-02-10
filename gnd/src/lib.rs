@@ -1,3 +1,4 @@
+pub mod abi;
 pub mod codegen;
 pub mod commands;
 pub mod compiler;

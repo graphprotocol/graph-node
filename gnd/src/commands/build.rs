@@ -12,6 +12,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use sha1::{Digest, Sha1};
 
+use crate::abi::normalize_abi_json;
 use crate::compiler::{compile_mapping, find_graph_ts, AscCompileOptions};
 use crate::config::{apply_network_config, get_network_config, load_networks_config};
 use crate::manifest::{load_manifest, resolve_path, DataSource, Manifest, Template};
@@ -649,10 +650,10 @@ fn copy_schema(schema_path: &Path, output_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Copy an ABI file to the specified output directory.
-///
-/// This unified function handles both data source and template ABIs.
-/// The caller specifies the output directory.
+/// Copy an ABI file to the specified output directory, normalizing it to a bare
+/// ABI array. This handles Hardhat/Foundry artifacts (`{"abi": [...]}`) and
+/// Truffle artifacts (`{"compilerOutput": {"abi": [...]}}`) in addition to raw
+/// ABI arrays.
 fn copy_abi_to_dir(abi_name: &str, abi_path: &Path, output_subdir: &Path) -> Result<()> {
     fs::create_dir_all(output_subdir)?;
 
@@ -664,13 +665,17 @@ fn copy_abi_to_dir(abi_name: &str, abi_path: &Path, output_subdir: &Path) -> Res
         &format!("Copy ABI {} to {}", abi_name, output_path.display()),
     );
 
-    fs::copy(abi_path, &output_path).with_context(|| {
-        format!(
-            "Failed to copy ABI from {} to {}",
-            abi_path.display(),
-            output_path.display()
-        )
-    })?;
+    let abi_str = fs::read_to_string(abi_path)
+        .with_context(|| format!("Failed to read ABI file: {}", abi_path.display()))?;
+
+    let normalized = normalize_abi_json(&abi_str)
+        .with_context(|| format!("Failed to normalize ABI: {}", abi_path.display()))?;
+
+    let output_str =
+        serde_json::to_string_pretty(&normalized).context("Failed to serialize normalized ABI")?;
+
+    fs::write(&output_path, output_str)
+        .with_context(|| format!("Failed to write ABI to {}", output_path.display()))?;
 
     Ok(())
 }
