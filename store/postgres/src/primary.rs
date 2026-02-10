@@ -1124,7 +1124,7 @@ impl Connection {
                 .await?;
             self.remove_unused_assignments().await
         } else {
-            Err(StoreError::SubgraphNotFound(name.to_string()))
+            Ok(vec![])
         }
     }
 

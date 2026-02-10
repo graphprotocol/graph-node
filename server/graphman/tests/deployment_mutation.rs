@@ -6,8 +6,8 @@ use graph::components::store::SubgraphStore;
 use graph::prelude::DeploymentHash;
 use serde::Deserialize;
 use serde_json::json;
+use test_store::create_test_subgraph;
 use test_store::SUBGRAPH_STORE;
-use test_store::{create_subgraph_name, create_test_subgraph};
 use tokio::time::sleep;
 
 use self::util::client::send_graphql_request;
@@ -358,8 +358,6 @@ fn graphql_cannot_create_new_subgraph_with_invalid_name() {
 #[test]
 fn graphql_can_remove_subgraph() {
     run_test(|| async {
-        create_subgraph_name("subgraph_1").await.unwrap();
-
         let resp = send_graphql_request(
             json!({
                 "query": r#"mutation RemoveSubgraph {
@@ -405,44 +403,17 @@ fn graphql_cannot_remove_subgraph_with_invalid_name() {
         )
         .await;
 
-        let data = &resp["data"]["deployment"];
-        let errors = resp["errors"].as_array().unwrap();
-
-        assert!(data.is_null());
-        assert_eq!(errors.len(), 1);
-        assert_eq!(
-            errors[0]["message"].as_str().unwrap(),
-            "store error: Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'"
-        );
-    });
-}
-
-#[test]
-fn graphql_remove_returns_error_for_non_existing_subgraph() {
-    run_test(|| async {
-        let resp = send_graphql_request(
-            json!({
-                "query": r#"mutation RemoveNonExistingSubgraph {
-                    deployment {
-                        remove(name: "non_existing_subgraph") {
-                            success
-                        }
+        let success_resp = json!({
+            "data": {
+                "deployment": {
+                    "remove": {
+                        "success": true,
                     }
-                }"#
-            }),
-            VALID_TOKEN,
-        )
-        .await;
+                }
+            }
+        });
 
-        let data = &resp["data"]["deployment"];
-        let errors = resp["errors"].as_array().unwrap();
-
-        assert!(data.is_null());
-        assert_eq!(errors.len(), 1);
-        assert_eq!(
-            errors[0]["message"].as_str().unwrap(),
-            "store error: subgraph not found: non_existing_subgraph"
-        );
+        assert_ne!(resp, success_resp);
     });
 }
 

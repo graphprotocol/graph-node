@@ -1232,18 +1232,3 @@ fn fail_unfail_non_deterministic_error_noop() {
         test_store::remove_subgraphs().await;
     })
 }
-
-#[test]
-fn remove_nonexistent_subgraph_returns_not_found() {
-    test_store::run_test_sequentially(|store| async move {
-        remove_subgraphs().await;
-
-        let name = SubgraphName::new("nonexistent/subgraph").unwrap();
-        let result = store.subgraph_store().remove_subgraph(name.clone()).await;
-
-        assert!(matches!(
-            result,
-            Err(StoreError::SubgraphNotFound(n)) if n == name.to_string()
-        ));
-    })
-}
