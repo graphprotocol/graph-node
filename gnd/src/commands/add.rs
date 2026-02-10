@@ -48,6 +48,10 @@ pub struct AddOpt {
     /// Block number to start indexing from
     #[clap(long)]
     pub start_block: Option<String>,
+
+    /// Suppress "Next steps" output (used when called from init loop)
+    #[clap(skip)]
+    pub quiet: bool,
 }
 
 /// Run the add command.
@@ -142,10 +146,12 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
 
     step(Step::Done, &format!("Added data source: {}", contract_name));
 
-    println!();
-    println!("Next steps:");
-    println!("  gnd codegen");
-    println!("  gnd build");
+    if !opt.quiet {
+        println!();
+        println!("Next steps:");
+        println!("  gnd codegen");
+        println!("  gnd build");
+    }
 
     Ok(())
 }
@@ -500,6 +506,7 @@ mod tests {
             merge_entities: false,
             network_file: PathBuf::from("networks.json"),
             start_block: None,
+            quiet: false,
         };
 
         let result = run_add(opt).await;
@@ -601,6 +608,7 @@ mod tests {
             merge_entities: false,
             network_file: PathBuf::from("networks.json"),
             start_block: None,
+            quiet: false,
         };
 
         let result = run_add(opt).await;

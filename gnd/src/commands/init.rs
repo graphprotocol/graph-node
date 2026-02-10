@@ -435,6 +435,7 @@ async fn add_more_contracts_loop(directory: &Path, network: &str) -> Result<()> 
             merge_entities: true, // Merge by default when adding during init
             network_file: PathBuf::from("networks.json"),
             start_block: start_block.map(|b| b.to_string()),
+            quiet: true,
         };
 
         if let Err(e) = run_add(add_opt).await {
