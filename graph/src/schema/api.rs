@@ -965,6 +965,26 @@ fn field_enum_filter_input_values(
         .collect()
 }
 
+/// Returns true if the given type supports case-insensitive filter
+/// operations (`_nocase` variants) when used as a list element type.
+/// Only `String` scalar types and object/interface types with `String`
+/// IDs support case-insensitive matching; types like `Bytes`, `BigInt`,
+/// etc. don't have a concept of case.
+fn field_list_supports_nocase(schema: &Schema, typedef: &s::TypeDefinition) -> bool {
+    match typedef {
+        s::TypeDefinition::Scalar(t) => t.name == "String",
+        s::TypeDefinition::Object(obj_type) => {
+            matches!(IdType::try_from(obj_type), Ok(IdType::String))
+        }
+        s::TypeDefinition::Interface(intf_type) => schema
+            .types_for_interface
+            .get(&intf_type.name)
+            .and_then(|types| types.first())
+            .is_none_or(|obj_type| matches!(IdType::try_from(obj_type), Ok(IdType::String))),
+        _ => false,
+    }
+}
+
 /// Generates `*_filter` input values for the given list field.
 fn field_list_filter_input_values(
     schema: &Schema,
@@ -1000,25 +1020,26 @@ fn field_list_filter_input_values(
         None => {
             vec![]
         }
-        Some(input_field_type) => vec![
-            "",
-            "not",
-            "contains",
-            "contains_nocase",
-            "not_contains",
-            "not_contains_nocase",
-        ]
-        .into_iter()
-        .map(|filter_type| {
-            input_value(
-                &field.name,
-                filter_type,
-                s::Type::ListType(Box::new(s::Type::NonNullType(Box::new(
-                    input_field_type.clone(),
-                )))),
-            )
-        })
-        .collect(),
+        Some(input_field_type) => {
+            let ops: &[&str] = if field_list_supports_nocase(schema, typedef) {
+                &[
+                    "",
+                    "not",
+                    "contains",
+                    "contains_nocase",
+                    "not_contains",
+                    "not_contains_nocase",
+                ]
+            } else {
+                &["", "not", "contains", "not_contains"]
+            };
+            let value_type = s::Type::ListType(Box::new(s::Type::NonNullType(Box::new(
+                input_field_type.clone(),
+            ))));
+            ops.iter()
+                .map(|filter_type| input_value(&field.name, filter_type, value_type.clone()))
+                .collect()
+        }
     };
 
     if let Some(parent) = parent_type_name {
@@ -2346,10 +2367,8 @@ type Gravatar @entity {
                     "pools",
                     "pools_",
                     "pools_contains",
-                    "pools_contains_nocase",
                     "pools_not",
                     "pools_not_contains",
-                    "pools_not_contains_nocase",
                 ],
                 pools_fields.as_slice(),
                 "Field {protos} has the wrong pools filters"
