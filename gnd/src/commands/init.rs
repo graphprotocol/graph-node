@@ -18,6 +18,7 @@ use clap::{Parser, ValueEnum};
 use graphql_parser::schema as gql;
 
 use crate::commands::add::{run_add, AddOpt};
+use crate::commands::codegen::{run_codegen, CodegenOpt};
 use crate::config::networks::update_networks_file;
 use crate::output::{step, with_spinner, Step};
 use crate::prompt::{
@@ -387,6 +388,20 @@ async fn init_from_contract(opt: &InitOpt, prefetched: Option<ContractInfo>) -> 
     if !opt.skip_install {
         if let Err(e) = install_dependencies(&directory) {
             eprintln!("Warning: {}", e);
+        }
+    }
+
+    // Run codegen to generate types (requires dependencies to be installed)
+    if !opt.skip_install {
+        let codegen_opt = CodegenOpt {
+            manifest: directory.join("subgraph.yaml"),
+            output_dir: directory.join("generated"),
+            skip_migrations: true,
+            watch: false,
+            ipfs: "https://api.thegraph.com/ipfs/api/v0".to_string(),
+        };
+        if let Err(e) = run_codegen(codegen_opt).await {
+            eprintln!("Warning: codegen failed: {}", e);
         }
     }
 
