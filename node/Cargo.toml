@@ -14,11 +14,11 @@ path = "src/bin/manager.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-env_logger = "0.11.8"
+env_logger = { workspace = true }
 clap.workspace = true
-git-testament = "0.2"
+git-testament = { workspace = true }
 itertools = { workspace = true }
-lazy_static = "1.5.0"
+lazy_static = { workspace = true }
 url = "2.5.8"
 graph = { path = "../graph" }
 graph-core = { path = "../core" }

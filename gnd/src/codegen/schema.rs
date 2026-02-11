@@ -3,7 +3,9 @@
 //! Generates AssemblyScript entity classes from GraphQL schemas.
 
 use anyhow::{anyhow, Result};
-use graphql_parser::schema::{Definition, Document, Field, ObjectType, Type, TypeDefinition};
+use graphql_tools::parser::schema::{
+    Definition, Document, Field, ObjectType, Type, TypeDefinition,
+};
 
 use super::types::{asc_type_for_value, value_from_asc, value_to_asc};
 use super::typescript::{
@@ -711,7 +713,7 @@ enum StoreMethod {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use graphql_parser::parse_schema;
+    use graphql_tools::parser::parse_schema;
 
     #[test]
     fn test_simple_entity() {
@@ -1045,7 +1047,7 @@ mod tests {
 
     #[test]
     fn test_list_depth() {
-        use graphql_parser::parse_schema;
+        use graphql_tools::parser::parse_schema;
 
         // Helper to get list depth from schema field type
         fn get_field_list_depth(schema_str: &str) -> u8 {

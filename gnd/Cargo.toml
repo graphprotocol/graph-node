@@ -24,13 +24,13 @@ graph-node = { path = "../node" }
 # Direct dependencies from current dev.rs
 anyhow = { workspace = true }
 clap = { workspace = true }
-clap_complete = "4"
-env_logger = "0.11.8"
-git-testament = "0.2"
-lazy_static = "1.5.0"
+clap_complete = { workspace = true }
+env_logger = { workspace = true }
+git-testament = { workspace = true }
+lazy_static = { workspace = true }
 serde = { workspace = true }
 tokio = { workspace = true }
-tokio-util.workspace = true
+tokio-util = { workspace = true }
 
 # File watching
 notify = "8.2.0"
@@ -51,14 +51,14 @@ indicatif = "0.17"
 console = "0.15"
 
 # Code generation
-graphql-parser = "0.4"
-regex = "1"
+graphql-tools = { workspace = true }
+regex = { workspace = true }
 ethabi = "17.2"
-serde_yaml = "0.9"
+serde_yaml = { workspace = true }
 Inflector = { workspace = true }
 
 # Migrations
-semver = "1"
+semver = { workspace = true }
 
 # Build command
 sha1 = "0.10"

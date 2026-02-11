@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Context, Result};
 use clap::{Parser, ValueEnum};
-use graphql_parser::schema as gql;
+use graphql_tools::parser::schema as gql;
 
 use crate::commands::add::{run_add, AddOpt};
 use crate::commands::codegen::{run_codegen, CodegenOpt};

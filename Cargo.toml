@@ -45,6 +45,7 @@ axum = "0.8.8"
 chrono = "0.4.43"
 bs58 = "0.5.1"
 clap = { version = "4.5.4", features = ["derive", "env", "wrap_help"] }
+clap_complete = "4"
 derivative = "2.2.0"
 diesel = { version = "2.2.7", features = [
     "postgres",
@@ -59,7 +60,9 @@ diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
 diesel-dynamic-schema = { version = "0.2.3", features = ["postgres"] }
 diesel_derives = "2.3.7"
 diesel_migrations = "2.3.1"
+env_logger = "0.11.8"
 envconfig = "0.11.1"
+git-testament = "0.2"
 graph = { path = "./graph" }
 graph-core = { path = "./core" }
 graph-store-postgres = { path = "./store/postgres" }
@@ -79,6 +82,7 @@ redis = { version = "1.0.3", features = [
 ] }
 regex = "1.5.4"
 reqwest = "0.12.23"
+semver = { version = "1", features = ["serde"] }
 serde = { version = "1.0.126", features = ["rc"] }
 serde_derive = "1.0.125"
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }

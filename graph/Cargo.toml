@@ -36,14 +36,14 @@ hyper-util = { version = "0.1", features = ["full"] }
 futures01 = { package = "futures", version = "0.1.31" }
 lru_time_cache = "0.11"
 graphql-tools = { workspace = true }
-lazy_static = "1.5.0"
+lazy_static = { workspace = true }
 num-bigint = { version = "=0.2.6", features = ["serde"] }
 num-integer = { version = "=0.1.46" }
 num-traits = "=0.2.19"
 rand.workspace = true
 redis = { workspace = true }
-regex = "1.5.4"
-semver = { version = "1.0.27", features = ["serde"] }
+regex = { workspace = true }
+semver = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }

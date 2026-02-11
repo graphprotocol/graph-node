@@ -12,7 +12,7 @@ graph-node = { path = "../../node" }
 graph = { path = "../../graph" }
 graph-store-postgres = { path = "../postgres" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
-lazy_static = "1.5"
+lazy_static = { workspace = true }
 hex-literal = "1.1"
 diesel = { workspace = true }
 diesel-async = { workspace = true }

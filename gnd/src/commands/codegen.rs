@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use ethabi::Contract;
-use graphql_parser::schema as gql;
+use graphql_tools::parser::schema as gql;
 use semver::Version;
 
 use crate::abi::normalize_abi_json;
