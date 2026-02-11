@@ -192,6 +192,8 @@ struct FieldInfo {
 pub struct SchemaCodeGenerator {
     entities: Vec<EntityInfo>,
     entity_names: std::collections::HashSet<String>,
+    /// Maps entity name to its ID field kind, for resolving entity reference types.
+    entity_id_kinds: std::collections::HashMap<String, IdFieldKind>,
 }
 
 impl SchemaCodeGenerator {
@@ -202,12 +204,18 @@ impl SchemaCodeGenerator {
     pub fn new(document: &Document<'_, String>) -> Result<Self> {
         let mut entities = Vec::new();
         let mut entity_names = std::collections::HashSet::new();
+        let mut entity_id_kinds = std::collections::HashMap::new();
 
-        // First pass: collect entity names
+        // First pass: collect entity names and their ID types
         for def in &document.definitions {
             if let Definition::TypeDefinition(TypeDefinition::Object(obj)) = def {
                 if is_entity_type(obj) {
                     entity_names.insert(obj.name.clone());
+                    let id_field = obj.fields.iter().find(|f| f.name == "id");
+                    let id_kind = id_field
+                        .map(|f| IdFieldKind::from_type_name(&get_base_type_name(&f.field_type)))
+                        .unwrap_or(IdFieldKind::String);
+                    entity_id_kinds.insert(obj.name.clone(), id_kind);
                 }
             }
         }
@@ -265,6 +273,7 @@ impl SchemaCodeGenerator {
         Ok(Self {
             entities,
             entity_names,
+            entity_id_kinds,
         })
     }
 
@@ -332,7 +341,7 @@ impl SchemaCodeGenerator {
 
         // Generate field getters and setters
         for field in &entity.fields {
-            if let Some(getter) = self.generate_field_getter(&entity.name, field) {
+            if let Some(getter) = self.generate_field_getter(&entity.name, field, &entity.id_kind) {
                 klass.add_method(getter);
             }
             if let Some(setter) = self.generate_field_setter(field) {
@@ -468,12 +477,17 @@ impl SchemaCodeGenerator {
         ]
     }
 
-    fn generate_field_getter(&self, entity_name: &str, field: &FieldInfo) -> Option<Method> {
+    fn generate_field_getter(
+        &self,
+        entity_name: &str,
+        field: &FieldInfo,
+        id_kind: &IdFieldKind,
+    ) -> Option<Method> {
         let safe_name = handle_reserved_word(&field.name);
 
         // Handle derived fields
         if field.is_derived {
-            return self.generate_derived_field_getter(entity_name, field, &safe_name);
+            return self.generate_derived_field_getter(entity_name, field, &safe_name, id_kind);
         }
 
         let value_type = self.value_type_from_field(field);
@@ -529,8 +543,14 @@ impl SchemaCodeGenerator {
         entity_name: &str,
         field: &FieldInfo,
         safe_name: &str,
+        id_kind: &IdFieldKind,
     ) -> Option<Method> {
         let loader_name = format!("{}Loader", field.base_type);
+
+        let id_conversion = match id_kind {
+            IdFieldKind::Bytes => "this.get('id')!.toBytes().toHexString()",
+            _ => "this.get('id')!.toString()",
+        };
 
         Some(Method::new(
             format!("get {}", safe_name),
@@ -538,8 +558,8 @@ impl SchemaCodeGenerator {
             Some(NamedType::new(&loader_name).into()),
             format!(
                 r#"
-        return new {}('{}', this.get('id')!.toString(), '{}')"#,
-                loader_name, entity_name, field.name
+        return new {}('{}', {}, '{}')"#,
+                loader_name, entity_name, id_conversion, field.name
             ),
         ))
     }
@@ -636,10 +656,10 @@ impl SchemaCodeGenerator {
     /// - Scalars: `String`, `Int`, `BigInt`, etc.
     /// - Arrays: `[String]`, `[Int]`, etc.
     /// - Nested arrays: `[[String]]`, `[[Int]]`, etc.
-    /// - Entity references are converted to `String` (their ID type)
+    /// - Entity references are converted to the referenced entity's ID type
     fn value_type_from_field(&self, field: &FieldInfo) -> String {
-        let base = if self.entity_names.contains(&field.base_type) {
-            "String".to_string() // Entity references are stored as string IDs
+        let base = if let Some(id_kind) = self.entity_id_kinds.get(&field.base_type) {
+            id_kind.gql_type_name().to_string()
         } else {
             field.base_type.clone()
         };
@@ -659,8 +679,8 @@ impl SchemaCodeGenerator {
     /// - Arrays: `Array<string>`, `Array<i32>`, etc.
     /// - Nested arrays: `Array<Array<string>>`, etc.
     fn type_from_field(&self, field: &FieldInfo) -> TypeExpr {
-        let type_name = if self.entity_names.contains(&field.base_type) {
-            "string" // Entity references are stored as string IDs
+        let type_name = if let Some(id_kind) = self.entity_id_kinds.get(&field.base_type) {
+            id_kind.type_name()
         } else {
             asc_type_for_value(&field.base_type)
         };
@@ -1091,5 +1111,176 @@ mod tests {
         assert_eq!(gen.value_type_from_field(scalar_field), "String");
         assert_eq!(gen.value_type_from_field(array_field), "[String]");
         assert_eq!(gen.value_type_from_field(matrix_field), "[[String]]");
+    }
+
+    #[test]
+    fn test_bytes_id_entity_reference() {
+        let schema = r#"
+            type Token @entity {
+                id: Bytes!
+                name: String!
+            }
+            type Balance @entity {
+                id: ID!
+                token: Token!
+                amount: BigInt!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
+
+        let classes = gen.generate_types(true);
+        let balance = classes.iter().find(|c| c.name == "Balance").unwrap();
+        let output = balance.to_string();
+
+        // Getter should return Bytes and use toBytes()
+        assert!(
+            output.contains("value.toBytes()"),
+            "Bytes-ID entity reference getter should use toBytes(), got: {}",
+            output
+        );
+
+        // Setter should use Value.fromBytes()
+        assert!(
+            output.contains("Value.fromBytes("),
+            "Bytes-ID entity reference setter should use Value.fromBytes(), got: {}",
+            output
+        );
+
+        // Return type should be Bytes, not string
+        assert!(
+            output.contains("get token(): Bytes"),
+            "Bytes-ID entity reference getter should return Bytes, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_int8_id_entity_reference() {
+        let schema = r#"
+            type Counter @entity {
+                id: Int8!
+                value: BigInt!
+            }
+            type Snapshot @entity {
+                id: ID!
+                counter: Counter!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
+
+        let classes = gen.generate_types(true);
+        let snapshot = classes.iter().find(|c| c.name == "Snapshot").unwrap();
+        let output = snapshot.to_string();
+
+        // Getter should return i64 and use toI64()
+        assert!(
+            output.contains("value.toI64()"),
+            "Int8-ID entity reference getter should use toI64(), got: {}",
+            output
+        );
+
+        // Setter should use Value.fromI64()
+        assert!(
+            output.contains("Value.fromI64("),
+            "Int8-ID entity reference setter should use Value.fromI64(), got: {}",
+            output
+        );
+
+        // Return type should be i64
+        assert!(
+            output.contains("get counter(): i64"),
+            "Int8-ID entity reference getter should return i64, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_mixed_id_entity_references() {
+        let schema = r#"
+            type User @entity {
+                id: ID!
+                name: String!
+            }
+            type Token @entity {
+                id: Bytes!
+                owner: User!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
+
+        let classes = gen.generate_types(true);
+        let token = classes.iter().find(|c| c.name == "Token").unwrap();
+        let output = token.to_string();
+
+        // Token.owner references User which has String ID
+        assert!(
+            output.contains("get owner(): string"),
+            "Reference to String-ID entity should use string type, got: {}",
+            output
+        );
+        assert!(
+            output.contains("value.toString()"),
+            "Reference to String-ID entity should use toString(), got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_nullable_bytes_id_entity_reference() {
+        let schema = r#"
+            type Token @entity {
+                id: Bytes!
+                name: String!
+            }
+            type Balance @entity {
+                id: ID!
+                token: Token
+                amount: BigInt!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
+
+        let classes = gen.generate_types(true);
+        let balance = classes.iter().find(|c| c.name == "Balance").unwrap();
+        let output = balance.to_string();
+
+        // Nullable Bytes reference should be `Bytes | null`
+        assert!(
+            output.contains("get token(): Bytes | null"),
+            "Nullable Bytes-ID reference should return Bytes | null, got: {}",
+            output
+        );
+    }
+
+    #[test]
+    fn test_derived_field_with_bytes_id_parent() {
+        let schema = r#"
+            type Token @entity {
+                id: Bytes!
+                balances: [Balance!]! @derivedFrom(field: "token")
+            }
+            type Balance @entity {
+                id: ID!
+                token: Token!
+                amount: BigInt!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let gen = SchemaCodeGenerator::new(&doc).unwrap();
+
+        let classes = gen.generate_types(true);
+        let token = classes.iter().find(|c| c.name == "Token").unwrap();
+        let output = token.to_string();
+
+        // Derived field getter on Bytes-ID entity should use toBytes().toHexString()
+        assert!(
+            output.contains("this.get('id')!.toBytes().toHexString()"),
+            "Derived field on Bytes-ID entity should use toBytes().toHexString(), got: {}",
+            output
+        );
     }
 }
