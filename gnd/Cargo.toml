@@ -56,6 +56,7 @@ thiserror = { workspace = true }
 # Console output
 indicatif = "0.18"
 console = "0.16"
+similar = "2"
 
 # Code generation
 graphql-tools = { workspace = true }
@@ -85,4 +86,3 @@ pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-arg
 [dev-dependencies]
 tempfile = "3"
 walkdir = "2"
-similar = "2"

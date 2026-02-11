@@ -3,22 +3,15 @@
 //! These types satisfy the trait bounds required by the `Chain` constructor
 //! but are never called during normal test execution because:
 //! - Triggers are provided directly via `StaticStreamBuilder` (no scanning needed)
-//! - Runtime host functions (eth_call etc.) are not available in mock tests
-//!   (subgraphs that use `ethereum.call()` will fail — this is a known V1 limitation)
+//! - The real `EthereumRuntimeAdapterBuilder` is used for host functions
+//!   (ethereum.call, ethereum.getBalance, ethereum.hasCode), backed by the call cache
 
 use async_trait::async_trait;
 use graph::blockchain::block_stream::{BlockRefetcher, BlockWithTriggers, FirehoseCursor};
-use graph::blockchain::{
-    BlockPtr, Blockchain, ChainIdentifier, RuntimeAdapter as RuntimeAdapterTrait, TriggersAdapter,
-    TriggersAdapterSelector,
-};
-use graph::components::store::{DeploymentLocator, EthereumCallCache};
-use graph::data_source::DataSource;
+use graph::blockchain::{BlockPtr, Blockchain, TriggersAdapter, TriggersAdapterSelector};
+use graph::components::store::DeploymentLocator;
 use graph::prelude::{BlockHash, BlockNumber, Error};
 use graph::slog::{Discard, Logger};
-use graph_chain_ethereum::chain::RuntimeAdapterBuilder;
-use graph_chain_ethereum::network::EthereumNetworkAdapters;
-use graph_chain_ethereum::Chain;
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -49,36 +42,6 @@ impl<C: Blockchain> BlockRefetcher<C> for StaticBlockRefetcher<C> {
         _cursor: FirehoseCursor,
     ) -> Result<C::Block, Error> {
         unimplemented!("StaticBlockRefetcher should never be called")
-    }
-}
-
-// ============ Runtime Adapters ============
-
-/// Returns empty host functions — chain-specific runtime extensions
-/// (like eth_call) are not available in mock tests.
-struct NoopRuntimeAdapter<C> {
-    _phantom: PhantomData<C>,
-}
-
-impl<C: Blockchain> RuntimeAdapterTrait<C> for NoopRuntimeAdapter<C> {
-    fn host_fns(&self, _ds: &DataSource<C>) -> Result<Vec<graph::blockchain::HostFn>, Error> {
-        Ok(vec![])
-    }
-}
-
-/// Builds `NoopRuntimeAdapter` instances for the Chain constructor.
-pub(super) struct NoopRuntimeAdapterBuilder;
-
-impl RuntimeAdapterBuilder for NoopRuntimeAdapterBuilder {
-    fn build(
-        &self,
-        _eth_adapters: Arc<EthereumNetworkAdapters>,
-        _call_cache: Arc<dyn EthereumCallCache>,
-        _chain_identifier: Arc<ChainIdentifier>,
-    ) -> Arc<dyn RuntimeAdapterTrait<Chain>> {
-        Arc::new(NoopRuntimeAdapter {
-            _phantom: PhantomData,
-        })
     }
 }
 

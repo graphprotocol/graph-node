@@ -79,6 +79,12 @@ pub struct TestBlock {
     /// graph-node's trigger ordering (block start -> events by logIndex -> block end).
     #[serde(default)]
     pub triggers: Vec<TestTrigger>,
+
+    /// Mock contract call responses for this specific block.
+    /// These are pre-cached in the database before the test runs so that
+    /// `ethereum.call()` invocations in handlers return the mocked values.
+    #[serde(default, rename = "ethCalls")]
+    pub eth_calls: Vec<MockEthCall>,
 }
 
 /// A trigger within a block. The `type` field determines the variant.
@@ -140,6 +146,32 @@ pub struct LogTrigger {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct BlockTrigger {}
 
+/// A mock contract call response that will be pre-cached for a specific block.
+///
+/// When a subgraph handler calls `ethereum.call()` during indexing, graph-node
+/// looks up the result in its call cache. By pre-populating this cache with
+/// mock responses, tests can control what contract calls return without needing
+/// a real Ethereum node.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MockEthCall {
+    /// Contract address to mock (checksummed or lowercase hex).
+    pub address: String,
+
+    /// Function signature to mock.
+    /// Example: `"balanceOf(address):(uint256)"`
+    pub function: String,
+
+    /// Input parameters for the function call.
+    pub params: Vec<Value>,
+
+    /// Return values for the function call.
+    pub returns: Vec<Value>,
+
+    /// If true, the call will revert instead of returning values.
+    #[serde(default)]
+    pub reverts: bool,
+}
+
 /// A GraphQL assertion to validate indexed entity state.
 #[derive(Debug, Clone, Deserialize)]
 #[allow(dead_code)]
@@ -159,16 +191,53 @@ pub struct Assertion {
 #[derive(Debug)]
 pub enum TestResult {
     /// All assertions passed and no handler errors occurred.
-    Passed,
+    Passed {
+        /// Per-assertion outcomes (all passed).
+        assertions: Vec<AssertionOutcome>,
+    },
     /// The test failed due to handler errors and/or assertion mismatches.
     Failed {
         /// If the subgraph handler threw a fatal error during indexing,
         /// this contains the error message. The test fails immediately
         /// without running assertions.
         handler_error: Option<String>,
-        /// List of assertions where actual != expected.
-        assertion_failures: Vec<AssertionFailure>,
+        /// Per-assertion outcomes (mix of passed and failed).
+        assertions: Vec<AssertionOutcome>,
     },
+}
+
+impl TestResult {
+    pub fn is_passed(&self) -> bool {
+        matches!(self, TestResult::Passed { .. })
+    }
+
+    pub fn assertions(&self) -> &[AssertionOutcome] {
+        match self {
+            TestResult::Passed { assertions } | TestResult::Failed { assertions, .. } => assertions,
+        }
+    }
+
+    pub fn handler_error(&self) -> Option<&str> {
+        match self {
+            TestResult::Failed {
+                handler_error: Some(e),
+                ..
+            } => Some(e),
+            _ => None,
+        }
+    }
+}
+
+/// Outcome of a single assertion query.
+#[derive(Debug)]
+pub enum AssertionOutcome {
+    /// The assertion passed — actual matched expected.
+    Passed {
+        /// The GraphQL query that was executed.
+        query: String,
+    },
+    /// The assertion failed — actual did not match expected.
+    Failed(AssertionFailure),
 }
 
 /// Details about a single failed assertion.

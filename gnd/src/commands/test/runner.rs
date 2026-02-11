@@ -26,7 +26,7 @@
 use super::assertion::run_assertions;
 use super::block_stream::{MutexBlockStreamBuilder, StaticStreamBuilder};
 use super::mock_chain;
-use super::noop::{NoopAdapterSelector, NoopRuntimeAdapterBuilder, StaticBlockRefetcher};
+use super::noop::{NoopAdapterSelector, StaticBlockRefetcher};
 use super::schema::{TestFile, TestResult};
 use super::trigger::build_blocks_with_triggers;
 use super::TestOpt;
@@ -37,7 +37,7 @@ use graph::blockchain::{BlockPtr, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, FileLinkResolver};
 use graph::components::metrics::MetricsRegistry;
-use graph::components::network_provider::ChainName;
+use graph::components::network_provider::{ChainName, ProviderCheckStrategy, ProviderManager};
 use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::{Settings, SubgraphInstanceManager as _};
 use graph::data::graphql::load_manager::LoadManager;
@@ -51,8 +51,11 @@ use graph::prelude::{
     SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
 };
 use graph::slog::{info, o, Drain, Logger, OwnedKVList, Record};
-use graph_chain_ethereum::network::EthereumNetworkAdapters;
-use graph_chain_ethereum::Chain;
+use graph_chain_ethereum::chain::EthereumRuntimeAdapterBuilder;
+use graph_chain_ethereum::network::{EthereumNetworkAdapter, EthereumNetworkAdapters};
+use graph_chain_ethereum::{
+    Chain, EthereumAdapter, NodeCapabilities, ProviderEthRpcMetrics, Transport,
+};
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_graphql::prelude::GraphQlRunner;
 use graph_node::config::Config;
@@ -171,7 +174,7 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
 
     // Empty test with no blocks and no assertions is trivially passing.
     if blocks.is_empty() && test_file.assertions.is_empty() {
-        return Ok(TestResult::Passed);
+        return Ok(TestResult::Passed { assertions: vec![] });
     }
 
     // Resolve paths relative to the manifest location.
@@ -245,6 +248,17 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
     )
     .await?;
 
+    // Populate eth_call cache with mock responses before starting indexer.
+    // This ensures handlers can successfully retrieve mocked contract call results.
+    super::eth_calls::populate_eth_call_cache(
+        &logger,
+        stores.chain_store.cheap_clone(),
+        &blocks,
+        test_file,
+    )
+    .await
+    .context("Failed to populate eth_call cache")?;
+
     // Determine the target block — the indexer will process until it reaches this.
     let stop_block = if blocks.is_empty() {
         mock_chain::genesis_ptr()
@@ -277,7 +291,7 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
             // Report it as a test failure without running assertions.
             Ok(TestResult::Failed {
                 handler_error: Some(subgraph_error.message),
-                assertion_failures: vec![],
+                assertions: vec![],
             })
         }
     }
@@ -349,8 +363,9 @@ async fn setup_stores(
     db_url: &str,
     network_name: &ChainName,
 ) -> Result<TestStores> {
-    // Minimal graph-node config with one primary shard and one chain.
-    // The chain provider URL is a dummy — no real RPC calls are made.
+    // Minimal graph-node config: one primary shard, no chain providers.
+    // The chain→shard mapping defaults to "primary" in StoreBuilder::make_store,
+    // and we construct EthereumNetworkAdapters directly in setup_chain.
     let config_str = format!(
         r#"
 [store]
@@ -365,14 +380,8 @@ indexers = [ "default" ]
 
 [chains]
 ingestor = "default"
-
-[chains.{}]
-shard = "primary"
-provider = [
-  {{ label = "test", url = "http://localhost:1/", features = [] }}
-]
 "#,
-        db_url, network_name
+        db_url
     );
 
     let config = Config::from_str(&config_str, "default")
@@ -458,7 +467,49 @@ async fn setup_chain(
     let static_block_stream = Arc::new(StaticStreamBuilder { chain: blocks });
     let block_stream_builder = Arc::new(MutexBlockStreamBuilder(Mutex::new(static_block_stream)));
 
-    let eth_adapters = Arc::new(EthereumNetworkAdapters::empty_for_testing());
+    // Create a dummy Ethereum adapter with archive capabilities.
+    // The adapter itself is never used for RPC — ethereum.call results come from
+    // the pre-populated call cache. But the RuntimeAdapter needs to resolve an
+    // adapter with matching capabilities before it can invoke the cache lookup.
+    let endpoint_metrics = Arc::new(EndpointMetrics::mock());
+    let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
+    let transport = Transport::new_rpc(
+        graph::url::Url::parse("http://0.0.0.0:0").unwrap(),
+        graph::http::HeaderMap::new(),
+        endpoint_metrics.clone(),
+        "",
+    );
+    let dummy_adapter = Arc::new(
+        EthereumAdapter::new(
+            logger.clone(),
+            String::new(),
+            transport,
+            provider_metrics,
+            true,
+            false,
+        )
+        .await,
+    );
+    let adapter = EthereumNetworkAdapter::new(
+        endpoint_metrics,
+        NodeCapabilities {
+            archive: true,
+            traces: false,
+        },
+        dummy_adapter,
+        SubgraphLimit::Unlimited,
+    );
+    let provider_manager = ProviderManager::new(
+        logger.clone(),
+        vec![(stores.network_name.clone(), vec![adapter])],
+        ProviderCheckStrategy::MarkAsValid,
+    );
+    let eth_adapters = Arc::new(EthereumNetworkAdapters::new(
+        stores.network_name.clone(),
+        provider_manager,
+        vec![],
+        None,
+    ));
 
     let chain = Chain::new(
         logger_factory,
@@ -475,7 +526,7 @@ async fn setup_chain(
         Arc::new(NoopAdapterSelector {
             _phantom: PhantomData,
         }),
-        Arc::new(NoopRuntimeAdapterBuilder),
+        Arc::new(EthereumRuntimeAdapterBuilder {}),
         eth_adapters,
         graph::prelude::ENV_VARS.reorg_threshold(),
         graph::prelude::ENV_VARS.ingestor_polling_interval,

@@ -225,7 +225,7 @@ pub fn encode_event_log(
 /// - `bytes`: hex string → dynamic byte array
 /// - `string`: JSON string
 /// - `bytes1`..`bytes32`: hex string → fixed-length byte array (right-zero-padded to 32 bytes)
-fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Result<DynSolValue> {
+pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Result<DynSolValue> {
     match sol_type {
         DynSolType::Address => {
             let s = value

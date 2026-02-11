@@ -40,6 +40,7 @@
 
 mod assertion;
 mod block_stream;
+mod eth_calls;
 mod mock_chain;
 mod noop;
 mod output;
@@ -51,8 +52,6 @@ use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use console::style;
 use std::path::PathBuf;
-
-pub use schema::TestResult;
 
 use crate::output::{step, Step};
 
@@ -152,6 +151,7 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
 
     let mut passed = 0;
     let mut failed = 0;
+    let mut all_failures = Vec::new();
 
     for path in test_files {
         output::print_test_start(&path);
@@ -171,9 +171,11 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
         match runner::run_single_test(&opt, &test_file).await {
             Ok(result) => {
                 output::print_test_result(&test_file.name, &result);
-                match result {
-                    TestResult::Passed => passed += 1,
-                    TestResult::Failed { .. } => failed += 1,
+                if result.is_passed() {
+                    passed += 1;
+                } else {
+                    all_failures.extend(output::collect_failures(&test_file.name, &result));
+                    failed += 1;
                 }
             }
             Err(e) => {
@@ -183,6 +185,7 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
         }
     }
 
+    output::print_failure_details(&all_failures);
     output::print_summary(passed, failed);
 
     if failed > 0 {
