@@ -11,7 +11,7 @@ const SUBGRAPH_STUDIO_URL: &str = "https://api.studio.thegraph.com/deploy/";
 
 /// Get the path to the config file (~/.graph-cli.json)
 fn config_path() -> PathBuf {
-    dirs::home_dir()
+    std::env::home_dir()
         .expect("Could not determine home directory")
         .join(".graph-cli.json")
 }

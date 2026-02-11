@@ -19,7 +19,7 @@ clap.workspace = true
 git-testament = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
-url = "2.5.8"
+url = { workspace = true }
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
 graph-chain-ethereum = { path = "../chain/ethereum" }

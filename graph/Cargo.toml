@@ -67,7 +67,7 @@ tokio = { workspace = true}
 tokio-stream = { workspace = true }
 tokio-retry = { workspace = true }
 toml = "0.9.11"
-url = "2.5.8"
+url = { workspace = true }
 prometheus = "0.14.0"
 priority-queue = "2.7.0"
 tonic = { workspace = true }

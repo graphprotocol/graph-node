@@ -38,8 +38,7 @@ notify = "8.2.0"
 globset = "0.4.18"
 
 # Config and auth
-url = "2"
-dirs = "5"
+url = { workspace = true }
 serde_json = { workspace = true }
 pq-sys = { version = "0.7.5", features = ["bundled"] }
 
