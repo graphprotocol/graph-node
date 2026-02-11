@@ -413,9 +413,18 @@ async fn offchain_trigger_vid_collision_without_fix() {
     // "duplicate key value violates unique constraint"
     // vid = (block << 32) + 100 for BOTH triggers
     let expected_vid = ((block as i64) << 32) + 100;
-    assert_eq!(vid1, expected_vid, "first trigger vid should be (block << 32) + 100");
-    assert_eq!(vid2, expected_vid, "second trigger vid should ALSO be (block << 32) + 100 — the bug!");
-    assert_eq!(vid1, vid2, "VIDs collide — this is the bug that causes the DB constraint violation");
+    assert_eq!(
+        vid1, expected_vid,
+        "first trigger vid should be (block << 32) + 100"
+    );
+    assert_eq!(
+        vid2, expected_vid,
+        "second trigger vid should ALSO be (block << 32) + 100 — the bug!"
+    );
+    assert_eq!(
+        vid1, vid2,
+        "VIDs collide — this is the bug that causes the DB constraint violation"
+    );
 }
 
 // Test that demonstrates the fix: threading vid_seq from one trigger's
@@ -460,11 +469,17 @@ async fn offchain_trigger_vid_no_collision_with_fix() {
     };
 
     // With the fix, VIDs are different
-    assert_ne!(vid1, vid2, "VIDs should NOT collide when vid_seq is threaded");
+    assert_ne!(
+        vid1, vid2,
+        "VIDs should NOT collide when vid_seq is threaded"
+    );
     let expected_vid1 = ((block as i64) << 32) + 100;
     let expected_vid2 = ((block as i64) << 32) + 101;
     assert_eq!(vid1, expected_vid1, "first trigger starts at vid_seq 100");
-    assert_eq!(vid2, expected_vid2, "second trigger continues at vid_seq 101");
+    assert_eq!(
+        vid2, expected_vid2,
+        "second trigger continues at vid_seq 101"
+    );
 }
 
 const ACCOUNT_GQL: &str = "
