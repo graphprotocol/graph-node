@@ -3875,6 +3875,7 @@ dependencies = [
  "graph-chain-ethereum",
  "graph-chain-near",
  "graph-graphql",
+ "rayon",
 ]
 
 [[package]]

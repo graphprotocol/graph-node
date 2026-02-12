@@ -46,6 +46,18 @@ type Query {
     blockHash: Bytes!
   ): [CachedEthereumCall!]
   apiVersions(subgraphId: String!): [ApiVersion!]!
+  """
+  Find the block number that produced a given proof of indexing.
+  Used for dispute investigation to verify which block an indexer
+  actually synced to when they submitted a POI.
+  """
+  blockForPoi(
+    subgraph: String!
+    targetPoi: Bytes!
+    startBlock: Int!
+    endBlock: Int!
+    indexer: Bytes!
+  ): PoiSearchResult
 }
 
 type Version {
@@ -201,6 +213,12 @@ type ProofOfIndexingResult {
   block: Block!
   "There may not be a proof of indexing available for the deployment and block"
   proofOfIndexing: Bytes
+}
+
+type PoiSearchResult {
+  block: Block!
+  deployment: String!
+  proofOfIndexing: Bytes!
 }
 
 type ApiVersion {

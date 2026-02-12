@@ -8,6 +8,7 @@ use graph::anyhow::Context;
 use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
 use graph::components::store::write::RowGroup;
+use graph::components::store::PoiDigestHistory;
 use graph::components::store::{
     Batch, DeploymentLocator, DerivedEntityQuery, PrunePhase, PruneReporter, PruneRequest,
     PruningStrategy, QueryPermit, StoredDynamicDataSource, VersionStats,
@@ -15,7 +16,7 @@ use graph::components::store::{
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::IntoValue;
 use graph::data::query::Trace;
-use graph::data::store::{IdList, SqlQueryObject};
+use graph::data::store::{Id, IdList, SqlQueryObject};
 use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
 use graph::data_source::CausalityRegion;
 use graph::derive::CheapClone;
@@ -1016,6 +1017,69 @@ impl DeploymentStore {
         }
 
         Ok(Some(finisher.finish()))
+    }
+
+    /// Retrieve all POI digest entries from the `poi2$` table whose block
+    /// ranges overlap the given `block_range`, along with the deployment's
+    /// POI version. Used by the `blockForPoi` resolver to reconstruct POIs
+    /// without per-block entity queries.
+    pub(crate) async fn get_poi_digest_history(
+        &self,
+        site: Arc<Site>,
+        block_range: Range<BlockNumber>,
+    ) -> Result<Option<PoiDigestHistory>, StoreError> {
+        use diesel::sql_types::{Binary, Integer, Text};
+        use graph::components::store::PoiDigestEntry;
+
+        let info = self.subgraph_info(site.cheap_clone()).await?;
+
+        #[derive(QueryableByName)]
+        struct DigestRow {
+            #[diesel(sql_type = Text)]
+            id: String,
+            #[diesel(sql_type = Binary)]
+            digest: Vec<u8>,
+            #[diesel(sql_type = Integer)]
+            start_block: i32,
+            #[diesel(sql_type = Integer)]
+            end_block: i32,
+        }
+
+        let query = format!(
+            r#"SELECT id, digest, lower(block_range) as start_block,
+                      coalesce(upper(block_range), 2147483647) as end_block
+               FROM "{}"."poi2$"
+               WHERE block_range && int4range($1, $2)
+               ORDER BY id, lower(block_range)"#,
+            site.namespace,
+        );
+
+        let mut conn = self.pool.get_permitted().await?;
+        let rows = diesel::sql_query(query)
+            .bind::<Integer, _>(block_range.start)
+            .bind::<Integer, _>(block_range.end)
+            .load::<DigestRow>(&mut conn)
+            .await
+            .map_err(StoreError::from)?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let entries = rows
+            .into_iter()
+            .map(|row| PoiDigestEntry {
+                id: Id::String(row.id.into()),
+                digest: row.digest,
+                start_block: row.start_block,
+                end_block: row.end_block,
+            })
+            .collect();
+
+        Ok(Some(PoiDigestHistory {
+            entries,
+            poi_version: info.poi_version,
+        }))
     }
 
     /// Get the entity matching `key` from the deployment `site`. Only
