@@ -3728,6 +3728,7 @@ dependencies = [
  "tokio-util",
  "url",
  "walkdir",
+ "wasmparser 0.118.2",
  "which 7.0.3",
 ]
 

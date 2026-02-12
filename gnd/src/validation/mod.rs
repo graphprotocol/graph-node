@@ -4,6 +4,7 @@
 //! logic as graph-node, ensuring developers get early feedback about issues
 //! that would cause deployment failures.
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{Context, Result};
@@ -77,6 +78,13 @@ pub enum ManifestValidationError {
     ReceiptRequiresApiVersion { data_source: String },
     /// Eth call declarations require specVersion >= 1.2.0.
     CallDeclsRequireSpecVersion { data_source: String },
+    /// Handler names from the manifest are missing as exports in the compiled WASM.
+    MissingWasmHandlers {
+        data_source: String,
+        missing: Vec<String>,
+    },
+    /// Failed to parse a compiled WASM file.
+    InvalidWasm { path: String, reason: String },
 }
 
 impl std::fmt::Display for ManifestValidationError {
@@ -160,6 +168,20 @@ impl std::fmt::Display for ManifestValidationError {
                     "data source '{}': eth call declarations on event handlers require specVersion >= 1.2.0",
                     data_source
                 )
+            }
+            ManifestValidationError::MissingWasmHandlers {
+                data_source,
+                missing,
+            } => {
+                write!(
+                    f,
+                    "data source '{}': missing WASM handlers: {}",
+                    data_source,
+                    missing.join(", ")
+                )
+            }
+            ManifestValidationError::InvalidWasm { path, reason } => {
+                write!(f, "invalid WASM file {}: {}", path, reason)
             }
         }
     }
@@ -702,6 +724,97 @@ pub(crate) fn format_manifest_errors(errors: &[ManifestValidationError]) -> Stri
         .map(|e| format!("  - {}", e))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Extract exported function names from a WASM binary.
+fn wasm_exported_functions(wasm_bytes: &[u8]) -> Result<HashSet<String>> {
+    use wasmparser::Payload;
+
+    let mut exports = HashSet::new();
+    for payload in wasmparser::Parser::new(0).parse_all(wasm_bytes) {
+        if let Payload::ExportSection(s) = payload? {
+            for export in s {
+                let export = export?;
+                if export.kind == wasmparser::ExternalKind::Func {
+                    exports.insert(export.name.to_string());
+                }
+            }
+        }
+    }
+    Ok(exports)
+}
+
+/// Validate that all handler names from a data source exist as exports in the
+/// compiled WASM file. Returns errors for any handlers missing from the WASM.
+pub(crate) fn validate_wasm_handlers(
+    wasm_path: &Path,
+    ds_name: &str,
+    handler_names: &[&str],
+) -> Vec<ManifestValidationError> {
+    let wasm_bytes = match std::fs::read(wasm_path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            return vec![ManifestValidationError::InvalidWasm {
+                path: wasm_path.display().to_string(),
+                reason: format!("failed to read: {}", e),
+            }];
+        }
+    };
+
+    let exports = match wasm_exported_functions(&wasm_bytes) {
+        Ok(exports) => exports,
+        Err(e) => {
+            return vec![ManifestValidationError::InvalidWasm {
+                path: wasm_path.display().to_string(),
+                reason: format!("failed to parse: {}", e),
+            }];
+        }
+    };
+
+    let missing: Vec<String> = handler_names
+        .iter()
+        .filter(|name| !exports.contains(**name))
+        .map(|name| name.to_string())
+        .collect();
+
+    if missing.is_empty() {
+        vec![]
+    } else {
+        vec![ManifestValidationError::MissingWasmHandlers {
+            data_source: ds_name.to_string(),
+            missing,
+        }]
+    }
+}
+
+/// Collect all handler names from a data source.
+pub(crate) fn collect_handler_names(ds: &DataSource) -> Vec<&str> {
+    let mut names = Vec::new();
+    for h in &ds.event_handlers {
+        names.push(h.handler.as_str());
+    }
+    for h in &ds.call_handlers {
+        names.push(h.as_str());
+    }
+    for h in &ds.block_handlers {
+        names.push(h.handler.as_str());
+    }
+    names
+}
+
+/// Collect all handler names from a template.
+pub(crate) fn collect_template_handler_names(t: &Template) -> Vec<&str> {
+    let mut names = Vec::new();
+    for h in &t.event_handlers {
+        names.push(h.handler.as_str());
+    }
+    for h in &t.call_handlers {
+        names.push(h.as_str());
+    }
+    for h in &t.block_handlers {
+        names.push(h.handler.as_str());
+    }
+    names
 }
 
 #[cfg(test)]
@@ -1530,5 +1643,205 @@ type Post @entity {
         let manifest = create_test_manifest(vec![ds], vec![]);
         let errors = validate_ethereum_constraints(&manifest);
         assert!(errors.is_empty());
+    }
+
+    // --- WASM handler export validation tests ---
+
+    /// Build a minimal valid WASM module that exports the given function names.
+    ///
+    /// The module defines one function type `() -> ()`, one function per export
+    /// name, and exports each function by name.
+    fn build_wasm_with_exports(export_names: &[&str]) -> Vec<u8> {
+        let mut wasm = Vec::new();
+
+        // Magic number + version
+        wasm.extend_from_slice(b"\0asm");
+        wasm.extend_from_slice(&1u32.to_le_bytes());
+
+        let n = export_names.len();
+
+        // Type section: one type `() -> ()`
+        {
+            let section = vec![
+                1,    // count: 1 type
+                0x60, // func type
+                0,    // 0 params
+                0,    // 0 results
+            ];
+            wasm.push(1); // section id: Type
+            leb128_encode(&mut wasm, section.len() as u32);
+            wasm.extend_from_slice(&section);
+        }
+
+        // Function section: n functions, all type index 0
+        {
+            let mut section = Vec::new();
+            leb128_encode(&mut section, n as u32);
+            section.extend(std::iter::repeat_n(0u8, n)); // type index 0 for each
+            wasm.push(3); // section id: Function
+            leb128_encode(&mut wasm, section.len() as u32);
+            wasm.extend_from_slice(&section);
+        }
+
+        // Export section: export each function
+        {
+            let mut section = Vec::new();
+            leb128_encode(&mut section, n as u32);
+            for (i, name) in export_names.iter().enumerate() {
+                leb128_encode(&mut section, name.len() as u32);
+                section.extend_from_slice(name.as_bytes());
+                section.push(0x00); // export kind: func
+                leb128_encode(&mut section, i as u32); // func index
+            }
+            wasm.push(7); // section id: Export
+            leb128_encode(&mut wasm, section.len() as u32);
+            wasm.extend_from_slice(&section);
+        }
+
+        // Code section: n function bodies, each is just `end`
+        {
+            let mut section = Vec::new();
+            leb128_encode(&mut section, n as u32);
+            for _ in 0..n {
+                // Function body: size=2, 0 locals, end
+                section.push(2); // body size
+                section.push(0); // 0 local declarations
+                section.push(0x0b); // end
+            }
+            wasm.push(10); // section id: Code
+            leb128_encode(&mut wasm, section.len() as u32);
+            wasm.extend_from_slice(&section);
+        }
+
+        wasm
+    }
+
+    /// Encode a u32 as unsigned LEB128.
+    fn leb128_encode(buf: &mut Vec<u8>, mut value: u32) {
+        loop {
+            let mut byte = (value & 0x7f) as u8;
+            value >>= 7;
+            if value != 0 {
+                byte |= 0x80;
+            }
+            buf.push(byte);
+            if value == 0 {
+                break;
+            }
+        }
+    }
+
+    #[test]
+    fn test_wasm_exported_functions_extracts_exports() {
+        let wasm = build_wasm_with_exports(&["handleTransfer", "handleApproval"]);
+        let exports = wasm_exported_functions(&wasm).unwrap();
+        assert!(exports.contains("handleTransfer"));
+        assert!(exports.contains("handleApproval"));
+        assert_eq!(exports.len(), 2);
+    }
+
+    #[test]
+    fn test_wasm_exported_functions_empty_module() {
+        let wasm = build_wasm_with_exports(&[]);
+        let exports = wasm_exported_functions(&wasm).unwrap();
+        assert!(exports.is_empty());
+    }
+
+    #[test]
+    fn test_validate_wasm_handlers_all_present() {
+        let temp_dir = TempDir::new().unwrap();
+        let wasm_path = temp_dir.path().join("test.wasm");
+        let wasm = build_wasm_with_exports(&["handleTransfer", "handleBlock"]);
+        fs::write(&wasm_path, wasm).unwrap();
+
+        let errors = validate_wasm_handlers(&wasm_path, "ds1", &["handleTransfer", "handleBlock"]);
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_validate_wasm_handlers_missing_handlers() {
+        let temp_dir = TempDir::new().unwrap();
+        let wasm_path = temp_dir.path().join("test.wasm");
+        let wasm = build_wasm_with_exports(&["handleTransfer"]);
+        fs::write(&wasm_path, wasm).unwrap();
+
+        let errors = validate_wasm_handlers(
+            &wasm_path,
+            "ds1",
+            &["handleTransfer", "handleFoo", "handleBar"],
+        );
+        assert_eq!(errors.len(), 1);
+        match &errors[0] {
+            ManifestValidationError::MissingWasmHandlers {
+                data_source,
+                missing,
+            } => {
+                assert_eq!(data_source, "ds1");
+                assert_eq!(missing, &["handleFoo", "handleBar"]);
+            }
+            other => panic!("Expected MissingWasmHandlers, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_validate_wasm_handlers_file_not_found() {
+        let errors = validate_wasm_handlers(
+            Path::new("/nonexistent/path.wasm"),
+            "ds1",
+            &["handleTransfer"],
+        );
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::InvalidWasm { .. }
+        ));
+    }
+
+    #[test]
+    fn test_validate_wasm_handlers_invalid_wasm() {
+        let temp_dir = TempDir::new().unwrap();
+        let wasm_path = temp_dir.path().join("bad.wasm");
+        fs::write(&wasm_path, b"not a wasm file").unwrap();
+
+        let errors = validate_wasm_handlers(&wasm_path, "ds1", &["handleTransfer"]);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::InvalidWasm { reason, .. } if reason.contains("parse")
+        ));
+    }
+
+    #[test]
+    fn test_validate_wasm_handlers_display_format() {
+        let err = ManifestValidationError::MissingWasmHandlers {
+            data_source: "Token".to_string(),
+            missing: vec!["handleFoo".to_string(), "handleBar".to_string()],
+        };
+        let msg = format!("{}", err);
+        assert_eq!(
+            msg,
+            "data source 'Token': missing WASM handlers: handleFoo, handleBar"
+        );
+    }
+
+    #[test]
+    fn test_collect_handler_names() {
+        let mut ds = create_data_source("ds1", Some("mainnet"), None);
+        ds.event_handlers = vec![event_handler("handleTransfer")];
+        ds.call_handlers = vec!["handleApprove".to_string()];
+        ds.block_handlers = vec![block_handler("handleBlock")];
+
+        let names = collect_handler_names(&ds);
+        assert_eq!(
+            names,
+            vec!["handleTransfer", "handleApprove", "handleBlock"]
+        );
+    }
+
+    #[test]
+    fn test_collect_handler_names_empty() {
+        let ds = create_data_source("ds1", Some("mainnet"), None);
+        let names = collect_handler_names(&ds);
+        assert!(names.is_empty());
     }
 }

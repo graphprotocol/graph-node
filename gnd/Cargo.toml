@@ -63,6 +63,7 @@ semver = { workspace = true }
 
 # Build command
 sha1 = "0.10"
+wasmparser = { workspace = true }
 
 # Test command
 which = "7"

@@ -20,7 +20,8 @@ use crate::migrations;
 use crate::output::{step, Step};
 use crate::services::IpfsClient;
 use crate::validation::{
-    format_manifest_errors, format_schema_errors, validate_manifest, validate_schema,
+    collect_handler_names, collect_template_handler_names, format_manifest_errors,
+    format_schema_errors, validate_manifest, validate_schema, validate_wasm_handlers,
 };
 use crate::watch::watch_and_run;
 
@@ -231,6 +232,55 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
                 opt.skip_asc_version_check,
                 "data source template",
             )?;
+        }
+    }
+
+    // Validate compiled WASM handler exports (only for binary WASM output)
+    if opt.output_format == "wasm" {
+        let mut wasm_errors = Vec::new();
+
+        for ds in &manifest.data_sources {
+            let handler_names = collect_handler_names(ds);
+            if handler_names.is_empty() {
+                continue;
+            }
+            let wasm_path = opt
+                .output_dir
+                .join(&ds.name)
+                .join(format!("{}.wasm", ds.name));
+            if wasm_path.exists() {
+                wasm_errors.extend(validate_wasm_handlers(&wasm_path, &ds.name, &handler_names));
+            }
+        }
+
+        for template in &manifest.templates {
+            let handler_names = collect_template_handler_names(template);
+            if handler_names.is_empty() {
+                continue;
+            }
+            let wasm_path = opt
+                .output_dir
+                .join("templates")
+                .join(&template.name)
+                .join(format!("{}.wasm", template.name));
+            if wasm_path.exists() {
+                wasm_errors.extend(validate_wasm_handlers(
+                    &wasm_path,
+                    &template.name,
+                    &handler_names,
+                ));
+            }
+        }
+
+        if !wasm_errors.is_empty() {
+            eprintln!(
+                "WASM handler validation errors:\n{}",
+                format_manifest_errors(&wasm_errors)
+            );
+            return Err(anyhow!(
+                "WASM handler validation failed with {} error(s)",
+                wasm_errors.len()
+            ));
         }
     }
 
