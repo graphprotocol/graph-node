@@ -66,6 +66,14 @@ pub struct DataSource {
     pub abis: Vec<Abi>,
     /// For subgraph data sources: the IPFS deployment ID of the referenced subgraph.
     pub source_address: Option<String>,
+    /// The ABI name referenced in `source.abi` (Ethereum data sources only).
+    pub source_abi: Option<String>,
+    /// Event handler names from the mapping.
+    pub event_handlers: Vec<String>,
+    /// Call handler names from the mapping.
+    pub call_handlers: Vec<String>,
+    /// Block handler names from the mapping.
+    pub block_handlers: Vec<String>,
 }
 
 impl DataSource {
@@ -84,6 +92,14 @@ pub struct Template {
     pub mapping_file: Option<String>,
     pub api_version: Option<Version>,
     pub abis: Vec<Abi>,
+    /// The ABI name referenced in `source.abi` (Ethereum templates only).
+    pub source_abi: Option<String>,
+    /// Event handler names from the mapping.
+    pub event_handlers: Vec<String>,
+    /// Call handler names from the mapping.
+    pub call_handlers: Vec<String>,
+    /// Block handler names from the mapping.
+    pub block_handlers: Vec<String>,
 }
 
 impl Manifest {
@@ -176,6 +192,25 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
                 })
                 .collect(),
             source_address: eth.source.address.map(|a| format!("{:?}", a)),
+            source_abi: Some(eth.source.abi.clone()),
+            event_handlers: eth
+                .mapping
+                .event_handlers
+                .iter()
+                .map(|h| h.handler.clone())
+                .collect(),
+            call_handlers: eth
+                .mapping
+                .call_handlers
+                .iter()
+                .map(|h| h.handler.clone())
+                .collect(),
+            block_handlers: eth
+                .mapping
+                .block_handlers
+                .iter()
+                .map(|h| h.handler.clone())
+                .collect(),
         },
         GraphUnresolvedDS::Subgraph(sub) => DataSource {
             name: sub.name.clone(),
@@ -195,6 +230,10 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
                 })
                 .collect(),
             source_address: Some(sub.source.address().to_string()),
+            source_abi: None,
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
         },
         GraphUnresolvedDS::Offchain(off) => DataSource {
             name: off.name.clone(),
@@ -204,6 +243,10 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
             api_version: Version::parse(&off.mapping.api_version).ok(),
             abis: vec![],
             source_address: None,
+            source_abi: None,
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
         },
         GraphUnresolvedDS::Amp(amp) => DataSource {
             name: amp.name.clone(),
@@ -213,6 +256,10 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
             api_version: None,
             abis: vec![],
             source_address: None,
+            source_abi: None,
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
         },
     }
 }
@@ -235,6 +282,25 @@ fn convert_template(t: GraphUnresolvedDST<Chain>) -> Template {
                     file: a.file.link.clone(),
                 })
                 .collect(),
+            source_abi: Some(eth.source.abi.clone()),
+            event_handlers: eth
+                .mapping
+                .event_handlers
+                .iter()
+                .map(|h| h.handler.clone())
+                .collect(),
+            call_handlers: eth
+                .mapping
+                .call_handlers
+                .iter()
+                .map(|h| h.handler.clone())
+                .collect(),
+            block_handlers: eth
+                .mapping
+                .block_handlers
+                .iter()
+                .map(|h| h.handler.clone())
+                .collect(),
         },
         GraphUnresolvedDST::Offchain(off) => Template {
             name: off.name.clone(),
@@ -243,6 +309,10 @@ fn convert_template(t: GraphUnresolvedDST<Chain>) -> Template {
             mapping_file: Some(off.mapping.file.link.clone()),
             api_version: Version::parse(&off.mapping.api_version).ok(),
             abis: vec![],
+            source_abi: None,
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
         },
         GraphUnresolvedDST::Subgraph(sub) => Template {
             name: sub.name.clone(),
@@ -261,6 +331,10 @@ fn convert_template(t: GraphUnresolvedDST<Chain>) -> Template {
                     file: a.file.link.clone(),
                 })
                 .collect(),
+            source_abi: None,
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
         },
     }
 }

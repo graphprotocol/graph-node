@@ -57,6 +57,16 @@ pub enum ManifestValidationError {
     FileNotFound { path: String, description: String },
     /// File could not be parsed.
     InvalidFile { path: String, reason: String },
+    /// source.abi references an ABI name not listed in mapping.abis.
+    SourceAbiNotInMappingAbis {
+        data_source: String,
+        source_abi: String,
+        available: Vec<String>,
+    },
+    /// Duplicate data source or template name.
+    DuplicateName { kind: &'static str, name: String },
+    /// Ethereum data source has no handlers defined.
+    NoHandlers { data_source: String },
 }
 
 impl std::fmt::Display for ManifestValidationError {
@@ -76,6 +86,37 @@ impl std::fmt::Display for ManifestValidationError {
             ManifestValidationError::InvalidFile { path, reason } => {
                 write!(f, "invalid file {}: {}", path, reason)
             }
+            ManifestValidationError::SourceAbiNotInMappingAbis {
+                data_source,
+                source_abi,
+                available,
+            } => {
+                if available.is_empty() {
+                    write!(
+                        f,
+                        "data source '{}': source.abi '{}' not found in mapping.abis (no ABIs defined)",
+                        data_source, source_abi
+                    )
+                } else {
+                    write!(
+                        f,
+                        "data source '{}': source.abi '{}' not found in mapping.abis (available: {})",
+                        data_source,
+                        source_abi,
+                        available.join(", ")
+                    )
+                }
+            }
+            ManifestValidationError::DuplicateName { kind, name } => {
+                write!(f, "duplicate {} name: '{}'", kind, name)
+            }
+            ManifestValidationError::NoHandlers { data_source } => {
+                write!(
+                    f,
+                    "data source '{}': no event, call, or block handlers defined",
+                    data_source
+                )
+            }
         }
     }
 }
@@ -88,9 +129,10 @@ impl From<SubgraphManifestValidationError> for ManifestValidationError {
 
 /// Validate manifest file references.
 ///
-/// Checks that all referenced files exist and ABI files are valid JSON.
-/// This is the minimal validation needed before codegen — it doesn't check
-/// deployment-level concerns like network names or spec versions.
+/// Checks that all referenced files exist, ABI files are valid JSON,
+/// source.abi cross-references mapping.abis, names are unique, and
+/// Ethereum data sources have at least one handler. This validation
+/// runs before codegen to catch errors early.
 pub(crate) fn validate_manifest_files(
     manifest: &Manifest,
     manifest_dir: &Path,
@@ -102,6 +144,15 @@ pub(crate) fn validate_manifest_files(
 
     // Validate ABIs are valid JSON
     errors.extend(validate_abis(manifest, manifest_dir));
+
+    // Validate source.abi references an ABI in mapping.abis
+    errors.extend(validate_source_abi_references(manifest));
+
+    // Validate unique data source and template names
+    errors.extend(validate_unique_names(manifest));
+
+    // Validate Ethereum data sources have at least one handler
+    errors.extend(validate_handler_presence(manifest));
 
     errors
 }
@@ -115,6 +166,9 @@ pub(crate) fn validate_manifest_files(
 /// - Spec version is within supported range
 /// - Referenced files exist (schema, mappings, ABIs)
 /// - ABI files are valid JSON
+/// - source.abi references an ABI in mapping.abis
+/// - Data source and template names are unique
+/// - Ethereum data sources have at least one handler
 pub(crate) fn validate_manifest(
     manifest: &Manifest,
     manifest_dir: &Path,
@@ -172,6 +226,15 @@ pub(crate) fn validate_manifest(
 
     // Validate ABIs are valid JSON
     errors.extend(validate_abis(manifest, manifest_dir));
+
+    // Validate source.abi references an ABI in mapping.abis
+    errors.extend(validate_source_abi_references(manifest));
+
+    // Validate unique data source and template names
+    errors.extend(validate_unique_names(manifest));
+
+    // Validate Ethereum data sources have at least one handler
+    errors.extend(validate_handler_presence(manifest));
 
     errors
 }
@@ -307,6 +370,96 @@ fn validate_abi_file(abi: &Abi, manifest_dir: &Path) -> Result<(), ManifestValid
         })?;
 
     Ok(())
+}
+
+/// Validate that each data source's `source.abi` references an ABI listed in `mapping.abis`.
+fn validate_source_abi_references(manifest: &Manifest) -> Vec<ManifestValidationError> {
+    let mut errors = Vec::new();
+
+    for ds in &manifest.data_sources {
+        if let Some(source_abi) = &ds.source_abi {
+            if !ds.abis.iter().any(|a| a.name == *source_abi) {
+                errors.push(ManifestValidationError::SourceAbiNotInMappingAbis {
+                    data_source: ds.name.clone(),
+                    source_abi: source_abi.clone(),
+                    available: ds.abis.iter().map(|a| a.name.clone()).collect(),
+                });
+            }
+        }
+    }
+
+    for t in &manifest.templates {
+        if let Some(source_abi) = &t.source_abi {
+            if !t.abis.iter().any(|a| a.name == *source_abi) {
+                errors.push(ManifestValidationError::SourceAbiNotInMappingAbis {
+                    data_source: t.name.clone(),
+                    source_abi: source_abi.clone(),
+                    available: t.abis.iter().map(|a| a.name.clone()).collect(),
+                });
+            }
+        }
+    }
+
+    errors
+}
+
+/// Validate that data source and template names are unique.
+fn validate_unique_names(manifest: &Manifest) -> Vec<ManifestValidationError> {
+    let mut errors = Vec::new();
+    let mut seen_ds_names = std::collections::HashSet::new();
+    let mut seen_template_names = std::collections::HashSet::new();
+
+    for ds in &manifest.data_sources {
+        if !seen_ds_names.insert(&ds.name) {
+            errors.push(ManifestValidationError::DuplicateName {
+                kind: "data source",
+                name: ds.name.clone(),
+            });
+        }
+    }
+
+    for t in &manifest.templates {
+        if !seen_template_names.insert(&t.name) {
+            errors.push(ManifestValidationError::DuplicateName {
+                kind: "template",
+                name: t.name.clone(),
+            });
+        }
+    }
+
+    errors
+}
+
+/// Validate that Ethereum data sources have at least one handler defined.
+fn validate_handler_presence(manifest: &Manifest) -> Vec<ManifestValidationError> {
+    let mut errors = Vec::new();
+
+    for ds in &manifest.data_sources {
+        // Only check Ethereum data sources (which have source_abi set)
+        if ds.source_abi.is_some()
+            && ds.event_handlers.is_empty()
+            && ds.call_handlers.is_empty()
+            && ds.block_handlers.is_empty()
+        {
+            errors.push(ManifestValidationError::NoHandlers {
+                data_source: ds.name.clone(),
+            });
+        }
+    }
+
+    for t in &manifest.templates {
+        if t.source_abi.is_some()
+            && t.event_handlers.is_empty()
+            && t.call_handlers.is_empty()
+            && t.block_handlers.is_empty()
+        {
+            errors.push(ManifestValidationError::NoHandlers {
+                data_source: t.name.clone(),
+            });
+        }
+    }
+
+    errors
 }
 
 /// Format manifest validation errors for display.
@@ -446,6 +599,10 @@ type Post @entity {
             api_version,
             abis: vec![],
             source_address: None,
+            source_abi: None,
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
         }
     }
 
@@ -458,6 +615,10 @@ type Post @entity {
             api_version: None,
             abis: vec![],
             source_address: Some(address.to_string()),
+            source_abi: None,
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
         }
     }
 
@@ -642,6 +803,8 @@ type Post @entity {
             name: "ERC20".to_string(),
             file: "abis/ERC20.json".to_string(),
         }];
+        ds.source_abi = Some("ERC20".to_string());
+        ds.event_handlers = vec!["handleTransfer".to_string()];
 
         let manifest = create_test_manifest(vec![ds], vec![]);
 
@@ -666,5 +829,213 @@ type Post @entity {
         assert!(formatted.contains("no data sources"));
         assert!(formatted.contains("schema.graphql"));
         assert!(formatted.contains("  - "));
+    }
+
+    // --- source.abi cross-reference tests ---
+
+    #[test]
+    fn test_validate_source_abi_found_in_mapping_abis() {
+        let mut ds = create_data_source("ds1", Some("mainnet"), None);
+        ds.source_abi = Some("ERC20".to_string());
+        ds.abis = vec![Abi {
+            name: "ERC20".to_string(),
+            file: "abis/ERC20.json".to_string(),
+        }];
+        ds.event_handlers = vec!["handleTransfer".to_string()];
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_source_abi_references(&manifest);
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_validate_source_abi_not_in_mapping_abis() {
+        let mut ds = create_data_source("ds1", Some("mainnet"), None);
+        ds.source_abi = Some("ERC721".to_string());
+        ds.abis = vec![Abi {
+            name: "ERC20".to_string(),
+            file: "abis/ERC20.json".to_string(),
+        }];
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_source_abi_references(&manifest);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::SourceAbiNotInMappingAbis {
+                data_source,
+                source_abi,
+                available,
+            } if data_source == "ds1" && source_abi == "ERC721" && available == &["ERC20"]
+        ));
+    }
+
+    #[test]
+    fn test_validate_source_abi_no_abis_defined() {
+        let mut ds = create_data_source("ds1", Some("mainnet"), None);
+        ds.source_abi = Some("ERC20".to_string());
+        // abis is empty (default from create_data_source)
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_source_abi_references(&manifest);
+        assert_eq!(errors.len(), 1);
+        let msg = format!("{}", errors[0]);
+        assert!(msg.contains("no ABIs defined"));
+    }
+
+    #[test]
+    fn test_validate_source_abi_skips_non_ethereum() {
+        // Subgraph data sources have no source_abi, should be skipped
+        let ds = create_subgraph_data_source("sub1", "QmHash123");
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_source_abi_references(&manifest);
+        assert!(errors.is_empty());
+    }
+
+    // --- unique names tests ---
+
+    #[test]
+    fn test_validate_unique_data_source_names() {
+        let ds1 = create_data_source("Token", Some("mainnet"), None);
+        let ds2 = create_data_source("Token", Some("mainnet"), None);
+        let manifest = create_test_manifest(vec![ds1, ds2], vec![]);
+
+        let errors = validate_unique_names(&manifest);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::DuplicateName { kind, name }
+                if *kind == "data source" && name == "Token"
+        ));
+    }
+
+    #[test]
+    fn test_validate_unique_template_names() {
+        let t1 = Template {
+            name: "DynToken".to_string(),
+            kind: "ethereum/contract".to_string(),
+            network: Some("mainnet".to_string()),
+            mapping_file: Some("src/dyn.ts".to_string()),
+            api_version: None,
+            abis: vec![],
+            source_abi: None,
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
+        };
+        let t2 = Template {
+            name: "DynToken".to_string(),
+            kind: "ethereum/contract".to_string(),
+            network: Some("mainnet".to_string()),
+            mapping_file: Some("src/dyn2.ts".to_string()),
+            api_version: None,
+            abis: vec![],
+            source_abi: None,
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
+        };
+
+        let manifest = create_test_manifest(vec![], vec![t1, t2]);
+        let errors = validate_unique_names(&manifest);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::DuplicateName { kind, name }
+                if *kind == "template" && name == "DynToken"
+        ));
+    }
+
+    #[test]
+    fn test_validate_unique_names_all_distinct() {
+        let ds1 = create_data_source("TokenA", Some("mainnet"), None);
+        let ds2 = create_data_source("TokenB", Some("mainnet"), None);
+        let manifest = create_test_manifest(vec![ds1, ds2], vec![]);
+
+        let errors = validate_unique_names(&manifest);
+        assert!(errors.is_empty());
+    }
+
+    // --- handler presence tests ---
+
+    #[test]
+    fn test_validate_handler_presence_with_event_handler() {
+        let mut ds = create_data_source("ds1", Some("mainnet"), None);
+        ds.source_abi = Some("ERC20".to_string());
+        ds.event_handlers = vec!["handleTransfer".to_string()];
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_handler_presence(&manifest);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_handler_presence_with_call_handler() {
+        let mut ds = create_data_source("ds1", Some("mainnet"), None);
+        ds.source_abi = Some("ERC20".to_string());
+        ds.call_handlers = vec!["handleApprove".to_string()];
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_handler_presence(&manifest);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_handler_presence_with_block_handler() {
+        let mut ds = create_data_source("ds1", Some("mainnet"), None);
+        ds.source_abi = Some("ERC20".to_string());
+        ds.block_handlers = vec!["handleBlock".to_string()];
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_handler_presence(&manifest);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_handler_presence_no_handlers() {
+        let mut ds = create_data_source("ds1", Some("mainnet"), None);
+        ds.source_abi = Some("ERC20".to_string());
+        // No handlers set
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_handler_presence(&manifest);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::NoHandlers { data_source } if data_source == "ds1"
+        ));
+    }
+
+    #[test]
+    fn test_validate_handler_presence_skips_non_ethereum() {
+        // Subgraph data sources have no source_abi, should be skipped
+        let ds = create_subgraph_data_source("sub1", "QmHash123");
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_handler_presence(&manifest);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_handler_presence_template_no_handlers() {
+        let t = Template {
+            name: "DynToken".to_string(),
+            kind: "ethereum/contract".to_string(),
+            network: Some("mainnet".to_string()),
+            mapping_file: Some("src/dyn.ts".to_string()),
+            api_version: None,
+            abis: vec![],
+            source_abi: Some("ERC20".to_string()),
+            event_handlers: vec![],
+            call_handlers: vec![],
+            block_handlers: vec![],
+        };
+
+        let manifest = create_test_manifest(vec![], vec![t]);
+        let errors = validate_handler_presence(&manifest);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::NoHandlers { data_source } if data_source == "DynToken"
+        ));
     }
 }
