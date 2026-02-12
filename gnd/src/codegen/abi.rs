@@ -7,168 +7,46 @@
 
 use std::collections::HashMap;
 
-use ethabi::{Contract, Event, EventParam, Function, Param, ParamType, StateMutability};
+use graph::abi::{
+    DynSolType, Event, EventParam, Function, FunctionExt, JsonAbi, Param, StateMutability,
+};
 use regex::Regex;
-use serde_json::Value as JsonValue;
 
 use super::typescript::{self as ts, Class, ClassMember, Method, ModuleImports, Param as TsParam};
 use crate::shared::{capitalize, handle_reserved_word};
 
-/// Represents component name information extracted from ABI JSON.
-/// This is needed because ethabi's `ParamType::Tuple` loses the component names.
-#[derive(Debug, Clone, Default)]
-struct ComponentNames {
-    /// Names of the components at this level (in order)
-    names: Vec<String>,
-    /// Nested component names for each component that is itself a tuple
-    /// Key is the index of the component in `names`
-    nested: HashMap<usize, ComponentNames>,
+/// Resolve a `Param`'s type to `DynSolType`.
+fn resolve_param_type(param: &Param) -> DynSolType {
+    param
+        .selector_type()
+        .parse::<DynSolType>()
+        .expect("valid ABI type")
 }
 
-impl ComponentNames {
-    /// Get the name for a component at the given index.
-    /// Falls back to "value{index}" if no name is available.
-    fn get_name(&self, index: usize) -> String {
-        self.names
-            .get(index)
-            .filter(|s| !s.is_empty())
-            .cloned()
-            .unwrap_or_else(|| format!("value{}", index))
-    }
-
-    /// Get nested component names for a component at the given index.
-    fn get_nested(&self, index: usize) -> Option<&ComponentNames> {
-        self.nested.get(&index)
-    }
-}
-
-/// Key for looking up component names: (member_type, member_name, param_kind, param_index)
-/// - member_type: "event", "function", or "call" (for callFunctions)
-/// - member_name: event or function name
-/// - param_kind: "inputs" or "outputs"
-/// - param_index: parameter index
-type ComponentLookupKey = (String, String, String, usize);
-
-/// Parse component names from ABI JSON for a single parameter.
-fn parse_component_names(param_json: &JsonValue) -> ComponentNames {
-    let mut result = ComponentNames::default();
-
-    if let Some(components) = param_json.get("components").and_then(|c| c.as_array()) {
-        for (idx, component) in components.iter().enumerate() {
-            // Get the name, defaulting to empty string if not present
-            let name = component
-                .get("name")
-                .and_then(|n| n.as_str())
-                .unwrap_or("")
-                .to_string();
-            result.names.push(name);
-
-            // Recursively parse nested components
-            if component.get("components").is_some() {
-                let nested = parse_component_names(component);
-                if !nested.names.is_empty() {
-                    result.nested.insert(idx, nested);
-                }
-            }
-        }
-    }
-
-    result
-}
-
-/// Parse all component names from the raw ABI JSON.
-fn parse_abi_component_names(abi_json: &str) -> HashMap<ComponentLookupKey, ComponentNames> {
-    let mut result = HashMap::new();
-
-    let Ok(abi): Result<Vec<JsonValue>, _> = serde_json::from_str(abi_json) else {
-        return result;
-    };
-
-    for member in abi {
-        let member_type = member.get("type").and_then(|t| t.as_str()).unwrap_or("");
-        let member_name = member
-            .get("name")
-            .and_then(|n| n.as_str())
-            .unwrap_or("")
-            .to_string();
-
-        // Process inputs
-        if let Some(inputs) = member.get("inputs").and_then(|i| i.as_array()) {
-            for (idx, input) in inputs.iter().enumerate() {
-                if input.get("components").is_some() {
-                    let component_names = parse_component_names(input);
-                    let key = (
-                        member_type.to_string(),
-                        member_name.clone(),
-                        "inputs".to_string(),
-                        idx,
-                    );
-                    result.insert(key, component_names);
-                }
-            }
-        }
-
-        // Process outputs (for functions)
-        if let Some(outputs) = member.get("outputs").and_then(|o| o.as_array()) {
-            for (idx, output) in outputs.iter().enumerate() {
-                if output.get("components").is_some() {
-                    let component_names = parse_component_names(output);
-                    let key = (
-                        member_type.to_string(),
-                        member_name.clone(),
-                        "outputs".to_string(),
-                        idx,
-                    );
-                    result.insert(key, component_names);
-                }
-            }
-        }
-    }
-
-    result
+/// Resolve an `EventParam`'s type to `DynSolType`.
+fn resolve_event_param_type(param: &EventParam) -> DynSolType {
+    param
+        .selector_type()
+        .parse::<DynSolType>()
+        .expect("valid ABI type")
 }
 
 const GRAPH_TS_MODULE: &str = "@graphprotocol/graph-ts";
 
 /// ABI code generator.
 pub struct AbiCodeGenerator {
-    contract: Contract,
+    contract: JsonAbi,
     name: String,
-    /// Component names extracted from raw ABI JSON, indexed by lookup key.
-    component_names: HashMap<ComponentLookupKey, ComponentNames>,
 }
 
 impl AbiCodeGenerator {
     /// Create a new ABI code generator.
-    ///
-    /// The `abi_json` parameter is the raw ABI JSON string. It's used to extract
-    /// component names that ethabi loses when parsing tuples.
-    pub fn new_with_json(contract: Contract, name: impl Into<String>, abi_json: &str) -> Self {
+    pub fn new(contract: JsonAbi, name: impl Into<String>) -> Self {
         let mut name = name.into();
         // Sanitize name to be a valid class name
         let re = Regex::new(r#"[!@#$%^&*()+\-=\[\]{};':\"|,.<>/?]+"#).unwrap();
         name = re.replace_all(&name, "_").to_string();
-        let component_names = parse_abi_component_names(abi_json);
-        Self {
-            contract,
-            name,
-            component_names,
-        }
-    }
-
-    /// Create a new ABI code generator without component name information.
-    /// This is kept for backwards compatibility with tests.
-    /// For production use, prefer `new_with_json` to get proper struct field names.
-    pub fn new(contract: Contract, name: impl Into<String>) -> Self {
-        let mut name = name.into();
-        // Sanitize name to be a valid class name
-        let re = Regex::new(r#"[!@#$%^&*()+\-=\[\]{};':\"|,.<>/?]+"#).unwrap();
-        name = re.replace_all(&name, "_").to_string();
-        Self {
-            contract,
-            name,
-            component_names: HashMap::new(),
-        }
+        Self { contract, name }
     }
 
     /// Generate module imports for the ABI file.
@@ -217,23 +95,14 @@ impl AbiCodeGenerator {
             ));
 
             // Generate getters for event params
-            let inputs = self.disambiguate_params(&event.inputs, "param");
+            let inputs = self.disambiguate_event_params(&event.inputs, "param");
             for (index, (param, param_name)) in inputs.iter().enumerate() {
-                // Look up component names for this event parameter
-                let lookup_key = (
-                    "event".to_string(),
-                    event.name.clone(),
-                    "inputs".to_string(),
-                    index,
-                );
-                let component_names = self.component_names.get(&lookup_key);
                 let param_object = self.generate_event_param(
                     param,
                     param_name,
                     index,
                     &event_class_name,
                     &mut tuple_classes,
-                    component_names,
                 );
                 params_class.add_method(param_object);
             }
@@ -313,16 +182,8 @@ impl AbiCodeGenerator {
                 "this._call = call",
             ));
 
-            let inputs = self.disambiguate_params_from_func_inputs(&func.inputs, "value");
+            let inputs = self.disambiguate_params(&func.inputs, "value");
             for (index, (param, param_name)) in inputs.iter().enumerate() {
-                // Look up component names for this function input
-                let lookup_key = (
-                    "function".to_string(),
-                    func.name.clone(),
-                    "inputs".to_string(),
-                    index,
-                );
-                let component_names = self.component_names.get(&lookup_key);
                 let getter = self.generate_input_output_getter(
                     param,
                     param_name,
@@ -331,7 +192,6 @@ impl AbiCodeGenerator {
                     "call",
                     "inputValues",
                     &mut tuple_classes,
-                    component_names,
                 );
                 inputs_class.add_method(getter);
             }
@@ -347,16 +207,8 @@ impl AbiCodeGenerator {
                 "this._call = call",
             ));
 
-            let outputs = self.disambiguate_params_from_func_inputs(&func.outputs, "value");
+            let outputs = self.disambiguate_params(&func.outputs, "value");
             for (index, (param, param_name)) in outputs.iter().enumerate() {
-                // Look up component names for this function output
-                let lookup_key = (
-                    "function".to_string(),
-                    func.name.clone(),
-                    "outputs".to_string(),
-                    index,
-                );
-                let component_names = self.component_names.get(&lookup_key);
                 let getter = self.generate_input_output_getter(
                     param,
                     param_name,
@@ -365,7 +217,6 @@ impl AbiCodeGenerator {
                     "call",
                     "outputValues",
                     &mut tuple_classes,
-                    component_names,
                 );
                 outputs_class.add_method(getter);
             }
@@ -404,30 +255,31 @@ impl AbiCodeGenerator {
         index: usize,
         event_class_name: &str,
         tuple_classes: &mut Vec<Class>,
-        component_names: Option<&ComponentNames>,
     ) -> Method {
+        let param_type = resolve_event_param_type(param);
+
         // Handle indexed params - strings, bytes and arrays are hashed to bytes32
         let value_type = if param.indexed {
-            self.indexed_input_type(&param.kind)
+            indexed_input_type(&param_type)
         } else {
-            param.kind.clone()
+            param_type.clone()
         };
 
-        if self.contains_tuple_type(&value_type) {
-            self.generate_tuple_getter(
-                &param.kind,
+        if contains_tuple_type(&value_type) {
+            self.generate_tuple_getter_for_event_param(
+                param,
+                &param_type,
                 name,
                 index,
                 event_class_name,
                 "event",
                 "parameters",
                 tuple_classes,
-                component_names,
             )
         } else {
-            let asc_type = self.asc_type_for_ethereum(&value_type);
+            let asc_type = asc_type_for_ethereum(&value_type);
             let access = format!("this._event.parameters[{}].value", index);
-            let conversion = self.ethereum_to_asc(&access, &value_type, None);
+            let conversion = ethereum_to_asc(&access, &value_type, None);
             Method::new(
                 format!("get {}", name),
                 vec![],
@@ -448,23 +300,23 @@ impl AbiCodeGenerator {
         parent_type: &str,
         parent_field: &str,
         tuple_classes: &mut Vec<Class>,
-        component_names: Option<&ComponentNames>,
     ) -> Method {
-        if self.contains_tuple_type(&param.kind) {
+        let param_type = resolve_param_type(param);
+        if contains_tuple_type(&param_type) {
             self.generate_tuple_getter(
-                &param.kind,
+                param,
+                &param_type,
                 name,
                 index,
                 parent_class,
                 parent_type,
                 parent_field,
                 tuple_classes,
-                component_names,
             )
         } else {
-            let asc_type = self.asc_type_for_ethereum(&param.kind);
+            let asc_type = asc_type_for_ethereum(&param_type);
             let access = format!("this._{}.{}[{}].value", parent_type, parent_field, index);
-            let conversion = self.ethereum_to_asc(&access, &param.kind, None);
+            let conversion = ethereum_to_asc(&access, &param_type, None);
             Method::new(
                 format!("get {}", name),
                 vec![],
@@ -474,18 +326,18 @@ impl AbiCodeGenerator {
         }
     }
 
-    /// Generate a tuple getter and its associated classes.
+    /// Generate a tuple getter and its associated classes (for `Param`).
     #[allow(clippy::too_many_arguments)]
     fn generate_tuple_getter(
         &self,
-        param_type: &ParamType,
+        param: &Param,
+        param_type: &DynSolType,
         name: &str,
         index: usize,
         parent_class: &str,
         parent_type: &str,
         parent_field: &str,
         tuple_classes: &mut Vec<Class>,
-        component_names: Option<&ComponentNames>,
     ) -> Method {
         let cap_name = capitalize(name);
         let tuple_identifier = format!("{}{}", parent_class, cap_name);
@@ -495,18 +347,18 @@ impl AbiCodeGenerator {
             format!("{}Struct", tuple_identifier)
         };
 
-        let is_tuple = matches!(param_type, ParamType::Tuple(_));
+        let is_tuple = matches!(param_type, DynSolType::Tuple(_));
         let access_code = if parent_type == "tuple" {
             format!("this[{}]", index)
         } else {
             format!("this._{}.{}[{}].value", parent_type, parent_field, index)
         };
 
-        let return_value = self.ethereum_to_asc(&access_code, param_type, Some(&tuple_class_name));
+        let return_value = ethereum_to_asc(&access_code, param_type, Some(&tuple_class_name));
 
-        let return_type = if self.is_tuple_matrix_type(param_type) {
+        let return_type = if is_tuple_matrix_type(param_type) {
             format!("Array<Array<{}>>", tuple_class_name)
-        } else if self.is_tuple_array_type(param_type) {
+        } else if is_tuple_array_type(param_type) {
             format!("Array<{}>", tuple_class_name)
         } else {
             tuple_class_name.clone()
@@ -518,23 +370,96 @@ impl AbiCodeGenerator {
             format!("return {}", return_value)
         };
 
-        // Generate tuple class
-        if let Some(components) = self.get_tuple_components(param_type) {
+        // Generate tuple class from Param's components
+        let components = get_tuple_param_components(param);
+        if !components.is_empty() {
             let mut tuple_class = ts::klass(&tuple_class_name)
                 .exported()
                 .extends("ethereum.Tuple");
 
-            let component_params = self.disambiguate_tuple_components(components, component_names);
+            let component_params = disambiguate_tuple_components(components);
             for (idx, (component, component_name)) in component_params.iter().enumerate() {
-                // Get nested component names for recursive tuple types
-                let nested_names = component_names.and_then(|cn| cn.get_nested(idx));
                 let component_getter = self.generate_tuple_component_getter(
                     component,
                     component_name,
                     idx,
                     &tuple_identifier,
                     tuple_classes,
-                    nested_names,
+                );
+                tuple_class.add_method(component_getter);
+            }
+
+            tuple_classes.push(tuple_class);
+        }
+
+        Method::new(
+            format!("get {}", name),
+            vec![],
+            Some(ts::TypeExpr::Raw(return_type)),
+            body,
+        )
+    }
+
+    /// Generate a tuple getter and its associated classes (for `EventParam`).
+    #[allow(clippy::too_many_arguments)]
+    fn generate_tuple_getter_for_event_param(
+        &self,
+        param: &EventParam,
+        param_type: &DynSolType,
+        name: &str,
+        index: usize,
+        parent_class: &str,
+        parent_type: &str,
+        parent_field: &str,
+        tuple_classes: &mut Vec<Class>,
+    ) -> Method {
+        let cap_name = capitalize(name);
+        let tuple_identifier = format!("{}{}", parent_class, cap_name);
+        let tuple_class_name = if parent_field == "outputValues" {
+            format!("{}OutputStruct", tuple_identifier)
+        } else {
+            format!("{}Struct", tuple_identifier)
+        };
+
+        let is_tuple = matches!(param_type, DynSolType::Tuple(_));
+        let access_code = if parent_type == "tuple" {
+            format!("this[{}]", index)
+        } else {
+            format!("this._{}.{}[{}].value", parent_type, parent_field, index)
+        };
+
+        let return_value = ethereum_to_asc(&access_code, param_type, Some(&tuple_class_name));
+
+        let return_type = if is_tuple_matrix_type(param_type) {
+            format!("Array<Array<{}>>", tuple_class_name)
+        } else if is_tuple_array_type(param_type) {
+            format!("Array<{}>", tuple_class_name)
+        } else {
+            tuple_class_name.clone()
+        };
+
+        let body = if is_tuple {
+            format!("return changetype<{}>({})", tuple_class_name, return_value)
+        } else {
+            format!("return {}", return_value)
+        };
+
+        // Generate tuple class from EventParam's components
+        // EventParam.components is Vec<Param>, same as Param.components
+        let components = &param.components;
+        if !components.is_empty() {
+            let mut tuple_class = ts::klass(&tuple_class_name)
+                .exported()
+                .extends("ethereum.Tuple");
+
+            let component_params = disambiguate_tuple_components(components);
+            for (idx, (component, component_name)) in component_params.iter().enumerate() {
+                let component_getter = self.generate_tuple_component_getter(
+                    component,
+                    component_name,
+                    idx,
+                    &tuple_identifier,
+                    tuple_classes,
                 );
                 tuple_class.add_method(component_getter);
             }
@@ -553,28 +478,28 @@ impl AbiCodeGenerator {
     /// Generate a getter for a tuple component.
     fn generate_tuple_component_getter(
         &self,
-        param_type: &ParamType,
+        param: &Param,
         name: &str,
         index: usize,
         parent_class: &str,
         tuple_classes: &mut Vec<Class>,
-        component_names: Option<&ComponentNames>,
     ) -> Method {
-        if self.contains_tuple_type(param_type) {
+        let param_type = resolve_param_type(param);
+        if contains_tuple_type(&param_type) {
             self.generate_tuple_getter(
-                param_type,
+                param,
+                &param_type,
                 name,
                 index,
                 parent_class,
                 "tuple",
                 "",
                 tuple_classes,
-                component_names,
             )
         } else {
-            let asc_type = self.asc_type_for_ethereum(param_type);
+            let asc_type = asc_type_for_ethereum(&param_type);
             let access = format!("this[{}]", index);
-            let conversion = self.ethereum_to_asc(&access, param_type, None);
+            let conversion = ethereum_to_asc(&access, &param_type, None);
             Method::new(
                 format!("get {}", name),
                 vec![],
@@ -591,13 +516,13 @@ impl AbiCodeGenerator {
         alias: &str,
     ) -> (Method, Method, Vec<Class>) {
         let mut result_classes = Vec::new();
-        let fn_signature = self.function_signature(func);
+        let fn_signature = func.signature_compat();
         let contract_name = &self.name;
         let tuple_result_parent_type = [contract_name, "__", alias, "Result"].concat();
         let tuple_input_parent_type = [contract_name, "__", alias, "Input"].concat();
 
         // Disambiguate outputs
-        let outputs = self.disambiguate_params_from_func_inputs(&func.outputs, "value");
+        let outputs = self.disambiguate_params(&func.outputs, "value");
 
         // Determine return type
         let (return_type, simple_return_type) = if outputs.len() > 1 {
@@ -606,56 +531,40 @@ impl AbiCodeGenerator {
                 &outputs,
                 &tuple_result_parent_type,
                 &mut result_classes,
-                &func.name,
             );
             result_classes.push(result_class.clone());
             (result_class.name.clone(), false)
         } else if !outputs.is_empty() {
             let (param, _) = &outputs[0];
-            if self.contains_tuple_type(&param.kind) {
-                // Look up component names for this function output
-                let lookup_key = (
-                    "function".to_string(),
-                    func.name.clone(),
-                    "outputs".to_string(),
-                    0,
-                );
-                let component_names = self.component_names.get(&lookup_key);
+            let param_type = resolve_param_type(param);
+            if contains_tuple_type(&param_type) {
                 let tuple_name = self.generate_tuple_return_type(
-                    &param.kind,
+                    param,
+                    &param_type,
                     0,
                     &tuple_result_parent_type,
                     &mut result_classes,
-                    component_names,
                 );
                 (tuple_name, true)
             } else {
-                (self.asc_type_for_ethereum(&param.kind), true)
+                (asc_type_for_ethereum(&param_type), true)
             }
         } else {
             ("void".to_string(), true)
         };
 
         // Disambiguate inputs
-        let inputs = self.disambiguate_params_from_func_inputs(&func.inputs, "param");
+        let inputs = self.disambiguate_params(&func.inputs, "param");
 
         // Generate tuple types for inputs
         for (index, (param, _)) in inputs.iter().enumerate() {
-            if self.contains_tuple_type(&param.kind) {
-                // Look up component names for this function input
-                let lookup_key = (
-                    "function".to_string(),
-                    func.name.clone(),
-                    "inputs".to_string(),
-                    index,
-                );
-                let component_names = self.component_names.get(&lookup_key);
+            let param_type = resolve_param_type(param);
+            if contains_tuple_type(&param_type) {
                 self.generate_tuple_class_for_input(
-                    &param.kind,
+                    param,
                     index,
                     &tuple_input_parent_type,
                     &mut result_classes,
-                    component_names,
                 );
             }
         }
@@ -665,16 +574,20 @@ impl AbiCodeGenerator {
             .iter()
             .enumerate()
             .map(|(index, (param, name))| {
-                let param_type =
-                    self.get_param_type_for_input(&param.kind, index, &tuple_input_parent_type);
-                TsParam::new(name.clone(), ts::TypeExpr::Raw(param_type))
+                let p_type = resolve_param_type(param);
+                let param_type_str =
+                    get_param_type_for_input(&p_type, index, &tuple_input_parent_type);
+                TsParam::new(name.clone(), ts::TypeExpr::Raw(param_type_str))
             })
             .collect();
 
         // Build call arguments
         let call_args: Vec<String> = inputs
             .iter()
-            .map(|(param, name)| self.ethereum_from_asc(name, &param.kind))
+            .map(|(param, name)| {
+                let p_type = resolve_param_type(param);
+                ethereum_from_asc(name, &p_type)
+            })
             .collect();
 
         let func_name = &func.name;
@@ -751,17 +664,18 @@ impl AbiCodeGenerator {
                 String::new()
             } else {
                 let (param, _) = &outputs[0];
-                let tuple_name = if self.is_tuple_array_type(&param.kind) {
-                    Some(self.tuple_type_name(&param.kind, 0, tuple_result_parent_type))
+                let p_type = resolve_param_type(param);
+                let tuple_name = if is_tuple_array_type(&p_type) {
+                    Some(tuple_type_name(0, tuple_result_parent_type))
                 } else {
                     None
                 };
-                let val = self.ethereum_to_asc(
+                let val = ethereum_to_asc(
                     &format!("{}[0]", result_var),
-                    &param.kind,
+                    &p_type,
                     tuple_name.as_deref(),
                 );
-                if matches!(param.kind, ParamType::Tuple(_)) {
+                if matches!(p_type, DynSolType::Tuple(_)) {
                     format!("changetype<{}>({})", return_type, val)
                 } else {
                     val
@@ -772,18 +686,19 @@ impl AbiCodeGenerator {
                 .iter()
                 .enumerate()
                 .map(|(index, (param, _))| {
-                    let tuple_name = if self.is_tuple_array_type(&param.kind) {
-                        Some(self.tuple_type_name(&param.kind, index, tuple_result_parent_type))
+                    let p_type = resolve_param_type(param);
+                    let tuple_name = if is_tuple_array_type(&p_type) {
+                        Some(tuple_type_name(index, tuple_result_parent_type))
                     } else {
                         None
                     };
-                    let val = self.ethereum_to_asc(
+                    let val = ethereum_to_asc(
                         &format!("{}[{}]", result_var, index),
-                        &param.kind,
+                        &p_type,
                         tuple_name.as_deref(),
                     );
-                    if matches!(param.kind, ParamType::Tuple(_)) {
-                        let tn = self.tuple_type_name(&param.kind, index, tuple_result_parent_type);
+                    if matches!(p_type, DynSolType::Tuple(_)) {
+                        let tn = tuple_type_name(index, tuple_result_parent_type);
                         format!("changetype<{}>({})", tn, val)
                     } else {
                         val
@@ -816,7 +731,6 @@ impl AbiCodeGenerator {
         outputs: &[(&Param, String)],
         tuple_result_parent_type: &str,
         result_classes: &mut Vec<Class>,
-        func_name: &str,
     ) -> Class {
         let class_name = tuple_result_parent_type.to_string();
         let mut klass = ts::klass(&class_name).exported();
@@ -826,9 +740,10 @@ impl AbiCodeGenerator {
             .iter()
             .enumerate()
             .map(|(index, (param, _))| {
-                let param_type =
-                    self.get_param_type_for_input(&param.kind, index, tuple_result_parent_type);
-                TsParam::new(format!("value{}", index), ts::TypeExpr::Raw(param_type))
+                let p_type = resolve_param_type(param);
+                let param_type_str =
+                    get_param_type_for_input(&p_type, index, tuple_result_parent_type);
+                TsParam::new(format!("value{}", index), ts::TypeExpr::Raw(param_type_str))
             })
             .collect();
 
@@ -851,8 +766,9 @@ impl AbiCodeGenerator {
             .iter()
             .enumerate()
             .map(|(index, (param, _))| {
+                let p_type = resolve_param_type(param);
                 let this_val = format!("this.value{}", index);
-                let from_asc = self.ethereum_from_asc(&this_val, &param.kind);
+                let from_asc = ethereum_from_asc(&this_val, &p_type);
                 format!("map.set('value{}', {})", index, from_asc)
             })
             .collect();
@@ -878,50 +794,38 @@ impl AbiCodeGenerator {
 
         // Add members
         for (index, (param, _)) in outputs.iter().enumerate() {
-            let param_type =
-                self.get_param_type_for_input(&param.kind, index, tuple_result_parent_type);
-            klass.add_member(ClassMember::new(format!("value{}", index), param_type));
+            let p_type = resolve_param_type(param);
+            let param_type_str = get_param_type_for_input(&p_type, index, tuple_result_parent_type);
+            klass.add_member(ClassMember::new(format!("value{}", index), param_type_str));
         }
 
         // Add getters for outputs
-        // If an output has a name, generate a getter like getName()
-        // If an output has no name (empty or just whitespace), generate getValue{index}()
         for (index, (param, _)) in outputs.iter().enumerate() {
             let getter_name = if param.name.trim().is_empty() {
-                // Unnamed output: getValue0(), getValue1(), etc.
                 format!("getValue{}", index)
             } else {
-                // Named output: getOwner(), getDisplayName(), etc.
                 let cap = capitalize(&param.name);
                 format!("get{}", cap)
             };
-            let param_type =
-                self.get_param_type_for_input(&param.kind, index, tuple_result_parent_type);
+            let p_type = resolve_param_type(param);
+            let param_type_str = get_param_type_for_input(&p_type, index, tuple_result_parent_type);
             klass.add_method(Method::new(
                 getter_name,
                 vec![],
-                Some(ts::TypeExpr::Raw(param_type)),
+                Some(ts::TypeExpr::Raw(param_type_str)),
                 format!("return this.value{}", index),
             ));
         }
 
         // Generate tuple classes for outputs
         for (index, (param, _)) in outputs.iter().enumerate() {
-            if self.contains_tuple_type(&param.kind) {
-                // Look up component names for this function output
-                let lookup_key = (
-                    "function".to_string(),
-                    func_name.to_string(),
-                    "outputs".to_string(),
-                    index,
-                );
-                let component_names = self.component_names.get(&lookup_key);
+            let p_type = resolve_param_type(param);
+            if contains_tuple_type(&p_type) {
                 self.generate_tuple_class_for_input(
-                    &param.kind,
+                    param,
                     index,
                     tuple_result_parent_type,
                     result_classes,
-                    component_names,
                 );
             }
         }
@@ -932,49 +836,42 @@ impl AbiCodeGenerator {
     /// Generate tuple return type name and classes.
     fn generate_tuple_return_type(
         &self,
-        param_type: &ParamType,
+        param: &Param,
+        param_type: &DynSolType,
         index: usize,
         parent_type: &str,
         result_classes: &mut Vec<Class>,
-        component_names: Option<&ComponentNames>,
     ) -> String {
-        self.generate_tuple_class_for_input(
-            param_type,
-            index,
-            parent_type,
-            result_classes,
-            component_names,
-        );
-        let tuple_name = self.tuple_type_name(param_type, index, parent_type);
-        if self.is_tuple_array_type(param_type) {
-            format!("Array<{}>", tuple_name)
-        } else if self.is_tuple_matrix_type(param_type) {
-            format!("Array<Array<{}>>", tuple_name)
+        self.generate_tuple_class_for_input(param, index, parent_type, result_classes);
+        let tn = tuple_type_name(index, parent_type);
+        if is_tuple_array_type(param_type) {
+            format!("Array<{}>", tn)
+        } else if is_tuple_matrix_type(param_type) {
+            format!("Array<Array<{}>>", tn)
         } else {
-            tuple_name
+            tn
         }
     }
 
     /// Generate tuple class for an input/output.
     fn generate_tuple_class_for_input(
         &self,
-        param_type: &ParamType,
+        param: &Param,
         index: usize,
         parent_type: &str,
         result_classes: &mut Vec<Class>,
-        component_names: Option<&ComponentNames>,
     ) {
-        let tuple_class_name = self.tuple_type_name(param_type, index, parent_type);
+        let tuple_class_name = tuple_type_name(index, parent_type);
         let mut tuple_class = ts::klass(&tuple_class_name)
             .exported()
             .extends("ethereum.Tuple");
 
-        if let Some(components) = self.get_tuple_components(param_type) {
-            let component_params = self.disambiguate_tuple_components(components, component_names);
+        let components = get_tuple_param_components(param);
+        if !components.is_empty() {
+            let component_params = disambiguate_tuple_components(components);
             for (idx, (component, component_name)) in component_params.iter().enumerate() {
-                // Get nested component names for recursive tuple types
-                let nested_names = component_names.and_then(|cn| cn.get_nested(idx));
-                let getter = if self.contains_tuple_type(component) {
+                let component_type = resolve_param_type(component);
+                let getter = if contains_tuple_type(&component_type) {
                     // Recursively generate tuple classes
                     let cap = capitalize(&format!("{}", index));
                     let nested_parent = format!("{}Value{}", parent_type, cap);
@@ -983,18 +880,17 @@ impl AbiCodeGenerator {
                         idx,
                         &nested_parent,
                         result_classes,
-                        nested_names,
                     );
-                    let nested_tuple_name = self.tuple_type_name(component, idx, &nested_parent);
+                    let nested_tuple_name = tuple_type_name(idx, &nested_parent);
                     let access = format!("this[{}]", idx);
                     let conversion =
-                        self.ethereum_to_asc(&access, component, Some(&nested_tuple_name));
-                    let return_type = if self.is_tuple_array_type(component) {
+                        ethereum_to_asc(&access, &component_type, Some(&nested_tuple_name));
+                    let return_type = if is_tuple_array_type(&component_type) {
                         format!("Array<{}>", nested_tuple_name)
                     } else {
                         nested_tuple_name.clone()
                     };
-                    let body = if matches!(component, ParamType::Tuple(_)) {
+                    let body = if matches!(component_type, DynSolType::Tuple(_)) {
                         format!("return changetype<{}>({})", nested_tuple_name, conversion)
                     } else {
                         format!("return {}", conversion)
@@ -1006,9 +902,9 @@ impl AbiCodeGenerator {
                         body,
                     )
                 } else {
-                    let asc_type = self.asc_type_for_ethereum(component);
+                    let asc_type = asc_type_for_ethereum(&component_type);
                     let access = format!("this[{}]", idx);
-                    let conversion = self.ethereum_to_asc(&access, component, None);
+                    let conversion = ethereum_to_asc(&access, &component_type, None);
                     Method::new(
                         format!("get {}", component_name),
                         vec![],
@@ -1021,31 +917,6 @@ impl AbiCodeGenerator {
         }
 
         result_classes.push(tuple_class);
-    }
-
-    /// Get tuple type name for a param.
-    fn tuple_type_name(&self, _param_type: &ParamType, index: usize, parent_type: &str) -> String {
-        format!("{}Value{}Struct", parent_type, index)
-    }
-
-    /// Get the param type string for an input, handling tuples.
-    fn get_param_type_for_input(
-        &self,
-        param_type: &ParamType,
-        index: usize,
-        parent_type: &str,
-    ) -> String {
-        if matches!(param_type, ParamType::Tuple(_)) {
-            self.tuple_type_name(param_type, index, parent_type)
-        } else if self.is_tuple_matrix_type(param_type) {
-            let tn = self.tuple_type_name(param_type, index, parent_type);
-            format!("Array<Array<{}>>", tn)
-        } else if self.is_tuple_array_type(param_type) {
-            let tn = self.tuple_type_name(param_type, index, parent_type);
-            format!("Array<{}>", tn)
-        } else {
-            self.asc_type_for_ethereum(param_type)
-        }
     }
 
     /// Get callable functions (view, pure, nonpayable, constant with outputs).
@@ -1146,7 +1017,7 @@ impl AbiCodeGenerator {
     }
 
     /// Disambiguate event params.
-    fn disambiguate_params<'a>(
+    fn disambiguate_event_params<'a>(
         &self,
         params: &'a [EventParam],
         default_prefix: &str,
@@ -1174,7 +1045,7 @@ impl AbiCodeGenerator {
     }
 
     /// Disambiguate function params.
-    fn disambiguate_params_from_func_inputs<'a>(
+    fn disambiguate_params<'a>(
         &self,
         params: &'a [Param],
         default_prefix: &str,
@@ -1200,308 +1071,305 @@ impl AbiCodeGenerator {
 
         result
     }
+}
 
-    /// Disambiguate tuple components.
-    /// If `component_names` is provided, uses the actual names from the ABI JSON.
-    /// Otherwise falls back to "value{index}" naming.
-    fn disambiguate_tuple_components<'a>(
-        &self,
-        components: &'a [ParamType],
-        component_names: Option<&ComponentNames>,
-    ) -> Vec<(&'a ParamType, String)> {
-        components
-            .iter()
-            .enumerate()
-            .map(|(index, component)| {
-                let name = component_names
-                    .map(|cn| cn.get_name(index))
-                    .unwrap_or_else(|| format!("value{}", index));
-                (component, name)
-            })
-            .collect()
+/// Get tuple type name for a param.
+fn tuple_type_name(index: usize, parent_type: &str) -> String {
+    format!("{}Value{}Struct", parent_type, index)
+}
+
+/// Get the param type string for an input, handling tuples.
+fn get_param_type_for_input(param_type: &DynSolType, index: usize, parent_type: &str) -> String {
+    if matches!(param_type, DynSolType::Tuple(_)) {
+        tuple_type_name(index, parent_type)
+    } else if is_tuple_matrix_type(param_type) {
+        let tn = tuple_type_name(index, parent_type);
+        format!("Array<Array<{}>>", tn)
+    } else if is_tuple_array_type(param_type) {
+        let tn = tuple_type_name(index, parent_type);
+        format!("Array<{}>", tn)
+    } else {
+        asc_type_for_ethereum(param_type)
     }
+}
 
-    /// Get function signature with return types.
-    /// Format: `name(input_types):(output_types)`
-    fn function_signature(&self, func: &Function) -> String {
-        let input_types: Vec<String> = func.inputs.iter().map(|p| p.kind.to_string()).collect();
-        let output_types: Vec<String> = func.outputs.iter().map(|p| p.kind.to_string()).collect();
-        let name = &func.name;
-        let inputs = input_types.join(",");
-        let outputs = output_types.join(",");
-        format!("{}({}):({})", name, inputs, outputs)
+/// Get the tuple components from a `Param`, following through arrays.
+/// Returns the `components` from the innermost tuple `Param`.
+fn get_tuple_param_components(param: &Param) -> &[Param] {
+    // If this param has components directly (tuple type), return them
+    if !param.components.is_empty() {
+        return &param.components;
     }
+    // For array-of-tuple types, the components are on the param itself
+    // (alloy stores them on the outer param for tuple[] types)
+    &[]
+}
 
-    /// Get AssemblyScript type for an Ethereum type.
-    fn asc_type_for_ethereum(&self, param_type: &ParamType) -> String {
-        match param_type {
-            ParamType::Address => "Address".to_string(),
-            ParamType::Bool => "boolean".to_string(),
-            ParamType::Bytes => "Bytes".to_string(),
-            ParamType::FixedBytes(_) => "Bytes".to_string(),
-            ParamType::Int(bits) => {
-                if *bits <= 32 {
-                    "i32".to_string()
-                } else {
-                    "BigInt".to_string()
-                }
+/// Disambiguate tuple components, reading names directly from `Param.name`.
+fn disambiguate_tuple_components(components: &[Param]) -> Vec<(&Param, String)> {
+    components
+        .iter()
+        .enumerate()
+        .map(|(index, component)| {
+            let name = if component.name.is_empty() {
+                format!("value{}", index)
+            } else {
+                component.name.clone()
+            };
+            (component, name)
+        })
+        .collect()
+}
+
+/// Get AssemblyScript type for an Ethereum type.
+fn asc_type_for_ethereum(param_type: &DynSolType) -> String {
+    match param_type {
+        DynSolType::Address => "Address".to_string(),
+        DynSolType::Bool => "boolean".to_string(),
+        DynSolType::Bytes => "Bytes".to_string(),
+        DynSolType::FixedBytes(_) => "Bytes".to_string(),
+        DynSolType::Int(bits) => {
+            if *bits <= 32 {
+                "i32".to_string()
+            } else {
+                "BigInt".to_string()
             }
-            ParamType::Uint(bits) => {
-                if *bits <= 24 {
-                    "i32".to_string()
-                } else {
-                    "BigInt".to_string()
-                }
-            }
-            ParamType::String => "string".to_string(),
-            ParamType::Array(inner) => {
-                let inner_type = self.asc_type_for_ethereum(inner);
-                format!("Array<{}>", inner_type)
-            }
-            ParamType::FixedArray(inner, _) => {
-                let inner_type = self.asc_type_for_ethereum(inner);
-                format!("Array<{}>", inner_type)
-            }
-            ParamType::Tuple(_) => "ethereum.Tuple".to_string(),
         }
-    }
-
-    /// Convert ethereum value to AssemblyScript.
-    fn ethereum_to_asc(
-        &self,
-        code: &str,
-        param_type: &ParamType,
-        tuple_type: Option<&str>,
-    ) -> String {
-        match param_type {
-            ParamType::Address => format!("{}.toAddress()", code),
-            ParamType::Bool => format!("{}.toBoolean()", code),
-            ParamType::Bytes | ParamType::FixedBytes(_) => format!("{}.toBytes()", code),
-            ParamType::Int(bits) => {
-                if *bits <= 32 {
-                    format!("{}.toI32()", code)
-                } else {
-                    format!("{}.toBigInt()", code)
-                }
+        DynSolType::Uint(bits) => {
+            if *bits <= 24 {
+                "i32".to_string()
+            } else {
+                "BigInt".to_string()
             }
-            ParamType::Uint(bits) => {
-                if *bits <= 24 {
-                    format!("{}.toI32()", code)
-                } else {
-                    format!("{}.toBigInt()", code)
-                }
-            }
-            ParamType::String => format!("{}.toString()", code),
-            ParamType::Array(inner) | ParamType::FixedArray(inner, _) => match inner.as_ref() {
-                ParamType::Address => format!("{}.toAddressArray()", code),
-                ParamType::Bool => format!("{}.toBooleanArray()", code),
-                ParamType::Bytes | ParamType::FixedBytes(_) => {
-                    format!("{}.toBytesArray()", code)
-                }
-                ParamType::Int(bits) => {
-                    if *bits <= 32 {
-                        format!("{}.toI32Array()", code)
-                    } else {
-                        format!("{}.toBigIntArray()", code)
-                    }
-                }
-                ParamType::Uint(bits) => {
-                    if *bits <= 24 {
-                        format!("{}.toI32Array()", code)
-                    } else {
-                        format!("{}.toBigIntArray()", code)
-                    }
-                }
-                ParamType::String => format!("{}.toStringArray()", code),
-                ParamType::Tuple(_) => {
-                    if let Some(tuple_name) = tuple_type {
-                        format!("{}.toTupleArray<{}>()", code, tuple_name)
-                    } else {
-                        format!("{}.toTupleArray<ethereum.Tuple>()", code)
-                    }
-                }
-                ParamType::Array(inner2) | ParamType::FixedArray(inner2, _) => {
-                    self.ethereum_to_asc_matrix(code, inner2.as_ref(), tuple_type)
-                }
-            },
-            ParamType::Tuple(_) => format!("{}.toTuple()", code),
         }
+        DynSolType::String => "string".to_string(),
+        DynSolType::Array(inner) => {
+            let inner_type = asc_type_for_ethereum(inner);
+            format!("Array<{}>", inner_type)
+        }
+        DynSolType::FixedArray(inner, _) => {
+            let inner_type = asc_type_for_ethereum(inner);
+            format!("Array<{}>", inner_type)
+        }
+        DynSolType::Tuple(_) => "ethereum.Tuple".to_string(),
+        _ => "ethereum.Tuple".to_string(), // Function and other future variants
     }
+}
 
-    /// Convert matrix type to AssemblyScript.
-    fn ethereum_to_asc_matrix(
-        &self,
-        code: &str,
-        inner_type: &ParamType,
-        tuple_type: Option<&str>,
-    ) -> String {
-        match inner_type {
-            ParamType::Address => format!("{}.toAddressMatrix()", code),
-            ParamType::Bool => format!("{}.toBooleanMatrix()", code),
-            ParamType::Bytes | ParamType::FixedBytes(_) => format!("{}.toBytesMatrix()", code),
-            ParamType::Int(bits) => {
+/// Convert ethereum value to AssemblyScript.
+fn ethereum_to_asc(code: &str, param_type: &DynSolType, tuple_type: Option<&str>) -> String {
+    match param_type {
+        DynSolType::Address => format!("{}.toAddress()", code),
+        DynSolType::Bool => format!("{}.toBoolean()", code),
+        DynSolType::Bytes | DynSolType::FixedBytes(_) => format!("{}.toBytes()", code),
+        DynSolType::Int(bits) => {
+            if *bits <= 32 {
+                format!("{}.toI32()", code)
+            } else {
+                format!("{}.toBigInt()", code)
+            }
+        }
+        DynSolType::Uint(bits) => {
+            if *bits <= 24 {
+                format!("{}.toI32()", code)
+            } else {
+                format!("{}.toBigInt()", code)
+            }
+        }
+        DynSolType::String => format!("{}.toString()", code),
+        DynSolType::Array(inner) | DynSolType::FixedArray(inner, _) => match inner.as_ref() {
+            DynSolType::Address => format!("{}.toAddressArray()", code),
+            DynSolType::Bool => format!("{}.toBooleanArray()", code),
+            DynSolType::Bytes | DynSolType::FixedBytes(_) => {
+                format!("{}.toBytesArray()", code)
+            }
+            DynSolType::Int(bits) => {
                 if *bits <= 32 {
-                    format!("{}.toI32Matrix()", code)
+                    format!("{}.toI32Array()", code)
                 } else {
-                    format!("{}.toBigIntMatrix()", code)
+                    format!("{}.toBigIntArray()", code)
                 }
             }
-            ParamType::Uint(bits) => {
+            DynSolType::Uint(bits) => {
                 if *bits <= 24 {
-                    format!("{}.toI32Matrix()", code)
+                    format!("{}.toI32Array()", code)
                 } else {
-                    format!("{}.toBigIntMatrix()", code)
+                    format!("{}.toBigIntArray()", code)
                 }
             }
-            ParamType::String => format!("{}.toStringMatrix()", code),
-            ParamType::Tuple(_) => {
+            DynSolType::String => format!("{}.toStringArray()", code),
+            DynSolType::Tuple(_) => {
                 if let Some(tuple_name) = tuple_type {
-                    format!("{}.toTupleMatrix<{}>()", code, tuple_name)
+                    format!("{}.toTupleArray<{}>()", code, tuple_name)
                 } else {
-                    format!("{}.toTupleMatrix<ethereum.Tuple>()", code)
+                    format!("{}.toTupleArray<ethereum.Tuple>()", code)
                 }
             }
-            _ => format!("{}.toStringMatrix()", code), // fallback
-        }
+            DynSolType::Array(inner2) | DynSolType::FixedArray(inner2, _) => {
+                ethereum_to_asc_matrix(code, inner2.as_ref(), tuple_type)
+            }
+            _ => format!("{}.toString()", code), // fallback for Function etc.
+        },
+        DynSolType::Tuple(_) => format!("{}.toTuple()", code),
+        _ => format!("{}.toTuple()", code), // fallback for Function etc.
     }
+}
 
-    /// Convert AssemblyScript value to ethereum value.
-    fn ethereum_from_asc(&self, code: &str, param_type: &ParamType) -> String {
-        match param_type {
-            ParamType::Address => format!("ethereum.Value.fromAddress({})", code),
-            ParamType::Bool => format!("ethereum.Value.fromBoolean({})", code),
-            ParamType::Bytes => format!("ethereum.Value.fromBytes({})", code),
-            ParamType::FixedBytes(_) => format!("ethereum.Value.fromFixedBytes({})", code),
-            ParamType::Int(bits) => {
-                if *bits <= 32 {
-                    format!("ethereum.Value.fromI32({})", code)
-                } else {
-                    format!("ethereum.Value.fromSignedBigInt({})", code)
-                }
-            }
-            ParamType::Uint(bits) => {
-                if *bits <= 24 {
-                    format!(
-                        "ethereum.Value.fromUnsignedBigInt(BigInt.fromI32({}))",
-                        code
-                    )
-                } else {
-                    format!("ethereum.Value.fromUnsignedBigInt({})", code)
-                }
-            }
-            ParamType::String => format!("ethereum.Value.fromString({})", code),
-            ParamType::Array(inner) | ParamType::FixedArray(inner, _) => {
-                self.ethereum_from_asc_array(code, inner.as_ref())
-            }
-            ParamType::Tuple(_) => format!("ethereum.Value.fromTuple({})", code),
-        }
-    }
-
-    /// Convert array to ethereum value.
-    fn ethereum_from_asc_array(&self, code: &str, inner_type: &ParamType) -> String {
-        match inner_type {
-            ParamType::Address => format!("ethereum.Value.fromAddressArray({})", code),
-            ParamType::Bool => format!("ethereum.Value.fromBooleanArray({})", code),
-            ParamType::Bytes => format!("ethereum.Value.fromBytesArray({})", code),
-            ParamType::FixedBytes(_) => format!("ethereum.Value.fromFixedBytesArray({})", code),
-            ParamType::Int(bits) => {
-                if *bits <= 32 {
-                    format!("ethereum.Value.fromI32Array({})", code)
-                } else {
-                    format!("ethereum.Value.fromSignedBigIntArray({})", code)
-                }
-            }
-            ParamType::Uint(bits) => {
-                if *bits <= 24 {
-                    format!("ethereum.Value.fromI32Array({})", code)
-                } else {
-                    format!("ethereum.Value.fromUnsignedBigIntArray({})", code)
-                }
-            }
-            ParamType::String => format!("ethereum.Value.fromStringArray({})", code),
-            ParamType::Tuple(_) => format!("ethereum.Value.fromTupleArray({})", code),
-            ParamType::Array(inner2) | ParamType::FixedArray(inner2, _) => {
-                self.ethereum_from_asc_matrix(code, inner2.as_ref())
+/// Convert matrix type to AssemblyScript.
+fn ethereum_to_asc_matrix(code: &str, inner_type: &DynSolType, tuple_type: Option<&str>) -> String {
+    match inner_type {
+        DynSolType::Address => format!("{}.toAddressMatrix()", code),
+        DynSolType::Bool => format!("{}.toBooleanMatrix()", code),
+        DynSolType::Bytes | DynSolType::FixedBytes(_) => format!("{}.toBytesMatrix()", code),
+        DynSolType::Int(bits) => {
+            if *bits <= 32 {
+                format!("{}.toI32Matrix()", code)
+            } else {
+                format!("{}.toBigIntMatrix()", code)
             }
         }
-    }
-
-    /// Convert matrix to ethereum value.
-    fn ethereum_from_asc_matrix(&self, code: &str, inner_type: &ParamType) -> String {
-        match inner_type {
-            ParamType::Address => format!("ethereum.Value.fromAddressMatrix({})", code),
-            ParamType::Bool => format!("ethereum.Value.fromBooleanMatrix({})", code),
-            ParamType::Bytes => format!("ethereum.Value.fromBytesMatrix({})", code),
-            ParamType::FixedBytes(_) => format!("ethereum.Value.fromFixedBytesMatrix({})", code),
-            ParamType::Int(bits) => {
-                if *bits <= 32 {
-                    format!("ethereum.Value.fromI32Matrix({})", code)
-                } else {
-                    format!("ethereum.Value.fromSignedBigIntMatrix({})", code)
-                }
+        DynSolType::Uint(bits) => {
+            if *bits <= 24 {
+                format!("{}.toI32Matrix()", code)
+            } else {
+                format!("{}.toBigIntMatrix()", code)
             }
-            ParamType::Uint(bits) => {
-                if *bits <= 24 {
-                    format!("ethereum.Value.fromI32Matrix({})", code)
-                } else {
-                    format!("ethereum.Value.fromUnsignedBigIntMatrix({})", code)
-                }
+        }
+        DynSolType::String => format!("{}.toStringMatrix()", code),
+        DynSolType::Tuple(_) => {
+            if let Some(tuple_name) = tuple_type {
+                format!("{}.toTupleMatrix<{}>()", code, tuple_name)
+            } else {
+                format!("{}.toTupleMatrix<ethereum.Tuple>()", code)
             }
-            ParamType::String => format!("ethereum.Value.fromStringMatrix({})", code),
-            ParamType::Tuple(_) => format!("ethereum.Value.fromTupleMatrix({})", code),
-            _ => format!("ethereum.Value.fromStringMatrix({})", code), // fallback
         }
+        _ => format!("{}.toStringMatrix()", code), // fallback
     }
+}
 
-    /// Check if param type contains a tuple.
-    fn contains_tuple_type(&self, param_type: &ParamType) -> bool {
-        match param_type {
-            ParamType::Tuple(_) => true,
-            ParamType::Array(inner) | ParamType::FixedArray(inner, _) => {
-                self.contains_tuple_type(inner)
+/// Convert AssemblyScript value to ethereum value.
+fn ethereum_from_asc(code: &str, param_type: &DynSolType) -> String {
+    match param_type {
+        DynSolType::Address => format!("ethereum.Value.fromAddress({})", code),
+        DynSolType::Bool => format!("ethereum.Value.fromBoolean({})", code),
+        DynSolType::Bytes => format!("ethereum.Value.fromBytes({})", code),
+        DynSolType::FixedBytes(_) => format!("ethereum.Value.fromFixedBytes({})", code),
+        DynSolType::Int(bits) => {
+            if *bits <= 32 {
+                format!("ethereum.Value.fromI32({})", code)
+            } else {
+                format!("ethereum.Value.fromSignedBigInt({})", code)
             }
-            _ => false,
         }
-    }
-
-    /// Check if param type is a tuple array.
-    fn is_tuple_array_type(&self, param_type: &ParamType) -> bool {
-        matches!(
-            param_type,
-            ParamType::Array(inner) | ParamType::FixedArray(inner, _)
-                if matches!(inner.as_ref(), ParamType::Tuple(_))
-        )
-    }
-
-    /// Check if param type is a tuple matrix (2D array).
-    fn is_tuple_matrix_type(&self, param_type: &ParamType) -> bool {
-        match param_type {
-            ParamType::Array(inner) | ParamType::FixedArray(inner, _) => {
-                self.is_tuple_array_type(inner)
+        DynSolType::Uint(bits) => {
+            if *bits <= 24 {
+                format!(
+                    "ethereum.Value.fromUnsignedBigInt(BigInt.fromI32({}))",
+                    code
+                )
+            } else {
+                format!("ethereum.Value.fromUnsignedBigInt({})", code)
             }
-            _ => false,
         }
+        DynSolType::String => format!("ethereum.Value.fromString({})", code),
+        DynSolType::Array(inner) | DynSolType::FixedArray(inner, _) => {
+            ethereum_from_asc_array(code, inner.as_ref())
+        }
+        DynSolType::Tuple(_) => format!("ethereum.Value.fromTuple({})", code),
+        _ => format!("ethereum.Value.fromTuple({})", code), // fallback
     }
+}
 
-    /// Get tuple components.
-    fn get_tuple_components<'a>(&self, param_type: &'a ParamType) -> Option<&'a [ParamType]> {
-        match param_type {
-            ParamType::Tuple(components) => Some(components),
-            ParamType::Array(inner) | ParamType::FixedArray(inner, _) => {
-                self.get_tuple_components(inner)
+/// Convert array to ethereum value.
+fn ethereum_from_asc_array(code: &str, inner_type: &DynSolType) -> String {
+    match inner_type {
+        DynSolType::Address => format!("ethereum.Value.fromAddressArray({})", code),
+        DynSolType::Bool => format!("ethereum.Value.fromBooleanArray({})", code),
+        DynSolType::Bytes => format!("ethereum.Value.fromBytesArray({})", code),
+        DynSolType::FixedBytes(_) => format!("ethereum.Value.fromFixedBytesArray({})", code),
+        DynSolType::Int(bits) => {
+            if *bits <= 32 {
+                format!("ethereum.Value.fromI32Array({})", code)
+            } else {
+                format!("ethereum.Value.fromSignedBigIntArray({})", code)
             }
-            _ => None,
         }
+        DynSolType::Uint(bits) => {
+            if *bits <= 24 {
+                format!("ethereum.Value.fromI32Array({})", code)
+            } else {
+                format!("ethereum.Value.fromUnsignedBigIntArray({})", code)
+            }
+        }
+        DynSolType::String => format!("ethereum.Value.fromStringArray({})", code),
+        DynSolType::Tuple(_) => format!("ethereum.Value.fromTupleArray({})", code),
+        DynSolType::Array(inner2) | DynSolType::FixedArray(inner2, _) => {
+            ethereum_from_asc_matrix(code, inner2.as_ref())
+        }
+        _ => format!("ethereum.Value.fromStringArray({})", code), // fallback
     }
+}
 
-    /// Handle indexed input type conversion.
-    fn indexed_input_type(&self, param_type: &ParamType) -> ParamType {
-        // Strings, bytes, and arrays are encoded and hashed to bytes32
-        match param_type {
-            ParamType::String | ParamType::Bytes | ParamType::Tuple(_) => ParamType::FixedBytes(32),
-            ParamType::Array(_) | ParamType::FixedArray(_, _) => ParamType::FixedBytes(32),
-            _ => param_type.clone(),
+/// Convert matrix to ethereum value.
+fn ethereum_from_asc_matrix(code: &str, inner_type: &DynSolType) -> String {
+    match inner_type {
+        DynSolType::Address => format!("ethereum.Value.fromAddressMatrix({})", code),
+        DynSolType::Bool => format!("ethereum.Value.fromBooleanMatrix({})", code),
+        DynSolType::Bytes => format!("ethereum.Value.fromBytesMatrix({})", code),
+        DynSolType::FixedBytes(_) => format!("ethereum.Value.fromFixedBytesMatrix({})", code),
+        DynSolType::Int(bits) => {
+            if *bits <= 32 {
+                format!("ethereum.Value.fromI32Matrix({})", code)
+            } else {
+                format!("ethereum.Value.fromSignedBigIntMatrix({})", code)
+            }
         }
+        DynSolType::Uint(bits) => {
+            if *bits <= 24 {
+                format!("ethereum.Value.fromI32Matrix({})", code)
+            } else {
+                format!("ethereum.Value.fromUnsignedBigIntMatrix({})", code)
+            }
+        }
+        DynSolType::String => format!("ethereum.Value.fromStringMatrix({})", code),
+        DynSolType::Tuple(_) => format!("ethereum.Value.fromTupleMatrix({})", code),
+        _ => format!("ethereum.Value.fromStringMatrix({})", code), // fallback
+    }
+}
+
+/// Check if param type contains a tuple.
+fn contains_tuple_type(param_type: &DynSolType) -> bool {
+    match param_type {
+        DynSolType::Tuple(_) => true,
+        DynSolType::Array(inner) | DynSolType::FixedArray(inner, _) => contains_tuple_type(inner),
+        _ => false,
+    }
+}
+
+/// Check if param type is a tuple array.
+fn is_tuple_array_type(param_type: &DynSolType) -> bool {
+    matches!(
+        param_type,
+        DynSolType::Array(inner) | DynSolType::FixedArray(inner, _)
+            if matches!(inner.as_ref(), DynSolType::Tuple(_))
+    )
+}
+
+/// Check if param type is a tuple matrix (2D array).
+fn is_tuple_matrix_type(param_type: &DynSolType) -> bool {
+    match param_type {
+        DynSolType::Array(inner) | DynSolType::FixedArray(inner, _) => is_tuple_array_type(inner),
+        _ => false,
+    }
+}
+
+/// Handle indexed input type conversion.
+fn indexed_input_type(param_type: &DynSolType) -> DynSolType {
+    // Strings, bytes, and arrays are encoded and hashed to bytes32
+    match param_type {
+        DynSolType::String | DynSolType::Bytes | DynSolType::Tuple(_) => DynSolType::FixedBytes(32),
+        DynSolType::Array(_) | DynSolType::FixedArray(_, _) => DynSolType::FixedBytes(32),
+        _ => param_type.clone(),
     }
 }
 
@@ -1509,7 +1377,7 @@ impl AbiCodeGenerator {
 mod tests {
     use super::*;
 
-    fn parse_abi(json: &str) -> Contract {
+    fn parse_abi(json: &str) -> JsonAbi {
         serde_json::from_str(json).unwrap()
     }
 
@@ -1564,46 +1432,42 @@ mod tests {
 
     #[test]
     fn test_asc_type_for_ethereum() {
-        let gen = AbiCodeGenerator::new(Contract::default(), "Test");
-
-        assert_eq!(gen.asc_type_for_ethereum(&ParamType::Address), "Address");
-        assert_eq!(gen.asc_type_for_ethereum(&ParamType::Bool), "boolean");
-        assert_eq!(gen.asc_type_for_ethereum(&ParamType::Uint(256)), "BigInt");
-        assert_eq!(gen.asc_type_for_ethereum(&ParamType::Uint(8)), "i32");
-        assert_eq!(gen.asc_type_for_ethereum(&ParamType::Int(32)), "i32");
-        assert_eq!(gen.asc_type_for_ethereum(&ParamType::String), "string");
-        assert_eq!(gen.asc_type_for_ethereum(&ParamType::Bytes), "Bytes");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Address), "Address");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Bool), "boolean");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Uint(256)), "BigInt");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Uint(8)), "i32");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Int(32)), "i32");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::String), "string");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Bytes), "Bytes");
     }
 
     #[test]
     fn test_name_sanitization() {
-        let gen = AbiCodeGenerator::new(Contract::default(), "Test!Contract@Name");
+        let gen = AbiCodeGenerator::new(JsonAbi::default(), "Test!Contract@Name");
         assert_eq!(gen.name, "Test_Contract_Name");
     }
 
     #[test]
     fn test_indexed_input_type() {
-        let gen = AbiCodeGenerator::new(Contract::default(), "Test");
-
         assert_eq!(
-            gen.indexed_input_type(&ParamType::String),
-            ParamType::FixedBytes(32)
+            indexed_input_type(&DynSolType::String),
+            DynSolType::FixedBytes(32)
         );
         assert_eq!(
-            gen.indexed_input_type(&ParamType::Bytes),
-            ParamType::FixedBytes(32)
+            indexed_input_type(&DynSolType::Bytes),
+            DynSolType::FixedBytes(32)
         );
         assert_eq!(
-            gen.indexed_input_type(&ParamType::Array(Box::new(ParamType::Uint(256)))),
-            ParamType::FixedBytes(32)
+            indexed_input_type(&DynSolType::Array(Box::new(DynSolType::Uint(256)))),
+            DynSolType::FixedBytes(32)
         );
         assert_eq!(
-            gen.indexed_input_type(&ParamType::Address),
-            ParamType::Address
+            indexed_input_type(&DynSolType::Address),
+            DynSolType::Address
         );
         assert_eq!(
-            gen.indexed_input_type(&ParamType::Uint(256)),
-            ParamType::Uint(256)
+            indexed_input_type(&DynSolType::Uint(256)),
+            DynSolType::Uint(256)
         );
     }
 
@@ -1793,20 +1657,20 @@ mod tests {
         );
 
         // Verify the output struct has getters for its components
-        // The getters use "get valueN" naming for positional access to tuple elements
+        // With alloy, component names are preserved from the ABI
         let method_names: Vec<&str> = output_struct
             .methods
             .iter()
             .map(|m| m.name.as_str())
             .collect();
         assert!(
-            method_names.iter().any(|n| n.contains("value0")),
-            "Should have value0 getter for first component, found methods: {:?}",
+            method_names.iter().any(|n| n.contains("success")),
+            "Should have success getter for first component, found methods: {:?}",
             method_names
         );
         assert!(
-            method_names.iter().any(|n| n.contains("value1")),
-            "Should have value1 getter for second component, found methods: {:?}",
+            method_names.iter().any(|n| n.contains("newValue")),
+            "Should have newValue getter for second component, found methods: {:?}",
             method_names
         );
     }

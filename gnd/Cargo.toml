@@ -54,7 +54,6 @@ console = "0.15"
 # Code generation
 graphql-tools = { workspace = true }
 regex = { workspace = true }
-ethabi = "17.2"
 serde_yaml = { workspace = true }
 Inflector = { workspace = true }
 
