@@ -31,7 +31,6 @@ RUN apt-get update \
     # Reduce the size of the layer by removing unnecessary files.
     && cargo clean \
     && objcopy --only-keep-debug /usr/local/bin/graph-node /usr/local/bin/graph-node.debug \
-    && strip -g /usr/local/bin/graph-node \
     && strip -g /usr/local/bin/graphman \
     && cd /usr/local/bin \
     && objcopy --add-gnu-debuglink=graph-node.debug graph-node \
@@ -98,7 +97,7 @@ EXPOSE 8030
 
 RUN apt-get update \
     && apt-get install -y libpq-dev ca-certificates \
-    netcat-openbsd
+    netcat-openbsd linux-perf
 
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-build /usr/local/bin/graph-node /usr/local/bin/graphman /usr/local/bin/
