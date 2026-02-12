@@ -36,10 +36,10 @@ const PARITY_REVERT_PREFIX: &str = "revert";
 
 const XDAI_REVERT: &str = "revert";
 
-// Deterministic Geth execution errors. We might need to expand this as
+// Deterministic RPC execution errors. We might need to expand this as
 // subgraphs come across other errors. See
 // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go
-const GETH_EXECUTION_ERRORS: &[&str] = &[
+const RPC_EXECUTION_ERRORS: &[&str] = &[
     // The "revert" substring covers a few known error messages, including:
     // Hardhat: "error: transaction reverted",
     // Ganache and Moonbeam: "vm exception while processing transaction: revert",
@@ -53,12 +53,15 @@ const GETH_EXECUTION_ERRORS: &[&str] = &[
     // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
     "out of gas",
     "stack underflow",
+    "vm execution error",
+    "invalidjump",
+    "notactivated",
 ];
 
 /// Helper that checks if a geth style RPC error message corresponds to a revert.
-fn is_geth_revert_message(message: &str) -> bool {
+fn is_rpc_revert_message(message: &str) -> bool {
     let env_geth_call_errors = ENV_VARS.geth_eth_call_errors.iter();
-    let mut execution_errors = GETH_EXECUTION_ERRORS
+    let mut execution_errors = RPC_EXECUTION_ERRORS
         .iter()
         .copied()
         .chain(env_geth_call_errors.map(|s| s.as_str()));
@@ -90,7 +93,7 @@ pub fn interpret_eth_call_error(
     }
 
     if let RpcError::ErrorResp(rpc_error) = &err {
-        if is_geth_revert_message(&rpc_error.message) {
+        if is_rpc_revert_message(&rpc_error.message) {
             return reverted(logger, &rpc_error.message);
         }
     }
