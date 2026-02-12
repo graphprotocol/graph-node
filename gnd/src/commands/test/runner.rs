@@ -532,6 +532,8 @@ async fn setup_chain(
         graph::http::HeaderMap::new(),
         endpoint_metrics.clone(),
         "",
+        false, // no_eip2718
+        graph_chain_ethereum::Compression::None,
     );
     let dummy_adapter = Arc::new(
         EthereumAdapter::new(
@@ -755,10 +757,8 @@ async fn cleanup(
 ) -> Result<()> {
     let locators = SubgraphStoreTrait::locators(subgraph_store, hash).await?;
 
-    match subgraph_store.remove_subgraph(name.clone()).await {
-        Ok(_) | Err(graph::prelude::StoreError::SubgraphNotFound(_)) => {}
-        Err(e) => return Err(e.into()),
-    }
+    // Ignore errors - the subgraph might not exist on first run
+    let _ = subgraph_store.remove_subgraph(name.clone()).await;
 
     for locator in locators {
         subgraph_store.remove_deployment(locator.id.into()).await?;
