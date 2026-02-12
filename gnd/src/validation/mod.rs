@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use graph::abi::{Event, Function, JsonAbi};
 use graph::data::subgraph::api_version::{LATEST_VERSION, MIN_SPEC_VERSION};
 use graph::data::subgraph::manifest_validation;
 use graph::data::subgraph::SubgraphManifestValidationError;
@@ -774,7 +775,7 @@ fn validate_handler_signatures(
         if let Some(source_abi) = &ds.source_abi {
             if let Some(abi_entry) = ds.abis.iter().find(|a| a.name == *source_abi) {
                 let abi_path = manifest_dir.join(&abi_entry.file);
-                if let Some(contract) = load_ethabi_contract(&abi_path) {
+                if let Some(contract) = load_abi(&abi_path) {
                     errors.extend(validate_event_signatures(
                         &ds.name,
                         source_abi,
@@ -796,7 +797,7 @@ fn validate_handler_signatures(
         if let Some(source_abi) = &t.source_abi {
             if let Some(abi_entry) = t.abis.iter().find(|a| a.name == *source_abi) {
                 let abi_path = manifest_dir.join(&abi_entry.file);
-                if let Some(contract) = load_ethabi_contract(&abi_path) {
+                if let Some(contract) = load_abi(&abi_path) {
                     errors.extend(validate_event_signatures(
                         &t.name,
                         source_abi,
@@ -817,33 +818,28 @@ fn validate_handler_signatures(
     errors
 }
 
-/// Try to load an ABI file as an `ethabi::Contract`.
+/// Try to load an ABI file as a `JsonAbi`.
 ///
 /// Returns `None` if the file doesn't exist or can't be parsed (those errors
 /// are reported separately by file existence and ABI JSON validation).
-fn load_ethabi_contract(abi_path: &Path) -> Option<ethabi::Contract> {
+fn load_abi(abi_path: &Path) -> Option<JsonAbi> {
     let content = std::fs::read_to_string(abi_path).ok()?;
     let normalized = crate::abi::normalize_abi_json(&content).ok()?;
     let json_str = normalized.to_string();
     serde_json::from_str(&json_str).ok()
 }
 
-/// Build the canonical event signature from an ethabi Event: `Name(type1,type2,...)`.
-fn ethabi_event_signature(event: &ethabi::Event) -> String {
-    let params: Vec<String> = event.inputs.iter().map(|p| p.kind.to_string()).collect();
-    format!("{}({})", event.name, params.join(","))
-}
-
 /// Build the event signature with `indexed` hints: `Name(indexed type1,type2,...)`.
-fn ethabi_event_signature_with_indexed(event: &ethabi::Event) -> String {
+fn event_signature_with_indexed(event: &Event) -> String {
     let params: Vec<String> = event
         .inputs
         .iter()
         .map(|p| {
+            let ty = p.selector_type();
             if p.indexed {
-                format!("indexed {}", p.kind)
+                format!("indexed {}", ty)
             } else {
-                p.kind.to_string()
+                ty.into_owned()
             }
         })
         .collect();
@@ -859,11 +855,11 @@ fn validate_event_signatures(
     ds_name: &str,
     abi_name: &str,
     event_handlers: &[crate::manifest::EventHandler],
-    contract: &ethabi::Contract,
+    abi: &JsonAbi,
 ) -> Vec<ManifestValidationError> {
     let mut errors = Vec::new();
 
-    let all_events: Vec<&ethabi::Event> = contract.events.values().flatten().collect();
+    let all_events: Vec<&Event> = abi.events.values().flatten().collect();
 
     for handler in event_handlers {
         let signature = &handler.event;
@@ -871,7 +867,7 @@ fn validate_event_signatures(
         // Try exact match with indexed hints
         let exact_match = all_events
             .iter()
-            .any(|e| ethabi_event_signature_with_indexed(e) == *signature);
+            .any(|e| event_signature_with_indexed(e) == *signature);
 
         if exact_match {
             continue;
@@ -879,11 +875,11 @@ fn validate_event_signatures(
 
         // Fallback: match without indexed if only one event variant with that name
         let event_name = signature.split('(').next().unwrap_or("");
-        let matching_by_name: Vec<&&ethabi::Event> =
+        let matching_by_name: Vec<&&Event> =
             all_events.iter().filter(|e| e.name == event_name).collect();
 
-        let fallback_match = matching_by_name.len() == 1
-            && ethabi_event_signature(matching_by_name[0]) == *signature;
+        let fallback_match =
+            matching_by_name.len() == 1 && matching_by_name[0].signature() == *signature;
 
         if !fallback_match {
             errors.push(ManifestValidationError::EventNotInAbi {
@@ -897,29 +893,21 @@ fn validate_event_signatures(
     errors
 }
 
-/// Build the canonical function signature from an ethabi Function: `name(type1,type2,...)`.
-fn ethabi_function_signature(func: &ethabi::Function) -> String {
-    let params: Vec<String> = func.inputs.iter().map(|p| p.kind.to_string()).collect();
-    format!("{}({})", func.name, params.join(","))
-}
-
 /// Validate that each call handler's function signature matches a function in the ABI.
 fn validate_function_signatures(
     ds_name: &str,
     abi_name: &str,
     call_handlers: &[CallHandler],
-    contract: &ethabi::Contract,
+    abi: &JsonAbi,
 ) -> Vec<ManifestValidationError> {
     let mut errors = Vec::new();
 
-    let all_functions: Vec<&ethabi::Function> = contract.functions.values().flatten().collect();
+    let all_functions: Vec<&Function> = abi.functions.values().flatten().collect();
 
     for handler in call_handlers {
         let target = &handler.function;
 
-        let found = all_functions
-            .iter()
-            .any(|f| ethabi_function_signature(f) == *target);
+        let found = all_functions.iter().any(|f| f.signature() == *target);
 
         if !found {
             errors.push(ManifestValidationError::FunctionNotInAbi {
@@ -1922,13 +1910,13 @@ type Post @entity {
         .to_string()
     }
 
-    fn parse_contract(json: &str) -> ethabi::Contract {
+    fn parse_abi(json: &str) -> JsonAbi {
         serde_json::from_str(json).unwrap()
     }
 
     #[test]
     fn test_validate_event_signatures_exact_match_with_indexed() {
-        let contract = parse_contract(&erc20_abi_json());
+        let contract = parse_abi(&erc20_abi_json());
         let handlers = vec![EventHandler {
             event: "Transfer(indexed address,indexed address,uint256)".to_string(),
             handler: "handleTransfer".to_string(),
@@ -1941,7 +1929,7 @@ type Post @entity {
 
     #[test]
     fn test_validate_event_signatures_fallback_without_indexed() {
-        let contract = parse_contract(&erc20_abi_json());
+        let contract = parse_abi(&erc20_abi_json());
         // Signature without indexed hints — should match via fallback
         let handlers = vec![EventHandler {
             event: "Transfer(address,address,uint256)".to_string(),
@@ -1955,7 +1943,7 @@ type Post @entity {
 
     #[test]
     fn test_validate_event_signatures_nonexistent_event() {
-        let contract = parse_contract(&erc20_abi_json());
+        let contract = parse_abi(&erc20_abi_json());
         let handlers = vec![EventHandler {
             event: "Mint(address,uint256)".to_string(),
             handler: "handleMint".to_string(),
@@ -1976,7 +1964,7 @@ type Post @entity {
 
     #[test]
     fn test_validate_event_signatures_wrong_param_types() {
-        let contract = parse_contract(&erc20_abi_json());
+        let contract = parse_abi(&erc20_abi_json());
         // Transfer exists but with wrong param types
         let handlers = vec![EventHandler {
             event: "Transfer(uint256,uint256,uint256)".to_string(),
@@ -1994,7 +1982,7 @@ type Post @entity {
 
     #[test]
     fn test_validate_function_signatures_valid() {
-        let contract = parse_contract(&erc20_abi_json());
+        let contract = parse_abi(&erc20_abi_json());
         let handlers = vec![CallHandler {
             function: "approve(address,uint256)".to_string(),
             handler: "handleApprove".to_string(),
@@ -2005,7 +1993,7 @@ type Post @entity {
 
     #[test]
     fn test_validate_function_signatures_nonexistent() {
-        let contract = parse_contract(&erc20_abi_json());
+        let contract = parse_abi(&erc20_abi_json());
         let handlers = vec![CallHandler {
             function: "mint(address,uint256)".to_string(),
             handler: "handleMint".to_string(),
@@ -2024,7 +2012,7 @@ type Post @entity {
 
     #[test]
     fn test_validate_function_signatures_wrong_params() {
-        let contract = parse_contract(&erc20_abi_json());
+        let contract = parse_abi(&erc20_abi_json());
         // approve exists but with wrong param types
         let handlers = vec![CallHandler {
             function: "approve(uint256,uint256)".to_string(),
@@ -2136,27 +2124,21 @@ type Post @entity {
     }
 
     #[test]
-    fn test_ethabi_event_signature() {
-        let contract = parse_contract(&erc20_abi_json());
-        let transfer = contract.events.get("Transfer").unwrap().first().unwrap();
+    fn test_event_signature() {
+        let abi = parse_abi(&erc20_abi_json());
+        let transfer = abi.events.get("Transfer").unwrap().first().unwrap();
+        assert_eq!(transfer.signature(), "Transfer(address,address,uint256)");
         assert_eq!(
-            ethabi_event_signature(transfer),
-            "Transfer(address,address,uint256)"
-        );
-        assert_eq!(
-            ethabi_event_signature_with_indexed(transfer),
+            event_signature_with_indexed(transfer),
             "Transfer(indexed address,indexed address,uint256)"
         );
     }
 
     #[test]
-    fn test_ethabi_function_signature() {
-        let contract = parse_contract(&erc20_abi_json());
-        let approve = contract.functions.get("approve").unwrap().first().unwrap();
-        assert_eq!(
-            ethabi_function_signature(approve),
-            "approve(address,uint256)"
-        );
+    fn test_function_signature() {
+        let abi = parse_abi(&erc20_abi_json());
+        let approve = abi.functions.get("approve").unwrap().first().unwrap();
+        assert_eq!(approve.signature(), "approve(address,uint256)");
     }
 
     #[test]
