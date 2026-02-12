@@ -86,6 +86,26 @@ impl From<SubgraphManifestValidationError> for ManifestValidationError {
     }
 }
 
+/// Validate manifest file references.
+///
+/// Checks that all referenced files exist and ABI files are valid JSON.
+/// This is the minimal validation needed before codegen — it doesn't check
+/// deployment-level concerns like network names or spec versions.
+pub(crate) fn validate_manifest_files(
+    manifest: &Manifest,
+    manifest_dir: &Path,
+) -> Vec<ManifestValidationError> {
+    let mut errors = Vec::new();
+
+    // Validate file existence
+    errors.extend(validate_file_existence(manifest, manifest_dir));
+
+    // Validate ABIs are valid JSON
+    errors.extend(validate_abis(manifest, manifest_dir));
+
+    errors
+}
+
 /// Validate a subgraph manifest.
 ///
 /// This performs several validation checks:

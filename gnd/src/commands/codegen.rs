@@ -25,7 +25,9 @@ use crate::manifest::{load_manifest, resolve_path, DataSource, Manifest, Templat
 use crate::migrations;
 use crate::output::{step, Step};
 use crate::services::IpfsClient;
-use crate::validation::{format_schema_errors, validate_schema};
+use crate::validation::{
+    format_manifest_errors, format_schema_errors, validate_manifest_files, validate_schema,
+};
 use crate::watch::watch_and_run;
 
 /// Default IPFS URL.
@@ -106,6 +108,20 @@ async fn generate_types(opt: &CodegenOpt) -> Result<()> {
 
     // Load the subgraph manifest
     let manifest = load_manifest(&opt.manifest)?;
+
+    // Validate manifest file references (schema, mappings, ABIs exist and are valid)
+    let source_dir = crate::manifest::manifest_dir(&opt.manifest).to_path_buf();
+    let manifest_errors = validate_manifest_files(&manifest, &source_dir);
+    if !manifest_errors.is_empty() {
+        eprintln!(
+            "Manifest validation errors:\n{}",
+            format_manifest_errors(&manifest_errors)
+        );
+        return Err(anyhow!(
+            "Manifest validation failed with {} error(s)",
+            manifest_errors.len()
+        ));
+    }
 
     // Create output directory
     fs::create_dir_all(&opt.output_dir)
@@ -503,6 +519,7 @@ schema:
 dataSources:
   - kind: ethereum/contract
     name: ExampleSubgraph
+    network: mainnet
     source:
       abi: ExampleContract
     mapping:
@@ -612,6 +629,7 @@ schema:
 dataSources:
   - kind: ethereum/contract
     name: TestDataSource
+    network: mainnet
     source:
       abi: TestContract
     mapping:
@@ -729,6 +747,7 @@ schema:
 dataSources:
   - kind: ethereum/contract
     name: ExampleSubgraph
+    network: mainnet
     source:
       abi: ExampleContract
     mapping:
@@ -820,6 +839,123 @@ dataSources:
         assert!(
             abi_ts.contains("static bind(address: Address): ExampleContract"),
             "Contract should have static bind method"
+        );
+    }
+
+    /// Test that codegen fails when referenced ABI file does not exist.
+    ///
+    /// Before Step 2, codegen did not validate the manifest. Now it calls
+    /// `validate_manifest()` which checks file existence, so a missing ABI
+    /// file is caught before codegen even starts generating types.
+    #[tokio::test]
+    async fn test_codegen_fails_on_missing_abi_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path();
+        let output_dir = project_dir.join("generated");
+
+        // Manifest references an ABI file that doesn't exist
+        let manifest_content = r#"
+specVersion: 0.0.4
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Token
+    network: mainnet
+    source:
+      abi: ERC20
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      file: ./mapping.ts
+      entities:
+        - MyEntity
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+"#;
+        fs::write(project_dir.join("subgraph.yaml"), manifest_content).unwrap();
+
+        // Create schema and mapping, but NOT the ABI file
+        fs::write(
+            project_dir.join("schema.graphql"),
+            "type MyEntity @entity { id: ID! }",
+        )
+        .unwrap();
+        fs::write(project_dir.join("mapping.ts"), "").unwrap();
+
+        let opt = CodegenOpt {
+            manifest: project_dir.join("subgraph.yaml"),
+            output_dir,
+            skip_migrations: true,
+            watch: false,
+            ipfs: "https://api.thegraph.com/ipfs/api/v0".to_string(),
+        };
+
+        let result = generate_types(&opt).await;
+        assert!(
+            result.is_err(),
+            "Codegen should fail when ABI file is missing"
+        );
+        let err = format!("{:#}", result.unwrap_err());
+        assert!(
+            err.contains("validation failed"),
+            "Error should mention validation failure, got: {}",
+            err
+        );
+    }
+
+    /// Test that codegen fails when referenced schema file does not exist.
+    #[tokio::test]
+    async fn test_codegen_fails_on_missing_schema_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path();
+        let output_dir = project_dir.join("generated");
+
+        // Manifest references a schema file that doesn't exist
+        let manifest_content = r#"
+specVersion: 0.0.4
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Token
+    network: mainnet
+    source:
+      abi: ERC20
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      file: ./mapping.ts
+      entities:
+        - MyEntity
+      abis: []
+"#;
+        fs::write(project_dir.join("subgraph.yaml"), manifest_content).unwrap();
+
+        // Create mapping, but NOT the schema file
+        fs::write(project_dir.join("mapping.ts"), "").unwrap();
+
+        let opt = CodegenOpt {
+            manifest: project_dir.join("subgraph.yaml"),
+            output_dir,
+            skip_migrations: true,
+            watch: false,
+            ipfs: "https://api.thegraph.com/ipfs/api/v0".to_string(),
+        };
+
+        let result = generate_types(&opt).await;
+        assert!(
+            result.is_err(),
+            "Codegen should fail when schema file is missing"
+        );
+        let err = format!("{:#}", result.unwrap_err());
+        assert!(
+            err.contains("validation failed"),
+            "Error should mention validation failure, got: {}",
+            err
         );
     }
 }
