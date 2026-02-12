@@ -160,6 +160,38 @@ fn extract_network_from_manifest(manifest_path: &Path) -> Result<String> {
     Ok(network)
 }
 
+/// Extract the minimum `startBlock` across all data sources in a manifest.
+///
+/// When a manifest specifies `startBlock` on its data sources, graph-node
+/// normally validates that the block exists on-chain during deployment.
+/// In tests there is no real chain, so the caller uses this value to build
+/// a `start_block_override` that bypasses validation.
+///
+/// Returns 0 if no data source specifies a `startBlock`.
+fn extract_start_block_from_manifest(manifest_path: &Path) -> Result<u64> {
+    let content = std::fs::read_to_string(manifest_path)
+        .with_context(|| format!("Failed to read manifest: {}", manifest_path.display()))?;
+    let manifest: serde_yaml::Value = serde_yaml::from_str(&content)
+        .with_context(|| format!("Failed to parse manifest: {}", manifest_path.display()))?;
+
+    let min_start_block = manifest
+        .get("dataSources")
+        .and_then(|ds| ds.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|ds| {
+                    ds.get("source")
+                        .and_then(|s| s.get("startBlock"))
+                        .and_then(|b| b.as_u64())
+                })
+                .min()
+                .unwrap_or(0)
+        })
+        .unwrap_or(0);
+
+    Ok(min_start_block)
+}
+
 /// Run a single test file end-to-end.
 ///
 /// This is the main entry point called from `mod.rs` for each test file.
@@ -169,11 +201,8 @@ fn extract_network_from_manifest(manifest_path: &Path) -> Result<String> {
 /// Returns `TestResult::Passed` if all assertions match, or `TestResult::Failed`
 /// with details about handler errors or assertion mismatches.
 pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<TestResult> {
-    // Convert test JSON blocks into graph-node's internal block format.
-    let blocks = build_blocks_with_triggers(test_file, 1)?;
-
     // Empty test with no blocks and no assertions is trivially passing.
-    if blocks.is_empty() && test_file.assertions.is_empty() {
+    if test_file.blocks.is_empty() && test_file.assertions.is_empty() {
         return Ok(TestResult::Passed { assertions: vec![] });
     }
 
@@ -204,6 +233,30 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
     // The network name from the manifest (e.g., "mainnet") determines which
     // chain config the store uses. Must match exactly.
     let network_name: ChainName = extract_network_from_manifest(&built_manifest_path)?.into();
+
+    // Extract the minimum startBlock from the manifest. When startBlock > 0,
+    // graph-node normally validates the block exists on-chain, but our test
+    // environment has no real chain. We provide a start_block_override to
+    // bypass validation, and also default test block numbering to start at
+    // the manifest's startBlock so blocks land in the indexed range.
+    let min_start_block = extract_start_block_from_manifest(&built_manifest_path)?;
+
+    // Convert test JSON blocks into graph-node's internal block format.
+    // Default block numbering starts at the manifest's startBlock so that
+    // test blocks without explicit numbers fall in the subgraph's indexed range.
+    let blocks = build_blocks_with_triggers(test_file, min_start_block)?;
+
+    // Build a start_block_override when startBlock > 0 to bypass on-chain
+    // block validation (which would fail against the dummy firehose endpoint).
+    // This mirrors what resolve_start_block() computes: a BlockPtr for
+    // block (min_start_block - 1).
+    let start_block_override = if min_start_block > 0 {
+        use graph::prelude::alloy::primitives::keccak256;
+        let hash = keccak256((min_start_block - 1).to_be_bytes());
+        Some(BlockPtr::new(hash.into(), (min_start_block - 1) as i32))
+    } else {
+        None
+    };
 
     // Create a temporary database for this test. The `_temp_db` handle must
     // be kept alive for the duration of the test — dropping it destroys the database.
@@ -245,6 +298,7 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
         &build_dir,
         hash,
         subgraph_name.clone(),
+        start_block_override,
     )
     .await?;
 
@@ -553,6 +607,7 @@ async fn setup_context(
     build_dir: &Path,
     hash: DeploymentHash,
     subgraph_name: SubgraphName,
+    start_block_override: Option<BlockPtr>,
 ) -> Result<TestContext> {
     let env_vars = Arc::new(EnvVars::from_env().unwrap_or_default());
     let mock_registry = Arc::new(MetricsRegistry::mock());
@@ -666,13 +721,14 @@ async fn setup_context(
     SubgraphRegistrar::create_subgraph(subgraph_registrar.as_ref(), subgraph_name.clone()).await?;
 
     // Deploy the subgraph version (loads manifest, compiles WASM, creates schema tables).
+    // start_block_override bypasses on-chain block validation when startBlock > 0.
     let deployment = SubgraphRegistrar::create_subgraph_version(
         subgraph_registrar.as_ref(),
         subgraph_name.clone(),
         hash.clone(),
         node_id.clone(),
         None,
-        None,
+        start_block_override,
         None,
         None,
         false,
