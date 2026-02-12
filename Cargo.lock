@@ -3703,6 +3703,7 @@ dependencies = [
  "git-testament",
  "globset",
  "graph",
+ "graph-chain-ethereum",
  "graph-core",
  "graph-node",
  "graphql-tools",

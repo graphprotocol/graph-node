@@ -233,6 +233,12 @@ pub struct UnresolvedSource {
     start_block: BlockNumber,
 }
 
+impl UnresolvedSource {
+    pub fn address(&self) -> &DeploymentHash {
+        &self.address
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnresolvedMapping {

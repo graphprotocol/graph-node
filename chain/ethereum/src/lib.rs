@@ -23,7 +23,9 @@ pub use buffered_call_cache::BufferedCallCache;
 
 // ETHDEP: These concrete types should probably not be exposed.
 pub use data_source::{
-    BlockHandlerFilter, DataSource, DataSourceTemplate, Mapping, TemplateSource,
+    BlockHandlerFilter, DataSource, DataSourceTemplate, Mapping, MappingBlockHandler,
+    MappingCallHandler, TemplateSource, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+    UnresolvedMapping, UnresolvedMappingEventHandler,
 };
 
 pub mod chain;

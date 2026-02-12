@@ -18,6 +18,7 @@ path = "tests/codegen_verification.rs"
 [dependencies]
 # Core graph dependencies
 graph = { path = "../graph" }
+graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-core = { path = "../core" }
 graph-node = { path = "../node" }
 

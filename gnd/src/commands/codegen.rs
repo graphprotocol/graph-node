@@ -612,6 +612,8 @@ schema:
 dataSources:
   - kind: ethereum/contract
     name: TestDataSource
+    source:
+      abi: TestContract
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.5
@@ -727,6 +729,8 @@ schema:
 dataSources:
   - kind: ethereum/contract
     name: ExampleSubgraph
+    source:
+      abi: ExampleContract
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.5

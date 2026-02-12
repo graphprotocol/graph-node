@@ -1,20 +1,35 @@
 //! Shared manifest types and parsing for gnd commands.
 //!
 //! This module provides unified manifest loading and types used by build,
-//! codegen, and validation commands.
+//! codegen, and validation commands. Manifest parsing uses graph-node's
+//! `UnresolvedSubgraphManifest` types which enforce required fields via serde
+//! (e.g. `source.abi`, `mapping.abis`).
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use graph::data::subgraph::UnresolvedSubgraphManifest;
+use graph::data_source::{
+    UnresolvedDataSource as GraphUnresolvedDS, UnresolvedDataSourceTemplate as GraphUnresolvedDST,
+};
+use graph::prelude::DeploymentHash;
+use graph_chain_ethereum::Chain;
 use semver::Version;
 
 use crate::output::{step, Step};
+
+/// Type alias for the graph-node unresolved manifest parameterized on Ethereum.
+type GraphManifest = UnresolvedSubgraphManifest<Chain>;
 
 /// A simplified subgraph manifest structure.
 ///
 /// This unified struct contains all fields needed by build, codegen, and
 /// validation. Commands use only the fields they need.
+///
+/// Parsing uses graph-node's `UnresolvedSubgraphManifest::parse()` which
+/// enforces required fields via serde (e.g. `source.abi`, `mapping.abis`
+/// for Ethereum data sources).
 ///
 /// # Data Source Organization
 ///
@@ -87,7 +102,9 @@ pub struct Abi {
 
 /// Load a subgraph manifest from a YAML file.
 ///
-/// This is the unified loading function used by build, codegen, and validation.
+/// This uses graph-node's `UnresolvedSubgraphManifest::parse()` which
+/// enforces all required fields via serde deserialization. Missing required
+/// fields (e.g. `source.abi`, `mapping.abis`) produce clear parse errors.
 pub fn load_manifest(path: &Path) -> Result<Manifest> {
     step(
         Step::Load,
@@ -97,152 +114,155 @@ pub fn load_manifest(path: &Path) -> Result<Manifest> {
     let manifest_str =
         fs::read_to_string(path).with_context(|| format!("Failed to read manifest: {:?}", path))?;
 
-    let value: serde_json::Value = serde_yaml::from_str(&manifest_str)
+    let raw: serde_yaml::Mapping = serde_yaml::from_str(&manifest_str)
         .with_context(|| format!("Failed to parse manifest YAML: {:?}", path))?;
 
-    // Extract spec version (default to 0.0.4 if not specified)
-    let spec_version_str = value
-        .get("specVersion")
-        .and_then(|v| v.as_str())
-        .unwrap_or("0.0.4");
+    // Use a dummy deployment hash for local CLI use
+    let id = DeploymentHash::new("QmLocalDev").unwrap();
 
-    let spec_version = Version::parse(spec_version_str).unwrap_or_else(|_| Version::new(0, 0, 4));
+    let parsed: GraphManifest = GraphManifest::parse(id, raw)
+        .with_context(|| format!("Failed to parse manifest: {:?}", path))?;
 
-    // Extract schema path
-    let schema = value
-        .get("schema")
-        .and_then(|s| s.get("file"))
-        .and_then(|f| f.as_str())
-        .map(String::from);
+    Ok(convert_manifest(parsed))
+}
 
-    // Extract features
-    let features = value
-        .get("features")
-        .and_then(|f| f.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|f| f.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default();
+/// Convert a graph-node `UnresolvedSubgraphManifest` into gnd's `Manifest`.
+fn convert_manifest(m: GraphManifest) -> Manifest {
+    let spec_version = m.spec_version;
 
-    // Extract graft config
-    let graft = value.get("graft").and_then(|g| {
-        let base = g.get("base")?.as_str()?.to_string();
-        let block = g.get("block")?.as_u64().unwrap_or(0);
-        Some(GraftConfig { base, block })
+    let schema = m.schema.map(|s| s.file.link);
+
+    let features = m.features.into_iter().map(|f| f.to_string()).collect();
+
+    let graft = m.graft.map(|g| GraftConfig {
+        base: g.base.to_string(),
+        block: g.block.max(0) as u64,
     });
 
-    // Extract data sources (including subgraph sources)
-    let mut data_sources = Vec::new();
+    let data_sources = m
+        .data_sources
+        .into_iter()
+        .map(convert_data_source)
+        .collect();
 
-    if let Some(ds_array) = value.get("dataSources").and_then(|ds| ds.as_array()) {
-        for ds in ds_array {
-            let kind = ds
-                .get("kind")
-                .and_then(|k| k.as_str())
-                .unwrap_or("ethereum/contract");
+    let templates = m.templates.into_iter().map(convert_template).collect();
 
-            if let Some(parsed) = parse_data_source(ds, kind) {
-                data_sources.push(parsed);
-            }
-        }
-    }
-
-    // Extract templates
-    let templates = value
-        .get("templates")
-        .and_then(|t| t.as_array())
-        .map(|arr| arr.iter().filter_map(parse_template).collect())
-        .unwrap_or_default();
-
-    Ok(Manifest {
+    Manifest {
         spec_version,
         schema,
         features,
         graft,
         data_sources,
         templates,
-    })
+    }
 }
 
-/// Parse a data source from a JSON value.
-fn parse_data_source(ds: &serde_json::Value, kind: &str) -> Option<DataSource> {
-    let name = ds.get("name")?.as_str()?.to_string();
-    let network = ds.get("network").and_then(|n| n.as_str()).map(String::from);
-    let mapping_file = ds
-        .get("mapping")
-        .and_then(|m| m.get("file"))
-        .and_then(|f| f.as_str())
-        .map(String::from);
-    let api_version = ds
-        .get("mapping")
-        .and_then(|m| m.get("apiVersion"))
-        .and_then(|v| v.as_str())
-        .and_then(|v| Version::parse(v).ok());
-    let abis = parse_abis(ds.get("mapping").and_then(|m| m.get("abis")));
-    let source_address = ds
-        .get("source")
-        .and_then(|s| s.get("address"))
-        .and_then(|a| a.as_str())
-        .map(String::from);
-
-    Some(DataSource {
-        name,
-        kind: kind.to_string(),
-        network,
-        mapping_file,
-        api_version,
-        abis,
-        source_address,
-    })
-}
-
-/// Parse a template from a JSON value.
-fn parse_template(t: &serde_json::Value) -> Option<Template> {
-    let name = t.get("name")?.as_str()?.to_string();
-    let kind = t
-        .get("kind")
-        .and_then(|k| k.as_str())
-        .unwrap_or("ethereum/contract")
-        .to_string();
-    let network = t.get("network").and_then(|n| n.as_str()).map(String::from);
-    let mapping_file = t
-        .get("mapping")
-        .and_then(|m| m.get("file"))
-        .and_then(|f| f.as_str())
-        .map(String::from);
-    let api_version = t
-        .get("mapping")
-        .and_then(|m| m.get("apiVersion"))
-        .and_then(|v| v.as_str())
-        .and_then(|v| Version::parse(v).ok());
-    let abis = parse_abis(t.get("mapping").and_then(|m| m.get("abis")));
-
-    Some(Template {
-        name,
-        kind,
-        network,
-        mapping_file,
-        api_version,
-        abis,
-    })
-}
-
-/// Parse ABIs from a JSON value.
-fn parse_abis(abis_value: Option<&serde_json::Value>) -> Vec<Abi> {
-    abis_value
-        .and_then(|a| a.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|abi| {
-                    let name = abi.get("name")?.as_str()?.to_string();
-                    let file = abi.get("file")?.as_str()?.to_string();
-                    Some(Abi { name, file })
+/// Convert a graph-node `UnresolvedDataSource` enum into gnd's `DataSource`.
+fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
+    match ds {
+        GraphUnresolvedDS::Onchain(eth) => DataSource {
+            name: eth.name.clone(),
+            kind: eth.kind.clone(),
+            network: eth.network.clone(),
+            mapping_file: Some(eth.mapping.file.link.clone()),
+            api_version: Version::parse(&eth.mapping.api_version).ok(),
+            abis: eth
+                .mapping
+                .abis
+                .iter()
+                .map(|a| Abi {
+                    name: a.name.clone(),
+                    file: a.file.link.clone(),
                 })
-                .collect()
-        })
-        .unwrap_or_default()
+                .collect(),
+            source_address: eth.source.address.map(|a| format!("{:?}", a)),
+        },
+        GraphUnresolvedDS::Subgraph(sub) => DataSource {
+            name: sub.name.clone(),
+            kind: sub.kind.clone(),
+            network: Some(sub.network.clone()),
+            mapping_file: Some(sub.mapping.file.link.clone()),
+            api_version: Version::parse(&sub.mapping.api_version).ok(),
+            abis: sub
+                .mapping
+                .abis
+                .as_deref()
+                .unwrap_or(&[])
+                .iter()
+                .map(|a| Abi {
+                    name: a.name.clone(),
+                    file: a.file.link.clone(),
+                })
+                .collect(),
+            source_address: Some(sub.source.address().to_string()),
+        },
+        GraphUnresolvedDS::Offchain(off) => DataSource {
+            name: off.name.clone(),
+            kind: off.kind.clone(),
+            network: None,
+            mapping_file: Some(off.mapping.file.link.clone()),
+            api_version: Version::parse(&off.mapping.api_version).ok(),
+            abis: vec![],
+            source_address: None,
+        },
+        GraphUnresolvedDS::Amp(amp) => DataSource {
+            name: amp.name.clone(),
+            kind: amp.kind.clone(),
+            network: Some(amp.network.clone()),
+            mapping_file: None,
+            api_version: None,
+            abis: vec![],
+            source_address: None,
+        },
+    }
+}
+
+/// Convert a graph-node `UnresolvedDataSourceTemplate` enum into gnd's `Template`.
+fn convert_template(t: GraphUnresolvedDST<Chain>) -> Template {
+    match t {
+        GraphUnresolvedDST::Onchain(eth) => Template {
+            name: eth.name.clone(),
+            kind: eth.kind.clone(),
+            network: eth.network.clone(),
+            mapping_file: Some(eth.mapping.file.link.clone()),
+            api_version: Version::parse(&eth.mapping.api_version).ok(),
+            abis: eth
+                .mapping
+                .abis
+                .iter()
+                .map(|a| Abi {
+                    name: a.name.clone(),
+                    file: a.file.link.clone(),
+                })
+                .collect(),
+        },
+        GraphUnresolvedDST::Offchain(off) => Template {
+            name: off.name.clone(),
+            kind: off.kind.clone(),
+            network: off.network.clone(),
+            mapping_file: Some(off.mapping.file.link.clone()),
+            api_version: Version::parse(&off.mapping.api_version).ok(),
+            abis: vec![],
+        },
+        GraphUnresolvedDST::Subgraph(sub) => Template {
+            name: sub.name.clone(),
+            kind: sub.kind.clone(),
+            network: sub.network.clone(),
+            mapping_file: Some(sub.mapping.file.link.clone()),
+            api_version: Version::parse(&sub.mapping.api_version).ok(),
+            abis: sub
+                .mapping
+                .abis
+                .as_deref()
+                .unwrap_or(&[])
+                .iter()
+                .map(|a| Abi {
+                    name: a.name.clone(),
+                    file: a.file.link.clone(),
+                })
+                .collect(),
+        },
+    }
 }
 
 /// Get the directory containing a manifest file.
@@ -317,10 +337,15 @@ dataSources:
   - kind: ethereum/contract
     name: Token
     network: mainnet
+    source:
+      abi: ERC20
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.6
+      language: wasm/assemblyscript
       file: ./src/mapping.ts
+      entities:
+        - MyEntity
       abis:
         - name: ERC20
           file: ./abis/ERC20.json
@@ -328,10 +353,16 @@ templates:
   - kind: ethereum/contract
     name: DynamicToken
     network: mainnet
+    source:
+      abi: ERC20
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.6
+      language: wasm/assemblyscript
       file: ./src/dynamic.ts
+      entities:
+        - MyEntity
+      abis: []
 "#;
 
         fs::write(&manifest_path, manifest_content).unwrap();
@@ -377,7 +408,7 @@ features:
   - nonFatalErrors
   - fullTextSearch
 graft:
-  base: QmXYZ123
+  base: QmXYZ123abcdefghijklmnopqrstuvwxyz1234567890ab
   block: 12345
 schema:
   file: ./schema.graphql
@@ -385,10 +416,15 @@ dataSources:
   - kind: ethereum/contract
     name: Token
     network: mainnet
+    source:
+      abi: ERC20
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.6
+      language: wasm/assemblyscript
       file: ./src/mapping.ts
+      entities:
+        - MyEntity
       abis:
         - name: ERC20
           file: ./abis/ERC20.json
@@ -404,7 +440,7 @@ dataSources:
         );
         assert!(manifest.graft.is_some());
         let graft = manifest.graft.unwrap();
-        assert_eq!(graft.base, "QmXYZ123");
+        assert_eq!(graft.base, "QmXYZ123abcdefghijklmnopqrstuvwxyz1234567890ab");
         assert_eq!(graft.block, 12345);
     }
 
@@ -414,21 +450,37 @@ dataSources:
         let manifest_path = temp_dir.path().join("subgraph.yaml");
 
         let manifest_content = r#"
-specVersion: 0.0.4
+specVersion: 1.0.0
 schema:
   file: ./schema.graphql
 dataSources:
   - kind: subgraph
     name: SourceSubgraph
+    network: mainnet
     source:
-      address: QmSourceHash123
+      address: QmSourceHash1234567890abcdefghijklmnopqrstuvwx
+      startBlock: 0
+    mapping:
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/mapping.ts
+      entities:
+        - MyEntity
+      handlers:
+        - handler: handleEntity
+          entity: MyEntity
   - kind: ethereum/contract
     name: Token
     network: mainnet
+    source:
+      abi: ERC20
     mapping:
       kind: ethereum/events
-      apiVersion: 0.0.6
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
       file: ./src/mapping.ts
+      entities:
+        - MyEntity
       abis: []
 "#;
 
@@ -443,7 +495,7 @@ dataSources:
         assert!(manifest.data_sources[0].is_subgraph_source());
         assert_eq!(
             manifest.data_sources[0].source_address,
-            Some("QmSourceHash123".to_string())
+            Some("QmSourceHash1234567890abcdefghijklmnopqrstuvwx".to_string())
         );
         // Second is the contract source
         assert_eq!(manifest.data_sources[1].name, "Token");
@@ -452,5 +504,81 @@ dataSources:
         assert_eq!(manifest.data_sources[1].source_address, None);
         // total_source_count includes both
         assert_eq!(manifest.total_source_count(), 2);
+    }
+
+    #[test]
+    fn test_load_manifest_missing_source_abi_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest_path = temp_dir.path().join("subgraph.yaml");
+
+        let manifest_content = r#"
+specVersion: 0.0.4
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Token
+    network: mainnet
+    source: {}
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      file: ./src/mapping.ts
+      entities:
+        - MyEntity
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+"#;
+
+        fs::write(&manifest_path, manifest_content).unwrap();
+
+        let result = load_manifest(&manifest_path);
+        assert!(result.is_err(), "Missing source.abi should fail parsing");
+        let err = result.unwrap_err();
+        let err_chain = format!("{:#}", err);
+        assert!(
+            err_chain.contains("abi"),
+            "Error should mention missing abi field, got: {}",
+            err_chain
+        );
+    }
+
+    #[test]
+    fn test_load_manifest_missing_mapping_abis_fails() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest_path = temp_dir.path().join("subgraph.yaml");
+
+        let manifest_content = r#"
+specVersion: 0.0.4
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Token
+    network: mainnet
+    source:
+      abi: ERC20
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      file: ./src/mapping.ts
+      entities:
+        - MyEntity
+"#;
+
+        fs::write(&manifest_path, manifest_content).unwrap();
+
+        let result = load_manifest(&manifest_path);
+        assert!(result.is_err(), "Missing mapping.abis should fail parsing");
+        let err = result.unwrap_err();
+        let err_chain = format!("{:#}", err);
+        assert!(
+            err_chain.contains("abis"),
+            "Error should mention missing abis field, got: {}",
+            err_chain
+        );
     }
 }
