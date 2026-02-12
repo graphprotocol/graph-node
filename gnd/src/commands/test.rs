@@ -56,6 +56,14 @@ pub fn run_test(opt: TestOpt) -> Result<()> {
     }
 }
 
+/// Check if a binary with the given name exists in any PATH directory.
+fn is_in_path(name: &str) -> bool {
+    let Some(path_var) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path_var).any(|dir| dir.join(name).is_file())
+}
+
 /// Find the Matchstick binary.
 fn find_matchstick() -> Result<PathBuf> {
     // First, check node_modules/.bin/graph-test (graph-cli's matchstick wrapper)
@@ -71,7 +79,7 @@ fn find_matchstick() -> Result<PathBuf> {
     }
 
     // Check if matchstick is in PATH
-    if which::which("matchstick").is_ok() {
+    if is_in_path("matchstick") {
         return Ok(PathBuf::from("matchstick"));
     }
 

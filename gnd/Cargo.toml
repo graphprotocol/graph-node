@@ -64,9 +64,6 @@ semver = { workspace = true }
 sha1 = "0.10"
 wasmparser = { workspace = true }
 
-# Test command
-which = "7"
-
 # Interactive prompts
 inquire = "0.7"
 
