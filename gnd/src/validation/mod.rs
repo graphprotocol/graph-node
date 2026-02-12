@@ -14,7 +14,7 @@ use graph::prelude::DeploymentHash;
 use graph::schema::{InputSchema, SchemaValidationError};
 use semver::Version;
 
-use crate::manifest::{Abi, DataSource, Manifest, Template};
+use crate::manifest::{Abi, BlockHandlerFilterKind, DataSource, Manifest, Template};
 
 /// Validate a GraphQL schema using graph-node's InputSchema validation.
 ///
@@ -67,6 +67,16 @@ pub enum ManifestValidationError {
     DuplicateName { kind: &'static str, name: String },
     /// Ethereum data source has no handlers defined.
     NoHandlers { data_source: String },
+    /// Invalid data source kind (not a valid Ethereum kind).
+    InvalidKind { data_source: String, kind: String },
+    /// Call or block handlers require a source address.
+    SourceAddressRequired { data_source: String },
+    /// Block handler constraint violation.
+    BlockHandlerConstraint { data_source: String, reason: String },
+    /// Event handler receipt requires apiVersion >= 0.0.7.
+    ReceiptRequiresApiVersion { data_source: String },
+    /// Eth call declarations require specVersion >= 1.2.0.
+    CallDeclsRequireSpecVersion { data_source: String },
 }
 
 impl std::fmt::Display for ManifestValidationError {
@@ -117,6 +127,40 @@ impl std::fmt::Display for ManifestValidationError {
                     data_source
                 )
             }
+            ManifestValidationError::InvalidKind { data_source, kind } => {
+                write!(
+                    f,
+                    "data source '{}': invalid kind '{}', expected 'ethereum' or 'ethereum/contract'",
+                    data_source, kind
+                )
+            }
+            ManifestValidationError::SourceAddressRequired { data_source } => {
+                write!(
+                    f,
+                    "data source '{}': source address is required when using call or block handlers",
+                    data_source
+                )
+            }
+            ManifestValidationError::BlockHandlerConstraint {
+                data_source,
+                reason,
+            } => {
+                write!(f, "data source '{}': {}", data_source, reason)
+            }
+            ManifestValidationError::ReceiptRequiresApiVersion { data_source } => {
+                write!(
+                    f,
+                    "data source '{}': event handlers that require transaction receipts need apiVersion >= 0.0.7",
+                    data_source
+                )
+            }
+            ManifestValidationError::CallDeclsRequireSpecVersion { data_source } => {
+                write!(
+                    f,
+                    "data source '{}': eth call declarations on event handlers require specVersion >= 1.2.0",
+                    data_source
+                )
+            }
         }
     }
 }
@@ -133,6 +177,10 @@ impl From<SubgraphManifestValidationError> for ManifestValidationError {
 /// source.abi cross-references mapping.abis, names are unique, and
 /// Ethereum data sources have at least one handler. This validation
 /// runs before codegen to catch errors early.
+///
+/// Note: Ethereum structural constraints (kind, address, block handler
+/// combos, receipt/call-decl version requirements) are validated separately
+/// in `validate_manifest` which runs during build.
 pub(crate) fn validate_manifest_files(
     manifest: &Manifest,
     manifest_dir: &Path,
@@ -235,6 +283,9 @@ pub(crate) fn validate_manifest(
 
     // Validate Ethereum data sources have at least one handler
     errors.extend(validate_handler_presence(manifest));
+
+    // Validate Ethereum-specific structural constraints
+    errors.extend(validate_ethereum_constraints(manifest));
 
     errors
 }
@@ -462,6 +513,188 @@ fn validate_handler_presence(manifest: &Manifest) -> Vec<ManifestValidationError
     errors
 }
 
+/// Valid Ethereum data source kinds (matches graph-node's `ETHEREUM_KINDS`).
+const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
+
+/// Validate Ethereum-specific structural constraints on data sources and templates.
+///
+/// This covers:
+/// - Data source kind must be `ethereum` or `ethereum/contract`
+/// - Source address is required when call or block handlers are present
+/// - Block handler filter constraints (no duplicates, no invalid combos)
+/// - Event handler receipt requires apiVersion >= 0.0.7
+/// - Eth call declarations on event handlers require specVersion >= 1.2.0
+fn validate_ethereum_constraints(manifest: &Manifest) -> Vec<ManifestValidationError> {
+    let mut errors = Vec::new();
+
+    for ds in &manifest.data_sources {
+        // Only validate Ethereum data sources (identified by having source_abi)
+        if ds.source_abi.is_none() {
+            continue;
+        }
+        errors.extend(validate_ethereum_kind(&ds.name, &ds.kind));
+        errors.extend(validate_source_address_required(
+            &ds.name,
+            ds.source_address.is_some(),
+            &ds.call_handlers,
+            &ds.block_handlers,
+        ));
+        errors.extend(validate_block_handler_constraints(
+            &ds.name,
+            &ds.block_handlers,
+        ));
+        errors.extend(validate_receipt_api_version(
+            &ds.name,
+            ds.api_version.as_ref(),
+            &ds.event_handlers,
+        ));
+        errors.extend(validate_call_decls_spec_version(
+            &ds.name,
+            &manifest.spec_version,
+            &ds.event_handlers,
+        ));
+    }
+
+    for t in &manifest.templates {
+        if t.source_abi.is_none() {
+            continue;
+        }
+        errors.extend(validate_ethereum_kind(&t.name, &t.kind));
+        // Templates don't have source addresses — skip address validation
+        errors.extend(validate_block_handler_constraints(
+            &t.name,
+            &t.block_handlers,
+        ));
+        errors.extend(validate_receipt_api_version(
+            &t.name,
+            t.api_version.as_ref(),
+            &t.event_handlers,
+        ));
+        errors.extend(validate_call_decls_spec_version(
+            &t.name,
+            &manifest.spec_version,
+            &t.event_handlers,
+        ));
+    }
+
+    errors
+}
+
+/// Validate that an Ethereum data source has a valid kind.
+fn validate_ethereum_kind(name: &str, kind: &str) -> Vec<ManifestValidationError> {
+    if ETHEREUM_KINDS.contains(&kind) {
+        vec![]
+    } else {
+        vec![ManifestValidationError::InvalidKind {
+            data_source: name.to_string(),
+            kind: kind.to_string(),
+        }]
+    }
+}
+
+/// Validate that a source address is present when call or block handlers are used.
+fn validate_source_address_required(
+    name: &str,
+    has_address: bool,
+    call_handlers: &[String],
+    block_handlers: &[crate::manifest::BlockHandler],
+) -> Vec<ManifestValidationError> {
+    if !has_address && (!call_handlers.is_empty() || !block_handlers.is_empty()) {
+        vec![ManifestValidationError::SourceAddressRequired {
+            data_source: name.to_string(),
+        }]
+    } else {
+        vec![]
+    }
+}
+
+/// Validate block handler constraints:
+/// - At most one handler of each filter type
+/// - Non-filtered handlers cannot be mixed with polling or once handlers
+fn validate_block_handler_constraints(
+    name: &str,
+    block_handlers: &[crate::manifest::BlockHandler],
+) -> Vec<ManifestValidationError> {
+    let mut errors = Vec::new();
+
+    let mut non_filtered = 0u32;
+    let mut call_filtered = 0u32;
+    let mut polling_filtered = 0u32;
+    let mut once_filtered = 0u32;
+
+    for handler in block_handlers {
+        match &handler.filter {
+            None => non_filtered += 1,
+            Some(BlockHandlerFilterKind::Call) => call_filtered += 1,
+            Some(BlockHandlerFilterKind::Once) => once_filtered += 1,
+            Some(BlockHandlerFilterKind::Polling) => polling_filtered += 1,
+        }
+    }
+
+    // Check for duplicates of any type
+    if non_filtered > 1 || call_filtered > 1 || once_filtered > 1 || polling_filtered > 1 {
+        errors.push(ManifestValidationError::BlockHandlerConstraint {
+            data_source: name.to_string(),
+            reason: "duplicated block handlers".to_string(),
+        });
+    }
+
+    // Non-filtered handlers cannot be mixed with polling or once handlers
+    // (mixing with call filter is allowed)
+    if non_filtered > 0 && (polling_filtered > 0 || once_filtered > 0) {
+        errors.push(ManifestValidationError::BlockHandlerConstraint {
+            data_source: name.to_string(),
+            reason: "combination of non-filtered and polling/once block handlers is not allowed"
+                .to_string(),
+        });
+    }
+
+    errors
+}
+
+/// Validate that event handlers requiring receipts have apiVersion >= 0.0.7.
+fn validate_receipt_api_version(
+    name: &str,
+    api_version: Option<&Version>,
+    event_handlers: &[crate::manifest::EventHandler],
+) -> Vec<ManifestValidationError> {
+    let api_version = match api_version {
+        Some(v) => v,
+        None => return vec![],
+    };
+
+    if *api_version >= Version::new(0, 0, 7) {
+        return vec![];
+    }
+
+    if event_handlers.iter().any(|h| h.receipt) {
+        vec![ManifestValidationError::ReceiptRequiresApiVersion {
+            data_source: name.to_string(),
+        }]
+    } else {
+        vec![]
+    }
+}
+
+/// Validate that event handlers with eth call declarations have specVersion >= 1.2.0.
+fn validate_call_decls_spec_version(
+    name: &str,
+    spec_version: &Version,
+    event_handlers: &[crate::manifest::EventHandler],
+) -> Vec<ManifestValidationError> {
+    if *spec_version >= Version::new(1, 2, 0) {
+        return vec![];
+    }
+
+    if event_handlers.iter().any(|h| h.has_call_decls) {
+        vec![ManifestValidationError::CallDeclsRequireSpecVersion {
+            data_source: name.to_string(),
+        }]
+    } else {
+        vec![]
+    }
+}
+
 /// Format manifest validation errors for display.
 pub(crate) fn format_manifest_errors(errors: &[ManifestValidationError]) -> String {
     errors
@@ -474,8 +707,31 @@ pub(crate) fn format_manifest_errors(errors: &[ManifestValidationError]) -> Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::manifest::{BlockHandler, EventHandler};
     use std::fs;
     use tempfile::TempDir;
+
+    fn event_handler(name: &str) -> EventHandler {
+        EventHandler {
+            handler: name.to_string(),
+            receipt: false,
+            has_call_decls: false,
+        }
+    }
+
+    fn block_handler(name: &str) -> BlockHandler {
+        BlockHandler {
+            handler: name.to_string(),
+            filter: None,
+        }
+    }
+
+    fn block_handler_with_filter(name: &str, filter: BlockHandlerFilterKind) -> BlockHandler {
+        BlockHandler {
+            handler: name.to_string(),
+            filter: Some(filter),
+        }
+    }
 
     #[test]
     fn test_validate_valid_schema() {
@@ -804,7 +1060,7 @@ type Post @entity {
             file: "abis/ERC20.json".to_string(),
         }];
         ds.source_abi = Some("ERC20".to_string());
-        ds.event_handlers = vec!["handleTransfer".to_string()];
+        ds.event_handlers = vec![event_handler("handleTransfer")];
 
         let manifest = create_test_manifest(vec![ds], vec![]);
 
@@ -841,7 +1097,7 @@ type Post @entity {
             name: "ERC20".to_string(),
             file: "abis/ERC20.json".to_string(),
         }];
-        ds.event_handlers = vec!["handleTransfer".to_string()];
+        ds.event_handlers = vec![event_handler("handleTransfer")];
 
         let manifest = create_test_manifest(vec![ds], vec![]);
         let errors = validate_source_abi_references(&manifest);
@@ -962,7 +1218,7 @@ type Post @entity {
     fn test_validate_handler_presence_with_event_handler() {
         let mut ds = create_data_source("ds1", Some("mainnet"), None);
         ds.source_abi = Some("ERC20".to_string());
-        ds.event_handlers = vec!["handleTransfer".to_string()];
+        ds.event_handlers = vec![event_handler("handleTransfer")];
 
         let manifest = create_test_manifest(vec![ds], vec![]);
         let errors = validate_handler_presence(&manifest);
@@ -984,7 +1240,7 @@ type Post @entity {
     fn test_validate_handler_presence_with_block_handler() {
         let mut ds = create_data_source("ds1", Some("mainnet"), None);
         ds.source_abi = Some("ERC20".to_string());
-        ds.block_handlers = vec!["handleBlock".to_string()];
+        ds.block_handlers = vec![block_handler("handleBlock")];
 
         let manifest = create_test_manifest(vec![ds], vec![]);
         let errors = validate_handler_presence(&manifest);
@@ -1037,5 +1293,242 @@ type Post @entity {
             &errors[0],
             ManifestValidationError::NoHandlers { data_source } if data_source == "DynToken"
         ));
+    }
+
+    // --- Ethereum kind validation tests ---
+
+    #[test]
+    fn test_validate_valid_ethereum_kind() {
+        assert!(validate_ethereum_kind("ds1", "ethereum/contract").is_empty());
+        assert!(validate_ethereum_kind("ds1", "ethereum").is_empty());
+    }
+
+    #[test]
+    fn test_validate_invalid_ethereum_kind() {
+        let errors = validate_ethereum_kind("ds1", "ethereum/invalid");
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::InvalidKind { data_source, kind }
+                if data_source == "ds1" && kind == "ethereum/invalid"
+        ));
+    }
+
+    // --- Source address required tests ---
+
+    #[test]
+    fn test_validate_address_not_required_for_event_handlers_only() {
+        let errors = validate_source_address_required("ds1", false, &[], &[]);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_address_required_for_call_handlers() {
+        let call_handlers = vec!["handleCall".to_string()];
+        let errors = validate_source_address_required("ds1", false, &call_handlers, &[]);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::SourceAddressRequired { data_source } if data_source == "ds1"
+        ));
+    }
+
+    #[test]
+    fn test_validate_address_required_for_block_handlers() {
+        let block_handlers = vec![block_handler("handleBlock")];
+        let errors = validate_source_address_required("ds1", false, &[], &block_handlers);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::SourceAddressRequired { data_source } if data_source == "ds1"
+        ));
+    }
+
+    #[test]
+    fn test_validate_address_present_with_call_handlers() {
+        let call_handlers = vec!["handleCall".to_string()];
+        let errors = validate_source_address_required("ds1", true, &call_handlers, &[]);
+        assert!(errors.is_empty());
+    }
+
+    // --- Block handler constraint tests ---
+
+    #[test]
+    fn test_validate_block_handlers_single_non_filtered() {
+        let handlers = vec![block_handler("handleBlock")];
+        let errors = validate_block_handler_constraints("ds1", &handlers);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_block_handlers_single_call_filtered() {
+        let handlers = vec![block_handler_with_filter(
+            "handleBlock",
+            BlockHandlerFilterKind::Call,
+        )];
+        let errors = validate_block_handler_constraints("ds1", &handlers);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_block_handlers_non_filtered_with_call_filter_allowed() {
+        // Non-filtered + call filter is allowed
+        let handlers = vec![
+            block_handler("handleBlock"),
+            block_handler_with_filter("handleCallBlock", BlockHandlerFilterKind::Call),
+        ];
+        let errors = validate_block_handler_constraints("ds1", &handlers);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_block_handlers_duplicate_non_filtered() {
+        let handlers = vec![block_handler("handleBlock1"), block_handler("handleBlock2")];
+        let errors = validate_block_handler_constraints("ds1", &handlers);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::BlockHandlerConstraint { data_source, reason }
+                if data_source == "ds1" && reason.contains("duplicated")
+        ));
+    }
+
+    #[test]
+    fn test_validate_block_handlers_duplicate_call_filtered() {
+        let handlers = vec![
+            block_handler_with_filter("h1", BlockHandlerFilterKind::Call),
+            block_handler_with_filter("h2", BlockHandlerFilterKind::Call),
+        ];
+        let errors = validate_block_handler_constraints("ds1", &handlers);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::BlockHandlerConstraint { reason, .. }
+                if reason.contains("duplicated")
+        ));
+    }
+
+    #[test]
+    fn test_validate_block_handlers_non_filtered_with_polling_not_allowed() {
+        let handlers = vec![
+            block_handler("handleBlock"),
+            block_handler_with_filter("handlePolling", BlockHandlerFilterKind::Polling),
+        ];
+        let errors = validate_block_handler_constraints("ds1", &handlers);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::BlockHandlerConstraint { reason, .. }
+                if reason.contains("combination")
+        ));
+    }
+
+    #[test]
+    fn test_validate_block_handlers_non_filtered_with_once_not_allowed() {
+        let handlers = vec![
+            block_handler("handleBlock"),
+            block_handler_with_filter("handleInit", BlockHandlerFilterKind::Once),
+        ];
+        let errors = validate_block_handler_constraints("ds1", &handlers);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::BlockHandlerConstraint { reason, .. }
+                if reason.contains("combination")
+        ));
+    }
+
+    // --- Receipt API version tests ---
+
+    #[test]
+    fn test_validate_receipt_api_version_ok() {
+        let handlers = vec![EventHandler {
+            handler: "handleTransfer".to_string(),
+            receipt: true,
+            has_call_decls: false,
+        }];
+        let errors = validate_receipt_api_version("ds1", Some(&Version::new(0, 0, 7)), &handlers);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_receipt_api_version_too_low() {
+        let handlers = vec![EventHandler {
+            handler: "handleTransfer".to_string(),
+            receipt: true,
+            has_call_decls: false,
+        }];
+        let errors = validate_receipt_api_version("ds1", Some(&Version::new(0, 0, 6)), &handlers);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::ReceiptRequiresApiVersion { data_source }
+                if data_source == "ds1"
+        ));
+    }
+
+    #[test]
+    fn test_validate_receipt_no_receipt_any_version() {
+        let handlers = vec![event_handler("handleTransfer")];
+        let errors = validate_receipt_api_version("ds1", Some(&Version::new(0, 0, 5)), &handlers);
+        assert!(errors.is_empty());
+    }
+
+    // --- Call declarations spec version tests ---
+
+    #[test]
+    fn test_validate_call_decls_spec_version_ok() {
+        let handlers = vec![EventHandler {
+            handler: "handleTransfer".to_string(),
+            receipt: false,
+            has_call_decls: true,
+        }];
+        let errors = validate_call_decls_spec_version("ds1", &Version::new(1, 2, 0), &handlers);
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_call_decls_spec_version_too_low() {
+        let handlers = vec![EventHandler {
+            handler: "handleTransfer".to_string(),
+            receipt: false,
+            has_call_decls: true,
+        }];
+        let errors = validate_call_decls_spec_version("ds1", &Version::new(1, 1, 0), &handlers);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::CallDeclsRequireSpecVersion { data_source }
+                if data_source == "ds1"
+        ));
+    }
+
+    #[test]
+    fn test_validate_call_decls_no_decls_any_version() {
+        let handlers = vec![event_handler("handleTransfer")];
+        let errors = validate_call_decls_spec_version("ds1", &Version::new(0, 0, 4), &handlers);
+        assert!(errors.is_empty());
+    }
+
+    // --- Integration test: validate_ethereum_constraints ---
+
+    #[test]
+    fn test_validate_ethereum_constraints_valid() {
+        let mut ds = create_data_source("ds1", Some("mainnet"), Some(Version::new(0, 0, 7)));
+        ds.source_abi = Some("ERC20".to_string());
+        ds.source_address = Some("0x1234".to_string());
+        ds.event_handlers = vec![event_handler("handleTransfer")];
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_ethereum_constraints(&manifest);
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_validate_ethereum_constraints_skips_non_ethereum() {
+        let ds = create_subgraph_data_source("sub1", "QmHash123");
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_ethereum_constraints(&manifest);
+        assert!(errors.is_empty());
     }
 }

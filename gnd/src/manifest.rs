@@ -14,7 +14,7 @@ use graph::data_source::{
     UnresolvedDataSource as GraphUnresolvedDS, UnresolvedDataSourceTemplate as GraphUnresolvedDST,
 };
 use graph::prelude::DeploymentHash;
-use graph_chain_ethereum::Chain;
+use graph_chain_ethereum::{BlockHandlerFilter, Chain};
 use semver::Version;
 
 use crate::output::{step, Step};
@@ -68,12 +68,12 @@ pub struct DataSource {
     pub source_address: Option<String>,
     /// The ABI name referenced in `source.abi` (Ethereum data sources only).
     pub source_abi: Option<String>,
-    /// Event handler names from the mapping.
-    pub event_handlers: Vec<String>,
+    /// Event handlers from the mapping.
+    pub event_handlers: Vec<EventHandler>,
     /// Call handler names from the mapping.
     pub call_handlers: Vec<String>,
-    /// Block handler names from the mapping.
-    pub block_handlers: Vec<String>,
+    /// Block handlers from the mapping (with filter info for validation).
+    pub block_handlers: Vec<BlockHandler>,
 }
 
 impl DataSource {
@@ -94,12 +94,12 @@ pub struct Template {
     pub abis: Vec<Abi>,
     /// The ABI name referenced in `source.abi` (Ethereum templates only).
     pub source_abi: Option<String>,
-    /// Event handler names from the mapping.
-    pub event_handlers: Vec<String>,
+    /// Event handlers from the mapping.
+    pub event_handlers: Vec<EventHandler>,
     /// Call handler names from the mapping.
     pub call_handlers: Vec<String>,
-    /// Block handler names from the mapping.
-    pub block_handlers: Vec<String>,
+    /// Block handlers from the mapping (with filter info for validation).
+    pub block_handlers: Vec<BlockHandler>,
 }
 
 impl Manifest {
@@ -114,6 +114,31 @@ impl Manifest {
 pub struct Abi {
     pub name: String,
     pub file: String,
+}
+
+/// An event handler with metadata needed for validation.
+#[derive(Debug)]
+pub struct EventHandler {
+    pub handler: String,
+    /// Whether this handler requires transaction receipts.
+    pub receipt: bool,
+    /// Whether this handler has eth call declarations.
+    pub has_call_decls: bool,
+}
+
+/// A block handler with filter info needed for validation.
+#[derive(Debug)]
+pub struct BlockHandler {
+    pub handler: String,
+    pub filter: Option<BlockHandlerFilterKind>,
+}
+
+/// The kind of filter on a block handler (simplified from graph-node's `BlockHandlerFilter`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BlockHandlerFilterKind {
+    Call,
+    Once,
+    Polling,
 }
 
 /// Load a subgraph manifest from a YAML file.
@@ -197,7 +222,11 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
                 .mapping
                 .event_handlers
                 .iter()
-                .map(|h| h.handler.clone())
+                .map(|h| EventHandler {
+                    handler: h.handler.clone(),
+                    receipt: h.receipt,
+                    has_call_decls: !h.calls.raw_decls.is_empty(),
+                })
                 .collect(),
             call_handlers: eth
                 .mapping
@@ -209,7 +238,10 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
                 .mapping
                 .block_handlers
                 .iter()
-                .map(|h| h.handler.clone())
+                .map(|h| BlockHandler {
+                    handler: h.handler.clone(),
+                    filter: h.filter.as_ref().map(convert_block_handler_filter),
+                })
                 .collect(),
         },
         GraphUnresolvedDS::Subgraph(sub) => DataSource {
@@ -287,7 +319,11 @@ fn convert_template(t: GraphUnresolvedDST<Chain>) -> Template {
                 .mapping
                 .event_handlers
                 .iter()
-                .map(|h| h.handler.clone())
+                .map(|h| EventHandler {
+                    handler: h.handler.clone(),
+                    receipt: h.receipt,
+                    has_call_decls: !h.calls.raw_decls.is_empty(),
+                })
                 .collect(),
             call_handlers: eth
                 .mapping
@@ -299,7 +335,10 @@ fn convert_template(t: GraphUnresolvedDST<Chain>) -> Template {
                 .mapping
                 .block_handlers
                 .iter()
-                .map(|h| h.handler.clone())
+                .map(|h| BlockHandler {
+                    handler: h.handler.clone(),
+                    filter: h.filter.as_ref().map(convert_block_handler_filter),
+                })
                 .collect(),
         },
         GraphUnresolvedDST::Offchain(off) => Template {
@@ -336,6 +375,15 @@ fn convert_template(t: GraphUnresolvedDST<Chain>) -> Template {
             call_handlers: vec![],
             block_handlers: vec![],
         },
+    }
+}
+
+/// Convert a graph-node `BlockHandlerFilter` to gnd's simplified `BlockHandlerFilterKind`.
+fn convert_block_handler_filter(filter: &BlockHandlerFilter) -> BlockHandlerFilterKind {
+    match filter {
+        BlockHandlerFilter::Call => BlockHandlerFilterKind::Call,
+        BlockHandlerFilter::Once => BlockHandlerFilterKind::Once,
+        BlockHandlerFilter::Polling { .. } => BlockHandlerFilterKind::Polling,
     }
 }
 

@@ -639,7 +639,12 @@ dataSources:
       file: ./mapping.ts
       entities:
         - MyEntity
-      abis: []
+      abis:
+        - name: TestContract
+          file: ./TestContract.json
+      eventHandlers:
+        - event: Transfer(address,address,uint256)
+          handler: handleTransfer
 "#;
         fs::write(project_dir.join("subgraph.yaml"), manifest_content).unwrap();
 
@@ -652,6 +657,7 @@ type MyEntity @entity(immutable: true) {
 "#;
         fs::write(project_dir.join("schema.graphql"), schema_content).unwrap();
         fs::write(project_dir.join("mapping.ts"), "").unwrap();
+        fs::write(project_dir.join("TestContract.json"), "[]").unwrap();
 
         // Run codegen
         let opt = CodegenOpt {
@@ -760,6 +766,9 @@ dataSources:
       abis:
         - name: ExampleContract
           file: ./Abi.json
+      eventHandlers:
+        - event: ExampleEvent(string)
+          handler: handleExampleEvent
 "#;
         fs::write(project_dir.join("subgraph.yaml"), manifest_content).unwrap();
 
