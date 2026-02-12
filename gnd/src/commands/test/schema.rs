@@ -1,8 +1,10 @@
 //! JSON schema types for test files and result types.
 //!
 //! Test files are JSON documents that describe a sequence of mock blockchain
-//! blocks with triggers (log events, block events) and GraphQL assertions to
-//! validate the resulting entity state after indexing.
+//! blocks with triggers (log events) and GraphQL assertions to validate the
+//! resulting entity state after indexing. Block triggers are auto-injected
+//! for every block (both `Start` and `End` types) so block handlers with any
+//! filter (`once`, `polling`, or none) fire correctly without explicit config.
 //!
 //! ## Test file format
 //!
@@ -12,9 +14,8 @@
 //!   "blocks": [
 //!     {
 //!       "number": 1,
-//!       "triggers": [
+//!       "events": [
 //!         {
-//!           "type": "log",
 //!           "address": "0x1234...",
 //!           "event": "Transfer(address indexed from, address indexed to, uint256 value)",
 //!           "params": { "from": "0xaaaa...", "to": "0xbbbb...", "value": "1000" }
@@ -56,7 +57,7 @@ pub struct TestFile {
     pub assertions: Vec<Assertion>,
 }
 
-/// A mock blockchain block containing zero or more triggers.
+/// A mock blockchain block containing zero or more events.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TestBlock {
     /// Block number. If omitted, auto-increments starting from `start_block`
@@ -79,11 +80,11 @@ pub struct TestBlock {
     #[serde(default, rename = "baseFeePerGas")]
     pub base_fee_per_gas: Option<String>,
 
-    /// Triggers within this block (log events, block events).
-    /// Multiple triggers per block are supported and will be sorted by
+    /// Log events within this block. Block triggers are auto-injected.
+    /// Multiple events per block are supported and will be sorted by
     /// graph-node's trigger ordering (block start -> events by logIndex -> block end).
     #[serde(default)]
-    pub triggers: Vec<TestTrigger>,
+    pub events: Vec<LogEvent>,
 
     /// Mock contract call responses for this specific block.
     /// These are pre-cached in the database before the test runs so that
@@ -92,33 +93,18 @@ pub struct TestBlock {
     pub eth_calls: Vec<MockEthCall>,
 }
 
-/// A trigger within a block. The `type` field determines the variant.
-///
-/// JSON example for a log trigger:
-/// ```json
-/// { "type": "log", "address": "0x...", "event": "Transfer(...)", "params": {...} }
-/// ```
-///
-/// JSON example for a block trigger:
-/// ```json
-/// { "type": "block" }
-/// ```
-#[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum TestTrigger {
-    /// An Ethereum log (event) trigger. This is the most common trigger type.
-    Log(LogTrigger),
-    /// A block-level trigger that fires at the end of block processing.
-    Block(BlockTrigger),
-}
-
-/// A mock Ethereum event log trigger.
+/// A mock Ethereum event log.
 ///
 /// The event signature is parsed and parameters are ABI-encoded into the
 /// proper topics (indexed params) and data (non-indexed params) format
 /// that graph-node expects.
+///
+/// JSON example:
+/// ```json
+/// { "address": "0x...", "event": "Transfer(...)", "params": {...} }
+/// ```
 #[derive(Debug, Clone, Deserialize)]
-pub struct LogTrigger {
+pub struct LogEvent {
     /// Contract address that emitted the event (checksummed or lowercase hex).
     pub address: String,
 
@@ -144,12 +130,6 @@ pub struct LogTrigger {
     #[serde(default)]
     pub tx_hash: Option<String>,
 }
-
-/// A block-level trigger. Fires as `EthereumBlockTriggerType::End`,
-/// meaning it runs after all event handlers in the block.
-/// No additional fields needed — the block data comes from the parent TestBlock.
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct BlockTrigger {}
 
 /// A mock contract call response that will be pre-cached for a specific block.
 ///

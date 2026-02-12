@@ -20,9 +20,10 @@
 //! - A `LightEthereumBlock` with proper parent hash chaining
 //! - Dummy transactions for each unique tx hash (graph-node requires
 //!   matching transactions in the block for log processing)
-//! - `EthereumTrigger` variants for each trigger in the test JSON
+//! - `EthereumTrigger` variants for each log trigger in the test JSON
+//! - Auto-injected `Start` and `End` block triggers (so block handlers fire correctly)
 
-use super::schema::{LogTrigger, TestFile, TestTrigger};
+use super::schema::{LogEvent, TestFile};
 use anyhow::{anyhow, Context, Result};
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::prelude::alloy::dyn_abi::{DynSolType, DynSolValue};
@@ -77,22 +78,24 @@ pub fn build_blocks_with_triggers(
 
         let mut triggers = Vec::new();
 
-        for (log_index, trigger) in test_block.triggers.iter().enumerate() {
-            match trigger {
-                TestTrigger::Log(log_trigger) => {
-                    let eth_trigger =
-                        build_log_trigger(number, hash, log_index as u64, log_trigger)?;
-                    triggers.push(eth_trigger);
-                }
-                TestTrigger::Block(_) => {
-                    // Block triggers fire at block end, after all event handlers.
-                    triggers.push(EthereumTrigger::Block(
-                        BlockPtr::new(hash.into(), number as i32),
-                        EthereumBlockTriggerType::End,
-                    ));
-                }
-            }
+        for (log_index, log_event) in test_block.events.iter().enumerate() {
+            let eth_trigger = build_log_trigger(number, hash, log_index as u64, log_event)?;
+            triggers.push(eth_trigger);
         }
+
+        // Auto-inject block triggers for every block so that block handlers
+        // with any filter fire correctly:
+        // - Start: matches `once` handlers (at start_block) and initialization handlers
+        // - End: matches unfiltered and `polling` handlers
+        let block_ptr = BlockPtr::new(hash.into(), number as i32);
+        triggers.push(EthereumTrigger::Block(
+            block_ptr.clone(),
+            EthereumBlockTriggerType::Start,
+        ));
+        triggers.push(EthereumTrigger::Block(
+            block_ptr,
+            EthereumBlockTriggerType::End,
+        ));
 
         let block = create_block_with_triggers(
             number,
@@ -122,7 +125,7 @@ fn build_log_trigger(
     block_number: u64,
     block_hash: B256,
     log_index: u64,
-    trigger: &LogTrigger,
+    trigger: &LogEvent,
 ) -> Result<EthereumTrigger> {
     let address: Address = trigger
         .address
