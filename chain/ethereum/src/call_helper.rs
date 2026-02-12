@@ -56,6 +56,7 @@ const RPC_EXECUTION_ERRORS: &[&str] = &[
     "vm execution error",
     "invalidjump",
     "notactivated",
+    "invalidfeopcode",
 ];
 
 /// Helper that checks if a geth style RPC error message corresponds to a revert.
