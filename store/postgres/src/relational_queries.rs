@@ -1440,6 +1440,24 @@ impl<'a> Filter<'a> {
             value: &'s Value,
         ) -> Result<Filter<'s>, StoreError> {
             let column = table.column_for_field(attr)?;
+
+            // Case-insensitive operations only make sense for String columns.
+            // Other types (Bytes, BigInt, Int, etc.) don't have a concept of
+            // case and would fail at the SQL level (e.g. `bytea ~~* bytea`).
+            if matches!(op, ContainsOp::ILike | ContainsOp::NotILike)
+                && !matches!(column.column_type(), ColumnType::String)
+            {
+                let filter = if op.negated() {
+                    "not_contains_nocase"
+                } else {
+                    "contains_nocase"
+                };
+                return Err(StoreError::UnsupportedFilter(
+                    filter.to_owned(),
+                    value.to_string(),
+                ));
+            }
+
             let pattern = QueryValue::new(value, column.column_type())?;
             let pattern = match &pattern.value {
                 SqlValue::String(s) => {
