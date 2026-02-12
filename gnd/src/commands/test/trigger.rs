@@ -67,6 +67,14 @@ pub fn build_blocks_with_triggers(
         // Default timestamp simulates 12-second block times.
         let timestamp = test_block.timestamp.unwrap_or(number * 12);
 
+        // Parse base fee per gas if provided (EIP-1559 support).
+        let base_fee_per_gas = test_block
+            .base_fee_per_gas
+            .as_ref()
+            .map(|s| s.parse::<u64>())
+            .transpose()
+            .context("Invalid baseFeePerGas value")?;
+
         let mut triggers = Vec::new();
 
         for (log_index, trigger) in test_block.triggers.iter().enumerate() {
@@ -86,7 +94,14 @@ pub fn build_blocks_with_triggers(
             }
         }
 
-        let block = create_block_with_triggers(number, hash, parent_hash, timestamp, triggers)?;
+        let block = create_block_with_triggers(
+            number,
+            hash,
+            parent_hash,
+            timestamp,
+            base_fee_per_gas,
+            triggers,
+        )?;
         blocks.push(block);
 
         // Chain to next block.
@@ -355,27 +370,50 @@ fn sol_value_to_topic(value: &DynSolValue) -> Result<B256> {
     }
 }
 
-/// Create a `BlockWithTriggers<Chain>` from block metadata and triggers.
+/// Create a dummy transaction with a specific hash for block transaction lists.
 ///
-/// Constructs a minimal but valid Ethereum block including:
-/// - Block header with number, hash, parent_hash
-/// - Dummy transactions for each unique tx hash referenced by log triggers
-///   (graph-node requires matching transactions in the block body)
-/// - The triggers themselves, which get sorted by graph-node's ordering logic
+/// Graph-node looks up transactions by hash during log processing, so we need
+/// matching dummy transactions in the block body.
+fn dummy_transaction(
+    block_number: u64,
+    block_hash: B256,
+    transaction_index: u64,
+    transaction_hash: B256,
+) -> graph::prelude::alloy::rpc::types::Transaction<graph::prelude::alloy::consensus::TxEnvelope> {
+    use graph::prelude::alloy::consensus::transaction::Recovered;
+    use graph::prelude::alloy::consensus::{Signed, TxEnvelope, TxLegacy};
+    use graph::prelude::alloy::primitives::{Address, Signature, U256};
+    use graph::prelude::alloy::rpc::types::Transaction;
+
+    let signed = Signed::new_unchecked(
+        TxLegacy::default(),
+        Signature::new(U256::from(1), U256::from(1), false),
+        transaction_hash,
+    );
+
+    Transaction {
+        inner: Recovered::new_unchecked(TxEnvelope::Legacy(signed), Address::ZERO),
+        block_hash: Some(block_hash),
+        block_number: Some(block_number),
+        transaction_index: Some(transaction_index),
+        effective_gas_price: None,
+    }
+}
+
+/// Create a `BlockWithTriggers<Chain>` from block metadata and triggers.
 fn create_block_with_triggers(
     number: u64,
     hash: B256,
     parent_hash: B256,
-    _timestamp: u64,
+    timestamp: u64,
+    base_fee_per_gas: Option<u64>,
     triggers: Vec<EthereumTrigger>,
 ) -> Result<BlockWithTriggers<Chain>> {
-    use graph::prelude::alloy::rpc::types::BlockTransactions;
-    use graph::prelude::{create_dummy_transaction, create_minimal_block_for_test};
+    use graph::prelude::alloy::consensus::Header as ConsensusHeader;
+    use graph::prelude::alloy::rpc::types::{Block, BlockTransactions, Header};
     use std::collections::HashSet;
 
     // Collect unique transaction hashes from log triggers.
-    // Graph-node looks up the transaction by hash during log processing,
-    // so we need corresponding dummy transactions in the block body.
     let mut tx_hashes: HashSet<B256> = HashSet::new();
     for trigger in &triggers {
         if let EthereumTrigger::Log(LogRef::FullLog(log, _)) = trigger {
@@ -388,22 +426,26 @@ fn create_block_with_triggers(
     let transactions: Vec<_> = tx_hashes
         .into_iter()
         .enumerate()
-        .map(|(idx, tx_hash)| create_dummy_transaction(number, hash, Some(idx as u64), tx_hash))
+        .map(|(idx, tx_hash)| dummy_transaction(number, hash, idx as u64, tx_hash))
         .collect();
 
-    // Build a minimal block with our hash/parent_hash and attach transactions.
-    let alloy_block = create_minimal_block_for_test(number, hash)
-        .map_header(|mut header| {
-            header.inner.parent_hash = parent_hash;
-            header
-        })
-        .with_transactions(BlockTransactions::Full(transactions));
+    let alloy_block = Block::empty(Header {
+        hash,
+        inner: ConsensusHeader {
+            number,
+            parent_hash,
+            timestamp,
+            base_fee_per_gas,
+            ..Default::default()
+        },
+        total_difficulty: None,
+        size: None,
+    })
+    .with_transactions(BlockTransactions::Full(transactions));
 
     let light_block = LightEthereumBlock::new(alloy_block.into());
     let finality_block = BlockFinality::Final(Arc::new(light_block));
 
-    // BlockWithTriggers::new automatically sorts triggers by graph-node's
-    // standard ordering (block start → events by logIndex → block end).
     Ok(BlockWithTriggers::new(
         finality_block,
         triggers,

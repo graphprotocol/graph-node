@@ -74,6 +74,11 @@ pub struct TestBlock {
     #[serde(default)]
     pub timestamp: Option<u64>,
 
+    /// Base fee per gas (EIP-1559). If omitted, defaults to None (pre-EIP-1559 blocks).
+    /// Specified as a decimal string to handle large values (e.g., "15000000000").
+    #[serde(default, rename = "baseFeePerGas")]
+    pub base_fee_per_gas: Option<String>,
+
     /// Triggers within this block (log events, block events).
     /// Multiple triggers per block are supported and will be sorted by
     /// graph-node's trigger ordering (block start -> events by logIndex -> block end).
