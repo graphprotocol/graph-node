@@ -15,7 +15,7 @@ use graph::prelude::DeploymentHash;
 use graph::schema::{InputSchema, SchemaValidationError};
 use semver::Version;
 
-use crate::manifest::{Abi, BlockHandlerFilterKind, DataSource, Manifest, Template};
+use crate::manifest::{Abi, BlockHandlerFilterKind, CallHandler, DataSource, Manifest, Template};
 
 /// Validate a GraphQL schema using graph-node's InputSchema validation.
 ///
@@ -85,6 +85,18 @@ pub enum ManifestValidationError {
     },
     /// Failed to parse a compiled WASM file.
     InvalidWasm { path: String, reason: String },
+    /// Event handler references an event signature not found in the ABI.
+    EventNotInAbi {
+        data_source: String,
+        event: String,
+        abi_name: String,
+    },
+    /// Call handler references a function signature not found in the ABI.
+    FunctionNotInAbi {
+        data_source: String,
+        function: String,
+        abi_name: String,
+    },
 }
 
 impl std::fmt::Display for ManifestValidationError {
@@ -183,6 +195,28 @@ impl std::fmt::Display for ManifestValidationError {
             ManifestValidationError::InvalidWasm { path, reason } => {
                 write!(f, "invalid WASM file {}: {}", path, reason)
             }
+            ManifestValidationError::EventNotInAbi {
+                data_source,
+                event,
+                abi_name,
+            } => {
+                write!(
+                    f,
+                    "data source '{}': event '{}' not found in ABI '{}'",
+                    data_source, event, abi_name
+                )
+            }
+            ManifestValidationError::FunctionNotInAbi {
+                data_source,
+                function,
+                abi_name,
+            } => {
+                write!(
+                    f,
+                    "data source '{}': function '{}' not found in ABI '{}'",
+                    data_source, function, abi_name
+                )
+            }
         }
     }
 }
@@ -196,8 +230,9 @@ impl From<SubgraphManifestValidationError> for ManifestValidationError {
 /// Validate manifest file references.
 ///
 /// Checks that all referenced files exist, ABI files are valid JSON,
-/// source.abi cross-references mapping.abis, names are unique, and
-/// Ethereum data sources have at least one handler. This validation
+/// source.abi cross-references mapping.abis, names are unique,
+/// Ethereum data sources have at least one handler, and handler
+/// signatures match events/functions in the ABI. This validation
 /// runs before codegen to catch errors early.
 ///
 /// Note: Ethereum structural constraints (kind, address, block handler
@@ -223,6 +258,9 @@ pub(crate) fn validate_manifest_files(
 
     // Validate Ethereum data sources have at least one handler
     errors.extend(validate_handler_presence(manifest));
+
+    // Validate event/call handler signatures match ABI definitions
+    errors.extend(validate_handler_signatures(manifest, manifest_dir));
 
     errors
 }
@@ -308,6 +346,9 @@ pub(crate) fn validate_manifest(
 
     // Validate Ethereum-specific structural constraints
     errors.extend(validate_ethereum_constraints(manifest));
+
+    // Validate event/call handler signatures match ABI definitions
+    errors.extend(validate_handler_signatures(manifest, manifest_dir));
 
     errors
 }
@@ -618,7 +659,7 @@ fn validate_ethereum_kind(name: &str, kind: &str) -> Vec<ManifestValidationError
 fn validate_source_address_required(
     name: &str,
     has_address: bool,
-    call_handlers: &[String],
+    call_handlers: &[CallHandler],
     block_handlers: &[crate::manifest::BlockHandler],
 ) -> Vec<ManifestValidationError> {
     if !has_address && (!call_handlers.is_empty() || !block_handlers.is_empty()) {
@@ -717,6 +758,181 @@ fn validate_call_decls_spec_version(
     }
 }
 
+/// Validate that event and call handler signatures match events/functions in the ABI.
+///
+/// For each Ethereum data source (and template) with a `source.abi`, loads the
+/// corresponding ABI file and checks:
+/// - Each event handler's `event` signature matches an event in the ABI
+/// - Each call handler's `function` signature matches a function in the ABI
+fn validate_handler_signatures(
+    manifest: &Manifest,
+    manifest_dir: &Path,
+) -> Vec<ManifestValidationError> {
+    let mut errors = Vec::new();
+
+    for ds in &manifest.data_sources {
+        if let Some(source_abi) = &ds.source_abi {
+            if let Some(abi_entry) = ds.abis.iter().find(|a| a.name == *source_abi) {
+                let abi_path = manifest_dir.join(&abi_entry.file);
+                if let Some(contract) = load_ethabi_contract(&abi_path) {
+                    errors.extend(validate_event_signatures(
+                        &ds.name,
+                        source_abi,
+                        &ds.event_handlers,
+                        &contract,
+                    ));
+                    errors.extend(validate_function_signatures(
+                        &ds.name,
+                        source_abi,
+                        &ds.call_handlers,
+                        &contract,
+                    ));
+                }
+            }
+        }
+    }
+
+    for t in &manifest.templates {
+        if let Some(source_abi) = &t.source_abi {
+            if let Some(abi_entry) = t.abis.iter().find(|a| a.name == *source_abi) {
+                let abi_path = manifest_dir.join(&abi_entry.file);
+                if let Some(contract) = load_ethabi_contract(&abi_path) {
+                    errors.extend(validate_event_signatures(
+                        &t.name,
+                        source_abi,
+                        &t.event_handlers,
+                        &contract,
+                    ));
+                    errors.extend(validate_function_signatures(
+                        &t.name,
+                        source_abi,
+                        &t.call_handlers,
+                        &contract,
+                    ));
+                }
+            }
+        }
+    }
+
+    errors
+}
+
+/// Try to load an ABI file as an `ethabi::Contract`.
+///
+/// Returns `None` if the file doesn't exist or can't be parsed (those errors
+/// are reported separately by file existence and ABI JSON validation).
+fn load_ethabi_contract(abi_path: &Path) -> Option<ethabi::Contract> {
+    let content = std::fs::read_to_string(abi_path).ok()?;
+    let normalized = crate::abi::normalize_abi_json(&content).ok()?;
+    let json_str = normalized.to_string();
+    serde_json::from_str(&json_str).ok()
+}
+
+/// Build the canonical event signature from an ethabi Event: `Name(type1,type2,...)`.
+fn ethabi_event_signature(event: &ethabi::Event) -> String {
+    let params: Vec<String> = event.inputs.iter().map(|p| p.kind.to_string()).collect();
+    format!("{}({})", event.name, params.join(","))
+}
+
+/// Build the event signature with `indexed` hints: `Name(indexed type1,type2,...)`.
+fn ethabi_event_signature_with_indexed(event: &ethabi::Event) -> String {
+    let params: Vec<String> = event
+        .inputs
+        .iter()
+        .map(|p| {
+            if p.indexed {
+                format!("indexed {}", p.kind)
+            } else {
+                p.kind.to_string()
+            }
+        })
+        .collect();
+    format!("{}({})", event.name, params.join(","))
+}
+
+/// Validate that each event handler's event signature matches an event in the ABI.
+///
+/// Matching follows the same logic as graph-node's `contract_event_with_signature`:
+/// 1. Try exact match with `indexed` hints
+/// 2. Fall back to matching without `indexed` if only one event variant exists
+fn validate_event_signatures(
+    ds_name: &str,
+    abi_name: &str,
+    event_handlers: &[crate::manifest::EventHandler],
+    contract: &ethabi::Contract,
+) -> Vec<ManifestValidationError> {
+    let mut errors = Vec::new();
+
+    let all_events: Vec<&ethabi::Event> = contract.events.values().flatten().collect();
+
+    for handler in event_handlers {
+        let signature = &handler.event;
+
+        // Try exact match with indexed hints
+        let exact_match = all_events
+            .iter()
+            .any(|e| ethabi_event_signature_with_indexed(e) == *signature);
+
+        if exact_match {
+            continue;
+        }
+
+        // Fallback: match without indexed if only one event variant with that name
+        let event_name = signature.split('(').next().unwrap_or("");
+        let matching_by_name: Vec<&&ethabi::Event> =
+            all_events.iter().filter(|e| e.name == event_name).collect();
+
+        let fallback_match = matching_by_name.len() == 1
+            && ethabi_event_signature(matching_by_name[0]) == *signature;
+
+        if !fallback_match {
+            errors.push(ManifestValidationError::EventNotInAbi {
+                data_source: ds_name.to_string(),
+                event: signature.clone(),
+                abi_name: abi_name.to_string(),
+            });
+        }
+    }
+
+    errors
+}
+
+/// Build the canonical function signature from an ethabi Function: `name(type1,type2,...)`.
+fn ethabi_function_signature(func: &ethabi::Function) -> String {
+    let params: Vec<String> = func.inputs.iter().map(|p| p.kind.to_string()).collect();
+    format!("{}({})", func.name, params.join(","))
+}
+
+/// Validate that each call handler's function signature matches a function in the ABI.
+fn validate_function_signatures(
+    ds_name: &str,
+    abi_name: &str,
+    call_handlers: &[CallHandler],
+    contract: &ethabi::Contract,
+) -> Vec<ManifestValidationError> {
+    let mut errors = Vec::new();
+
+    let all_functions: Vec<&ethabi::Function> = contract.functions.values().flatten().collect();
+
+    for handler in call_handlers {
+        let target = &handler.function;
+
+        let found = all_functions
+            .iter()
+            .any(|f| ethabi_function_signature(f) == *target);
+
+        if !found {
+            errors.push(ManifestValidationError::FunctionNotInAbi {
+                data_source: ds_name.to_string(),
+                function: target.clone(),
+                abi_name: abi_name.to_string(),
+            });
+        }
+    }
+
+    errors
+}
+
 /// Format manifest validation errors for display.
 pub(crate) fn format_manifest_errors(errors: &[ManifestValidationError]) -> String {
     errors
@@ -794,7 +1010,7 @@ pub(crate) fn collect_handler_names(ds: &DataSource) -> Vec<&str> {
         names.push(h.handler.as_str());
     }
     for h in &ds.call_handlers {
-        names.push(h.as_str());
+        names.push(h.handler.as_str());
     }
     for h in &ds.block_handlers {
         names.push(h.handler.as_str());
@@ -809,7 +1025,7 @@ pub(crate) fn collect_template_handler_names(t: &Template) -> Vec<&str> {
         names.push(h.handler.as_str());
     }
     for h in &t.call_handlers {
-        names.push(h.as_str());
+        names.push(h.handler.as_str());
     }
     for h in &t.block_handlers {
         names.push(h.handler.as_str());
@@ -826,9 +1042,17 @@ mod tests {
 
     fn event_handler(name: &str) -> EventHandler {
         EventHandler {
+            event: "Transfer(address,address,uint256)".to_string(),
             handler: name.to_string(),
             receipt: false,
             has_call_decls: false,
+        }
+    }
+
+    fn call_handler(name: &str) -> CallHandler {
+        CallHandler {
+            function: "approve(address,uint256)".to_string(),
+            handler: name.to_string(),
         }
     }
 
@@ -1165,7 +1389,7 @@ type Post @entity {
         fs::create_dir_all(temp_dir.path().join("src")).unwrap();
         fs::write(temp_dir.path().join("src/ds1.ts"), "// mapping").unwrap();
         fs::create_dir_all(temp_dir.path().join("abis")).unwrap();
-        fs::write(temp_dir.path().join("abis/ERC20.json"), "[]").unwrap();
+        fs::write(temp_dir.path().join("abis/ERC20.json"), erc20_abi_json()).unwrap();
 
         let mut ds = create_data_source("ds1", Some("mainnet"), Some(Version::new(0, 0, 6)));
         ds.abis = vec![Abi {
@@ -1342,7 +1566,7 @@ type Post @entity {
     fn test_validate_handler_presence_with_call_handler() {
         let mut ds = create_data_source("ds1", Some("mainnet"), None);
         ds.source_abi = Some("ERC20".to_string());
-        ds.call_handlers = vec!["handleApprove".to_string()];
+        ds.call_handlers = vec![call_handler("handleApprove")];
 
         let manifest = create_test_manifest(vec![ds], vec![]);
         let errors = validate_handler_presence(&manifest);
@@ -1437,7 +1661,7 @@ type Post @entity {
 
     #[test]
     fn test_validate_address_required_for_call_handlers() {
-        let call_handlers = vec!["handleCall".to_string()];
+        let call_handlers = vec![call_handler("handleCall")];
         let errors = validate_source_address_required("ds1", false, &call_handlers, &[]);
         assert_eq!(errors.len(), 1);
         assert!(matches!(
@@ -1459,7 +1683,7 @@ type Post @entity {
 
     #[test]
     fn test_validate_address_present_with_call_handlers() {
-        let call_handlers = vec!["handleCall".to_string()];
+        let call_handlers = vec![call_handler("handleCall")];
         let errors = validate_source_address_required("ds1", true, &call_handlers, &[]);
         assert!(errors.is_empty());
     }
@@ -1556,6 +1780,7 @@ type Post @entity {
     #[test]
     fn test_validate_receipt_api_version_ok() {
         let handlers = vec![EventHandler {
+            event: "Transfer(address,address,uint256)".to_string(),
             handler: "handleTransfer".to_string(),
             receipt: true,
             has_call_decls: false,
@@ -1567,6 +1792,7 @@ type Post @entity {
     #[test]
     fn test_validate_receipt_api_version_too_low() {
         let handlers = vec![EventHandler {
+            event: "Transfer(address,address,uint256)".to_string(),
             handler: "handleTransfer".to_string(),
             receipt: true,
             has_call_decls: false,
@@ -1592,6 +1818,7 @@ type Post @entity {
     #[test]
     fn test_validate_call_decls_spec_version_ok() {
         let handlers = vec![EventHandler {
+            event: "Transfer(address,address,uint256)".to_string(),
             handler: "handleTransfer".to_string(),
             receipt: false,
             has_call_decls: true,
@@ -1603,6 +1830,7 @@ type Post @entity {
     #[test]
     fn test_validate_call_decls_spec_version_too_low() {
         let handlers = vec![EventHandler {
+            event: "Transfer(address,address,uint256)".to_string(),
             handler: "handleTransfer".to_string(),
             receipt: false,
             has_call_decls: true,
@@ -1643,6 +1871,318 @@ type Post @entity {
         let manifest = create_test_manifest(vec![ds], vec![]);
         let errors = validate_ethereum_constraints(&manifest);
         assert!(errors.is_empty());
+    }
+
+    // --- ABI signature validation tests ---
+
+    /// Build a minimal ERC20-like ABI JSON with Transfer event and approve function.
+    fn erc20_abi_json() -> String {
+        r#"[
+            {
+                "type": "event",
+                "name": "Transfer",
+                "anonymous": false,
+                "inputs": [
+                    {"name": "from", "type": "address", "indexed": true},
+                    {"name": "to", "type": "address", "indexed": true},
+                    {"name": "value", "type": "uint256", "indexed": false}
+                ]
+            },
+            {
+                "type": "event",
+                "name": "Approval",
+                "anonymous": false,
+                "inputs": [
+                    {"name": "owner", "type": "address", "indexed": true},
+                    {"name": "spender", "type": "address", "indexed": true},
+                    {"name": "value", "type": "uint256", "indexed": false}
+                ]
+            },
+            {
+                "type": "function",
+                "name": "approve",
+                "inputs": [
+                    {"name": "spender", "type": "address"},
+                    {"name": "amount", "type": "uint256"}
+                ],
+                "outputs": [{"name": "", "type": "bool"}],
+                "stateMutability": "nonpayable"
+            },
+            {
+                "type": "function",
+                "name": "transfer",
+                "inputs": [
+                    {"name": "to", "type": "address"},
+                    {"name": "amount", "type": "uint256"}
+                ],
+                "outputs": [{"name": "", "type": "bool"}],
+                "stateMutability": "nonpayable"
+            }
+        ]"#
+        .to_string()
+    }
+
+    fn parse_contract(json: &str) -> ethabi::Contract {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn test_validate_event_signatures_exact_match_with_indexed() {
+        let contract = parse_contract(&erc20_abi_json());
+        let handlers = vec![EventHandler {
+            event: "Transfer(indexed address,indexed address,uint256)".to_string(),
+            handler: "handleTransfer".to_string(),
+            receipt: false,
+            has_call_decls: false,
+        }];
+        let errors = validate_event_signatures("ds1", "ERC20", &handlers, &contract);
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_validate_event_signatures_fallback_without_indexed() {
+        let contract = parse_contract(&erc20_abi_json());
+        // Signature without indexed hints — should match via fallback
+        let handlers = vec![EventHandler {
+            event: "Transfer(address,address,uint256)".to_string(),
+            handler: "handleTransfer".to_string(),
+            receipt: false,
+            has_call_decls: false,
+        }];
+        let errors = validate_event_signatures("ds1", "ERC20", &handlers, &contract);
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_validate_event_signatures_nonexistent_event() {
+        let contract = parse_contract(&erc20_abi_json());
+        let handlers = vec![EventHandler {
+            event: "Mint(address,uint256)".to_string(),
+            handler: "handleMint".to_string(),
+            receipt: false,
+            has_call_decls: false,
+        }];
+        let errors = validate_event_signatures("ds1", "ERC20", &handlers, &contract);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::EventNotInAbi {
+                data_source,
+                event,
+                abi_name,
+            } if data_source == "ds1" && event == "Mint(address,uint256)" && abi_name == "ERC20"
+        ));
+    }
+
+    #[test]
+    fn test_validate_event_signatures_wrong_param_types() {
+        let contract = parse_contract(&erc20_abi_json());
+        // Transfer exists but with wrong param types
+        let handlers = vec![EventHandler {
+            event: "Transfer(uint256,uint256,uint256)".to_string(),
+            handler: "handleTransfer".to_string(),
+            receipt: false,
+            has_call_decls: false,
+        }];
+        let errors = validate_event_signatures("ds1", "ERC20", &handlers, &contract);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::EventNotInAbi { .. }
+        ));
+    }
+
+    #[test]
+    fn test_validate_function_signatures_valid() {
+        let contract = parse_contract(&erc20_abi_json());
+        let handlers = vec![CallHandler {
+            function: "approve(address,uint256)".to_string(),
+            handler: "handleApprove".to_string(),
+        }];
+        let errors = validate_function_signatures("ds1", "ERC20", &handlers, &contract);
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_validate_function_signatures_nonexistent() {
+        let contract = parse_contract(&erc20_abi_json());
+        let handlers = vec![CallHandler {
+            function: "mint(address,uint256)".to_string(),
+            handler: "handleMint".to_string(),
+        }];
+        let errors = validate_function_signatures("ds1", "ERC20", &handlers, &contract);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::FunctionNotInAbi {
+                data_source,
+                function,
+                abi_name,
+            } if data_source == "ds1" && function == "mint(address,uint256)" && abi_name == "ERC20"
+        ));
+    }
+
+    #[test]
+    fn test_validate_function_signatures_wrong_params() {
+        let contract = parse_contract(&erc20_abi_json());
+        // approve exists but with wrong param types
+        let handlers = vec![CallHandler {
+            function: "approve(uint256,uint256)".to_string(),
+            handler: "handleApprove".to_string(),
+        }];
+        let errors = validate_function_signatures("ds1", "ERC20", &handlers, &contract);
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::FunctionNotInAbi { .. }
+        ));
+    }
+
+    #[test]
+    fn test_validate_handler_signatures_integration() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create ABI file
+        fs::create_dir_all(temp_dir.path().join("abis")).unwrap();
+        fs::write(temp_dir.path().join("abis/ERC20.json"), erc20_abi_json()).unwrap();
+
+        let mut ds = create_data_source("ds1", Some("mainnet"), Some(Version::new(0, 0, 6)));
+        ds.abis = vec![Abi {
+            name: "ERC20".to_string(),
+            file: "abis/ERC20.json".to_string(),
+        }];
+        ds.source_abi = Some("ERC20".to_string());
+        ds.event_handlers = vec![EventHandler {
+            event: "Transfer(address,address,uint256)".to_string(),
+            handler: "handleTransfer".to_string(),
+            receipt: false,
+            has_call_decls: false,
+        }];
+        ds.call_handlers = vec![CallHandler {
+            function: "approve(address,uint256)".to_string(),
+            handler: "handleApprove".to_string(),
+        }];
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_handler_signatures(&manifest, temp_dir.path());
+        assert!(errors.is_empty(), "Expected no errors, got: {:?}", errors);
+    }
+
+    #[test]
+    fn test_validate_handler_signatures_bad_event_good_function() {
+        let temp_dir = TempDir::new().unwrap();
+
+        fs::create_dir_all(temp_dir.path().join("abis")).unwrap();
+        fs::write(temp_dir.path().join("abis/ERC20.json"), erc20_abi_json()).unwrap();
+
+        let mut ds = create_data_source("ds1", Some("mainnet"), Some(Version::new(0, 0, 6)));
+        ds.abis = vec![Abi {
+            name: "ERC20".to_string(),
+            file: "abis/ERC20.json".to_string(),
+        }];
+        ds.source_abi = Some("ERC20".to_string());
+        ds.event_handlers = vec![EventHandler {
+            event: "Mint(address,uint256)".to_string(),
+            handler: "handleMint".to_string(),
+            receipt: false,
+            has_call_decls: false,
+        }];
+        ds.call_handlers = vec![CallHandler {
+            function: "approve(address,uint256)".to_string(),
+            handler: "handleApprove".to_string(),
+        }];
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_handler_signatures(&manifest, temp_dir.path());
+        assert_eq!(errors.len(), 1);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::EventNotInAbi { event, .. } if event == "Mint(address,uint256)"
+        ));
+    }
+
+    #[test]
+    fn test_validate_handler_signatures_skips_missing_abi_file() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Don't create the ABI file — validation should silently skip
+        let mut ds = create_data_source("ds1", Some("mainnet"), None);
+        ds.abis = vec![Abi {
+            name: "ERC20".to_string(),
+            file: "abis/ERC20.json".to_string(),
+        }];
+        ds.source_abi = Some("ERC20".to_string());
+        ds.event_handlers = vec![EventHandler {
+            event: "Nonexistent(uint256)".to_string(),
+            handler: "handleNonexistent".to_string(),
+            receipt: false,
+            has_call_decls: false,
+        }];
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        // Should produce no errors (file not found is reported elsewhere)
+        let errors = validate_handler_signatures(&manifest, temp_dir.path());
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_handler_signatures_skips_non_ethereum() {
+        let temp_dir = TempDir::new().unwrap();
+
+        let ds = create_subgraph_data_source("sub1", "QmHash123");
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_handler_signatures(&manifest, temp_dir.path());
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_ethabi_event_signature() {
+        let contract = parse_contract(&erc20_abi_json());
+        let transfer = contract.events.get("Transfer").unwrap().first().unwrap();
+        assert_eq!(
+            ethabi_event_signature(transfer),
+            "Transfer(address,address,uint256)"
+        );
+        assert_eq!(
+            ethabi_event_signature_with_indexed(transfer),
+            "Transfer(indexed address,indexed address,uint256)"
+        );
+    }
+
+    #[test]
+    fn test_ethabi_function_signature() {
+        let contract = parse_contract(&erc20_abi_json());
+        let approve = contract.functions.get("approve").unwrap().first().unwrap();
+        assert_eq!(
+            ethabi_function_signature(approve),
+            "approve(address,uint256)"
+        );
+    }
+
+    #[test]
+    fn test_event_not_in_abi_display() {
+        let err = ManifestValidationError::EventNotInAbi {
+            data_source: "Token".to_string(),
+            event: "Mint(address,uint256)".to_string(),
+            abi_name: "ERC20".to_string(),
+        };
+        assert_eq!(
+            format!("{}", err),
+            "data source 'Token': event 'Mint(address,uint256)' not found in ABI 'ERC20'"
+        );
+    }
+
+    #[test]
+    fn test_function_not_in_abi_display() {
+        let err = ManifestValidationError::FunctionNotInAbi {
+            data_source: "Token".to_string(),
+            function: "mint(address,uint256)".to_string(),
+            abi_name: "ERC20".to_string(),
+        };
+        assert_eq!(
+            format!("{}", err),
+            "data source 'Token': function 'mint(address,uint256)' not found in ABI 'ERC20'"
+        );
     }
 
     // --- WASM handler export validation tests ---
@@ -1828,7 +2368,7 @@ type Post @entity {
     fn test_collect_handler_names() {
         let mut ds = create_data_source("ds1", Some("mainnet"), None);
         ds.event_handlers = vec![event_handler("handleTransfer")];
-        ds.call_handlers = vec!["handleApprove".to_string()];
+        ds.call_handlers = vec![call_handler("handleApprove")];
         ds.block_handlers = vec![block_handler("handleBlock")];
 
         let names = collect_handler_names(&ds);

@@ -70,8 +70,8 @@ pub struct DataSource {
     pub source_abi: Option<String>,
     /// Event handlers from the mapping.
     pub event_handlers: Vec<EventHandler>,
-    /// Call handler names from the mapping.
-    pub call_handlers: Vec<String>,
+    /// Call handlers from the mapping.
+    pub call_handlers: Vec<CallHandler>,
     /// Block handlers from the mapping (with filter info for validation).
     pub block_handlers: Vec<BlockHandler>,
 }
@@ -96,8 +96,8 @@ pub struct Template {
     pub source_abi: Option<String>,
     /// Event handlers from the mapping.
     pub event_handlers: Vec<EventHandler>,
-    /// Call handler names from the mapping.
-    pub call_handlers: Vec<String>,
+    /// Call handlers from the mapping.
+    pub call_handlers: Vec<CallHandler>,
     /// Block handlers from the mapping (with filter info for validation).
     pub block_handlers: Vec<BlockHandler>,
 }
@@ -119,11 +119,21 @@ pub struct Abi {
 /// An event handler with metadata needed for validation.
 #[derive(Debug)]
 pub struct EventHandler {
+    /// The Solidity event signature, e.g. `Transfer(address,address,uint256)`.
+    pub event: String,
     pub handler: String,
     /// Whether this handler requires transaction receipts.
     pub receipt: bool,
     /// Whether this handler has eth call declarations.
     pub has_call_decls: bool,
+}
+
+/// A call handler with metadata needed for validation.
+#[derive(Debug)]
+pub struct CallHandler {
+    /// The Solidity function signature, e.g. `approve(address,uint256)`.
+    pub function: String,
+    pub handler: String,
 }
 
 /// A block handler with filter info needed for validation.
@@ -223,6 +233,7 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
                 .event_handlers
                 .iter()
                 .map(|h| EventHandler {
+                    event: h.event.clone(),
                     handler: h.handler.clone(),
                     receipt: h.receipt,
                     has_call_decls: !h.calls.raw_decls.is_empty(),
@@ -232,7 +243,10 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
                 .mapping
                 .call_handlers
                 .iter()
-                .map(|h| h.handler.clone())
+                .map(|h| CallHandler {
+                    function: h.function.clone(),
+                    handler: h.handler.clone(),
+                })
                 .collect(),
             block_handlers: eth
                 .mapping
@@ -320,6 +334,7 @@ fn convert_template(t: GraphUnresolvedDST<Chain>) -> Template {
                 .event_handlers
                 .iter()
                 .map(|h| EventHandler {
+                    event: h.event.clone(),
                     handler: h.handler.clone(),
                     receipt: h.receipt,
                     has_call_decls: !h.calls.raw_decls.is_empty(),
@@ -329,7 +344,10 @@ fn convert_template(t: GraphUnresolvedDST<Chain>) -> Template {
                 .mapping
                 .call_handlers
                 .iter()
-                .map(|h| h.handler.clone())
+                .map(|h| CallHandler {
+                    function: h.function.clone(),
+                    handler: h.handler.clone(),
+                })
                 .collect(),
             block_handlers: eth
                 .mapping

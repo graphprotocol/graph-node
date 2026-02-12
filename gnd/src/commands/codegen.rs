@@ -657,7 +657,17 @@ type MyEntity @entity(immutable: true) {
 "#;
         fs::write(project_dir.join("schema.graphql"), schema_content).unwrap();
         fs::write(project_dir.join("mapping.ts"), "").unwrap();
-        fs::write(project_dir.join("TestContract.json"), "[]").unwrap();
+        let abi = r#"[{
+            "type": "event",
+            "name": "Transfer",
+            "anonymous": false,
+            "inputs": [
+                {"name": "from", "type": "address", "indexed": true},
+                {"name": "to", "type": "address", "indexed": true},
+                {"name": "value", "type": "uint256", "indexed": false}
+            ]
+        }]"#;
+        fs::write(project_dir.join("TestContract.json"), abi).unwrap();
 
         // Run codegen
         let opt = CodegenOpt {
