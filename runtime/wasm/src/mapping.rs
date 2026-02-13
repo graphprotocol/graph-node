@@ -1,5 +1,5 @@
 use crate::gas_rules::GasRules;
-use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
+use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance, WasmInstanceData};
 use graph::blockchain::{BlockTime, Blockchain, HostFn};
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
@@ -222,6 +222,11 @@ const GN_START_FUNCTION_NAME: &str = "gn::start";
 pub struct ValidModule {
     pub module: wasmtime::Module,
 
+    /// Pre-linked instance template. Created once at module validation time and reused for every
+    /// trigger instantiation, avoiding the cost of rebuilding the linker (~60 host function
+    /// registrations) and resolving imports on each trigger.
+    pub instance_pre: wasmtime::InstancePre<WasmInstanceData>,
+
     // Due to our internal architecture we don't want to run the start function at instantiation time,
     // so we track it separately so that we can run it at an appropriate time.
     // Since the start function is not an export, we will also create an export for it.
@@ -340,8 +345,12 @@ impl ValidModule {
             epoch_counter_abort_handle = Some(graph::spawn(epoch_counter).abort_handle());
         }
 
+        let linker = crate::module::build_linker(engine, &import_name_to_modules)?;
+        let instance_pre = linker.instantiate_pre(&module)?;
+
         Ok(ValidModule {
             module,
+            instance_pre,
             import_name_to_modules,
             start_function,
             timeout,

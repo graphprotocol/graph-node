@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 use anyhow::Error;
@@ -248,6 +249,397 @@ impl WasmInstance {
     }
 }
 
+/// Import names that are handled by builtin host functions. Any import name
+/// in `import_name_to_modules` that is not in this set and is not `gas` is
+/// assumed to be a chain-specific host function.
+const BUILTIN_IMPORT_NAMES: &[&str] = &[
+    "ethereum.encode",
+    "ethereum.decode",
+    "abort",
+    "store.get",
+    "store.loadRelated",
+    "store.get_in_block",
+    "store.set",
+    "store.remove",
+    "ipfs.cat",
+    "ipfs.map",
+    "ipfs.getBlock",
+    "typeConversion.bytesToString",
+    "typeConversion.bytesToHex",
+    "typeConversion.bigIntToString",
+    "typeConversion.bigIntToHex",
+    "typeConversion.stringToH160",
+    "typeConversion.bytesToBase58",
+    "json.fromBytes",
+    "json.try_fromBytes",
+    "json.toI64",
+    "json.toU64",
+    "json.toF64",
+    "json.toBigInt",
+    "yaml.fromBytes",
+    "yaml.try_fromBytes",
+    "crypto.keccak256",
+    "bigInt.plus",
+    "bigInt.minus",
+    "bigInt.times",
+    "bigInt.dividedBy",
+    "bigInt.dividedByDecimal",
+    "bigInt.mod",
+    "bigInt.pow",
+    "bigInt.fromString",
+    "bigInt.bitOr",
+    "bigInt.bitAnd",
+    "bigInt.leftShift",
+    "bigInt.rightShift",
+    "bigDecimal.toString",
+    "bigDecimal.fromString",
+    "bigDecimal.plus",
+    "bigDecimal.minus",
+    "bigDecimal.times",
+    "bigDecimal.dividedBy",
+    "bigDecimal.equals",
+    "dataSource.create",
+    "dataSource.createWithContext",
+    "dataSource.address",
+    "dataSource.network",
+    "dataSource.context",
+    "ens.nameByHash",
+    "log.log",
+    "arweave.transactionData",
+    "box.profile",
+];
+
+/// Build a pre-linked `Linker` for a WASM module. This linker can be reused across triggers by
+/// calling `linker.instantiate_pre()` once and then `instance_pre.instantiate_async()` per trigger.
+///
+/// All host functions (builtins + chain-specific) are registered here. Chain-specific host functions
+/// are dispatched generically by looking up the `HostFn` by name from `caller.data().ctx.host_fns`
+/// at call time rather than capturing concrete closures at link time.
+pub(crate) fn build_linker(
+    engine: &wasmtime::Engine,
+    import_name_to_modules: &BTreeMap<String, Vec<String>>,
+) -> Result<Linker<WasmInstanceData>, anyhow::Error> {
+    let mut linker: Linker<WasmInstanceData> = wasmtime::Linker::new(engine);
+
+    // Helper to turn a parameter name into 'u32' for a tuple type
+    // (param1, parma2, ..) : (u32, u32, ..)
+    macro_rules! param_u32 {
+        ($param:ident) => {
+            u32
+        };
+    }
+
+    // The difficulty with this macro is that it needs to turn a list of
+    // parameter names into a tuple declaration (param1, parma2, ..) :
+    // (u32, u32, ..), but also for an empty parameter list, it needs to
+    // produce '(): ()'. In the first case we need a trailing comma, in
+    // the second case we don't. That's why there are two separate
+    // expansions, one with and one without params
+    macro_rules! link {
+        ($wasm_name:expr, $rust_name:ident, $($param:ident),*) => {
+            link!($wasm_name, $rust_name, "host_export_other",$($param),*)
+        };
+
+        ($wasm_name:expr, $rust_name:ident, $section:expr, $($param:ident),+) => {
+            let modules = import_name_to_modules
+                .get($wasm_name)
+                .into_iter()
+                .flatten();
+
+            // link an import with all the modules that require it.
+            for module in modules {
+                linker.func_wrap_async(
+                    module,
+                    $wasm_name,
+                    move |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
+                          ($($param),*,) : ($(param_u32!($param)),*,)|  {
+                        Box::new(async move {
+                            let gas = caller.data().gas.cheap_clone();
+                            let host_metrics = caller.data().host_metrics.cheap_clone();
+                            let _section = host_metrics.stopwatch.start_section($section);
+
+                            #[allow(unused_mut)]
+                            let mut ctx = std::pin::pin!(WasmInstanceContext::new(&mut caller));
+                            let result = ctx.$rust_name(
+                                &gas,
+                                $($param.into()),*
+                            ).await;
+                            let ctx = ctx.get_mut();
+                            match result {
+                                Ok(result) => Ok(result.into_wasm_ret()),
+                                Err(e) => {
+                                    match IntoTrap::determinism_level(&e) {
+                                        DeterminismLevel::Deterministic => {
+                                            ctx.as_mut().deterministic_host_trap = true;
+                                        }
+                                        DeterminismLevel::PossibleReorg => {
+                                            ctx.as_mut().possible_reorg = true;
+                                        }
+                                        DeterminismLevel::Unimplemented
+                                        | DeterminismLevel::NonDeterministic => {}
+                                    }
+
+                                    Err(e.into())
+                                }
+                            }
+                    }) },
+                )?;
+            }
+        };
+
+        ($wasm_name:expr, $rust_name:ident, $section:expr,) => {
+            let modules = import_name_to_modules
+                .get($wasm_name)
+                .into_iter()
+                .flatten();
+
+            // link an import with all the modules that require it.
+            for module in modules {
+                linker.func_wrap_async(
+                    module,
+                    $wasm_name,
+                    move |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
+                          _ : ()|  {
+                        Box::new(async move {
+                            let gas = caller.data().gas.cheap_clone();
+                            let host_metrics = caller.data().host_metrics.cheap_clone();
+                            let _section = host_metrics.stopwatch.start_section($section);
+
+                            #[allow(unused_mut)]
+                            let mut ctx = WasmInstanceContext::new(&mut caller);
+                            let result = ctx.$rust_name(&gas).await;
+                            match result {
+                                Ok(result) => Ok(result.into_wasm_ret()),
+                                Err(e) => {
+                                    match IntoTrap::determinism_level(&e) {
+                                        DeterminismLevel::Deterministic => {
+                                            ctx.as_mut().deterministic_host_trap = true;
+                                        }
+                                        DeterminismLevel::PossibleReorg => {
+                                            ctx.as_mut().possible_reorg = true;
+                                        }
+                                        DeterminismLevel::Unimplemented
+                                        | DeterminismLevel::NonDeterministic => {}
+                                    }
+
+                                    Err(e.into())
+                                }
+                            }
+                    }) },
+                )?;
+            }
+        };
+    }
+
+    // Link chain-specific host fns. Any import name not in BUILTIN_IMPORT_NAMES and not "gas"
+    // is assumed to be a chain-specific host function. We register a generic dispatcher that
+    // looks up the actual HostFn by name from caller.data().ctx.host_fns at call time.
+    for (import_name, modules) in import_name_to_modules {
+        if import_name == "gas" || BUILTIN_IMPORT_NAMES.contains(&import_name.as_str()) {
+            continue;
+        }
+
+        // Leak the name so we get a &'static str for metrics. These are a small, fixed set of
+        // chain host_fn names (e.g. "ethereum.call") so the leak is bounded.
+        let name: &'static str = Box::leak(import_name.clone().into_boxed_str());
+
+        for module in modules {
+            linker.func_wrap_async(
+                module,
+                name,
+                move |mut caller: wasmtime::Caller<'_, WasmInstanceData>, (call_ptr,): (u32,)| {
+                    Box::new(async move {
+                        let host_fn = caller
+                            .data()
+                            .ctx
+                            .host_fns
+                            .iter()
+                            .find(|hf| hf.name == name)
+                            .expect("chain host_fn not found")
+                            .cheap_clone();
+
+                        let start = Instant::now();
+
+                        let gas = caller.data().gas.cheap_clone();
+                        let name_for_metrics = name.replace('.', "_");
+                        let host_metrics = caller.data().host_metrics.cheap_clone();
+                        let stopwatch = host_metrics.stopwatch.cheap_clone();
+                        let _section =
+                            stopwatch.start_section(&format!("host_export_{}", name_for_metrics));
+
+                        let ctx = HostFnCtx {
+                            logger: caller.data().ctx.logger.cheap_clone(),
+                            block_ptr: caller.data().ctx.block_ptr.cheap_clone(),
+                            gas: gas.cheap_clone(),
+                            metrics: host_metrics.cheap_clone(),
+                            heap: &mut WasmInstanceContext::new(&mut caller),
+                        };
+                        let ret = (host_fn.func)(ctx, call_ptr).await.map_err(|e| match e {
+                            HostExportError::Deterministic(e) => {
+                                caller.data_mut().deterministic_host_trap = true;
+                                e
+                            }
+                            HostExportError::PossibleReorg(e) => {
+                                caller.data_mut().possible_reorg = true;
+                                e
+                            }
+                            HostExportError::Unknown(e) => e,
+                        })?;
+                        host_metrics.observe_host_fn_execution_time(
+                            start.elapsed().as_secs_f64(),
+                            &name_for_metrics,
+                        );
+                        Ok(ret)
+                    })
+                },
+            )?;
+        }
+    }
+
+    link!("ethereum.encode", ethereum_encode, params_ptr);
+    link!("ethereum.decode", ethereum_decode, params_ptr, data_ptr);
+
+    link!("abort", abort, message_ptr, file_name_ptr, line, column);
+
+    link!("store.get", store_get, "host_export_store_get", entity, id);
+    link!(
+        "store.loadRelated",
+        store_load_related,
+        "host_export_store_load_related",
+        entity,
+        id,
+        field
+    );
+    link!(
+        "store.get_in_block",
+        store_get_in_block,
+        "host_export_store_get_in_block",
+        entity,
+        id
+    );
+    link!(
+        "store.set",
+        store_set,
+        "host_export_store_set",
+        entity,
+        id,
+        data
+    );
+
+    // All IPFS-related functions exported by the host WASM runtime should be listed in the
+    // graph::data::subgraph::features::IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES array for
+    // automatic feature detection to work.
+    //
+    // For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
+    link!("ipfs.cat", ipfs_cat, "host_export_ipfs_cat", hash_ptr);
+    link!(
+        "ipfs.map",
+        ipfs_map,
+        "host_export_ipfs_map",
+        link_ptr,
+        callback,
+        user_data,
+        flags
+    );
+    // ipfs.getBlock checks the experimental_features flag internally via
+    // caller.data().experimental_features, so it can be linked unconditionally.
+    link!(
+        "ipfs.getBlock",
+        ipfs_get_block,
+        "host_export_ipfs_get_block",
+        hash_ptr
+    );
+
+    link!("store.remove", store_remove, entity_ptr, id_ptr);
+
+    link!("typeConversion.bytesToString", bytes_to_string, ptr);
+    link!("typeConversion.bytesToHex", bytes_to_hex, ptr);
+    link!("typeConversion.bigIntToString", big_int_to_string, ptr);
+    link!("typeConversion.bigIntToHex", big_int_to_hex, ptr);
+    link!("typeConversion.stringToH160", string_to_h160, ptr);
+    link!("typeConversion.bytesToBase58", bytes_to_base58, ptr);
+
+    link!("json.fromBytes", json_from_bytes, ptr);
+    link!("json.try_fromBytes", json_try_from_bytes, ptr);
+    link!("json.toI64", json_to_i64, ptr);
+    link!("json.toU64", json_to_u64, ptr);
+    link!("json.toF64", json_to_f64, ptr);
+    link!("json.toBigInt", json_to_big_int, ptr);
+
+    link!("yaml.fromBytes", yaml_from_bytes, ptr);
+    link!("yaml.try_fromBytes", yaml_try_from_bytes, ptr);
+
+    link!("crypto.keccak256", crypto_keccak_256, ptr);
+
+    link!("bigInt.plus", big_int_plus, x_ptr, y_ptr);
+    link!("bigInt.minus", big_int_minus, x_ptr, y_ptr);
+    link!("bigInt.times", big_int_times, x_ptr, y_ptr);
+    link!("bigInt.dividedBy", big_int_divided_by, x_ptr, y_ptr);
+    link!("bigInt.dividedByDecimal", big_int_divided_by_decimal, x, y);
+    link!("bigInt.mod", big_int_mod, x_ptr, y_ptr);
+    link!("bigInt.pow", big_int_pow, x_ptr, exp);
+    link!("bigInt.fromString", big_int_from_string, ptr);
+    link!("bigInt.bitOr", big_int_bit_or, x_ptr, y_ptr);
+    link!("bigInt.bitAnd", big_int_bit_and, x_ptr, y_ptr);
+    link!("bigInt.leftShift", big_int_left_shift, x_ptr, bits);
+    link!("bigInt.rightShift", big_int_right_shift, x_ptr, bits);
+
+    link!("bigDecimal.toString", big_decimal_to_string, ptr);
+    link!("bigDecimal.fromString", big_decimal_from_string, ptr);
+    link!("bigDecimal.plus", big_decimal_plus, x_ptr, y_ptr);
+    link!("bigDecimal.minus", big_decimal_minus, x_ptr, y_ptr);
+    link!("bigDecimal.times", big_decimal_times, x_ptr, y_ptr);
+    link!("bigDecimal.dividedBy", big_decimal_divided_by, x, y);
+    link!("bigDecimal.equals", big_decimal_equals, x_ptr, y_ptr);
+
+    link!("dataSource.create", data_source_create, name, params);
+    link!(
+        "dataSource.createWithContext",
+        data_source_create_with_context,
+        name,
+        params,
+        context
+    );
+    link!("dataSource.address", data_source_address,);
+    link!("dataSource.network", data_source_network,);
+    link!("dataSource.context", data_source_context,);
+
+    link!("ens.nameByHash", ens_name_by_hash, ptr);
+
+    link!("log.log", log_log, level, msg_ptr);
+
+    // `arweave` and `box` functionality was removed. The implementations return deterministic
+    // errors. Linked unconditionally since import_name_to_modules ensures they're only
+    // registered if the module actually imports them.
+    link!("arweave.transactionData", arweave_transaction_data, ptr);
+    link!("box.profile", box_profile, ptr);
+
+    // link the `gas` function
+    // See also e3f03e62-40e4-4f8c-b4a1-d0375cca0b76
+    linker.func_wrap(
+        "gas",
+        "gas",
+        |mut caller: wasmtime::Caller<'_, WasmInstanceData>, gas_used: u32| -> anyhow::Result<()> {
+            // Gas metering has a relevant execution cost cost, being called tens of thousands
+            // of times per handler, but it's not worth having a stopwatch section here because
+            // the cost of measuring would be greater than the cost of `consume_host_fn`. Last
+            // time this was benchmarked it took < 100ns to run.
+            if let Err(e) = caller
+                .data()
+                .gas
+                .consume_host_fn_with_metrics(gas_used.saturating_into(), "gas")
+            {
+                caller.data_mut().deterministic_host_trap = true;
+                return Err(e.into());
+            }
+
+            Ok(())
+        },
+    )?;
+
+    Ok(linker)
+}
+
 impl WasmInstance {
     /// Instantiates the module and sets it to be interrupted after `timeout`.
     pub async fn from_valid_module_with_ctx(
@@ -257,8 +649,6 @@ impl WasmInstance {
         experimental_features: ExperimentalFeatures,
     ) -> Result<WasmInstance, anyhow::Error> {
         let engine = valid_module.module.engine();
-        let mut linker: Linker<WasmInstanceData> = wasmtime::Linker::new(engine);
-        let host_fns = ctx.host_fns.cheap_clone();
         let api_version = ctx.host_exports.data_source.api_version.clone();
 
         let gas = GasCounter::new(host_metrics.gas_metrics.clone());
@@ -282,319 +672,9 @@ impl WasmInstance {
         // See also: runtime-timeouts
         store.set_epoch_deadline(2);
 
-        // Helper to turn a parameter name into 'u32' for a tuple type
-        // (param1, parma2, ..) : (u32, u32, ..)
-        macro_rules! param_u32 {
-            ($param:ident) => {
-                u32
-            };
-        }
-
-        // The difficulty with this macro is that it needs to turn a list of
-        // parameter names into a tuple declaration (param1, parma2, ..) :
-        // (u32, u32, ..), but also for an empty parameter list, it needs to
-        // produce '(): ()'. In the first case we need a trailing comma, in
-        // the second case we don't. That's why there are two separate
-        // expansions, one with and one without params
-        macro_rules! link {
-            ($wasm_name:expr, $rust_name:ident, $($param:ident),*) => {
-                link!($wasm_name, $rust_name, "host_export_other",$($param),*)
-            };
-
-            ($wasm_name:expr, $rust_name:ident, $section:expr, $($param:ident),+) => {
-                let modules = valid_module
-                    .import_name_to_modules
-                    .get($wasm_name)
-                    .into_iter()
-                    .flatten();
-
-                // link an import with all the modules that require it.
-                for module in modules {
-                    linker.func_wrap_async(
-                        module,
-                        $wasm_name,
-                        move |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
-                              ($($param),*,) : ($(param_u32!($param)),*,)|  {
-                            Box::new(async move {
-                                let gas = caller.data().gas.cheap_clone();
-                                let host_metrics = caller.data().host_metrics.cheap_clone();
-                                let _section = host_metrics.stopwatch.start_section($section);
-
-                                #[allow(unused_mut)]
-                                let mut ctx = std::pin::pin!(WasmInstanceContext::new(&mut caller));
-                                let result = ctx.$rust_name(
-                                    &gas,
-                                    $($param.into()),*
-                                ).await;
-                                let ctx = ctx.get_mut();
-                                match result {
-                                    Ok(result) => Ok(result.into_wasm_ret()),
-                                    Err(e) => {
-                                        match IntoTrap::determinism_level(&e) {
-                                            DeterminismLevel::Deterministic => {
-                                                ctx.as_mut().deterministic_host_trap = true;
-                                            }
-                                            DeterminismLevel::PossibleReorg => {
-                                                ctx.as_mut().possible_reorg = true;
-                                            }
-                                            DeterminismLevel::Unimplemented
-                                            | DeterminismLevel::NonDeterministic => {}
-                                        }
-
-                                        Err(e.into())
-                                    }
-                                }
-                        }) },
-                    )?;
-                }
-            };
-
-            ($wasm_name:expr, $rust_name:ident, $section:expr,) => {
-                let modules = valid_module
-                    .import_name_to_modules
-                    .get($wasm_name)
-                    .into_iter()
-                    .flatten();
-
-                // link an import with all the modules that require it.
-                for module in modules {
-                    linker.func_wrap_async(
-                        module,
-                        $wasm_name,
-                        move |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
-                              _ : ()|  {
-                            Box::new(async move {
-                                let gas = caller.data().gas.cheap_clone();
-                                let host_metrics = caller.data().host_metrics.cheap_clone();
-                                let _section = host_metrics.stopwatch.start_section($section);
-
-                                #[allow(unused_mut)]
-                                let mut ctx = WasmInstanceContext::new(&mut caller);
-                                let result = ctx.$rust_name(&gas).await;
-                                match result {
-                                    Ok(result) => Ok(result.into_wasm_ret()),
-                                    Err(e) => {
-                                        match IntoTrap::determinism_level(&e) {
-                                            DeterminismLevel::Deterministic => {
-                                                ctx.as_mut().deterministic_host_trap = true;
-                                            }
-                                            DeterminismLevel::PossibleReorg => {
-                                                ctx.as_mut().possible_reorg = true;
-                                            }
-                                            DeterminismLevel::Unimplemented
-                                            | DeterminismLevel::NonDeterministic => {}
-                                        }
-
-                                        Err(e.into())
-                                    }
-                                }
-                        }) },
-                    )?;
-                }
-            };
-        }
-
-        // Link chain-specifc host fns.
-        for host_fn in host_fns.iter() {
-            let modules = valid_module
-                .import_name_to_modules
-                .get(host_fn.name)
-                .into_iter()
-                .flatten();
-
-            for module in modules {
-                let host_fn = host_fn.cheap_clone();
-                linker.func_wrap_async(
-                    module,
-                    host_fn.name,
-                    move |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
-                          (call_ptr,): (u32,)| {
-                        let host_fn = host_fn.cheap_clone();
-                        Box::new(async move {
-                            let start = Instant::now();
-
-                            let gas = caller.data().gas.cheap_clone();
-                            let name_for_metrics = host_fn.name.replace('.', "_");
-                            let host_metrics = caller.data().host_metrics.cheap_clone();
-                            let stopwatch = host_metrics.stopwatch.cheap_clone();
-                            let _section = stopwatch
-                                .start_section(&format!("host_export_{}", name_for_metrics));
-
-                            let ctx = HostFnCtx {
-                                logger: caller.data().ctx.logger.cheap_clone(),
-                                block_ptr: caller.data().ctx.block_ptr.cheap_clone(),
-                                gas: gas.cheap_clone(),
-                                metrics: host_metrics.cheap_clone(),
-                                heap: &mut WasmInstanceContext::new(&mut caller),
-                            };
-                            let ret = (host_fn.func)(ctx, call_ptr).await.map_err(|e| match e {
-                                HostExportError::Deterministic(e) => {
-                                    caller.data_mut().deterministic_host_trap = true;
-                                    e
-                                }
-                                HostExportError::PossibleReorg(e) => {
-                                    caller.data_mut().possible_reorg = true;
-                                    e
-                                }
-                                HostExportError::Unknown(e) => e,
-                            })?;
-                            host_metrics.observe_host_fn_execution_time(
-                                start.elapsed().as_secs_f64(),
-                                &name_for_metrics,
-                            );
-                            Ok(ret)
-                        })
-                    },
-                )?;
-            }
-        }
-
-        link!("ethereum.encode", ethereum_encode, params_ptr);
-        link!("ethereum.decode", ethereum_decode, params_ptr, data_ptr);
-
-        link!("abort", abort, message_ptr, file_name_ptr, line, column);
-
-        link!("store.get", store_get, "host_export_store_get", entity, id);
-        link!(
-            "store.loadRelated",
-            store_load_related,
-            "host_export_store_load_related",
-            entity,
-            id,
-            field
-        );
-        link!(
-            "store.get_in_block",
-            store_get_in_block,
-            "host_export_store_get_in_block",
-            entity,
-            id
-        );
-        link!(
-            "store.set",
-            store_set,
-            "host_export_store_set",
-            entity,
-            id,
-            data
-        );
-
-        // All IPFS-related functions exported by the host WASM runtime should be listed in the
-        // graph::data::subgraph::features::IPFS_ON_ETHEREUM_CONTRACTS_FUNCTION_NAMES array for
-        // automatic feature detection to work.
-        //
-        // For reference, search this codebase for: ff652476-e6ad-40e4-85b8-e815d6c6e5e2
-        link!("ipfs.cat", ipfs_cat, "host_export_ipfs_cat", hash_ptr);
-        link!(
-            "ipfs.map",
-            ipfs_map,
-            "host_export_ipfs_map",
-            link_ptr,
-            callback,
-            user_data,
-            flags
-        );
-        // The previous ipfs-related functions are unconditionally linked for backward compatibility
-        if experimental_features.allow_non_deterministic_ipfs {
-            link!(
-                "ipfs.getBlock",
-                ipfs_get_block,
-                "host_export_ipfs_get_block",
-                hash_ptr
-            );
-        }
-
-        link!("store.remove", store_remove, entity_ptr, id_ptr);
-
-        link!("typeConversion.bytesToString", bytes_to_string, ptr);
-        link!("typeConversion.bytesToHex", bytes_to_hex, ptr);
-        link!("typeConversion.bigIntToString", big_int_to_string, ptr);
-        link!("typeConversion.bigIntToHex", big_int_to_hex, ptr);
-        link!("typeConversion.stringToH160", string_to_h160, ptr);
-        link!("typeConversion.bytesToBase58", bytes_to_base58, ptr);
-
-        link!("json.fromBytes", json_from_bytes, ptr);
-        link!("json.try_fromBytes", json_try_from_bytes, ptr);
-        link!("json.toI64", json_to_i64, ptr);
-        link!("json.toU64", json_to_u64, ptr);
-        link!("json.toF64", json_to_f64, ptr);
-        link!("json.toBigInt", json_to_big_int, ptr);
-
-        link!("yaml.fromBytes", yaml_from_bytes, ptr);
-        link!("yaml.try_fromBytes", yaml_try_from_bytes, ptr);
-
-        link!("crypto.keccak256", crypto_keccak_256, ptr);
-
-        link!("bigInt.plus", big_int_plus, x_ptr, y_ptr);
-        link!("bigInt.minus", big_int_minus, x_ptr, y_ptr);
-        link!("bigInt.times", big_int_times, x_ptr, y_ptr);
-        link!("bigInt.dividedBy", big_int_divided_by, x_ptr, y_ptr);
-        link!("bigInt.dividedByDecimal", big_int_divided_by_decimal, x, y);
-        link!("bigInt.mod", big_int_mod, x_ptr, y_ptr);
-        link!("bigInt.pow", big_int_pow, x_ptr, exp);
-        link!("bigInt.fromString", big_int_from_string, ptr);
-        link!("bigInt.bitOr", big_int_bit_or, x_ptr, y_ptr);
-        link!("bigInt.bitAnd", big_int_bit_and, x_ptr, y_ptr);
-        link!("bigInt.leftShift", big_int_left_shift, x_ptr, bits);
-        link!("bigInt.rightShift", big_int_right_shift, x_ptr, bits);
-
-        link!("bigDecimal.toString", big_decimal_to_string, ptr);
-        link!("bigDecimal.fromString", big_decimal_from_string, ptr);
-        link!("bigDecimal.plus", big_decimal_plus, x_ptr, y_ptr);
-        link!("bigDecimal.minus", big_decimal_minus, x_ptr, y_ptr);
-        link!("bigDecimal.times", big_decimal_times, x_ptr, y_ptr);
-        link!("bigDecimal.dividedBy", big_decimal_divided_by, x, y);
-        link!("bigDecimal.equals", big_decimal_equals, x_ptr, y_ptr);
-
-        link!("dataSource.create", data_source_create, name, params);
-        link!(
-            "dataSource.createWithContext",
-            data_source_create_with_context,
-            name,
-            params,
-            context
-        );
-        link!("dataSource.address", data_source_address,);
-        link!("dataSource.network", data_source_network,);
-        link!("dataSource.context", data_source_context,);
-
-        link!("ens.nameByHash", ens_name_by_hash, ptr);
-
-        link!("log.log", log_log, level, msg_ptr);
-
-        // `arweave and `box` functionality was removed, but apiVersion <= 0.0.4 must link it.
-        if api_version <= Version::new(0, 0, 4) {
-            link!("arweave.transactionData", arweave_transaction_data, ptr);
-            link!("box.profile", box_profile, ptr);
-        }
-
-        // link the `gas` function
-        // See also e3f03e62-40e4-4f8c-b4a1-d0375cca0b76
-        linker.func_wrap(
-            "gas",
-            "gas",
-            |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
-             gas_used: u32|
-             -> anyhow::Result<()> {
-                // Gas metering has a relevant execution cost cost, being called tens of thousands
-                // of times per handler, but it's not worth having a stopwatch section here because
-                // the cost of measuring would be greater than the cost of `consume_host_fn`. Last
-                // time this was benchmarked it took < 100ns to run.
-                if let Err(e) = caller
-                    .data()
-                    .gas
-                    .consume_host_fn_with_metrics(gas_used.saturating_into(), "gas")
-                {
-                    caller.data_mut().deterministic_host_trap = true;
-                    return Err(e.into());
-                }
-
-                Ok(())
-            },
-        )?;
-
-        let instance = linker
-            .instantiate_async(store.as_context_mut(), &valid_module.module)
+        let instance = valid_module
+            .instance_pre
+            .instantiate_async(store.as_context_mut())
             .await?;
 
         let asc_heap = AscHeapCtx::new(
