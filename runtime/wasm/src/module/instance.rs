@@ -249,65 +249,82 @@ impl WasmInstance {
     }
 }
 
-/// Import names that are handled by builtin host functions. Any import name
-/// in `import_name_to_modules` that is not in this set and is not `gas` is
-/// assumed to be a chain-specific host function.
-const BUILTIN_IMPORT_NAMES: &[&str] = &[
-    "ethereum.encode",
-    "ethereum.decode",
-    "abort",
-    "store.get",
-    "store.loadRelated",
-    "store.get_in_block",
-    "store.set",
-    "store.remove",
-    "ipfs.cat",
-    "ipfs.map",
-    "ipfs.getBlock",
-    "typeConversion.bytesToString",
-    "typeConversion.bytesToHex",
-    "typeConversion.bigIntToString",
-    "typeConversion.bigIntToHex",
-    "typeConversion.stringToH160",
-    "typeConversion.bytesToBase58",
-    "json.fromBytes",
-    "json.try_fromBytes",
-    "json.toI64",
-    "json.toU64",
-    "json.toF64",
-    "json.toBigInt",
-    "yaml.fromBytes",
-    "yaml.try_fromBytes",
-    "crypto.keccak256",
-    "bigInt.plus",
-    "bigInt.minus",
-    "bigInt.times",
-    "bigInt.dividedBy",
-    "bigInt.dividedByDecimal",
-    "bigInt.mod",
-    "bigInt.pow",
-    "bigInt.fromString",
-    "bigInt.bitOr",
-    "bigInt.bitAnd",
-    "bigInt.leftShift",
-    "bigInt.rightShift",
-    "bigDecimal.toString",
-    "bigDecimal.fromString",
-    "bigDecimal.plus",
-    "bigDecimal.minus",
-    "bigDecimal.times",
-    "bigDecimal.dividedBy",
-    "bigDecimal.equals",
-    "dataSource.create",
-    "dataSource.createWithContext",
-    "dataSource.address",
-    "dataSource.network",
-    "dataSource.context",
-    "ens.nameByHash",
-    "log.log",
-    "arweave.transactionData",
-    "box.profile",
-];
+/// Register a chain-specific host function dispatcher for the given import name.
+/// The registered closure looks up the `HostFn` by name from `caller.data().ctx.host_fns`
+/// at call time. If the module doesn't import this function, this is a no-op.
+fn link_chain_host_fn(
+    linker: &mut Linker<WasmInstanceData>,
+    import_name_to_modules: &BTreeMap<String, Vec<String>>,
+    name: &'static str,
+) -> Result<(), anyhow::Error> {
+    let modules = match import_name_to_modules.get(name) {
+        Some(m) => m,
+        None => return Ok(()),
+    };
+
+    let name_for_metrics = name.replace('.', "_");
+    let section_name = format!("host_export_{}", name_for_metrics);
+
+    for module in modules {
+        let name_for_metrics = name_for_metrics.clone();
+        let section_name = section_name.clone();
+        linker.func_wrap_async(
+            module,
+            name,
+            move |mut caller: wasmtime::Caller<'_, WasmInstanceData>, (call_ptr,): (u32,)| {
+                let name_for_metrics = name_for_metrics.clone();
+                let section_name = section_name.clone();
+                Box::new(async move {
+                    let host_fn = caller
+                        .data()
+                        .ctx
+                        .host_fns
+                        .iter()
+                        .find(|hf| hf.name == name)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "chain host function '{}' is not available for this chain",
+                                name
+                            )
+                        })?
+                        .cheap_clone();
+
+                    let start = Instant::now();
+
+                    let gas = caller.data().gas.cheap_clone();
+                    let host_metrics = caller.data().host_metrics.cheap_clone();
+                    let stopwatch = host_metrics.stopwatch.cheap_clone();
+                    let _section = stopwatch.start_section(&section_name);
+
+                    let ctx = HostFnCtx {
+                        logger: caller.data().ctx.logger.cheap_clone(),
+                        block_ptr: caller.data().ctx.block_ptr.cheap_clone(),
+                        gas: gas.cheap_clone(),
+                        metrics: host_metrics.cheap_clone(),
+                        heap: &mut WasmInstanceContext::new(&mut caller),
+                    };
+                    let ret = (host_fn.func)(ctx, call_ptr).await.map_err(|e| match e {
+                        HostExportError::Deterministic(e) => {
+                            caller.data_mut().deterministic_host_trap = true;
+                            e
+                        }
+                        HostExportError::PossibleReorg(e) => {
+                            caller.data_mut().possible_reorg = true;
+                            e
+                        }
+                        HostExportError::Unknown(e) => e,
+                    })?;
+                    host_metrics.observe_host_fn_execution_time(
+                        start.elapsed().as_secs_f64(),
+                        &name_for_metrics,
+                    );
+                    Ok(ret)
+                })
+            },
+        )?;
+    }
+    Ok(())
+}
 
 /// Build a pre-linked `Linker` for a WASM module. This linker can be reused across triggers by
 /// calling `linker.instantiate_pre()` once and then `instance_pre.instantiate_async()` per trigger.
@@ -431,70 +448,11 @@ pub(crate) fn build_linker(
         };
     }
 
-    // Link chain-specific host fns. Any import name not in BUILTIN_IMPORT_NAMES and not "gas"
-    // is assumed to be a chain-specific host function. We register a generic dispatcher that
-    // looks up the actual HostFn by name from caller.data().ctx.host_fns at call time.
-    for (import_name, modules) in import_name_to_modules {
-        if import_name == "gas" || BUILTIN_IMPORT_NAMES.contains(&import_name.as_str()) {
-            continue;
-        }
-
-        // Leak the name so we get a &'static str for metrics. These are a small, fixed set of
-        // chain host_fn names (e.g. "ethereum.call") so the leak is bounded.
-        let name: &'static str = Box::leak(import_name.clone().into_boxed_str());
-
-        for module in modules {
-            linker.func_wrap_async(
-                module,
-                name,
-                move |mut caller: wasmtime::Caller<'_, WasmInstanceData>, (call_ptr,): (u32,)| {
-                    Box::new(async move {
-                        let host_fn = caller
-                            .data()
-                            .ctx
-                            .host_fns
-                            .iter()
-                            .find(|hf| hf.name == name)
-                            .expect("chain host_fn not found")
-                            .cheap_clone();
-
-                        let start = Instant::now();
-
-                        let gas = caller.data().gas.cheap_clone();
-                        let name_for_metrics = name.replace('.', "_");
-                        let host_metrics = caller.data().host_metrics.cheap_clone();
-                        let stopwatch = host_metrics.stopwatch.cheap_clone();
-                        let _section =
-                            stopwatch.start_section(&format!("host_export_{}", name_for_metrics));
-
-                        let ctx = HostFnCtx {
-                            logger: caller.data().ctx.logger.cheap_clone(),
-                            block_ptr: caller.data().ctx.block_ptr.cheap_clone(),
-                            gas: gas.cheap_clone(),
-                            metrics: host_metrics.cheap_clone(),
-                            heap: &mut WasmInstanceContext::new(&mut caller),
-                        };
-                        let ret = (host_fn.func)(ctx, call_ptr).await.map_err(|e| match e {
-                            HostExportError::Deterministic(e) => {
-                                caller.data_mut().deterministic_host_trap = true;
-                                e
-                            }
-                            HostExportError::PossibleReorg(e) => {
-                                caller.data_mut().possible_reorg = true;
-                                e
-                            }
-                            HostExportError::Unknown(e) => e,
-                        })?;
-                        host_metrics.observe_host_fn_execution_time(
-                            start.elapsed().as_secs_f64(),
-                            &name_for_metrics,
-                        );
-                        Ok(ret)
-                    })
-                },
-            )?;
-        }
-    }
+    // Chain-specific host functions. Each is registered explicitly rather than
+    // discovered dynamically from imports.
+    link_chain_host_fn(&mut linker, import_name_to_modules, "ethereum.call")?;
+    link_chain_host_fn(&mut linker, import_name_to_modules, "ethereum.getBalance")?;
+    link_chain_host_fn(&mut linker, import_name_to_modules, "ethereum.hasCode")?;
 
     link!("ethereum.encode", ethereum_encode, params_ptr);
     link!("ethereum.decode", ethereum_decode, params_ptr, data_ptr);
