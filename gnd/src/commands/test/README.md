@@ -582,7 +582,7 @@ my-subgraph/
 | Log events | ✅ Supported |
 | Block handlers (all filters) | ✅ Supported |
 | eth_call mocking | ✅ Supported |
-| Dynamic/template data sources | ✅ Supported (via graph-node) |
+| Dynamic/template data sources | (Untested)
 | Transaction receipts (`receipt: true`) | ❌ Not implemented — handlers get `null` |
 | File data sources / IPFS mocking | ❌ Not implemented |
 | Call triggers (traces) | ❌ Not implemented |
@@ -654,30 +654,6 @@ Use empty blocks to test that block handlers fire even without events:
   ]
 }
 ```
-
-### Testing Polling Handlers
-
-When testing polling handlers, include enough blocks to verify the interval:
-
-```json
-// ✅ Good - tests multiple intervals
-{
-  "name": "Polling every 3 blocks",
-  "blocks": [{}, {}, {}, {}, {}, {}, {}],  // Blocks 0-6, handler fires at 0, 3, 6
-  "assertions": [...]
-}
-```
-
-```json
-// ❌ Insufficient - only one firing
-{
-  "name": "Polling every 3 blocks",
-  "blocks": [{}],  // Only block 0 - can't verify interval
-  "assertions": [...]
-}
-```
-
-**Remember:** Polling handlers fire at `startBlock + (N × every)` where N = 0, 1, 2, ...
 
 ### Split Complex Tests
 
