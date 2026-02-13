@@ -368,17 +368,29 @@ impl AscHeap for WasmInstanceContext<'_> {
         &mut self,
         type_id_index: IndexForAscTypeId,
     ) -> Result<u32, HostExportError> {
+        // Check the module-level cache. Lives on ValidModule (Arc-shared, persists
+        // across all triggers for this subgraph module).
+        if let Some(type_id) = self.as_ref().valid_module.get_cached_type_id(type_id_index) {
+            return Ok(type_id);
+        }
+
+        // Cache miss: call into WASM.
         let asc_heap = self.asc_heap().cheap_clone();
         let func = asc_heap.id_of_type.as_ref().unwrap();
-
-        // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
-        func.call_async(self.as_context_mut(), type_id_index as u32)
+        let type_id = func
+            .call_async(self.as_context_mut(), type_id_index as u32)
             .await
             .map_err(|trap| {
                 host_export_error_from_trap(
                     trap,
                     format!("Failed to call 'asc_type_id' with '{:?}'", type_id_index),
                 )
-            })
+            })?;
+
+        // Store for all future triggers.
+        self.as_ref()
+            .valid_module
+            .cache_type_id(type_id_index, type_id);
+        Ok(type_id)
     }
 }

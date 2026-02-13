@@ -157,7 +157,7 @@ impl_asc_type!(u8, u16, u32, u64, i8, i32, i64, f32, f64);
 /// 3. Once defined, items and their discriminants cannot be changed, as this would break running
 ///    subgraphs compiled in previous versions of this representation.
 #[repr(u32)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum IndexForAscTypeId {
     // Ethereum type IDs
     String = 0,

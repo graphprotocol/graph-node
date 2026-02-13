@@ -7,10 +7,12 @@ use graph::data_source::{MappingTrigger, TriggerWithHandler};
 use graph::futures01::sync::mpsc;
 use graph::futures01::{Future as _, Stream as _};
 use graph::futures03::channel::oneshot::Sender;
+use graph::parking_lot::RwLock;
 use graph::prelude::*;
 use graph::runtime::gas::Gas;
+use graph::runtime::IndexForAscTypeId;
 use parity_wasm::elements::ExportEntry;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -248,6 +250,10 @@ pub struct ValidModule {
 
     // Used as a guard to terminate this task dependency.
     epoch_counter_abort_handle: Option<tokio::task::AbortHandle>,
+
+    /// Cache for asc_type_id results. Maps IndexForAscTypeId to their WASM runtime
+    /// type IDs. Populated lazily on first use; deterministic per compiled module.
+    asc_type_id_cache: RwLock<HashMap<IndexForAscTypeId, u32>>,
 }
 
 impl ValidModule {
@@ -355,7 +361,16 @@ impl ValidModule {
             start_function,
             timeout,
             epoch_counter_abort_handle,
+            asc_type_id_cache: RwLock::new(HashMap::new()),
         })
+    }
+
+    pub fn get_cached_type_id(&self, idx: IndexForAscTypeId) -> Option<u32> {
+        self.asc_type_id_cache.read().get(&idx).copied()
+    }
+
+    pub fn cache_type_id(&self, idx: IndexForAscTypeId, type_id: u32) {
+        self.asc_type_id_cache.write().insert(idx, type_id);
     }
 }
 

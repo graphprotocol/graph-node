@@ -401,7 +401,7 @@ async fn json_conversions_v0_0_4() {
 
 #[graph::test]
 async fn json_conversions_v0_0_5() {
-    test_json_conversions(API_VERSION_0_0_5, 2289897).await;
+    test_json_conversions(API_VERSION_0_0_5, 2214813).await;
 }
 
 async fn test_json_parsing(api_version: Version, gas_used: u64) {
@@ -766,7 +766,7 @@ async fn big_int_to_hex_v0_0_4() {
 
 #[graph::test]
 async fn big_int_to_hex_v0_0_5() {
-    test_big_int_to_hex(API_VERSION_0_0_5, 2858580).await;
+    test_big_int_to_hex(API_VERSION_0_0_5, 2565990).await;
 }
 
 async fn test_big_int_arithmetic(api_version: Version, gas_used: u64) {
@@ -832,7 +832,7 @@ async fn big_int_arithmetic_v0_0_4() {
 
 #[graph::test]
 async fn big_int_arithmetic_v0_0_5() {
-    test_big_int_arithmetic(API_VERSION_0_0_5, 7318364).await;
+    test_big_int_arithmetic(API_VERSION_0_0_5, 5256825).await;
 }
 
 async fn test_abort(api_version: Version, error_msg: &str) {
@@ -970,7 +970,7 @@ async fn data_source_create_v0_0_4() {
 
 #[graph::test]
 async fn data_source_create_v0_0_5() {
-    test_data_source_create(API_VERSION_0_0_5, 101450079).await;
+    test_data_source_create(API_VERSION_0_0_5, 101425051).await;
 }
 
 async fn test_ens_name_by_hash(api_version: Version) {
@@ -1827,5 +1827,5 @@ async fn yaml_parsing_v0_0_4() {
 
 #[graph::test]
 async fn yaml_parsing_v0_0_5() {
-    test_yaml_parsing(API_VERSION_0_0_5, 1053955992265).await;
+    test_yaml_parsing(API_VERSION_0_0_5, 1053946160531).await;
 }
