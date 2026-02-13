@@ -117,7 +117,7 @@ async fn abi_array_v0_0_4() {
 
 #[graph::test]
 async fn abi_array_v0_0_5() {
-    test_abi_array(API_VERSION_0_0_5, 1636130).await;
+    test_abi_array(API_VERSION_0_0_5, 1561046).await;
 }
 
 async fn test_abi_subarray(api_version: Version) {
