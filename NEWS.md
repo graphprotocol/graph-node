@@ -1,5 +1,113 @@
 # NEWS
 
+## v0.41.2
+
+### Bug Fixes
+
+- Fixed entity corruption after rewinding pruned subgraphs — rewinding a subgraph with `history_blocks` (pruning) enabled could leave frequently-updated entities with no open version, causing deterministic `unexpected null` errors and making the subgraph unrecoverable without a full re-index ([#6340](https://github.com/graphprotocol/graph-node/pull/6340))
+- Fixed `graphman rewind` and `graphman truncate` targeting the wrong deployment when multiple instances of the same subgraph exist ([#6299](https://github.com/graphprotocol/graph-node/pull/6299))
+- Fixed batch write memoization bug where entity lookups could incorrectly return `None`, causing missed entity updates during indexing ([#6314](https://github.com/graphprotocol/graph-node/pull/6314))
+- Expanded deterministic RPC error handling for Reth and Erigon — added `vm execution error`, `invalidjump`, `notactivated`, and `invalidfeopcode` to recognized deterministic errors. Indexers using these clients no longer need to set `GRAPH_GETH_ETH_CALL_ERRORS` manually for these cases ([#6355](https://github.com/graphprotocol/graph-node/pull/6355))
+
+**Full changelog:** <https://github.com/graphprotocol/graph-node/compare/v0.41.1...v0.41.2>
+
+## v0.41.1
+
+### Bug Fixes
+
+- Fixed a regression in v0.41.0 where the indexing status endpoint would return an empty list when querying all subgraphs without specific deployment filters ([#6210](https://github.com/graphprotocol/graph-node/pull/6210))
+
+**Full changelog:** <https://github.com/graphprotocol/graph-node/compare/v0.41.0...v0.41.1>
+
+## v0.41.0
+
+### Bug Fixes
+
+- Fix non-deterministic handling of transaction receipts in event handlers; receipts are only processed when explicitly declared ([#6200](https://github.com/graphprotocol/graph-node/pull/6200))
+
+### New Features
+
+- Added support for struct field access in declarative calls — enables accessing nested struct fields by field name using dot notation in manifest call declarations ([#6099](https://github.com/graphprotocol/graph-node/pull/6099))
+- New standalone `gnd` (Graph Node Dev) crate — a graph-node binary optimized for local development with minimal setup required ([#6167](https://github.com/graphprotocol/graph-node/pull/6167))
+- Extended IPFS usage metrics and logging capabilities ([#6058](https://github.com/graphprotocol/graph-node/pull/6058))
+- Extended support for additional IPFS content path formats ([#6058](https://github.com/graphprotocol/graph-node/pull/6058))
+
+### Improvements
+
+- Deferred IPFS manifest fetching when starting subgraphs — fixes issue where slow IPFS responses could block assignment event processing ([#6170](https://github.com/graphprotocol/graph-node/pull/6170))
+- Added Content Identifier (CID) to IPFS retry logs for better debugging ([#6144](https://github.com/graphprotocol/graph-node/pull/6144))
+- Fixed handling of empty arrays in indexing status queries ([#6143](https://github.com/graphprotocol/graph-node/pull/6143))
+- Fixed case-insensitive array inputs in queries ([#6075](https://github.com/graphprotocol/graph-node/pull/6075))
+- Fixed panic when handling empty lists in `list_values` ([#6100](https://github.com/graphprotocol/graph-node/pull/6100))
+- Enhanced logging for subgraph assignment processing ([#6169](https://github.com/graphprotocol/graph-node/pull/6169))
+- Added logging for `MAX_BLOCKING_THREADS` configuration setting ([#6161](https://github.com/graphprotocol/graph-node/pull/6161))
+
+**Full changelog:** <https://github.com/graphprotocol/graph-node/compare/v0.40.1...v0.41.0>
+
+## v0.40.1
+
+### Improvements
+
+- Enhanced IPFS logging to include Content Identifiers (CIDs) in operation names for better debugging
+
+**Full changelog:** <https://github.com/graphprotocol/graph-node/compare/v0.40.0...v0.40.1>
+
+## v0.40.0
+
+### Critical Bugfix
+
+- Fixed GraphQL query panic with empty arrays: Resolved a critical bug where GraphQL queries using `_in` filters with empty arrays would cause the graph-node to panic ([#6100](https://github.com/graphprotocol/graph-node/pull/6100))
+
+### New Features
+
+- IPFS files can now be cached to disk using `GRAPH_IPFS_CACHE_LOCATION` — reduces IPFS requests after restarts ([#6031](https://github.com/graphprotocol/graph-node/pull/6031))
+
+### Improvements
+
+- Speed up appending changes to batch operations ([#6025](https://github.com/graphprotocol/graph-node/pull/6025))
+- Improved backoff strategy for offchain data sources, configurable via `GRAPH_FDS_MAX_BACKOFF` ([#6043](https://github.com/graphprotocol/graph-node/pull/6043))
+- Better error messages for OR operator usage with column filters ([#6078](https://github.com/graphprotocol/graph-node/pull/6078))
+- Update Wasmtime version for improved WebAssembly performance ([#6050](https://github.com/graphprotocol/graph-node/pull/6050))
+
+### Bug Fixes
+
+- Fixed subgraph composition sync failures with different ID types ([#6080](https://github.com/graphprotocol/graph-node/pull/6080))
+- Fixed pruning status reporting accuracy ([#6062](https://github.com/graphprotocol/graph-node/pull/6062))
+
+**Full changelog:** <https://github.com/graphprotocol/graph-node/compare/v0.39.1...v0.40.0>
+
+## v0.39.1
+
+### Critical Fix
+
+- Reverted `event.transactionLogIndex` behavior change from v0.38.0 that caused subgraph failures with duplicate ID errors and POI divergence between indexers ([#6042](https://github.com/graphprotocol/graph-node/pull/6042))
+
+**Full changelog:** <https://github.com/graphprotocol/graph-node/compare/v0.39.0...v0.39.1>
+
+## v0.39.0
+
+### Breaking Changes
+
+- **Database schema migration**: `subgraphs.subgraph_deployment` table split into `subgraphs.head` and `subgraphs.deployment`. External tools accessing this table will need updates. See [documentation](https://github.com/graphprotocol/graph-node/blob/master/docs/implementation/metadata.md#subgraphshead) ([#6003](https://github.com/graphprotocol/graph-node/pull/6003))
+- **Arweave blockchain support removed** — Arweave subgraphs are no longer supported (file data sources remain unaffected) ([#5951](https://github.com/graphprotocol/graph-node/pull/5951))
+- **`graphman drop` removed** — Use `graphman remove` followed by `graphman unused record && graphman unused remove` ([#5974](https://github.com/graphprotocol/graph-node/pull/5974))
+- **Failed subgraphs are now paused instead of unassigned** ([#5971](https://github.com/graphprotocol/graph-node/pull/5971))
+
+### New Features
+
+- Pruning status tracking with new graphman commands: `prune status`, `prune run`, `prune set` ([#5949](https://github.com/graphprotocol/graph-node/pull/5949))
+- Pruning timeout protection via `GRAPH_STORE_BATCH_TIMEOUT` ([#6002](https://github.com/graphprotocol/graph-node/pull/6002))
+- `graphman chain ingest` for manually ingesting specific blocks ([#5945](https://github.com/graphprotocol/graph-node/pull/5945))
+- Configurable IPFS retry limits via `GRAPH_IPFS_MAX_ATTEMPTS` and `GRAPH_IPFS_REQUEST_TIMEOUT` ([#5998](https://github.com/graphprotocol/graph-node/pull/5998))
+
+### Bug Fixes
+
+- Fixed VID sequence naming to comply with PostgreSQL 63-character limit
+- Fixed pruning of tables with VID sequences using CASCADE drops ([#5968](https://github.com/graphprotocol/graph-node/pull/5968))
+- Fixed numerical precision issues with large VID values ([#5970](https://github.com/graphprotocol/graph-node/pull/5970))
+
+**Full changelog:** <https://github.com/graphprotocol/graph-node/compare/v0.38.0...v0.39.0>
+
 ## v0.38.0
 
 ### What's new
