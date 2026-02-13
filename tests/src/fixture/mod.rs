@@ -20,7 +20,8 @@ use graph::blockchain::{
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{
-    ArweaveClient, ArweaveResolver, FileLinkResolver, FileSizeLimit, LinkResolverContext,
+    ArweaveClient, ArweaveClientError, ArweaveResolver, FileLinkResolver, FileSizeLimit,
+    LinkResolverContext,
 };
 use graph::components::metrics::MetricsRegistry;
 use graph::components::network_provider::ChainName;
@@ -422,6 +423,38 @@ pub struct TestInfo {
     pub hash: DeploymentHash,
 }
 
+#[derive(Debug)]
+pub struct StaticArweaveResolver {
+    content: HashMap<String, Vec<u8>>,
+}
+
+impl StaticArweaveResolver {
+    pub fn new(content: HashMap<String, Vec<u8>>) -> Self {
+        Self { content }
+    }
+}
+
+#[async_trait]
+impl ArweaveResolver for StaticArweaveResolver {
+    async fn get(
+        &self,
+        file: &graph::data_source::offchain::Base64,
+    ) -> Result<Vec<u8>, ArweaveClientError> {
+        self.get_with_limit(file, &FileSizeLimit::Unlimited).await
+    }
+
+    async fn get_with_limit(
+        &self,
+        file: &graph::data_source::offchain::Base64,
+        _limit: &FileSizeLimit,
+    ) -> Result<Vec<u8>, ArweaveClientError> {
+        self.content
+            .get(file.as_str())
+            .cloned()
+            .ok_or(ArweaveClientError::UnableToCheckFileSize)
+    }
+}
+
 pub async fn setup<C: Blockchain>(
     test_info: &TestInfo,
     stores: &Stores,
@@ -429,7 +462,7 @@ pub async fn setup<C: Blockchain>(
     graft_block: Option<BlockPtr>,
     env_vars: Option<EnvVars>,
 ) -> TestContext {
-    setup_inner(test_info, stores, chain, graft_block, env_vars, None).await
+    setup_inner(test_info, stores, chain, graft_block, env_vars, None, None).await
 }
 
 pub async fn setup_with_file_link_resolver<C: Blockchain>(
@@ -449,6 +482,27 @@ pub async fn setup_with_file_link_resolver<C: Blockchain>(
         graft_block,
         env_vars,
         Some(link_resolver),
+        None,
+    )
+    .await
+}
+
+pub async fn setup_with_arweave_resolver<C: Blockchain>(
+    test_info: &TestInfo,
+    stores: &Stores,
+    chain: &impl TestChainTrait<C>,
+    graft_block: Option<BlockPtr>,
+    env_vars: Option<EnvVars>,
+    arweave_resolver: Arc<dyn ArweaveResolver>,
+) -> TestContext {
+    setup_inner(
+        test_info,
+        stores,
+        chain,
+        graft_block,
+        env_vars,
+        None,
+        Some(arweave_resolver),
     )
     .await
 }
@@ -460,6 +514,7 @@ pub async fn setup_inner<C: Blockchain>(
     graft_block: Option<BlockPtr>,
     env_vars: Option<EnvVars>,
     link_resolver: Option<Arc<dyn LinkResolver>>,
+    arweave_resolver: Option<Arc<dyn ArweaveResolver>>,
 ) -> TestContext {
     let env_vars = Arc::new(match env_vars {
         Some(ev) => ev,
@@ -506,7 +561,8 @@ pub async fn setup_inner<C: Blockchain>(
         env_vars.mappings.ipfs_request_limit,
     );
 
-    let arweave_resolver = Arc::new(ArweaveClient::default());
+    let arweave_resolver: Arc<dyn ArweaveResolver> =
+        arweave_resolver.unwrap_or_else(|| Arc::new(ArweaveClient::default()));
     let arweave_service = arweave_service(
         arweave_resolver.cheap_clone(),
         env_vars.mappings.ipfs_request_limit,
@@ -602,8 +658,6 @@ pub async fn setup_inner<C: Blockchain>(
     )
     .await
     .expect("failed to create subgraph version");
-
-    let arweave_resolver = Arc::new(ArweaveClient::default());
 
     TestContext {
         logger: logger_factory.subgraph_logger(&deployment),

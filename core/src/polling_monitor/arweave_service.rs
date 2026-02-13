@@ -2,7 +2,7 @@ use anyhow::Error;
 use bytes::Bytes;
 use graph::futures03::future::BoxFuture;
 use graph::{
-    components::link_resolver::{ArweaveClient, ArweaveResolver, FileSizeLimit},
+    components::link_resolver::{ArweaveResolver, FileSizeLimit},
     data_source::offchain::Base64,
     derive::CheapClone,
     prelude::CheapClone,
@@ -13,7 +13,7 @@ use tower::{buffer::Buffer, ServiceBuilder, ServiceExt};
 pub type ArweaveService = Buffer<Base64, BoxFuture<'static, Result<Option<Bytes>, Error>>>;
 
 pub fn arweave_service(
-    client: Arc<ArweaveClient>,
+    client: Arc<dyn ArweaveResolver>,
     rate_limit: u16,
     max_file_size: FileSizeLimit,
 ) -> ArweaveService {
@@ -34,7 +34,7 @@ pub fn arweave_service(
 
 #[derive(Clone, CheapClone)]
 struct ArweaveServiceInner {
-    client: Arc<ArweaveClient>,
+    client: Arc<dyn ArweaveResolver>,
     max_file_size: FileSizeLimit,
 }
 

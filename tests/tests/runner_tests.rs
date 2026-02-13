@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::atomic::{self, AtomicBool};
@@ -23,8 +24,8 @@ use graph_tests::fixture::ethereum::{
 };
 
 use graph_tests::fixture::{
-    self, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, TestChainTrait,
-    TestContext, TestInfo,
+    self, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector,
+    StaticArweaveResolver, TestChainTrait, TestContext, TestInfo,
 };
 use graph_tests::recipe::{build_subgraph_with_pnpm_cmd_and_arg, RunnerTestRecipe};
 use slog::{o, Discard, Logger};
@@ -1141,23 +1142,22 @@ async fn arweave_file_data_sources() {
     // HASH used in the mappings.
     let id = "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8";
 
-    // This test assumes the file data sources will be processed in the same block in which they are
-    // created. But the test might fail due to a race condition if for some reason it takes longer
-    // than expected to fetch the file from arweave. The sleep here will conveniently happen after the
-    // data source is added to the offchain monitor but before the monitor is checked, in an an
-    // attempt to ensure the monitor has enough time to fetch the file.
-    let adapter_selector = NoopAdapterSelector {
-        x: PhantomData,
-        triggers_in_block_sleep: Duration::from_millis(1500),
-    };
-    let chain = chain(
-        &test_info.test_name,
-        blocks.clone(),
+    // Use a mock arweave resolver to avoid real network calls and eliminate the
+    // race condition that caused this test to be flaky.
+    let arweave_content: HashMap<String, Vec<u8>> =
+        HashMap::from([(id.to_string(), b"test arweave content".to_vec())]);
+    let arweave_resolver = Arc::new(StaticArweaveResolver::new(arweave_content));
+
+    let chain = chain(&test_info.test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup_with_arweave_resolver(
+        &test_info,
         &stores,
-        Some(Arc::new(adapter_selector)),
+        &chain,
+        None,
+        None,
+        arweave_resolver,
     )
     .await;
-    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
     ctx.start_and_sync_to(test_ptr(2)).await;
 
     let store = ctx.store.cheap_clone();
