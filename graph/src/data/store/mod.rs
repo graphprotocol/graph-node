@@ -1014,14 +1014,25 @@ impl Entity {
     /// If a key exists in both entities, the value from `update` is chosen.
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
-    pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<(), InternError> {
+    pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<bool, InternError> {
+        let mut changed = false;
         for (key, value) in update.0.into_iter() {
             match value {
-                Value::Null => self.0.remove(&key),
-                _ => self.0.insert(&key, value)?,
-            };
+                Value::Null => {
+                    if self.0.remove(&key).is_some() {
+                        changed = true;
+                    }
+                }
+                _ => {
+                    let different = self.0.get(key.as_str()).is_none_or(|old| *old != value);
+                    self.0.insert(&key, value)?;
+                    if different {
+                        changed = true;
+                    }
+                }
+            }
         }
-        Ok(())
+        Ok(changed)
     }
 
     /// Remove all entries with value `Value::Null` from `self`
