@@ -1,4 +1,3 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use anyhow::Error;
@@ -262,10 +261,13 @@ impl WasmInstance {
         let host_fns = ctx.host_fns.cheap_clone();
         let api_version = ctx.host_exports.data_source.api_version.clone();
 
+        let gas = GasCounter::new(host_metrics.gas_metrics.clone());
+
         let wasm_ctx = WasmInstanceData::from_instance(
             ctx,
             valid_module.cheap_clone(),
             host_metrics.cheap_clone(),
+            gas.cheap_clone(),
             experimental_features,
         );
         let mut store = Store::new(engine, wasm_ctx);
@@ -279,11 +281,6 @@ impl WasmInstance {
         //
         // See also: runtime-timeouts
         store.set_epoch_deadline(2);
-
-        // Because `gas` and `deterministic_host_trap` need to be accessed from the gas
-        // host fn, they need to be separate from the rest of the context.
-        let gas = GasCounter::new(host_metrics.gas_metrics.clone());
-        let deterministic_host_trap = Arc::new(AtomicBool::new(false));
 
         // Helper to turn a parameter name into 'u32' for a tuple type
         // (param1, parma2, ..) : (u32, u32, ..)
@@ -313,14 +310,13 @@ impl WasmInstance {
 
                 // link an import with all the modules that require it.
                 for module in modules {
-                    let gas = gas.cheap_clone();
                     linker.func_wrap_async(
                         module,
                         $wasm_name,
                         move |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
                               ($($param),*,) : ($(param_u32!($param)),*,)|  {
-                            let gas = gas.cheap_clone();
                             Box::new(async move {
+                                let gas = caller.data().gas.cheap_clone();
                                 let host_metrics = caller.data().host_metrics.cheap_clone();
                                 let _section = host_metrics.stopwatch.start_section($section);
 
@@ -362,14 +358,13 @@ impl WasmInstance {
 
                 // link an import with all the modules that require it.
                 for module in modules {
-                    let gas = gas.cheap_clone();
                     linker.func_wrap_async(
                         module,
                         $wasm_name,
                         move |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
                               _ : ()|  {
-                            let gas = gas.cheap_clone();
                             Box::new(async move {
+                                let gas = caller.data().gas.cheap_clone();
                                 let host_metrics = caller.data().host_metrics.cheap_clone();
                                 let _section = host_metrics.stopwatch.start_section($section);
 
@@ -409,17 +404,16 @@ impl WasmInstance {
 
             for module in modules {
                 let host_fn = host_fn.cheap_clone();
-                let gas = gas.cheap_clone();
                 linker.func_wrap_async(
                     module,
                     host_fn.name,
                     move |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
                           (call_ptr,): (u32,)| {
                         let host_fn = host_fn.cheap_clone();
-                        let gas = gas.cheap_clone();
                         Box::new(async move {
                             let start = Instant::now();
 
+                            let gas = caller.data().gas.cheap_clone();
                             let name_for_metrics = host_fn.name.replace('.', "_");
                             let host_metrics = caller.data().host_metrics.cheap_clone();
                             let stopwatch = host_metrics.stopwatch.cheap_clone();
@@ -576,22 +570,28 @@ impl WasmInstance {
 
         // link the `gas` function
         // See also e3f03e62-40e4-4f8c-b4a1-d0375cca0b76
-        {
-            let gas = gas.cheap_clone();
-            linker.func_wrap("gas", "gas", move |gas_used: u32| -> anyhow::Result<()> {
+        linker.func_wrap(
+            "gas",
+            "gas",
+            |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
+             gas_used: u32|
+             -> anyhow::Result<()> {
                 // Gas metering has a relevant execution cost cost, being called tens of thousands
                 // of times per handler, but it's not worth having a stopwatch section here because
                 // the cost of measuring would be greater than the cost of `consume_host_fn`. Last
                 // time this was benchmarked it took < 100ns to run.
-                if let Err(e) = gas.consume_host_fn_with_metrics(gas_used.saturating_into(), "gas")
+                if let Err(e) = caller
+                    .data()
+                    .gas
+                    .consume_host_fn_with_metrics(gas_used.saturating_into(), "gas")
                 {
-                    deterministic_host_trap.store(true, Ordering::SeqCst);
+                    caller.data_mut().deterministic_host_trap = true;
                     return Err(e.into());
                 }
 
                 Ok(())
-            })?;
-        }
+            },
+        )?;
 
         let instance = linker
             .instantiate_async(store.as_context_mut(), &valid_module.module)
