@@ -237,6 +237,10 @@ impl UnresolvedSource {
     pub fn address(&self) -> &DeploymentHash {
         &self.address
     }
+
+    pub fn start_block(&self) -> BlockNumber {
+        self.start_block
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]

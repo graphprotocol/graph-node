@@ -263,7 +263,9 @@ pub fn discover_test_files(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
 
         if path.is_file() {
             if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name.ends_with(".test.json") || name.ends_with(".json") {
+                if (name.ends_with(".test.json") || name.ends_with(".json"))
+                    && !name.starts_with('.')
+                {
                     files.push(path);
                 }
             }

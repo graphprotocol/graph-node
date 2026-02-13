@@ -30,6 +30,7 @@ use super::noop::{NoopAdapterSelector, StaticBlockRefetcher};
 use super::schema::{TestFile, TestResult};
 use super::trigger::build_blocks_with_triggers;
 use super::TestOpt;
+use crate::manifest::{load_manifest, Manifest};
 use anyhow::{anyhow, Context, Result};
 use graph::amp::FlightClient;
 use graph::blockchain::block_stream::BlockWithTriggers;
@@ -142,54 +143,34 @@ pub(super) struct TestContext {
 /// The network name must match the chain configuration passed to the store,
 /// otherwise graph-node won't route triggers to the correct chain.
 /// Falls back to "mainnet" if not found (the common case for Ethereum subgraphs).
-fn extract_network_from_manifest(manifest_path: &Path) -> Result<String> {
-    let content = std::fs::read_to_string(manifest_path)
-        .with_context(|| format!("Failed to read manifest: {}", manifest_path.display()))?;
-    let manifest: serde_yaml::Value = serde_yaml::from_str(&content)
-        .with_context(|| format!("Failed to parse manifest: {}", manifest_path.display()))?;
-
+fn extract_network_from_manifest(manifest: &Manifest) -> Result<String> {
     let network = manifest
-        .get("dataSources")
-        .and_then(|ds| ds.as_sequence())
-        .and_then(|seq| seq.first())
-        .and_then(|first| first.get("network"))
-        .and_then(|n| n.as_str())
-        .map(|s| s.to_string())
+        .data_sources
+        .first()
+        .and_then(|ds| ds.network.clone())
         .unwrap_or_else(|| "mainnet".to_string());
 
     Ok(network)
 }
 
-/// Extract the minimum `startBlock` across all data sources in a manifest.
+/// Extract the minimum `startBlock` across all Ethereum data sources in a manifest.
 ///
 /// When a manifest specifies `startBlock` on its data sources, graph-node
 /// normally validates that the block exists on-chain during deployment.
 /// In tests there is no real chain, so the caller uses this value to build
 /// a `start_block_override` that bypasses validation.
 ///
-/// Returns 0 if no data source specifies a `startBlock`.
-fn extract_start_block_from_manifest(manifest_path: &Path) -> Result<u64> {
-    let content = std::fs::read_to_string(manifest_path)
-        .with_context(|| format!("Failed to read manifest: {}", manifest_path.display()))?;
-    let manifest: serde_yaml::Value = serde_yaml::from_str(&content)
-        .with_context(|| format!("Failed to parse manifest: {}", manifest_path.display()))?;
-
-    let min_start_block = manifest
-        .get("dataSources")
-        .and_then(|ds| ds.as_sequence())
-        .map(|seq| {
-            seq.iter()
-                .filter_map(|ds| {
-                    ds.get("source")
-                        .and_then(|s| s.get("startBlock"))
-                        .and_then(|b| b.as_u64())
-                })
-                .min()
-                .unwrap_or(0)
-        })
-        .unwrap_or(0);
-
-    Ok(min_start_block)
+/// Only considers Ethereum data sources (kind: "ethereum" or "ethereum/contract")
+/// since gnd test only supports testing Ethereum contracts.
+///
+/// Returns 0 if no Ethereum data source specifies a `startBlock`.
+fn extract_start_block_from_manifest(manifest: &Manifest) -> Result<u64> {
+    Ok(manifest
+        .data_sources
+        .iter()
+        .map(|ds| ds.start_block)
+        .min()
+        .unwrap_or(0))
 }
 
 /// Run a single test file end-to-end.
@@ -230,16 +211,17 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
         )
     })?;
 
+    let manifest = load_manifest(&built_manifest_path)?;
     // The network name from the manifest (e.g., "mainnet") determines which
     // chain config the store uses. Must match exactly.
-    let network_name: ChainName = extract_network_from_manifest(&built_manifest_path)?.into();
+    let network_name: ChainName = extract_network_from_manifest(&manifest)?.into();
 
     // Extract the minimum startBlock from the manifest. When startBlock > 0,
     // graph-node normally validates the block exists on-chain, but our test
     // environment has no real chain. We provide a start_block_override to
     // bypass validation, and also default test block numbering to start at
     // the manifest's startBlock so blocks land in the indexed range.
-    let min_start_block = extract_start_block_from_manifest(&built_manifest_path)?;
+    let min_start_block = extract_start_block_from_manifest(&manifest)?;
 
     // Convert test JSON blocks into graph-node's internal block format.
     // Default block numbering starts at the manifest's startBlock so that
