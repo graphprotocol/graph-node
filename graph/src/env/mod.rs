@@ -11,6 +11,8 @@ use semver::Version;
 
 use self::graphql::*;
 use self::mappings::*;
+
+pub use self::mappings::WasmOptLevel;
 use self::store::*;
 use crate::{
     components::{store::BlockNumber, subgraph::SubgraphVersionSwitchingMode},

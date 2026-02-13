@@ -82,12 +82,54 @@ pub struct EnvVarsMapping {
     /// Maximum backoff time for FDS requests. Set by
     /// `GRAPH_FDS_MAX_BACKOFF` in seconds, defaults to 600.
     pub fds_max_backoff: Duration,
+
+    /// Cranelift optimization level for WASM compilation.
+    ///
+    /// Set by the environment variable `GRAPH_WASM_OPT_LEVEL`. Valid values
+    /// are `none`, `speed`, and `speed_and_size`. The default value is
+    /// `speed`.
+    pub wasm_opt_level: WasmOptLevel,
+}
+
+/// Cranelift optimization level for WASM compilation. Maps to
+/// `wasmtime::OptLevel` without introducing a dependency on wasmtime.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum WasmOptLevel {
+    None,
+    Speed,
+    SpeedAndSize,
 }
 
 // This does not print any values avoid accidentally leaking any sensitive env vars
 impl fmt::Debug for EnvVarsMapping {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "env vars")
+    }
+}
+
+impl fmt::Display for WasmOptLevel {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            WasmOptLevel::None => write!(f, "none"),
+            WasmOptLevel::Speed => write!(f, "speed"),
+            WasmOptLevel::SpeedAndSize => write!(f, "speed_and_size"),
+        }
+    }
+}
+
+impl FromStr for WasmOptLevel {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(WasmOptLevel::None),
+            "speed" => Ok(WasmOptLevel::Speed),
+            "speed_and_size" => Ok(WasmOptLevel::SpeedAndSize),
+            _ => Err(format!(
+                "invalid GRAPH_WASM_OPT_LEVEL '{}', expected 'none', 'speed', or 'speed_and_size'",
+                s
+            )),
+        }
     }
 }
 
@@ -121,6 +163,7 @@ impl TryFrom<InnerMappingHandlers> for EnvVarsMapping {
             disable_declared_calls: x.disable_declared_calls.0,
             store_errors_are_nondeterministic: x.store_errors_are_nondeterministic.0,
             fds_max_backoff: Duration::from_secs(x.fds_max_backoff),
+            wasm_opt_level: x.wasm_opt_level,
         };
         Ok(vars)
     }
@@ -164,6 +207,8 @@ pub struct InnerMappingHandlers {
     store_errors_are_nondeterministic: EnvVarBoolean,
     #[envconfig(from = "GRAPH_FDS_MAX_BACKOFF", default = "600")]
     fds_max_backoff: u64,
+    #[envconfig(from = "GRAPH_WASM_OPT_LEVEL", default = "speed")]
+    wasm_opt_level: WasmOptLevel,
 }
 
 fn validate_ipfs_cache_location(path: PathBuf) -> Result<PathBuf, anyhow::Error> {

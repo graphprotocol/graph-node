@@ -291,14 +291,19 @@ impl ValidModule {
             .map_err(|_| anyhow!("Failed to inject gas counter"))?;
         let raw_module = parity_module.into_bytes()?;
 
-        // We currently use Cranelift as a compilation engine. Cranelift is an optimizing compiler,
-        // but that should not cause determinism issues since it adheres to the Wasm spec. Still we
-        // turn off optional optimizations to be conservative.
+        // We use Cranelift as a compilation engine. Cranelift is an optimizing compiler, but that
+        // should not cause determinism issues since it adheres to the Wasm spec and NaN
+        // canonicalization is enabled below. The optimization level is configurable via
+        // GRAPH_WASM_OPT_LEVEL (default: speed).
         let mut config = wasmtime::Config::new();
         config.strategy(wasmtime::Strategy::Cranelift);
         config.epoch_interruption(true);
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
-        config.cranelift_opt_level(wasmtime::OptLevel::None);
+        config.cranelift_opt_level(match ENV_VARS.mappings.wasm_opt_level {
+            graph::env::WasmOptLevel::None => wasmtime::OptLevel::None,
+            graph::env::WasmOptLevel::Speed => wasmtime::OptLevel::Speed,
+            graph::env::WasmOptLevel::SpeedAndSize => wasmtime::OptLevel::SpeedAndSize,
+        });
         config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
         config.async_support(true);
 
