@@ -82,6 +82,10 @@ const NODE_ID: &str = "gnd-test";
 /// background subscription listener loses its connection and logs an error.
 /// This is expected during cleanup and not a real problem, so we filter it
 /// out to avoid confusing test output. All other log messages pass through.
+///
+/// NOTE: String-based filtering is fragile - if the error message changes upstream,
+/// the filter breaks silently. Consider structured logging/error type matching.
+/// See: gnd-test.md "Next Iteration Improvements"
 struct FilterStoreEventEndedDrain<D: Drain> {
     inner: D,
 }
@@ -164,6 +168,11 @@ fn extract_network_from_manifest(manifest: &Manifest) -> Result<String> {
 /// since gnd test only supports testing Ethereum contracts.
 ///
 /// Returns 0 if no Ethereum data source specifies a `startBlock`.
+///
+/// NOTE: When multiple datasources have different startBlocks, taking the minimum
+/// is correct for default block numbering, but users must use explicit "number"
+/// fields to test datasources with higher startBlocks. Consider adding a warning
+/// when this is detected. See: gnd-test.md "Next Iteration Improvements"
 fn extract_start_block_from_manifest(manifest: &Manifest) -> Result<u64> {
     Ok(manifest
         .data_sources
@@ -762,6 +771,9 @@ async fn wait_for_sync(
     deployment: &DeploymentLocator,
     stop_block: BlockPtr,
 ) -> Result<(), SubgraphError> {
+    // NOTE: Hardcoded timeout/interval - could be made configurable via env var
+    // or CLI flag for slow subgraphs or faster iteration during development.
+    // See: gnd-test.md "Next Iteration Improvements"
     const MAX_WAIT: Duration = Duration::from_secs(60);
     const WAIT_TIME: Duration = Duration::from_millis(500);
 

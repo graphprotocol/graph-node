@@ -65,7 +65,8 @@ pub fn build_blocks_with_triggers(
             .context("Invalid block hash")?
             .unwrap_or_else(|| keccak256(number.to_be_bytes()));
 
-        // Default timestamp simulates 12-second block times.
+        // Default timestamp simulates 12-second block times (Ethereum mainnet average).
+        // NOTE: Magic number - could be extracted to a named constant.
         let timestamp = test_block.timestamp.unwrap_or(number * 12);
 
         // Parse base fee per gas if provided (EIP-1559 support).

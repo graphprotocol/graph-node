@@ -239,6 +239,10 @@ pub struct AssertionFailure {
 // ============ Parsing ============
 
 /// Parse a JSON test file from disk into a [`TestFile`].
+///
+/// NOTE: Only validates JSON schema, not semantic correctness (e.g., block ordering,
+/// valid addresses, parseable event signatures). Consider adding validation pass
+/// for better error messages. See: gnd-test.md "Next Iteration Improvements"
 pub fn parse_test_file(path: &Path) -> anyhow::Result<TestFile> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Failed to read test file {}: {}", path.display(), e))?;

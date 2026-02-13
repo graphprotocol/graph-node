@@ -201,6 +201,8 @@ fn json_similarity(a: &serde_json::Value, b: &serde_json::Value) -> usize {
                 if let Some(bv) = b_obj.get(k) {
                     if json_equal(v, bv) {
                         // `id` match is a strong signal for entity identity.
+                        // NOTE: Magic number 100 - weight for id field vs other fields (1).
+                        // Could be extracted to constant if tuning needed.
                         score += if k == "id" { 100 } else { 1 };
                     }
                 }
@@ -240,6 +242,10 @@ fn json_equal(a: &serde_json::Value, b: &serde_json::Value) -> bool {
             // Order-insensitive comparison: each element in `a` must match
             // exactly one unmatched element in `b`. This handles GraphQL
             // collection queries where entity ordering is non-deterministic.
+            //
+            // TODO: O(n²) complexity - fine for <1000 entities but could be optimized
+            // with id-based HashMap lookup for objects with `id` fields.
+            // See: gnd-test.md "Next Iteration Improvements"
             let mut used = vec![false; b.len()];
             a.iter().all(|a_elem| {
                 for (i, b_elem) in b.iter().enumerate() {
