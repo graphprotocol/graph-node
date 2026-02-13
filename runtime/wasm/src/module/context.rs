@@ -82,6 +82,9 @@ pub struct WasmInstanceData {
     pub valid_module: Arc<ValidModule>,
     pub host_metrics: Arc<HostMetrics>,
 
+    // Per-trigger gas counter, shared via Arc so clones refer to the same counter.
+    pub gas: GasCounter,
+
     // A trap ocurred due to a possible reorg detection.
     pub possible_reorg: bool,
 
@@ -100,6 +103,7 @@ impl WasmInstanceData {
         ctx: MappingContext,
         valid_module: Arc<ValidModule>,
         host_metrics: Arc<HostMetrics>,
+        gas: GasCounter,
         experimental_features: ExperimentalFeatures,
     ) -> Self {
         WasmInstanceData {
@@ -107,6 +111,7 @@ impl WasmInstanceData {
             ctx,
             valid_module,
             host_metrics,
+            gas,
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
