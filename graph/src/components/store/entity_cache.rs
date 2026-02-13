@@ -518,12 +518,14 @@ impl EntityCache {
                 }
                 // Entity may have been changed
                 (Some(current), EntityOp::Update(updates)) => {
-                    let mut data = current.as_ref().clone();
-                    data.merge_remove_null_fields(updates)
+                    let mut data =
+                        Arc::try_unwrap(current).unwrap_or_else(|arc| arc.as_ref().clone());
+                    let changed = data
+                        .merge_remove_null_fields(updates)
                         .map_err(|e| key.unknown_attribute(e))?;
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
-                    if current != data {
+                    if changed {
                         Some(Overwrite {
                             key,
                             data,
