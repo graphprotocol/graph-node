@@ -279,8 +279,11 @@ async fn download_matchstick_binary(version: &str, platform: &str, force: bool) 
 async fn run_binary_tests(opt: &TestOpt) -> Result<()> {
     step(Step::Generate, "Running Matchstick tests (legacy mode)");
 
-    let version =
-        resolve_matchstick_version(opt.matchstick_version.as_deref(), &opt.test_dir).await?;
+    let version = resolve_matchstick_version(
+        opt.matchstick_version.as_deref(),
+        Path::new(super::DEFAULT_TEST_DIR),
+    )
+    .await?;
 
     let platform = get_platform(&version)?;
     let bin_path = download_matchstick_binary(&version, &platform, opt.force).await?;
@@ -364,8 +367,11 @@ async fn run_docker_tests(opt: &TestOpt) -> Result<()> {
     let image_exists = !image_check.stdout.is_empty();
 
     if !image_exists || opt.force {
-        let version =
-            resolve_matchstick_version(opt.matchstick_version.as_deref(), &opt.test_dir).await?;
+        let version = resolve_matchstick_version(
+            opt.matchstick_version.as_deref(),
+            Path::new(super::DEFAULT_TEST_DIR),
+        )
+        .await?;
 
         step(Step::Generate, "Building Matchstick Docker image");
         let dockerfile_path = PathBuf::from("tests/.docker/Dockerfile");

@@ -57,16 +57,19 @@ use std::path::PathBuf;
 
 use crate::output::{step, Step};
 
+/// Default directory for test file discovery.
+const DEFAULT_TEST_DIR: &str = "tests";
+
 #[derive(Clone, Debug, Parser)]
 #[clap(about = "Run subgraph tests")]
 pub struct TestOpt {
-    /// Path to subgraph manifest
-    #[clap(default_value = "subgraph.yaml")]
-    pub manifest: PathBuf,
+    /// Test files or directories to run. Directories are scanned for *.json / *.test.json.
+    /// Defaults to the "tests/" directory when nothing is specified.
+    pub tests: Vec<PathBuf>,
 
-    /// Test files directory
-    #[clap(short = 't', long, default_value = "tests")]
-    pub test_dir: PathBuf,
+    /// Path to subgraph manifest
+    #[clap(short = 'm', long, default_value = "subgraph.yaml")]
+    pub manifest: PathBuf,
 
     /// Skip building the subgraph before testing
     #[clap(long)]
@@ -134,19 +137,24 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
         step(Step::Done, "Build complete");
     }
 
-    // Find all test JSON files in the test directory (sorted for deterministic order).
+    // Resolve test files from positional args. Default to "tests/" when none given.
+    let tests = if opt.tests.is_empty() {
+        vec![PathBuf::from(DEFAULT_TEST_DIR)]
+    } else {
+        opt.tests.clone()
+    };
+
     step(Step::Load, "Discovering test files");
-    let test_files = schema::discover_test_files(&opt.test_dir)?;
+    let test_files = resolve_test_paths(&tests)?;
 
     if test_files.is_empty() {
         step(Step::Warn, "No test files found");
-        println!(
-            "  Looking in: {}",
-            opt.test_dir
-                .canonicalize()
-                .unwrap_or(opt.test_dir.clone())
-                .display()
-        );
+        for test in &tests {
+            println!(
+                "  Looking in: {}",
+                test.canonicalize().unwrap_or(test.clone()).display()
+            );
+        }
         println!("  Expected: *.test.json or *.json files");
         return Ok(());
     }
@@ -195,4 +203,35 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
     } else {
         Ok(())
     }
+}
+
+/// Resolve a list of paths into concrete test file paths.
+///
+/// Each path is either a JSON file (used directly) or a directory
+/// (scanned for `*.json` / `*.test.json`). Bare filenames that don't
+/// exist at the given path are also looked up in the default test
+/// directory (e.g. `gnd test foo.json` resolves to `tests/foo.json`).
+/// Results are sorted for deterministic execution order.
+fn resolve_test_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+
+    for path in paths {
+        if path.is_dir() {
+            files.extend(schema::discover_test_files(path)?);
+        } else if path.exists() {
+            files.push(path.clone());
+        } else {
+            // Try resolving bare filename inside the default test directory.
+            let in_default_dir = PathBuf::from(DEFAULT_TEST_DIR).join(path);
+            if in_default_dir.exists() {
+                files.push(in_default_dir);
+            } else {
+                // Keep the original path — parse_test_file will report the error.
+                files.push(path.clone());
+            }
+        }
+    }
+
+    files.sort();
+    Ok(files)
 }
