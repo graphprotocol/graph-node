@@ -21,8 +21,10 @@ use graph::{
             PruneReporter, PruneRequest, SubgraphFork,
         },
     },
-    data::query::QueryTarget,
-    data::subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
+    data::{
+        query::QueryTarget,
+        subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
+    },
     internal_error,
     prelude::{
         anyhow, lazy_static, o, web3::types::Address, ApiVersion, BlockNumber, BlockPtr,
@@ -1043,13 +1045,15 @@ impl SubgraphStoreInner {
         join_all(self.stores.values().map(|store| store.vacuum())).await
     }
 
-    pub fn rewind(&self, id: DeploymentHash, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id)?;
+    pub fn rewind(&self, id: DeploymentId, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+        let site = self.find_site(id)?;
+        let store = self.for_site(&site)?;
         store.rewind(site, block_ptr_to)
     }
 
-    pub fn truncate(&self, id: DeploymentHash, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
-        let (store, site) = self.store(&id)?;
+    pub fn truncate(&self, id: DeploymentId, block_ptr_to: BlockPtr) -> Result<(), StoreError> {
+        let site = self.find_site(id)?;
+        let store = self.for_site(&site)?;
         store.truncate(site, block_ptr_to)
     }
 

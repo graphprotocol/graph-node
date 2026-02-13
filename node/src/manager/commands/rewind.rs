@@ -171,11 +171,11 @@ pub async fn run(
 
         match (block_ptr_to, start_block) {
             (Some(block_ptr), _) => {
-                subgraph_store.rewind(loc.hash.clone(), block_ptr)?;
+                subgraph_store.rewind(loc.id.into(), block_ptr)?;
                 println!("  ... rewound {}", loc);
             }
             (None, Some(start_block_ptr)) => {
-                subgraph_store.truncate(loc.hash.clone(), start_block_ptr)?;
+                subgraph_store.truncate(loc.id.into(), start_block_ptr)?;
                 println!("  ... truncated {}", loc);
             }
             (None, None) => {
