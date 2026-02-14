@@ -38,6 +38,24 @@ enum EntityOp {
 }
 
 impl EntityOp {
+    /// Apply this operation by reference, avoiding a clone of the `EntityOp`
+    /// itself. The base entity is cloned only when merging an `Update`.
+    fn apply_to_ref<E: Borrow<Entity>>(
+        &self,
+        entity: &Option<E>,
+    ) -> Result<Option<Entity>, InternError> {
+        use EntityOp::*;
+        match (self, entity) {
+            (Remove, _) => Ok(None),
+            (Overwrite(new), _) | (Update(new), None) => Ok(Some(new.clone())),
+            (Update(updates), Some(entity)) => {
+                let mut e = entity.borrow().clone();
+                e.merge_remove_null_fields(updates.clone())?;
+                Ok(Some(e))
+            }
+        }
+    }
+
     fn apply_to<E: Borrow<Entity>>(
         self,
         entity: &Option<E>,
@@ -218,15 +236,15 @@ impl EntityCache {
             GetScope::InBlock => true,
         });
 
-        if let Some(op) = self.updates.get(key).cloned() {
+        if let Some(op) = self.updates.get(key) {
             entity = op
-                .apply_to(&entity)
+                .apply_to_ref(&entity)
                 .map_err(|e| key.unknown_attribute(e))?
                 .map(Arc::new);
         }
-        if let Some(op) = self.handler_updates.get(key).cloned() {
+        if let Some(op) = self.handler_updates.get(key) {
             entity = op
-                .apply_to(&entity)
+                .apply_to_ref(&entity)
                 .map_err(|e| key.unknown_attribute(e))?
                 .map(Arc::new);
         }
@@ -260,21 +278,28 @@ impl EntityCache {
 
         // Apply updates from `updates` and `handler_updates` directly to entities in `entity_map` that match the query
         for (key, entity) in entity_map.iter_mut() {
-            let op = match (
-                self.updates.get(key).cloned(),
-                self.handler_updates.get(key).cloned(),
-            ) {
-                (Some(op), None) | (None, Some(op)) => op,
-                (Some(mut op), Some(op2)) => {
-                    op.accumulate(op2);
-                    op
-                }
-                (None, None) => continue,
-            };
+            let (has_update, has_handler) = (
+                self.updates.contains_key(key),
+                self.handler_updates.contains_key(key),
+            );
+            if !has_update && !has_handler {
+                continue;
+            }
 
-            let updated_entity = op
-                .apply_to(&Some(&*entity))
-                .map_err(|e| key.unknown_attribute(e))?;
+            // Apply the main update first, then the handler update on top.
+            let mut updated: Option<Entity> = Some(entity.clone());
+            if let Some(op) = self.updates.get(key) {
+                updated = op
+                    .apply_to_ref(&updated)
+                    .map_err(|e| key.unknown_attribute(e))?;
+            }
+            if let Some(op) = self.handler_updates.get(key) {
+                updated = op
+                    .apply_to_ref(&updated)
+                    .map_err(|e| key.unknown_attribute(e))?;
+            }
+
+            let updated_entity = updated;
 
             if let Some(updated_entity) = updated_entity {
                 *entity = updated_entity;
@@ -311,12 +336,11 @@ impl EntityCache {
         for (key, op) in self.updates.iter() {
             if !entity_map.contains_key(key) {
                 if let Some(entity) = matches_query(op, &query, key)? {
-                    if let Some(handler_op) = self.handler_updates.get(key).cloned() {
+                    if let Some(handler_op) = self.handler_updates.get(key) {
                         // If there's a corresponding update in handler_updates, apply it to the entity
                         // and insert the updated entity into entity_map
-                        let mut entity = Some(entity);
-                        entity = handler_op
-                            .apply_to(&entity)
+                        let entity = handler_op
+                            .apply_to_ref(&Some(entity))
                             .map_err(|e| key.unknown_attribute(e))?;
 
                         if let Some(updated_entity) = entity {
