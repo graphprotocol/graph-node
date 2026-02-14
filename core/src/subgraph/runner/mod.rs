@@ -924,6 +924,17 @@ where
             .start_section(HANDLE_CREATED_DS_SECTION_NAME);
 
         let mut dds_iterations: u32 = 0;
+
+        // Refetch the block once before entering the DDS loop. The
+        // firehose cursor doesn't change between iterations, so there
+        // is no point in refetching on every iteration.
+        let block = if block_state.has_created_data_sources() {
+            let _section = self.metrics.stream.stopwatch.start_section("refetch_block");
+            self.refetch_block(logger, block, firehose_cursor).await?
+        } else {
+            block.cheap_clone()
+        };
+
         while block_state.has_created_data_sources() {
             dds_iterations += 1;
             // Instantiate dynamic data sources, removing them from the block state.
@@ -936,20 +947,6 @@ where
                 ),
                 vec![],
             ));
-
-            // TODO: We have to pass a reference to `block` to
-            // `refetch_block`, otherwise the call to
-            // handle_offchain_triggers below gets an error that `block`
-            // has moved. That is extremely fishy since it means that
-            // `handle_offchain_triggers` uses the non-refetched block
-            //
-            // It's also not clear why refetching needs to happen inside
-            // the loop; will firehose really return something diffrent
-            // each time even though the cursor doesn't change?
-            let block = {
-                let _section = self.metrics.stream.stopwatch.start_section("refetch_block");
-                self.refetch_block(logger, block, firehose_cursor).await?
-            };
 
             // Reprocess the triggers from this block that match the new data sources
             let block_with_triggers = self
