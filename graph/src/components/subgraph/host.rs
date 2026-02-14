@@ -4,7 +4,6 @@ use std::time::Instant;
 
 use anyhow::Error;
 use async_trait::async_trait;
-use futures01::sync::mpsc;
 
 use crate::components::metrics::gas::GasMetrics;
 use crate::components::store::SubgraphFork;
@@ -209,7 +208,7 @@ pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
         top_level_templates: Arc<Vec<DataSourceTemplate<C>>>,
-        mapping_request_sender: mpsc::Sender<Self::Req>,
+        mapping_request_sender: tokio::sync::mpsc::Sender<Self::Req>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error>;
 
@@ -220,5 +219,5 @@ pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
         logger: Logger,
         subgraph_id: DeploymentHash,
         metrics: Arc<HostMetrics>,
-    ) -> Result<mpsc::Sender<Self::Req>, anyhow::Error>;
+    ) -> Result<tokio::sync::mpsc::Sender<Self::Req>, anyhow::Error>;
 }

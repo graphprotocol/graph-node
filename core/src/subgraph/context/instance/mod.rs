@@ -1,7 +1,6 @@
 mod hosts;
 
 use anyhow::ensure;
-use graph::futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::{Blockchain, TriggerData as _},
     data_source::{
@@ -36,7 +35,7 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     offchain_hosts: OffchainHosts<C, T>,
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
-    module_cache: HashMap<[u8; 32], Sender<T::Req>>,
+    module_cache: HashMap<[u8; 32], tokio::sync::mpsc::Sender<T::Req>>,
 
     /// This manages the sequence of causality regions for the subgraph.
     causality_region_seq: CausalityRegionSeq,

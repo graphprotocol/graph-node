@@ -4,8 +4,6 @@ use graph::blockchain::{BlockTime, Blockchain, HostFn};
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{MappingTrigger, TriggerWithHandler};
-use graph::futures01::sync::mpsc;
-use graph::futures01::{Future as _, Stream as _};
 use graph::futures03::channel::oneshot::Sender;
 use graph::parking_lot::RwLock;
 use graph::prelude::*;
@@ -27,7 +25,7 @@ pub fn spawn_module<C: Blockchain>(
     runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
-) -> Result<mpsc::Sender<WasmRequest<C>>, anyhow::Error>
+) -> Result<tokio::sync::mpsc::Sender<WasmRequest<C>>, anyhow::Error>
 where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
@@ -36,7 +34,7 @@ where
     let valid_module = Arc::new(ValidModule::new(&logger, raw_module, timeout)?);
 
     // Create channel for event handling requests
-    let (mapping_request_sender, mapping_request_receiver) = mpsc::channel(100);
+    let (mapping_request_sender, mut mapping_request_receiver) = tokio::sync::mpsc::channel(100);
 
     // It used to be that we had to create a dedicated thread since wasmtime
     // instances were not `Send` and could therefore not be scheduled by the
@@ -59,62 +57,53 @@ where
 
         // Pass incoming triggers to the WASM module and return entity changes;
         // Stop when canceled because all RuntimeHosts and their senders were dropped.
-        match mapping_request_receiver
-            .map_err(|()| unreachable!())
-            .for_each(move |request| {
-                let WasmRequest {
+        while let Some(request) = mapping_request_receiver.blocking_recv() {
+            let WasmRequest {
+                ctx,
+                inner,
+                result_sender,
+            } = request;
+            let logger = ctx.logger.clone();
+
+            let handle_fut = async {
+                let result = instantiate_module::<C>(
+                    valid_module.cheap_clone(),
                     ctx,
-                    inner,
-                    result_sender,
-                } = request;
-                let logger = ctx.logger.clone();
+                    host_metrics.cheap_clone(),
+                    experimental_features,
+                )
+                .await;
+                match result {
+                    Ok(module) => match inner {
+                        WasmRequestInner::TriggerRequest(trigger) => {
+                            handle_trigger(&logger, module, trigger, host_metrics.cheap_clone())
+                                .await
+                        }
+                    },
+                    Err(e) => Err(MappingError::Unknown(e)),
+                }
+            };
+            let result = panic::catch_unwind(AssertUnwindSafe(|| graph::block_on(handle_fut)));
 
-                let handle_fut = async {
-                    let result = instantiate_module::<C>(
-                        valid_module.cheap_clone(),
-                        ctx,
-                        host_metrics.cheap_clone(),
-                        experimental_features,
-                    )
-                    .await;
-                    match result {
-                        Ok(module) => match inner {
-                            WasmRequestInner::TriggerRequest(trigger) => {
-                                handle_trigger(&logger, module, trigger, host_metrics.cheap_clone())
-                                    .await
-                            }
-                        },
-                        Err(e) => Err(MappingError::Unknown(e)),
-                    }
-                };
-                let result = panic::catch_unwind(AssertUnwindSafe(|| graph::block_on(handle_fut)));
+            let result = match result {
+                Ok(result) => result,
+                Err(panic_info) => {
+                    let err_msg = if let Some(payload) = panic_info
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                        .or(panic_info.downcast_ref::<&str>().copied())
+                    {
+                        anyhow!("Subgraph panicked with message: {}", payload)
+                    } else {
+                        anyhow!("Subgraph panicked with an unknown payload.")
+                    };
+                    Err(MappingError::Unknown(err_msg))
+                }
+            };
 
-                let result = match result {
-                    Ok(result) => result,
-                    Err(panic_info) => {
-                        let err_msg = if let Some(payload) = panic_info
-                            .downcast_ref::<String>()
-                            .map(String::as_str)
-                            .or(panic_info.downcast_ref::<&str>().copied())
-                        {
-                            anyhow!("Subgraph panicked with message: {}", payload)
-                        } else {
-                            anyhow!("Subgraph panicked with an unknown payload.")
-                        };
-                        Err(MappingError::Unknown(err_msg))
-                    }
-                };
-
-                result_sender
-                    .send(result)
-                    .map_err(|_| anyhow::anyhow!("WASM module result receiver dropped."))
-            })
-            .wait()
-        {
-            Ok(()) => debug!(logger, "Subgraph stopped, WASM runtime thread terminated"),
-            Err(e) => debug!(logger, "WASM runtime thread terminated abnormally";
-                                    "error" => e.to_string()),
+            let _ = result_sender.send(result);
         }
+        debug!(logger, "Subgraph stopped, WASM runtime thread terminated");
     })
     .map(|_| ())
     .context("Spawning WASM runtime thread failed")?;

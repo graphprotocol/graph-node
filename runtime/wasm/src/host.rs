@@ -2,7 +2,6 @@ use std::cmp::PartialEq;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use graph::futures01::sync::mpsc::Sender;
 use graph::futures03::channel::oneshot::channel;
 
 use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
@@ -11,8 +10,6 @@ use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{
     DataSource, DataSourceTemplate, MappingTrigger, TriggerData, TriggerWithHandler,
 };
-use graph::futures01::Sink as _;
-use graph::futures03::compat::Future01CompatExt;
 use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
@@ -66,7 +63,7 @@ where
         logger: Logger,
         subgraph_id: DeploymentHash,
         metrics: Arc<HostMetrics>,
-    ) -> Result<Sender<Self::Req>, Error> {
+    ) -> Result<tokio::sync::mpsc::Sender<Self::Req>, Error> {
         let experimental_features = ExperimentalFeatures {
             allow_non_deterministic_ipfs: ENV_VARS.mappings.allow_non_deterministic_ipfs,
         };
@@ -87,7 +84,7 @@ where
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
         templates: Arc<Vec<DataSourceTemplate<C>>>,
-        mapping_request_sender: Sender<WasmRequest<C>>,
+        mapping_request_sender: tokio::sync::mpsc::Sender<WasmRequest<C>>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
         RuntimeHost::new(
@@ -107,7 +104,7 @@ where
 pub struct RuntimeHost<C: Blockchain> {
     host_fns: Arc<Vec<HostFn>>,
     data_source: DataSource<C>,
-    mapping_request_sender: Sender<WasmRequest<C>>,
+    mapping_request_sender: tokio::sync::mpsc::Sender<WasmRequest<C>>,
     host_exports: Arc<HostExports>,
     metrics: Arc<HostMetrics>,
 }
@@ -123,7 +120,7 @@ where
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
         templates: Arc<Vec<DataSourceTemplate<C>>>,
-        mapping_request_sender: Sender<WasmRequest<C>>,
+        mapping_request_sender: tokio::sync::mpsc::Sender<WasmRequest<C>>,
         metrics: Arc<HostMetrics>,
         ens_lookup: Arc<dyn EnsLookup>,
     ) -> Result<Self, Error> {
@@ -179,7 +176,6 @@ where
         let metrics = self.metrics.clone();
 
         self.mapping_request_sender
-            .clone()
             .send(WasmRequest::new_trigger(
                 MappingContext {
                     logger: logger.cheap_clone(),
@@ -196,7 +192,6 @@ where
                 trigger,
                 result_sender,
             ))
-            .compat()
             .await
             .context("Mapping terminated before passing in trigger")?;
 
