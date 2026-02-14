@@ -56,22 +56,6 @@ impl EntityOp {
         }
     }
 
-    fn apply_to<E: Borrow<Entity>>(
-        self,
-        entity: &Option<E>,
-    ) -> Result<Option<Entity>, InternError> {
-        use EntityOp::*;
-        match (self, entity) {
-            (Remove, _) => Ok(None),
-            (Overwrite(new), _) | (Update(new), None) => Ok(Some(new)),
-            (Update(updates), Some(entity)) => {
-                let mut e = entity.borrow().clone();
-                e.merge_remove_null_fields(updates)?;
-                Ok(Some(e))
-            }
-        }
-    }
-
     fn accumulate(&mut self, next: EntityOp) {
         use EntityOp::*;
         let update = match next {
@@ -215,8 +199,11 @@ impl EntityCache {
         let mut entity: Option<Arc<Entity>> = match scope {
             GetScope::Store => {
                 if !self.current.contains_key(key) {
-                    let entity = self.store.get(key).await?;
-                    self.current.insert(key.clone(), entity.map(Arc::new));
+                    let entity = self.store.get(key).await?.map(|mut e| {
+                        e.sort_fields();
+                        Arc::new(e)
+                    });
+                    self.current.insert(key.clone(), entity);
                 }
                 // Unwrap: we just inserted the entity
                 self.current.get(key).unwrap().cheap_clone()
@@ -269,8 +256,9 @@ impl EntityCache {
         for (key, entity) in entity_map.iter() {
             // Only insert to the cache if it's not already there
             if !self.current.contains_key(key) {
-                self.current
-                    .insert(key.clone(), Some(Arc::new(entity.clone())));
+                let mut sorted = entity.clone();
+                sorted.sort_fields();
+                self.current.insert(key.clone(), Some(Arc::new(sorted)));
             }
         }
 
@@ -517,7 +505,8 @@ impl EntityCache {
         // violation in the database, ensuring correctness
         let missing = missing.filter(|key| !key.entity_type.is_immutable());
 
-        for (entity_key, entity) in self.store.get_many(missing.cloned().collect()).await? {
+        for (entity_key, mut entity) in self.store.get_many(missing.cloned().collect()).await? {
+            entity.sort_fields();
             self.current.insert(entity_key, Some(Arc::new(entity)));
         }
 
@@ -531,6 +520,7 @@ impl EntityCache {
                 (None, EntityOp::Update(mut updates))
                 | (None, EntityOp::Overwrite(mut updates)) => {
                     updates.remove_null_fields();
+                    updates.sort_fields();
                     let data = Arc::new(updates);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
                     Some(Insert {
@@ -547,6 +537,7 @@ impl EntityCache {
                     let changed = data
                         .merge_remove_null_fields(updates)
                         .map_err(|e| key.unknown_attribute(e))?;
+                    data.sort_fields();
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
                     if changed {
@@ -561,7 +552,8 @@ impl EntityCache {
                     }
                 }
                 // Entity was removed and then updated, so it will be overwritten
-                (Some(current), EntityOp::Overwrite(data)) => {
+                (Some(current), EntityOp::Overwrite(mut data)) => {
+                    data.sort_fields();
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
                     if current != data {

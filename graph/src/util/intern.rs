@@ -310,6 +310,32 @@ impl<V> Object<V> {
     pub fn atoms(&self) -> AtomIter<'_, V> {
         AtomIter::new(self)
     }
+
+    /// Sort entries by their string key. Tombstone entries are moved to the
+    /// end. This makes subsequent iteration in key order O(n) instead of
+    /// requiring an O(n log n) sort.
+    pub fn sort_by_key(&mut self) {
+        let pool = &self.pool;
+        self.entries.sort_by(|a, b| {
+            let a_key = if a.key == TOMBSTONE_KEY {
+                None
+            } else {
+                pool.get(a.key)
+            };
+            let b_key = if b.key == TOMBSTONE_KEY {
+                None
+            } else {
+                pool.get(b.key)
+            };
+            // None (tombstones) sort to the end
+            match (a_key, b_key) {
+                (Some(a), Some(b)) => a.cmp(b),
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+            }
+        });
+    }
 }
 
 impl<V: PartialEq> Object<V> {
