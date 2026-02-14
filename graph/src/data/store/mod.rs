@@ -1039,6 +1039,13 @@ impl Entity {
         self.0.retain(|_, value| !value.is_null())
     }
 
+    /// Sort the entity's fields by key name. This makes subsequent calls to
+    /// `sorted_ref()` and `sorted()` effectively O(n) since Rust's sort is
+    /// optimized for pre-sorted data.
+    pub fn sort_fields(&mut self) {
+        self.0.sort_by_key();
+    }
+
     /// Add the key/value pairs from `iter` to this entity. This is the same
     /// as an implementation of `std::iter::Extend` would be, except that
     /// this operation is fallible because one of the keys from the iterator
