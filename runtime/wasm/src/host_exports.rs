@@ -162,54 +162,6 @@ impl HostExports {
         )))
     }
 
-    fn check_invalid_fields(
-        &self,
-        api_version: Version,
-        data: &HashMap<Word, Value>,
-        state: &BlockState,
-        entity_type: &EntityType,
-    ) -> Result<(), HostExportError> {
-        if api_version >= API_VERSION_0_0_8 {
-            let has_invalid_fields = data.iter().any(|(field_name, _)| {
-                !state
-                    .entity_cache
-                    .schema
-                    .has_field_with_name(entity_type, field_name)
-            });
-
-            if has_invalid_fields {
-                let mut invalid_fields: Vec<Word> = data
-                    .iter()
-                    .filter_map(|(field_name, _)| {
-                        if !state
-                            .entity_cache
-                            .schema
-                            .has_field_with_name(entity_type, field_name)
-                        {
-                            Some(field_name.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-
-                invalid_fields.sort();
-
-                return Err(HostExportError::Deterministic(anyhow!(
-                    "Attempted to set undefined fields [{}] for the entity type `{}`. Make sure those fields are defined in the schema.",
-                    invalid_fields
-                        .iter()
-                        .map(|f| f.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    entity_type
-                )));
-            }
-        }
-
-        Ok(())
-    }
-
     /// Ensure that `entity_type` is of the right kind
     fn expect_object_type(entity_type: &EntityType, op: &str) -> Result<(), HostExportError> {
         if entity_type.is_object_type() {
@@ -302,24 +254,42 @@ impl HostExports {
             }
         }
 
-        self.check_invalid_fields(
-            self.data_source.api_version.clone(),
-            &data,
-            state,
-            &key.entity_type,
-        )?;
+        // Filter out fields not in the schema, and reject if API >= 0.0.8
+        // has any invalid fields. Single pass replaces separate
+        // check_invalid_fields() + filter iterations.
+        let mut invalid_fields: Vec<Word> = Vec::new();
+        let filtered_data: Vec<(Word, Value)> = data
+            .into_iter()
+            .filter(|(field_name, _)| {
+                if state
+                    .entity_cache
+                    .schema
+                    .has_field_with_name(&key.entity_type, field_name)
+                {
+                    true
+                } else {
+                    invalid_fields.push(field_name.clone());
+                    false
+                }
+            })
+            .collect();
 
-        // Filter out fields that are not in the schema
-        let filtered_entity_data = data.into_iter().filter(|(field_name, _)| {
-            state
-                .entity_cache
-                .schema
-                .has_field_with_name(&key.entity_type, field_name)
-        });
+        if !invalid_fields.is_empty() && self.data_source.api_version >= API_VERSION_0_0_8 {
+            invalid_fields.sort();
+            return Err(HostExportError::Deterministic(anyhow!(
+                "Attempted to set undefined fields [{}] for the entity type `{}`. Make sure those fields are defined in the schema.",
+                invalid_fields
+                    .iter()
+                    .map(|f| f.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                entity_type
+            )));
+        }
 
         let entity = state
             .entity_cache
-            .make_entity(filtered_entity_data)
+            .make_entity(filtered_data.into_iter())
             .map_err(|e| HostExportError::Deterministic(anyhow!(e)))?;
 
         let poi_section = stopwatch.start_section("host_export_store_set__proof_of_indexing");
