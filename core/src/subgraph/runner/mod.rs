@@ -923,7 +923,9 @@ where
             .stopwatch
             .start_section(HANDLE_CREATED_DS_SECTION_NAME);
 
+        let mut dds_iterations: u32 = 0;
         while block_state.has_created_data_sources() {
+            dds_iterations += 1;
             // Instantiate dynamic data sources, removing them from the block state.
             let (data_sources, runtime_hosts) =
                 self.create_dynamic_data_sources(block_state.drain_created_data_sources())?;
@@ -944,7 +946,10 @@ where
             // It's also not clear why refetching needs to happen inside
             // the loop; will firehose really return something diffrent
             // each time even though the cursor doesn't change?
-            let block = self.refetch_block(logger, block, firehose_cursor).await?;
+            let block = {
+                let _section = self.metrics.stream.stopwatch.start_section("refetch_block");
+                self.refetch_block(logger, block, firehose_cursor).await?
+            };
 
             // Reprocess the triggers from this block that match the new data sources
             let block_with_triggers = self
@@ -1003,6 +1008,14 @@ where
                     }
                 }
             })?;
+        }
+
+        if dds_iterations > 0 {
+            info!(
+                logger,
+                "Dynamic data source processing complete";
+                "iterations" => dds_iterations,
+            );
         }
 
         Ok(block_state)
