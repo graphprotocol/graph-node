@@ -99,9 +99,14 @@ tokio-util.workspace = true
 
 [dev-dependencies]
 clap.workspace = true
+criterion = { version = "0.5", features = ["html_reports"] }
 maplit = "1.0.2"
 hex-literal = "1.1"
 wiremock = "0.6.5"
+
+[[bench]]
+name = "entity_cache"
+harness = false
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }
