@@ -1,0 +1,6 @@
+type Counter @entity {
+  id: ID!
+  count: Int8!
+  value: BigInt!
+  label: String!
+}
