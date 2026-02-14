@@ -630,10 +630,13 @@ impl WasmInstance {
         // See also: runtime-timeouts
         store.set_epoch_deadline(2);
 
-        let instance = valid_module
-            .instance_pre
-            .instantiate_async(store.as_context_mut())
-            .await?;
+        let instance = {
+            let _section = host_metrics.stopwatch.start_section("instantiate_async");
+            valid_module
+                .instance_pre
+                .instantiate_async(store.as_context_mut())
+                .await?
+        };
 
         let asc_heap = AscHeapCtx::new(
             &instance,
@@ -645,24 +648,27 @@ impl WasmInstance {
         // See start_function comment for more information
         // TL;DR; we need the wasmtime::Instance to create the heap, therefore
         // we cannot execute anything that requires access to the heap before it's created.
-        if let Some(start_func) = valid_module.start_function.as_ref() {
-            instance
-                .get_func(store.as_context_mut(), start_func)
-                .context(format!("`{start_func}` function not found"))?
-                .typed::<(), ()>(store.as_context_mut())?
-                .call_async(store.as_context_mut(), ())
-                .await?;
-        }
-
-        match api_version {
-            version if version <= Version::new(0, 0, 4) => {}
-            _ => {
+        {
+            let _section = host_metrics.stopwatch.start_section("wasm_start");
+            if let Some(start_func) = valid_module.start_function.as_ref() {
                 instance
-                    .get_func(store.as_context_mut(), "_start")
-                    .context("`_start` function not found")?
+                    .get_func(store.as_context_mut(), start_func)
+                    .context(format!("`{start_func}` function not found"))?
                     .typed::<(), ()>(store.as_context_mut())?
                     .call_async(store.as_context_mut(), ())
                     .await?;
+            }
+
+            match api_version {
+                version if version <= Version::new(0, 0, 4) => {}
+                _ => {
+                    instance
+                        .get_func(store.as_context_mut(), "_start")
+                        .context("`_start` function not found")?
+                        .typed::<(), ()>(store.as_context_mut())?
+                        .call_async(store.as_context_mut(), ())
+                        .await?;
+                }
             }
         }
 
