@@ -6,7 +6,7 @@ use graph_runtime_wasm::asc_abi::class::{
 use super::*;
 
 async fn test_unbounded_loop(api_version: Version) {
-    // Set handler timeout to 3 seconds.
+    // Set handler timeout to 100ms.
     let mut instance = test_valid_module_and_store_with_timeout(
         "unboundedLoop",
         mock_data_source(
@@ -14,7 +14,7 @@ async fn test_unbounded_loop(api_version: Version) {
             api_version.clone(),
         ),
         api_version,
-        Some(Duration::from_secs(3)),
+        Some(Duration::from_millis(100)),
     )
     .await
     .0;
