@@ -1,62 +1,21 @@
 use crate::env::ENV_VARS;
 use crate::prelude::CacheWeight;
-use priority_queue::PriorityQueue;
-use std::cmp::Reverse;
+use std::collections::HashMap;
 use std::fmt::Debug;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::time::{Duration, Instant};
 
 // The number of `evict` calls without access after which an entry is considered stale.
 const STALE_PERIOD: u64 = 100;
 
-/// `PartialEq` and `Hash` are delegated to the `key`.
 #[derive(Clone, Debug)]
-pub struct CacheEntry<K, V> {
+pub struct CacheEntry<V> {
+    pub value: V,
     weight: usize,
-    key: K,
-    value: V,
+    freq: u64,
+    stale: bool,
     will_stale: bool,
 }
-
-impl<K: Eq, V> PartialEq for CacheEntry<K, V> {
-    fn eq(&self, other: &Self) -> bool {
-        self.key.eq(&other.key)
-    }
-}
-
-impl<K: Eq, V> Eq for CacheEntry<K, V> {}
-
-impl<K: Hash, V> Hash for CacheEntry<K, V> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.key.hash(state)
-    }
-}
-
-impl<K, V: Default + CacheWeight> CacheEntry<K, V> {
-    fn cache_key(key: K) -> Self {
-        // Only the key matters for finding an entry in the cache.
-        CacheEntry {
-            key,
-            value: V::default(),
-            weight: 0,
-            will_stale: false,
-        }
-    }
-}
-
-impl<K: CacheWeight, V: Default + CacheWeight> CacheEntry<K, V> {
-    /// Estimate the size of a `CacheEntry` with the given key and value. Do
-    /// not count the size of `Self` since that is memory that is not freed
-    /// when the cache entry is dropped as its storage is embedded in the
-    /// `PriorityQueue`
-    fn weight(key: &K, value: &V) -> usize {
-        value.indirect_weight() + key.indirect_weight()
-    }
-}
-
-// The priorities are `(stale, frequency)` tuples, first all stale entries will be popped and
-// then non-stale entries by least frequency.
-type Priority = (bool, Reverse<u64>);
 
 /// Statistics about what happened during cache eviction
 pub struct EvictStats {
@@ -96,7 +55,7 @@ impl EvictStats {
 /// evictions entities are checked for staleness.
 #[derive(Debug)]
 pub struct LfuCache<K: Eq + Hash, V> {
-    queue: PriorityQueue<CacheEntry<K, V>, Priority>,
+    entries: HashMap<K, CacheEntry<V>>,
     total_weight: usize,
     stale_counter: u64,
     dead_weight: bool,
@@ -104,10 +63,10 @@ pub struct LfuCache<K: Eq + Hash, V> {
     hits: usize,
 }
 
-impl<K: Ord + Eq + Hash, V> Default for LfuCache<K, V> {
+impl<K: Eq + Hash, V> Default for LfuCache<K, V> {
     fn default() -> Self {
         LfuCache {
-            queue: PriorityQueue::new(),
+            entries: HashMap::new(),
             total_weight: 0,
             stale_counter: 0,
             dead_weight: false,
@@ -117,10 +76,10 @@ impl<K: Ord + Eq + Hash, V> Default for LfuCache<K, V> {
     }
 }
 
-impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default> LfuCache<K, V> {
+impl<K: Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default> LfuCache<K, V> {
     pub fn new() -> Self {
         LfuCache {
-            queue: PriorityQueue::new(),
+            entries: HashMap::new(),
             total_weight: 0,
             stale_counter: 0,
             dead_weight: ENV_VARS.mappings.entity_cache_dead_weight,
@@ -129,93 +88,84 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         }
     }
 
-    /// Updates and bumps freceny if already present.
+    fn entry_weight(key: &K, value: &V) -> usize {
+        value.indirect_weight() + key.indirect_weight()
+    }
+
+    /// Updates and bumps frequency if already present.
     pub fn insert(&mut self, key: K, value: V) {
-        let weight = CacheEntry::weight(&key, &value);
-        match self.get_mut(key.clone()) {
-            None => {
-                self.total_weight += weight;
-                self.queue.push(
-                    CacheEntry {
-                        weight,
-                        key,
-                        value,
-                        will_stale: false,
-                    },
-                    (false, Reverse(1)),
-                );
-            }
+        let weight = Self::entry_weight(&key, &value);
+        match self.entries.get_mut(&key) {
             Some(entry) => {
-                let old_weight = entry.weight;
+                self.total_weight -= entry.weight;
+                self.total_weight += weight;
                 entry.weight = weight;
                 entry.value = value;
-                self.total_weight -= old_weight;
+                entry.freq += 1;
+                entry.will_stale = false;
+            }
+            None => {
                 self.total_weight += weight;
+                self.entries.insert(
+                    key,
+                    CacheEntry {
+                        value,
+                        weight,
+                        freq: 1,
+                        stale: false,
+                        will_stale: false,
+                    },
+                );
             }
         }
     }
 
     #[cfg(test)]
-    fn weight(&self, key: K) -> usize {
-        let key_entry = CacheEntry::cache_key(key);
-        self.queue
-            .get(&key_entry)
-            .map(|(entry, _)| entry.weight)
-            .unwrap_or(0)
-    }
-
-    fn get_mut(&mut self, key: K) -> Option<&mut CacheEntry<K, V>> {
-        // Increment the frequency by 1
-        let key_entry = CacheEntry::cache_key(key);
-        self.queue
-            .change_priority_by(&key_entry, |(_, Reverse(f))| {
-                *f += 1;
-            });
-        self.accesses += 1;
-        self.queue.get_mut(&key_entry).map(|x| {
-            self.hits += 1;
-            x.0.will_stale = false;
-            x.0
-        })
+    fn weight(&self, key: &K) -> usize {
+        self.entries.get(key).map(|e| e.weight).unwrap_or(0)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
-        self.queue
-            .iter()
-            .map(|entry| (&entry.0.key, &entry.0.value))
+        self.entries.iter().map(|(k, e)| (k, &e.value))
     }
 
     pub fn get(&mut self, key: &K) -> Option<&V> {
-        self.get_mut(key.clone()).map(|x| &x.value)
+        self.accesses += 1;
+        self.entries.get_mut(key).map(|entry| {
+            self.hits += 1;
+            entry.freq += 1;
+            entry.will_stale = false;
+            &entry.value
+        })
+    }
+
+    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+        self.accesses += 1;
+        self.entries.get_mut(key).map(|entry| {
+            self.hits += 1;
+            entry.freq += 1;
+            entry.will_stale = false;
+            &mut entry.value
+        })
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        // `PriorityQueue` doesn't have a remove method, so emulate that by setting the priority to
-        // the absolute minimum and popping.
-        let key_entry = CacheEntry::cache_key(key.clone());
-        self.queue
-            .change_priority(&key_entry, (true, Reverse(u64::MIN)))
-            .and_then(|_| {
-                self.queue.pop().map(|(e, _)| {
-                    assert_eq!(e.key, key_entry.key);
-                    self.total_weight -= e.weight;
-                    e.value
-                })
-            })
+        self.entries.remove(key).map(|entry| {
+            self.total_weight -= entry.weight;
+            entry.value
+        })
     }
 
     pub fn contains_key(&self, key: &K) -> bool {
-        self.queue
-            .get(&CacheEntry::cache_key(key.clone()))
-            .is_some()
+        self.entries.contains_key(key)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.queue.is_empty()
+        self.entries.is_empty()
     }
 
     pub fn len(&self) -> usize {
-        self.queue.len()
+        self.entries.len()
     }
 
     pub fn evict_and_stats(&mut self, max_weight: usize) -> EvictStats {
@@ -267,34 +217,75 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
             self.hits = 0;
 
             // Entries marked `will_stale` were not accessed in this period. Properly mark them as
-            // stale in their priorities. Also mark all entities as `will_stale` for the _next_
-            // period so that they will be marked stale next time unless they are updated or looked
-            // up between now and then.
-            for (e, p) in self.queue.iter_mut() {
-                p.0 = e.will_stale;
-                e.will_stale = true;
+            // stale. Also mark all entities as `will_stale` for the _next_ period so that they
+            // will be marked stale next time unless they are updated or looked up between now and
+            // then.
+            for entry in self.entries.values_mut() {
+                entry.stale = entry.will_stale;
+                entry.will_stale = true;
             }
         }
 
-        let mut evicted = 0;
         let old_len = self.len();
         let dead_weight = if self.dead_weight {
-            self.len() * (std::mem::size_of::<CacheEntry<K, V>>() + 40)
+            old_len * (std::mem::size_of::<CacheEntry<V>>() + 40)
         } else {
             0
         };
-        while self.total_weight + dead_weight > max_weight {
-            let entry = self
-                .queue
-                .pop()
-                .expect("empty cache but total_weight > max_weight")
-                .0;
-            evicted += entry.weight;
-            self.total_weight -= entry.weight;
+
+        // Determine a frequency threshold below which entries should be
+        // evicted. We sort (stale, freq, weight) tuples to find the cutoff,
+        // then use `retain` to remove entries that fall at or below it.
+        let mut evict_order: Vec<(bool, u64, usize)> = self
+            .entries
+            .values()
+            .map(|e| (e.stale, e.freq, e.weight))
+            .collect();
+        // Evict priority: stale entries first, then lowest frequency first.
+        evict_order.sort_unstable_by(|a, b| {
+            b.0.cmp(&a.0) // stale=true before stale=false
+                .then(a.1.cmp(&b.1)) // lowest freq first
+        });
+
+        let target_evict = self.total_weight + dead_weight - max_weight;
+        let mut accumulated = 0;
+        let mut evict_count = 0;
+        for &(_, _, w) in &evict_order {
+            if accumulated >= target_evict {
+                break;
+            }
+            accumulated += w;
+            evict_count += 1;
         }
+
+        let mut evicted_weight = 0;
+        if evict_count > 0 {
+            let threshold_stale = evict_order[evict_count - 1].0;
+            let threshold_freq = evict_order[evict_count - 1].1;
+            let mut remaining = evict_count;
+
+            self.entries.retain(|_, entry| {
+                if remaining == 0 {
+                    return true;
+                }
+                // An entry should be evicted if it sorts at or before the
+                // threshold in eviction order (stale first, low freq first).
+                let dominated = (entry.stale, threshold_stale) == (true, false)
+                    || (entry.stale == threshold_stale && entry.freq <= threshold_freq);
+                if dominated {
+                    remaining -= 1;
+                    evicted_weight += entry.weight;
+                    false
+                } else {
+                    true
+                }
+            });
+        }
+        self.total_weight -= evicted_weight;
+
         Some(EvictStats {
             new_weight: self.total_weight,
-            evicted_weight: evicted,
+            evicted_weight,
             new_count: self.len(),
             evicted_count: old_len - self.len(),
             stale_update: self.stale_counter == 0,
@@ -305,18 +296,23 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
     }
 }
 
-impl<K: Ord + Eq + Hash + 'static, V: 'static> IntoIterator for LfuCache<K, V> {
-    type Item = (CacheEntry<K, V>, Priority);
-    type IntoIter = Box<dyn Iterator<Item = Self::Item>>;
+impl<K: Eq + Hash + 'static, V: 'static> IntoIterator for LfuCache<K, V> {
+    type Item = (K, CacheEntry<V>);
+    type IntoIter = std::collections::hash_map::IntoIter<K, CacheEntry<V>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        Box::new(self.queue.into_iter())
+        self.entries.into_iter()
     }
 }
 
-impl<K: Ord + Eq + Hash, V> Extend<(CacheEntry<K, V>, Priority)> for LfuCache<K, V> {
-    fn extend<T: IntoIterator<Item = (CacheEntry<K, V>, Priority)>>(&mut self, iter: T) {
-        self.queue.extend(iter);
+impl<K: Eq + Hash + CacheWeight, V: CacheWeight + Default> Extend<(K, CacheEntry<V>)>
+    for LfuCache<K, V>
+{
+    fn extend<T: IntoIterator<Item = (K, CacheEntry<V>)>>(&mut self, iter: T) {
+        for (key, entry) in iter {
+            self.total_weight += entry.weight;
+            self.entries.insert(key, entry);
+        }
     }
 }
 
@@ -338,8 +334,8 @@ fn entity_lru_cache() {
     let mut cache: LfuCache<&'static str, Weight> = LfuCache::new();
     cache.insert("panda", Weight(2));
     cache.insert("cow", Weight(1));
-    let panda_weight = cache.weight("panda");
-    let cow_weight = cache.weight("cow");
+    let panda_weight = cache.weight(&"panda");
+    let cow_weight = cache.weight(&"cow");
 
     assert_eq!(cache.get(&"cow"), Some(&Weight(1)));
     assert_eq!(cache.get(&"panda"), Some(&Weight(2)));
@@ -354,7 +350,7 @@ fn entity_lru_cache() {
     assert!(cache.get(&"panda").is_none());
 
     cache.insert("alligator", Weight(2));
-    let alligator_weight = cache.weight("alligator");
+    let alligator_weight = cache.weight(&"alligator");
 
     // Give "cow" and "alligator" a high frequency.
     for _ in 0..1000 {
@@ -365,10 +361,10 @@ fn entity_lru_cache() {
     // Insert a lion and make it weigh the same as the cow and the alligator
     // together.
     cache.insert("lion", Weight(0));
-    let lion_weight = cache.weight("lion");
+    let lion_weight = cache.weight(&"lion");
     let lion_inner_weight = cow_weight + alligator_weight - lion_weight;
     cache.insert("lion", Weight(lion_inner_weight));
-    let lion_weight = cache.weight("lion");
+    let lion_weight = cache.weight(&"lion");
 
     // Make "cow" and "alligator" stale and remove them.
     for _ in 0..(2 * STALE_PERIOD) {
