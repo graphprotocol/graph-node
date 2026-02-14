@@ -620,15 +620,17 @@ impl WasmInstance {
         );
         let mut store = Store::new(engine, wasm_ctx);
 
-        // The epoch on the engine will only ever be incremeted if increment_epoch() is explicitly
-        // called, we only do so if a timeout has been set, it will run forever. When a timeout is
-        // set, the timeout duration is used as the duration of one epoch.
-        //
-        // Therefore, the setting of 2 here means that if a `timeout` is provided, then this
-        // interrupt will be triggered between a duration of `timeout` and `timeout * 2`.
-        //
+        // When a timeout is configured the epoch counter increments every `timeout` and
+        // a deadline of 2 means the interrupt fires between 1x and 2x the interval.
+        // When no timeout is set, use a very large deadline so the shared epoch
+        // counter does not interrupt this module. We cannot use u64::MAX because
+        // wasmtime adds `current_epoch + deadline` without overflow protection.
         // See also: runtime-timeouts
-        store.set_epoch_deadline(2);
+        if valid_module.timeout.is_some() {
+            store.set_epoch_deadline(2);
+        } else {
+            store.set_epoch_deadline(u64::MAX / 2);
+        }
 
         let instance = {
             let _section = host_metrics.stopwatch.start_section("instantiate_async");
