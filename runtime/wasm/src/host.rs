@@ -72,7 +72,6 @@ where
             logger,
             subgraph_id,
             metrics,
-            tokio::runtime::Handle::current(),
             ENV_VARS.mappings.timeout,
             experimental_features,
         )

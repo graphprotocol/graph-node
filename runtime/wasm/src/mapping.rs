@@ -11,50 +11,40 @@ use graph::runtime::gas::Gas;
 use graph::runtime::IndexForAscTypeId;
 use parity_wasm::elements::ExportEntry;
 use std::collections::{BTreeMap, HashMap};
-use std::panic::AssertUnwindSafe;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::panic;
 use std::sync::{Arc, OnceLock};
-use std::{panic, thread};
 
-/// Spawn a wasm module in its own thread.
+/// Spawn a wasm module on tokio's blocking thread pool.
+///
+/// Uses `tokio::task::spawn_blocking` so the long-running mapping loop
+/// is managed by the tokio runtime instead of a manually spawned OS
+/// thread. This is a stepping stone toward eliminating the dedicated
+/// thread entirely (Phase 3C).
 pub fn spawn_module<C: Blockchain>(
     raw_module: &[u8],
     logger: Logger,
     subgraph_id: DeploymentHash,
     host_metrics: Arc<HostMetrics>,
-    runtime: tokio::runtime::Handle,
     timeout: Option<Duration>,
     experimental_features: ExperimentalFeatures,
 ) -> Result<tokio::sync::mpsc::Sender<WasmRequest<C>>, anyhow::Error>
 where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
-    static THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
-
     let valid_module = Arc::new(ValidModule::new(&logger, raw_module, timeout)?);
 
     // Create channel for event handling requests
     let (mapping_request_sender, mut mapping_request_receiver) = tokio::sync::mpsc::channel(100);
 
-    // It used to be that we had to create a dedicated thread since wasmtime
-    // instances were not `Send` and could therefore not be scheduled by the
-    // regular tokio executor. This isn't an issue anymore, but we still
-    // spawn a dedicated thread since running WASM code async can block and
-    // lock up the executor. See [the wasmtime
-    // docs](https://docs.rs/wasmtime/latest/wasmtime/struct.Config.html#execution-in-poll)
-    // on how this should be handled properly. As that is a fairly large
-    // change to how we use wasmtime, we keep the threading model for now.
-    // Once we are confident that things are working that way, we should
-    // revisit this and remove the dedicated thread.
+    // We use spawn_blocking for the mapping loop because WASM execution
+    // is CPU-bound and can block for extended periods. spawn_blocking
+    // places the task on tokio's blocking thread pool which is designed
+    // for this: it grows on demand and won't starve the async executor.
     //
-    // In case of failure, this thread may panic or simply terminate,
+    // In case of failure, the task may panic or simply terminate,
     // dropping the `mapping_request_receiver` which ultimately causes the
     // subgraph to fail the next time it tries to handle an event.
-    let next_id = THREAD_COUNT.fetch_add(1, Ordering::SeqCst);
-    let conf = thread::Builder::new().name(format!("mapping-{}-{:0>4}", &subgraph_id, next_id));
-    conf.spawn(move || {
-        let _runtime_guard = runtime.enter();
-
+    tokio::task::spawn_blocking(move || {
         // Pass incoming triggers to the WASM module and return entity changes;
         // Stop when canceled because all RuntimeHosts and their senders were dropped.
         while let Some(request) = mapping_request_receiver.blocking_recv() {
@@ -83,7 +73,8 @@ where
                     Err(e) => Err(MappingError::Unknown(e)),
                 }
             };
-            let result = panic::catch_unwind(AssertUnwindSafe(|| graph::block_on(handle_fut)));
+            let result =
+                panic::catch_unwind(panic::AssertUnwindSafe(|| graph::block_on(handle_fut)));
 
             let result = match result {
                 Ok(result) => result,
@@ -103,10 +94,8 @@ where
 
             let _ = result_sender.send(result);
         }
-        debug!(logger, "Subgraph stopped, WASM runtime thread terminated");
-    })
-    .map(|_| ())
-    .context("Spawning WASM runtime thread failed")?;
+        debug!(logger, "Subgraph {}: mapping task terminated", subgraph_id);
+    });
 
     Ok(mapping_request_sender)
 }
