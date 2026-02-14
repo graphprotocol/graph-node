@@ -374,18 +374,14 @@ impl EntityCache {
     /// Store the `entity` under the given `key`. The `entity` may be only a
     /// partial entity; the cache will ensure partial updates get merged
     /// with existing data. The entity will be validated against the
-    /// subgraph schema, and any errors will result in an `Err` being
-    /// returned.
-    pub async fn set(
+    /// subgraph schema when `as_modifications()` is called.
+    pub fn set(
         &mut self,
         key: EntityKey,
         entity: Entity,
         block: BlockNumber,
         write_capacity_remaining: Option<&mut usize>,
     ) -> Result<(), anyhow::Error> {
-        // check the validate for derived fields
-        let is_valid = entity.validate(&key).is_ok();
-
         if let Some(write_capacity_remaining) = write_capacity_remaining {
             let weight = entity.weight();
             if !self.current.contains_key(&key) && weight > *write_capacity_remaining {
@@ -413,21 +409,7 @@ impl EntityCache {
             );
         }
 
-        self.entity_op(key.clone(), EntityOp::Update(entity));
-
-        // The updates we were given are not valid by themselves; force a
-        // lookup in the database and check again with an entity that merges
-        // the existing entity with the changes
-        if !is_valid {
-            let entity = self.get(&key, GetScope::Store).await?.ok_or_else(|| {
-                anyhow!(
-                    "Failed to read entity {}[{}] back from cache",
-                    key.entity_type,
-                    key.entity_id
-                )
-            })?;
-            entity.validate(&key)?;
-        }
+        self.entity_op(key, EntityOp::Update(entity));
 
         Ok(())
     }
@@ -576,6 +558,17 @@ impl EntityCache {
                 (None, EntityOp::Remove) => None,
             };
             if let Some(modification) = modification {
+                // Validate the final merged entity before committing.
+                // This catches type mismatches and missing non-null fields
+                // on the fully assembled entity rather than on partial
+                // updates during handler execution.
+                match &modification {
+                    Insert { key, data, .. } | Overwrite { key, data, .. } => {
+                        data.validate(key)
+                            .map_err(|e| StoreError::Unknown(e.into()))?;
+                    }
+                    Remove { .. } => {}
+                }
                 mods.push(modification)
             }
         }

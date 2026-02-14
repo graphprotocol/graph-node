@@ -231,7 +231,6 @@ async fn process_record_batch<AC>(
 
         entity_cache
             .set(key, entity, block_number.compat(), None)
-            .await
             .map_err(|e| {
                 Error::Deterministic(e.context(format!(
                     "failed to store a new entity of type '{entity_name}' with id '{entity_id}'"
