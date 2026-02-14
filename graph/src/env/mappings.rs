@@ -89,6 +89,13 @@ pub struct EnvVarsMapping {
     /// are `none`, `speed`, and `speed_and_size`. The default value is
     /// `speed`.
     pub wasm_opt_level: WasmOptLevel,
+
+    /// Size of the wasmtime instance pool. Controls the maximum number of
+    /// concurrent WASM instances across all subgraphs. Each slot
+    /// pre-reserves virtual address space for one linear memory.
+    ///
+    /// Set by `GRAPH_WASM_INSTANCE_POOL_SIZE`. Defaults to 1000.
+    pub wasm_instance_pool_size: u32,
 }
 
 /// Cranelift optimization level for WASM compilation. Maps to
@@ -164,6 +171,7 @@ impl TryFrom<InnerMappingHandlers> for EnvVarsMapping {
             store_errors_are_nondeterministic: x.store_errors_are_nondeterministic.0,
             fds_max_backoff: Duration::from_secs(x.fds_max_backoff),
             wasm_opt_level: x.wasm_opt_level,
+            wasm_instance_pool_size: x.wasm_instance_pool_size,
         };
         Ok(vars)
     }
@@ -209,6 +217,8 @@ pub struct InnerMappingHandlers {
     fds_max_backoff: u64,
     #[envconfig(from = "GRAPH_WASM_OPT_LEVEL", default = "speed")]
     wasm_opt_level: WasmOptLevel,
+    #[envconfig(from = "GRAPH_WASM_INSTANCE_POOL_SIZE", default = "1000")]
+    wasm_instance_pool_size: u32,
 }
 
 fn validate_ipfs_cache_location(path: PathBuf) -> Result<PathBuf, anyhow::Error> {

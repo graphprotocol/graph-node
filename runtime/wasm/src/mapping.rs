@@ -318,6 +318,17 @@ impl ValidModule {
         config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
         config.async_support(true);
 
+        // Use the pooling allocator to reuse pre-allocated instance slots
+        // instead of mmap/munmap per trigger. This significantly reduces
+        // per-trigger instantiation cost.
+        let pool_size = ENV_VARS.mappings.wasm_instance_pool_size;
+        let mut pool = wasmtime::PoolingAllocationConfig::new();
+        pool.total_core_instances(pool_size);
+        pool.total_memories(pool_size);
+        pool.total_tables(pool_size);
+        pool.total_stacks(pool_size);
+        config.allocation_strategy(wasmtime::InstanceAllocationStrategy::Pooling(pool));
+
         let engine = &wasmtime::Engine::new(&config)?;
         let module = wasmtime::Module::from_binary(engine, &raw_module)?;
 
