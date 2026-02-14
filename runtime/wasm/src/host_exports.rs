@@ -221,7 +221,7 @@ impl HostExports {
         )))
     }
 
-    pub(crate) async fn store_set(
+    pub(crate) fn store_set(
         &self,
         logger: &Logger,
         block: BlockNumber,
@@ -336,15 +336,12 @@ impl HostExports {
 
         state.metrics.track_entity_write(&entity_type, &entity);
 
-        state
-            .entity_cache
-            .set(
-                key,
-                entity,
-                block,
-                Some(&mut state.write_capacity_remaining),
-            )
-            .await?;
+        state.entity_cache.set(
+            key,
+            entity,
+            block,
+            Some(&mut state.write_capacity_remaining),
+        )?;
 
         Ok(())
     }
@@ -1327,7 +1324,7 @@ pub mod test_support {
             }
         }
 
-        pub async fn store_set(
+        pub fn store_set(
             &self,
             logger: &Logger,
             block: BlockNumber,
@@ -1339,20 +1336,18 @@ pub mod test_support {
             stopwatch: &StopwatchMetrics,
             gas: &GasCounter,
         ) -> Result<(), HostExportError> {
-            self.host_exports
-                .store_set(
-                    logger,
-                    block,
-                    state,
-                    proof_of_indexing,
-                    self.block_time,
-                    entity_type,
-                    entity_id,
-                    data,
-                    stopwatch,
-                    gas,
-                )
-                .await
+            self.host_exports.store_set(
+                logger,
+                block,
+                state,
+                proof_of_indexing,
+                self.block_time,
+                entity_type,
+                entity_id,
+                data,
+                stopwatch,
+                gas,
+            )
         }
 
         pub async fn store_get(

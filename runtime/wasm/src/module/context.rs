@@ -277,20 +277,18 @@ impl WasmInstanceContext<'_> {
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let ctx = &mut self.as_mut().ctx;
 
-        host_exports
-            .store_set(
-                &logger,
-                block_number,
-                &mut ctx.state,
-                &ctx.proof_of_indexing,
-                ctx.timestamp,
-                entity,
-                id,
-                data,
-                &stopwatch,
-                gas,
-            )
-            .await?;
+        host_exports.store_set(
+            &logger,
+            block_number,
+            &mut ctx.state,
+            &ctx.proof_of_indexing,
+            ctx.timestamp,
+            entity,
+            id,
+            data,
+            &stopwatch,
+            gas,
+        )?;
 
         Ok(())
     }

@@ -212,14 +212,12 @@ async fn insert_modifications() {
     let mogwai_key = make_band_key("mogwai");
     cache
         .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
-        .await
         .unwrap();
 
     let mut sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" };
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone(), 0, None)
-        .await
         .unwrap();
 
     mogwai_data.set_vid(100).unwrap();
@@ -263,14 +261,12 @@ async fn overwrite_modifications() {
     let mogwai_key = make_band_key("mogwai");
     cache
         .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
-        .await
         .unwrap();
 
     let mut sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", founded: 1994};
     let sigurros_key = make_band_key("sigurros");
     cache
         .set(sigurros_key.clone(), sigurros_data.clone(), 0, None)
-        .await
         .unwrap();
 
     mogwai_data.set_vid(100).unwrap();
@@ -304,15 +300,12 @@ async fn consecutive_modifications() {
     let update_data =
         entity! { SCHEMA => id: "mogwai", founded: 1995, label: "Rock Action Records" };
     let update_key = make_band_key("mogwai");
-    cache.set(update_key, update_data, 0, None).await.unwrap();
+    cache.set(update_key, update_data, 0, None).unwrap();
 
     // Then, just reset the "label".
     let update_data = entity! { SCHEMA => id: "mogwai", label: Value::Null };
     let update_key = make_band_key("mogwai");
-    cache
-        .set(update_key.clone(), update_data, 0, None)
-        .await
-        .unwrap();
+    cache.set(update_key.clone(), update_data, 0, None).unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
@@ -340,7 +333,6 @@ async fn check_vid_sequence() {
         let mogwai_data = entity! { SCHEMA => id: id, name: name };
         cache
             .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
-            .await
             .unwrap();
     }
 
@@ -888,10 +880,7 @@ fn scoped_get() {
         let account5 = ACCOUNT_TYPE.parse_id("5").unwrap();
         let mut wallet5 = create_wallet_entity_no_vid("5", &account5, 100);
         let key5 = WALLET_TYPE.parse_key("5").unwrap();
-        cache
-            .set(key5.clone(), wallet5.clone(), 0, None)
-            .await
-            .unwrap();
+        cache.set(key5.clone(), wallet5.clone(), 0, None).unwrap();
 
         wallet5.set_vid(100).unwrap();
         // For the new entity, we can retrieve it with either scope
@@ -916,10 +905,7 @@ fn scoped_get() {
         // But if it gets updated, it becomes visible with either scope
         let mut wallet1 = wallet1;
         wallet1.set("balance", 70).unwrap();
-        cache
-            .set(key1.clone(), wallet1.clone(), 0, None)
-            .await
-            .unwrap();
+        cache.set(key1.clone(), wallet1.clone(), 0, None).unwrap();
         wallet1a = wallet1;
         wallet1a.set_vid(101).unwrap();
         let act1 = cache.get(&key1, GetScope::InBlock).await.unwrap();
@@ -968,6 +954,8 @@ fn no_interface_mods() {
 
         let entity = entity! { LOAD_RELATED_SUBGRAPH => id: "1", balance: 100 };
 
-        cache.set(key, entity, 0, None).await.unwrap_err();
+        // set() no longer validates; the error surfaces in as_modifications()
+        cache.set(key, entity, 0, None).unwrap();
+        assert!(cache.as_modifications(0).await.is_err());
     })
 }

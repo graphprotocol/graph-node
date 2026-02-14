@@ -1700,7 +1700,7 @@ async fn update_proof_of_indexing(
     entity_cache: &mut EntityCache,
 ) -> Result<(), Error> {
     // Helper to store the digest as a PoI entity in the cache
-    async fn store_poi_entity(
+    fn store_poi_entity(
         entity_cache: &mut EntityCache,
         key: EntityKey,
         digest: Bytes,
@@ -1720,7 +1720,7 @@ async fn update_proof_of_indexing(
             data.push((entity_cache.schema.poi_block_time(), block_time));
         }
         let poi = entity_cache.make_entity(data)?;
-        entity_cache.set(key, poi, block, None).await
+        entity_cache.set(key, poi, block, None)
     }
 
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");
@@ -1763,8 +1763,7 @@ async fn update_proof_of_indexing(
             updated_proof_of_indexing,
             block_time,
             block_number,
-        )
-        .await?;
+        )?;
     }
 
     Ok(())
