@@ -102,6 +102,11 @@ pub fn run_cmd(command: &mut Command) -> String {
 /// Run a command, check that it succeeded and return its stdout and stderr
 /// in a friendly error format for display
 pub async fn run_checked(cmd: &mut tokio::process::Command) -> anyhow::Result<()> {
+    run_checked_with_output(cmd).await.map(|_| ())
+}
+
+/// Like `run_checked` but returns stdout on success.
+pub async fn run_checked_with_output(cmd: &mut tokio::process::Command) -> anyhow::Result<String> {
     let std_cmd = cmd.as_std();
     let cmdline = format!(
         "{} {}",
@@ -117,7 +122,7 @@ pub async fn run_checked(cmd: &mut tokio::process::Command) -> anyhow::Result<()
         .with_context(|| format!("Command failed: {cmdline}"))?;
 
     if output.status.success() {
-        Ok(())
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);

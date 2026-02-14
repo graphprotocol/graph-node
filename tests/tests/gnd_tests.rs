@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::anyhow;
 use graph::futures03::StreamExt;
 use graph_tests::config::set_dev_mode;
@@ -16,24 +18,49 @@ async fn gnd_tests() -> anyhow::Result<()> {
 
     let test_name_to_run = std::env::var("TEST_CASE").ok();
 
+    // 1. Deploy contracts and reset database
+    let contracts = Contract::deploy_all().await?;
+
+    status!("setup", "Resetting database");
+    CONFIG.reset_database();
+
+    // 2. Build source subgraphs: patch -> codegen -> build+upload -> capture hash
+    status!("setup", "Building source subgraphs");
+    let source_names = ["source-subgraph", "source-subgraph-a", "source-subgraph-b"];
+    let mut source_hashes: HashMap<String, String> = HashMap::new();
+    for source_name in &source_names {
+        let dir = Subgraph::dir(source_name);
+        Subgraph::patch(&dir, &contracts).await?;
+        Subgraph::codegen_dev(&dir, false).await?;
+        let hash = Subgraph::build_dev(&dir, true)
+            .await?
+            .expect("build --ipfs must return hash");
+        status!("setup", "Built {source_name} -> {hash}");
+        source_hashes.insert(source_name.to_string(), hash);
+    }
+
+    // 3. Create test cases with dynamic hashes from the build step
     let cases = vec![
         TestCase::new("block-handlers", test_block_handlers),
         TestCase::new_with_source_subgraphs(
             "subgraph-data-sources",
             subgraph_data_sources,
-            vec!["QmWi3H11QFE2PiWx6WcQkZYZdA5UasaBptUJqGn54MFux5:source-subgraph"],
+            vec![&format!(
+                "{}:source-subgraph",
+                source_hashes["source-subgraph"]
+            )],
         ),
         TestCase::new_with_source_subgraphs(
             "multiple-subgraph-datasources",
             test_multiple_subgraph_datasources,
             vec![
-                "QmYHp1bPEf7EoYBpEtJUpZv1uQHYQfWE4AhvR6frjB1Huj:source-subgraph-a",
-                "QmYBEzastJi7bsa722ac78tnZa6xNnV9vvweerY4kVyJtq:source-subgraph-b",
+                &format!("{}:source-subgraph-a", source_hashes["source-subgraph-a"]),
+                &format!("{}:source-subgraph-b", source_hashes["source-subgraph-b"]),
             ],
         ),
     ];
 
-    // Filter the test cases if a specific test name is provided
+    // 4. Filter test cases
     let cases_to_run: Vec<_> = if let Some(test_name) = test_name_to_run {
         cases
             .into_iter()
@@ -43,16 +70,17 @@ async fn gnd_tests() -> anyhow::Result<()> {
         cases
     };
 
-    let contracts = Contract::deploy_all().await?;
-
-    status!("setup", "Resetting database");
-    CONFIG.reset_database();
-
-    for i in cases_to_run.iter() {
-        i.prepare(&contracts).await?;
+    // 5. Prepare and build each main subgraph
+    for case in &cases_to_run {
+        case.prepare(&contracts).await?;
+        let dir = Subgraph::dir(&case.name);
+        let has_subgraph_ds = case.source_subgraph.is_some();
+        Subgraph::codegen_dev(&dir, has_subgraph_ds).await?;
+        Subgraph::build_dev(&dir, false).await?;
     }
     status!("setup", "Prepared all cases");
 
+    // 6. Collect manifests and source aliases for gnd dev
     let manifests = cases_to_run
         .iter()
         .map(|case| {
@@ -90,7 +118,7 @@ async fn gnd_tests() -> anyhow::Result<()> {
         vec!["--manifests", &manifests, "--sources", &aliases_str]
     };
 
-    // Spawn graph-node.
+    // 7. Start gnd dev
     status!("graph-node", "Starting graph-node");
 
     let mut graph_node_child_command = CONFIG.spawn_graph_node_with_args(&args).await?;

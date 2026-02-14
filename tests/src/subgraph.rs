@@ -13,7 +13,9 @@ use tokio::{process::Command, time::sleep};
 
 use crate::{
     contract::Contract,
-    helpers::{graphql_query, graphql_query_with_vars, run_checked, TestFile},
+    helpers::{
+        graphql_query, graphql_query_with_vars, run_checked, run_checked_with_output, TestFile,
+    },
     CONFIG,
 };
 
@@ -64,6 +66,45 @@ impl Subgraph {
 
         fs::write(&patched_path, content)?;
         Ok(())
+    }
+
+    /// Run `gnd codegen subgraph.yaml.patched` in the subgraph directory.
+    /// If `has_subgraph_datasource`, passes `--ipfs` so codegen can fetch source schemas.
+    pub async fn codegen_dev(dir: &TestFile, has_subgraph_datasource: bool) -> anyhow::Result<()> {
+        let mut prog = Command::new(&CONFIG.graph_cli);
+        let mut cmd = prog.arg("codegen").arg("subgraph.yaml.patched");
+        if has_subgraph_datasource {
+            cmd = cmd.arg(format!("--ipfs={}", CONFIG.graph_node.ipfs_uri));
+        }
+        cmd = cmd.current_dir(&dir.path);
+        run_checked(cmd).await
+    }
+
+    /// Run `gnd build subgraph.yaml.patched` in the subgraph directory.
+    /// If `upload_to_ipfs`, passes `--ipfs` and parses the returned IPFS hash from stdout.
+    /// Returns the IPFS hash if `upload_to_ipfs` is true.
+    pub async fn build_dev(dir: &TestFile, upload_to_ipfs: bool) -> anyhow::Result<Option<String>> {
+        let mut prog = Command::new(&CONFIG.graph_cli);
+        let mut cmd = prog.arg("build").arg("subgraph.yaml.patched");
+        if upload_to_ipfs {
+            cmd = cmd.arg(format!("--ipfs={}", CONFIG.graph_node.ipfs_uri));
+        }
+        cmd = cmd.current_dir(&dir.path);
+
+        let stdout = run_checked_with_output(cmd).await?;
+
+        if upload_to_ipfs {
+            // gnd build --ipfs prints "✔ Build completed: <hash>" to stdout
+            let hash = stdout
+                .lines()
+                .find_map(|line| line.split("Build completed: ").nth(1))
+                .ok_or_else(|| anyhow!("Could not find IPFS hash in gnd build output"))?
+                .trim()
+                .to_string();
+            Ok(Some(hash))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Prepare the subgraph for deployment by patching contracts and checking for subgraph datasources
