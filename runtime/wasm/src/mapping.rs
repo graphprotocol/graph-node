@@ -15,7 +15,7 @@ use parity_wasm::elements::ExportEntry;
 use std::collections::{BTreeMap, HashMap};
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::{panic, thread};
 
 /// Spawn a wasm module in its own thread.
@@ -220,6 +220,69 @@ impl MappingContext {
 // See the start_index comment below for more information.
 const GN_START_FUNCTION_NAME: &str = "gn::start";
 
+/// Ensure the epoch counter task is running. The first call with a timeout
+/// starts the task; subsequent calls are no-ops (the interval is locked in
+/// by the first caller).
+fn ensure_epoch_counter(engine: &wasmtime::Engine, timeout: Duration) {
+    static STARTED: OnceLock<()> = OnceLock::new();
+    STARTED.get_or_init(|| {
+        let engine = engine.clone();
+        graph::spawn(async move {
+            loop {
+                tokio::time::sleep(timeout).await;
+                engine.increment_epoch();
+            }
+        });
+    });
+}
+
+/// Returns a shared wasmtime Engine used by all ValidModules. The engine is
+/// created once on first access and reused for the lifetime of the process.
+/// Sharing the engine means all modules share a single pooling allocator
+/// pool and a single epoch counter task.
+fn shared_engine() -> &'static wasmtime::Engine {
+    static ENGINE: OnceLock<wasmtime::Engine> = OnceLock::new();
+
+    ENGINE.get_or_init(|| {
+        let opt_level = match ENV_VARS.mappings.wasm_opt_level {
+            graph::env::WasmOptLevel::None => wasmtime::OptLevel::None,
+            graph::env::WasmOptLevel::Speed => wasmtime::OptLevel::Speed,
+            graph::env::WasmOptLevel::SpeedAndSize => wasmtime::OptLevel::SpeedAndSize,
+        };
+
+        let mut config = wasmtime::Config::new();
+        config.strategy(wasmtime::Strategy::Cranelift);
+        config.epoch_interruption(true);
+        config.cranelift_nan_canonicalization(true); // For NaN determinism.
+        config.cranelift_opt_level(opt_level);
+        config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
+        config.async_support(true);
+
+        // Use the pooling allocator to reuse pre-allocated instance slots
+        // instead of mmap/munmap per trigger. This significantly reduces
+        // per-trigger instantiation cost.
+        let pool_size = ENV_VARS.mappings.wasm_instance_pool_size;
+        let mut pool = wasmtime::PoolingAllocationConfig::new();
+        pool.total_core_instances(pool_size);
+        pool.total_memories(pool_size);
+        pool.total_tables(pool_size);
+        pool.total_stacks(pool_size);
+        config.allocation_strategy(wasmtime::InstanceAllocationStrategy::Pooling(pool));
+
+        let engine = wasmtime::Engine::new(&config).expect("failed to create wasmtime engine");
+
+        // Start the global epoch counter task if a timeout is configured.
+        // The epoch is incremented at the configured timeout interval;
+        // Stores set their deadline to 2 epochs so effective timeout is
+        // between 1x and 2x the interval. See also: runtime-timeouts
+        if let Some(timeout) = ENV_VARS.mappings.timeout {
+            ensure_epoch_counter(&engine, timeout);
+        }
+
+        engine
+    })
+}
+
 /// A pre-processed and valid WASM module, ready to be started as a WasmModule.
 pub struct ValidModule {
     pub module: wasmtime::Module,
@@ -247,9 +310,6 @@ pub struct ValidModule {
 
     // The timeout for the module.
     pub timeout: Option<Duration>,
-
-    // Used as a guard to terminate this task dependency.
-    epoch_counter_abort_handle: Option<tokio::task::AbortHandle>,
 
     /// Cache for asc_type_id results. Maps IndexForAscTypeId to their WASM runtime
     /// type IDs. Populated lazily on first use; deterministic per compiled module.
@@ -302,34 +362,10 @@ impl ValidModule {
             .map_err(|_| anyhow!("Failed to inject gas counter"))?;
         let raw_module = parity_module.into_bytes()?;
 
-        // We use Cranelift as a compilation engine. Cranelift is an optimizing compiler, but that
-        // should not cause determinism issues since it adheres to the Wasm spec and NaN
-        // canonicalization is enabled below. The optimization level is configurable via
-        // GRAPH_WASM_OPT_LEVEL (default: speed).
-        let mut config = wasmtime::Config::new();
-        config.strategy(wasmtime::Strategy::Cranelift);
-        config.epoch_interruption(true);
-        config.cranelift_nan_canonicalization(true); // For NaN determinism.
-        config.cranelift_opt_level(match ENV_VARS.mappings.wasm_opt_level {
-            graph::env::WasmOptLevel::None => wasmtime::OptLevel::None,
-            graph::env::WasmOptLevel::Speed => wasmtime::OptLevel::Speed,
-            graph::env::WasmOptLevel::SpeedAndSize => wasmtime::OptLevel::SpeedAndSize,
-        });
-        config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
-        config.async_support(true);
-
-        // Use the pooling allocator to reuse pre-allocated instance slots
-        // instead of mmap/munmap per trigger. This significantly reduces
-        // per-trigger instantiation cost.
-        let pool_size = ENV_VARS.mappings.wasm_instance_pool_size;
-        let mut pool = wasmtime::PoolingAllocationConfig::new();
-        pool.total_core_instances(pool_size);
-        pool.total_memories(pool_size);
-        pool.total_tables(pool_size);
-        pool.total_stacks(pool_size);
-        config.allocation_strategy(wasmtime::InstanceAllocationStrategy::Pooling(pool));
-
-        let engine = &wasmtime::Engine::new(&config)?;
+        let engine = shared_engine();
+        if let Some(timeout) = timeout {
+            ensure_epoch_counter(engine, timeout);
+        }
         let module = wasmtime::Module::from_binary(engine, &raw_module)?;
 
         let mut import_name_to_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -345,23 +381,6 @@ impl ValidModule {
                 .push(module.to_string());
         }
 
-        let mut epoch_counter_abort_handle = None;
-        if let Some(timeout) = timeout {
-            let engine = engine.clone();
-
-            // The epoch counter task will perpetually increment the epoch every `timeout` seconds.
-            // Timeouts on instantiated modules will trigger on epoch deltas.
-            // Note: The epoch is an u64 so it will never overflow.
-            // See also: runtime-timeouts
-            let epoch_counter = async move {
-                loop {
-                    tokio::time::sleep(timeout).await;
-                    engine.increment_epoch();
-                }
-            };
-            epoch_counter_abort_handle = Some(graph::spawn(epoch_counter).abort_handle());
-        }
-
         let linker = crate::module::build_linker(engine, &import_name_to_modules)?;
         let instance_pre = linker.instantiate_pre(&module)?;
 
@@ -371,7 +390,6 @@ impl ValidModule {
             import_name_to_modules,
             start_function,
             timeout,
-            epoch_counter_abort_handle,
             asc_type_id_cache: RwLock::new(HashMap::new()),
         })
     }
@@ -382,13 +400,5 @@ impl ValidModule {
 
     pub fn cache_type_id(&self, idx: IndexForAscTypeId, type_id: u32) {
         self.asc_type_id_cache.write().insert(idx, type_id);
-    }
-}
-
-impl Drop for ValidModule {
-    fn drop(&mut self) {
-        if let Some(handle) = self.epoch_counter_abort_handle.take() {
-            handle.abort();
-        }
     }
 }

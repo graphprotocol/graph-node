@@ -54,12 +54,17 @@ impl WasmInstanceContext<'_> {
 
     pub fn suspend_timeout(&mut self) {
         // See also: runtime-timeouts
-        self.inner.set_epoch_deadline(u64::MAX);
+        self.inner.set_epoch_deadline(u64::MAX / 2);
     }
 
     pub fn start_timeout(&mut self) {
+        // Only re-arm the epoch deadline when this module actually has a
+        // timeout configured; otherwise leave it at the suspended value so
+        // the shared epoch counter does not interrupt no-timeout modules.
         // See also: runtime-timeouts
-        self.inner.set_epoch_deadline(2);
+        if self.as_ref().valid_module.timeout.is_some() {
+            self.inner.set_epoch_deadline(2);
+        }
     }
 }
 
