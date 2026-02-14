@@ -3,9 +3,8 @@ pub mod asc_abi;
 mod host;
 pub mod to_from;
 
-/// Public interface of the crate, receives triggers to be processed.
-///
-/// Pre-processes modules and manages their threads. Serves as an interface from `host` to `module`.
+/// Public interface of the crate. Contains the compiled WASM module
+/// (`ValidModule`) and the mapping execution context (`MappingContext`).
 pub mod mapping;
 
 /// WASM module instance.

@@ -34,8 +34,9 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
 
     offchain_hosts: OffchainHosts<C, T>,
 
-    /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
-    module_cache: HashMap<[u8; 32], tokio::sync::mpsc::Sender<T::Req>>,
+    /// Maps the hash of a module to its compiled and validated representation,
+    /// shared among hosts that use the same WASM file.
+    module_cache: HashMap<[u8; 32], Arc<T::Module>>,
 
     /// This manages the sequence of causality regions for the subgraph.
     causality_region_seq: CausalityRegionSeq,
@@ -102,19 +103,19 @@ where
             Some(ref module_bytes) => module_bytes.cheap_clone(),
         };
 
-        let mapping_request_sender = {
+        let valid_module = {
             let module_hash = tiny_keccak::keccak256(module_bytes.as_ref());
-            if let Some(sender) = self.module_cache.get(&module_hash) {
-                sender.clone()
+            if let Some(module) = self.module_cache.get(&module_hash) {
+                module.cheap_clone()
             } else {
-                let sender = T::spawn_mapping(
+                let module = T::compile_module(
                     module_bytes.as_ref(),
                     logger,
                     self.subgraph_id.clone(),
                     self.host_metrics.cheap_clone(),
                 )?;
-                self.module_cache.insert(module_hash, sender.clone());
-                sender
+                self.module_cache.insert(module_hash, module.cheap_clone());
+                module
             }
         };
 
@@ -123,7 +124,7 @@ where
             self.subgraph_id.clone(),
             data_source,
             self.templates.cheap_clone(),
-            mapping_request_sender,
+            valid_module,
             self.host_metrics.cheap_clone(),
         )?;
         Ok(Some(Arc::new(host)))
