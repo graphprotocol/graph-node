@@ -887,7 +887,6 @@ pub enum EntityValidationErrorInner {
 ///
 ///   let entity = entity! { schema => id: "1", name: "John Doe" };
 /// ```
-#[cfg(debug_assertions)]
 #[macro_export]
 macro_rules! entity {
     ($schema:expr => $($name:ident: $value:expr,)*) => {
