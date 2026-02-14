@@ -89,6 +89,8 @@ impl Default for GraphNodePorts {
 #[derive(Clone, Debug)]
 pub struct GraphNodeConfig {
     bin: PathBuf,
+    /// Optional subcommand to prepend before all args (e.g. `"dev"` for `gnd dev`).
+    subcommand: Option<&'static str>,
     pub ports: GraphNodePorts,
     pub ipfs_uri: String,
     pub log_file: TestFile,
@@ -142,6 +144,7 @@ impl GraphNodeConfig {
 
         Self {
             bin,
+            subcommand: Some("dev"),
             ports: GraphNodePorts::default(),
             ipfs_uri: std::env::var("GRAPH_NODE_TEST_IPFS_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:3001".to_string()),
@@ -157,6 +160,7 @@ impl Default for GraphNodeConfig {
 
         Self {
             bin,
+            subcommand: None,
             ports: GraphNodePorts::default(),
             ipfs_uri: std::env::var("GRAPH_NODE_TEST_IPFS_URL")
                 .unwrap_or_else(|_| "http://127.0.0.1:3001".to_string()),
@@ -203,11 +207,14 @@ impl Config {
             &ports.metrics.to_string(),
         ];
 
-        let args = args
+        let args: Vec<&str> = self
+            .graph_node
+            .subcommand
             .iter()
+            .chain(args.iter())
             .chain(additional_args.iter())
             .cloned()
-            .collect::<Vec<_>>();
+            .collect();
         let stdout = self.graph_node.log_file.create();
         let stderr = stdout.try_clone()?;
         status!(
