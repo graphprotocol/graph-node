@@ -199,7 +199,10 @@ impl Drop for HostFnExecutionTimer {
 
 pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
     type Host: RuntimeHost<C> + PartialEq;
-    type Req: 'static + Send;
+
+    /// The compiled module type, cached and shared among hosts that use the
+    /// same WASM file.
+    type Module: Send + Sync + 'static;
 
     /// Build a new runtime host for a subgraph data source.
     fn build(
@@ -208,16 +211,16 @@ pub trait RuntimeHostBuilder<C: Blockchain>: Clone + Send + Sync + 'static {
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
         top_level_templates: Arc<Vec<DataSourceTemplate<C>>>,
-        mapping_request_sender: tokio::sync::mpsc::Sender<Self::Req>,
+        valid_module: Arc<Self::Module>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error>;
 
-    /// Spawn a mapping and return a channel for mapping requests. The sender should be able to be
-    /// cached and shared among mappings that use the same wasm file.
-    fn spawn_mapping(
+    /// Compile and validate a WASM module. The result should be cached and
+    /// shared among hosts that use the same WASM file.
+    fn compile_module(
         raw_module: &[u8],
         logger: Logger,
         subgraph_id: DeploymentHash,
         metrics: Arc<HostMetrics>,
-    ) -> Result<tokio::sync::mpsc::Sender<Self::Req>, anyhow::Error>;
+    ) -> Result<Arc<Self::Module>, anyhow::Error>;
 }

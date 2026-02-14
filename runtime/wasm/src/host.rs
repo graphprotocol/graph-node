@@ -1,8 +1,9 @@
 use std::cmp::PartialEq;
+use std::panic;
 use std::time::Instant;
 
+use anyhow::Context;
 use async_trait::async_trait;
-use graph::futures03::channel::oneshot::channel;
 
 use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
@@ -14,7 +15,7 @@ use graph::prelude::{
     RuntimeHost as RuntimeHostTrait, RuntimeHostBuilder as RuntimeHostBuilderTrait, *,
 };
 
-use crate::mapping::{MappingContext, WasmRequest};
+use crate::mapping::{MappingContext, ValidModule};
 use crate::module::ToAscPtr;
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
 use graph::runtime::gas::Gas;
@@ -56,25 +57,20 @@ where
     <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
     type Host = RuntimeHost<C>;
-    type Req = WasmRequest<C>;
+    type Module = ValidModule;
 
-    fn spawn_mapping(
+    fn compile_module(
         raw_module: &[u8],
         logger: Logger,
-        subgraph_id: DeploymentHash,
-        metrics: Arc<HostMetrics>,
-    ) -> Result<tokio::sync::mpsc::Sender<Self::Req>, Error> {
-        let experimental_features = ExperimentalFeatures {
-            allow_non_deterministic_ipfs: ENV_VARS.mappings.allow_non_deterministic_ipfs,
-        };
-        crate::mapping::spawn_module(
+        _subgraph_id: DeploymentHash,
+        _metrics: Arc<HostMetrics>,
+    ) -> Result<Arc<ValidModule>, Error> {
+        let valid_module = Arc::new(ValidModule::new(
+            &logger,
             raw_module,
-            logger,
-            subgraph_id,
-            metrics,
             ENV_VARS.mappings.timeout,
-            experimental_features,
-        )
+        )?);
+        Ok(valid_module)
     }
 
     fn build(
@@ -83,7 +79,7 @@ where
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
         templates: Arc<Vec<DataSourceTemplate<C>>>,
-        mapping_request_sender: tokio::sync::mpsc::Sender<WasmRequest<C>>,
+        valid_module: Arc<ValidModule>,
         metrics: Arc<HostMetrics>,
     ) -> Result<Self::Host, Error> {
         RuntimeHost::new(
@@ -93,7 +89,7 @@ where
             subgraph_id,
             data_source,
             templates,
-            mapping_request_sender,
+            valid_module,
             metrics,
             self.ens_lookup.cheap_clone(),
         )
@@ -103,7 +99,7 @@ where
 pub struct RuntimeHost<C: Blockchain> {
     host_fns: Arc<Vec<HostFn>>,
     data_source: DataSource<C>,
-    mapping_request_sender: tokio::sync::mpsc::Sender<WasmRequest<C>>,
+    valid_module: Arc<ValidModule>,
     host_exports: Arc<HostExports>,
     metrics: Arc<HostMetrics>,
 }
@@ -111,6 +107,7 @@ pub struct RuntimeHost<C: Blockchain> {
 impl<C> RuntimeHost<C>
 where
     C: Blockchain,
+    <C as Blockchain>::MappingTrigger: ToAscPtr,
 {
     fn new(
         runtime_adapter: Arc<dyn RuntimeAdapter<C>>,
@@ -119,7 +116,7 @@ where
         subgraph_id: DeploymentHash,
         data_source: DataSource<C>,
         templates: Arc<Vec<DataSourceTemplate<C>>>,
-        mapping_request_sender: tokio::sync::mpsc::Sender<WasmRequest<C>>,
+        valid_module: Arc<ValidModule>,
         metrics: Arc<HostMetrics>,
         ens_lookup: Arc<dyn EnsLookup>,
     ) -> Result<Self, Error> {
@@ -143,15 +140,16 @@ where
         Ok(RuntimeHost {
             host_fns: Arc::new(host_fns),
             data_source,
-            mapping_request_sender,
+            valid_module,
             host_exports,
             metrics,
         })
     }
 
-    /// Sends a MappingRequest to the thread which owns the host,
-    /// and awaits the result.
-    async fn send_mapping_request(
+    /// Instantiate the WASM module and run the trigger handler directly
+    /// in the current async context, using `block_in_place` to avoid
+    /// blocking the tokio executor.
+    async fn run_mapping(
         &self,
         logger: &Logger,
         state: BlockState,
@@ -170,33 +168,73 @@ where
             "data_source" => &self.data_source.name(),
         );
 
-        let (result_sender, result_receiver) = channel();
         let start_time = Instant::now();
         let metrics = self.metrics.clone();
+        let valid_module = self.valid_module.cheap_clone();
+        let host_exports = self.host_exports.cheap_clone();
+        let host_fns = self.host_fns.cheap_clone();
 
-        self.mapping_request_sender
-            .send(WasmRequest::new_trigger(
-                MappingContext {
-                    logger: logger.cheap_clone(),
-                    state,
-                    host_exports: self.host_exports.cheap_clone(),
-                    block_ptr: trigger.block_ptr(),
-                    timestamp: trigger.timestamp(),
-                    proof_of_indexing,
-                    host_fns: self.host_fns.cheap_clone(),
-                    debug_fork: debug_fork.cheap_clone(),
-                    mapping_logger: Logger::new(logger, o!("component" => "UserMapping")),
-                    instrument,
-                },
-                trigger,
-                result_sender,
-            ))
-            .await
-            .context("Mapping terminated before passing in trigger")?;
+        let experimental_features = ExperimentalFeatures {
+            allow_non_deterministic_ipfs: ENV_VARS.mappings.allow_non_deterministic_ipfs,
+        };
 
-        let result = result_receiver
-            .await
-            .context("Mapping terminated before handling trigger")?;
+        let ctx = MappingContext {
+            logger: logger.cheap_clone(),
+            state,
+            host_exports,
+            block_ptr: trigger.block_ptr(),
+            timestamp: trigger.timestamp(),
+            proof_of_indexing,
+            host_fns,
+            debug_fork: debug_fork.cheap_clone(),
+            mapping_logger: Logger::new(logger, o!("component" => "UserMapping")),
+            instrument,
+        };
+
+        let logger_for_panic = logger.cheap_clone();
+        let metrics_for_trigger = metrics.cheap_clone();
+
+        // Run the WASM instantiation and handler inside block_in_place.
+        // This tells tokio "I'm about to block" so it can move async work
+        // to other threads, preventing executor starvation.
+        let result = tokio::task::block_in_place(|| {
+            let handle_fut = async {
+                let _section = metrics_for_trigger.stopwatch.start_section("module_init");
+                let module = crate::module::WasmInstance::from_valid_module_with_ctx(
+                    valid_module,
+                    ctx,
+                    metrics_for_trigger.cheap_clone(),
+                    experimental_features,
+                )
+                .await
+                .context("module instantiation failed")?;
+                drop(_section);
+
+                let _section = metrics_for_trigger.stopwatch.start_section("run_handler");
+                if ENV_VARS.log_trigger_data {
+                    debug!(logger_for_panic, "trigger data: {:?}", trigger);
+                }
+                module.handle_trigger(trigger).await
+            };
+
+            panic::catch_unwind(panic::AssertUnwindSafe(|| graph::block_on(handle_fut)))
+        });
+
+        let result = match result {
+            Ok(result) => result,
+            Err(panic_info) => {
+                let err_msg = if let Some(payload) = panic_info
+                    .downcast_ref::<String>()
+                    .map(String::as_str)
+                    .or(panic_info.downcast_ref::<&str>().copied())
+                {
+                    anyhow!("Subgraph panicked with message: {}", payload)
+                } else {
+                    anyhow!("Subgraph panicked with an unknown payload.")
+                };
+                Err(MappingError::Unknown(err_msg))
+            }
+        };
 
         let elapsed = start_time.elapsed();
         metrics.observe_handler_execution_time(elapsed.as_secs_f64(), &handler);
@@ -218,7 +256,10 @@ where
 }
 
 #[async_trait]
-impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
+impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C>
+where
+    <C as Blockchain>::MappingTrigger: ToAscPtr,
+{
     fn data_source(&self) -> &DataSource<C> {
         &self.data_source
     }
@@ -241,7 +282,7 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
         debug_fork: &Option<Arc<dyn SubgraphFork>>,
         instrument: bool,
     ) -> Result<BlockState, MappingError> {
-        self.send_mapping_request(
+        self.run_mapping(
             logger,
             state,
             trigger,
