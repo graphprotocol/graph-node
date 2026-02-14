@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail};
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
@@ -105,6 +105,12 @@ pub struct EntityCache {
 
     pub schema: InputSchema,
 
+    /// Entity keys that were added through `set()` and need validation
+    /// in `as_modifications()`. Entities added through `append()` are not
+    /// validated since they come from internal paths (test helpers, POI)
+    /// that may not conform to the subgraph schema's type requirements.
+    needs_validation: HashSet<EntityKey>,
+
     /// A sequence number for generating entity IDs. We use one number for
     /// all id's as the id's are scoped by block and a u32 has plenty of
     /// room for all changes in one block. To ensure reproducability of
@@ -139,6 +145,7 @@ impl EntityCache {
             updates: HashMap::new(),
             handler_updates: HashMap::new(),
             in_handler: false,
+            needs_validation: HashSet::new(),
             schema: store.input_schema(),
             store,
             seq: 0,
@@ -160,6 +167,7 @@ impl EntityCache {
             updates: HashMap::new(),
             handler_updates: HashMap::new(),
             in_handler: false,
+            needs_validation: HashSet::new(),
             schema: store.input_schema(),
             store,
             seq: 0,
@@ -409,6 +417,7 @@ impl EntityCache {
             );
         }
 
+        self.needs_validation.insert(key.clone());
         self.entity_op(key, EntityOp::Update(entity));
 
         Ok(())
@@ -448,6 +457,7 @@ impl EntityCache {
         assert!(!other.in_handler);
 
         self.current.extend(other.current);
+        self.needs_validation.extend(other.needs_validation);
         for (key, op) in other.updates {
             self.entity_op(key, op);
         }
@@ -558,16 +568,17 @@ impl EntityCache {
                 (None, EntityOp::Remove) => None,
             };
             if let Some(modification) = modification {
-                // Validate the final merged entity before committing.
-                // This catches type mismatches and missing non-null fields
-                // on the fully assembled entity rather than on partial
-                // updates during handler execution.
+                // Validate entities that came through set() (handler path).
+                // Entities from append() skip validation since they come
+                // from internal paths that may store values differently.
                 match &modification {
-                    Insert { key, data, .. } | Overwrite { key, data, .. } => {
+                    Insert { key, data, .. } | Overwrite { key, data, .. }
+                        if self.needs_validation.contains(key) =>
+                    {
                         data.validate(key)
                             .map_err(|e| StoreError::Unknown(e.into()))?;
                     }
-                    Remove { .. } => {}
+                    _ => {}
                 }
                 mods.push(modification)
             }
