@@ -376,7 +376,6 @@ async fn offchain_trigger_vid_collision_without_fix() {
     let band1_key = make_band_key("band1");
     cache1
         .set(band1_key.clone(), band1_data, block, None)
-        .await
         .unwrap();
     let result1 = cache1.as_modifications(block).await.unwrap();
 
@@ -387,7 +386,6 @@ async fn offchain_trigger_vid_collision_without_fix() {
     let band2_key = make_band_key("band2");
     cache2
         .set(band2_key.clone(), band2_data, block, None)
-        .await
         .unwrap();
     let result2 = cache2.as_modifications(block).await.unwrap();
 
@@ -432,7 +430,6 @@ async fn offchain_trigger_vid_no_collision_with_fix() {
     let band1_key = make_band_key("band1");
     cache1
         .set(band1_key.clone(), band1_data, block, None)
-        .await
         .unwrap();
 
     // THE FIX: capture vid_seq BEFORE as_modifications consumes the cache
@@ -447,7 +444,6 @@ async fn offchain_trigger_vid_no_collision_with_fix() {
     let band2_key = make_band_key("band2");
     cache2
         .set(band2_key.clone(), band2_data, block, None)
-        .await
         .unwrap();
     let result2 = cache2.as_modifications(block).await.unwrap();
 
