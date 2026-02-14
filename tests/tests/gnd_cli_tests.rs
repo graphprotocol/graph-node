@@ -29,13 +29,9 @@ use std::path::PathBuf;
 use anyhow::anyhow;
 use graph::futures03::StreamExt;
 use graph_tests::contract::Contract;
+use graph_tests::integration::{stop_graph_node, TestCase, TestResult};
+use graph_tests::integration_cases::{test_block_handlers, test_int8, test_value_roundtrip};
 use graph_tests::{error, status, CONFIG};
-
-mod integration_tests;
-
-use integration_tests::{
-    stop_graph_node, test_block_handlers, test_int8, test_value_roundtrip, TestCase, TestResult,
-};
 
 /// Get the path to the gnd binary
 fn gnd_binary_path() -> PathBuf {
