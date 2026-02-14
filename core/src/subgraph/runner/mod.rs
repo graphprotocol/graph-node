@@ -676,6 +676,10 @@ where
             .non_deterministic()?;
         }
 
+        // Pre-fetch entities that were modified but not yet in the cache.
+        // This avoids a blocking get_many() inside as_modifications().
+        entity_cache.prefetch().await.classify()?;
+
         let section = self
             .metrics
             .host
@@ -1567,6 +1571,7 @@ where
                 return Err(anyhow!("{}", err));
             }
 
+            block_state.entity_cache.prefetch().await?;
             mods.extend(
                 block_state
                     .entity_cache

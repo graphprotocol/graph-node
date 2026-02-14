@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail};
 use std::borrow::Borrow;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 
@@ -111,6 +111,14 @@ pub struct EntityCache {
     /// that may not conform to the subgraph schema's type requirements.
     needs_validation: HashSet<EntityKey>,
 
+    /// Entity keys that have been written to `updates` but were not in
+    /// `current` at the time of writing. These are candidates for
+    /// prefetching from the store before `as_modifications()` runs,
+    /// so that the `get_many()` call there finds them already cached.
+    /// Immutable entity types are excluded since they are assumed to
+    /// be new and never fetched.
+    prefetch_candidates: BTreeSet<EntityKey>,
+
     /// A sequence number for generating entity IDs. We use one number for
     /// all id's as the id's are scoped by block and a u32 has plenty of
     /// room for all changes in one block. To ensure reproducability of
@@ -146,6 +154,7 @@ impl EntityCache {
             handler_updates: HashMap::new(),
             in_handler: false,
             needs_validation: HashSet::new(),
+            prefetch_candidates: BTreeSet::new(),
             schema: store.input_schema(),
             store,
             seq: 0,
@@ -168,6 +177,7 @@ impl EntityCache {
             handler_updates: HashMap::new(),
             in_handler: false,
             needs_validation: HashSet::new(),
+            prefetch_candidates: BTreeSet::new(),
             schema: store.input_schema(),
             store,
             seq: 0,
@@ -445,8 +455,19 @@ impl EntityCache {
             false => &mut self.updates,
         };
 
+        let is_main_updates = !self.in_handler;
         match updates.entry(key) {
             Entry::Vacant(entry) => {
+                // Track keys written to `updates` that are not in `current`
+                // as prefetch candidates for `as_modifications()`. Skip
+                // immutable types since they are assumed to be new inserts.
+                if is_main_updates
+                    && !matches!(&op, EntityOp::Remove)
+                    && !entry.key().entity_type.is_immutable()
+                    && !self.current.contains_key(entry.key())
+                {
+                    self.prefetch_candidates.insert(entry.key().clone());
+                }
                 entry.insert(op);
             }
             Entry::Occupied(mut entry) => entry.get_mut().accumulate(op),
@@ -458,6 +479,7 @@ impl EntityCache {
 
         self.current.extend(other.current);
         self.needs_validation.extend(other.needs_validation);
+        self.prefetch_candidates.extend(other.prefetch_candidates);
         for (key, op) in other.updates {
             self.entity_op(key, op);
         }
@@ -468,6 +490,34 @@ impl EntityCache {
         let id = id_type.generate_id(block, self.seq)?;
         self.seq += 1;
         Ok(id)
+    }
+
+    /// Pre-fetch entities from the store that were modified during trigger
+    /// processing but are not yet in the `current` cache. This populates
+    /// the cache so that the subsequent `as_modifications()` call finds
+    /// them already present, avoiding a blocking `get_many()` on the
+    /// critical path.
+    pub async fn prefetch(&mut self) -> Result<(), StoreError> {
+        // Filter out candidates that have since been loaded into `current`
+        // (e.g., by a `get()` call during later trigger processing).
+        let missing: BTreeSet<EntityKey> = self
+            .prefetch_candidates
+            .iter()
+            .filter(|key| !self.current.contains_key(key))
+            .cloned()
+            .collect();
+        self.prefetch_candidates.clear();
+
+        if missing.is_empty() {
+            return Ok(());
+        }
+
+        for (entity_key, mut entity) in self.store.get_many(missing).await? {
+            entity.sort_fields();
+            self.current.insert(entity_key, Some(Arc::new(entity)));
+        }
+
+        Ok(())
     }
 
     /// Return the changes that have been made via `set` and `remove` as

@@ -133,6 +133,11 @@ async fn process_record_batch_group<AC>(
         })?;
     }
 
+    entity_cache
+        .prefetch()
+        .await
+        .map_err(Error::from)
+        .map_err(|e| e.context("failed to prefetch entities"))?;
     let section = cx.metrics.stopwatch.start_section("as_modifications");
     let ModificationsAndCache {
         modifications,
