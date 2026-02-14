@@ -1337,22 +1337,71 @@ async fn aggregation_current_bucket() {
     assert_eq!(
         query_res,
         Some(object! {
-            tokens: vec![
-                object! {
-                    id: "0xaa",
-                    stats: vec![
-                        object! { sum: "40" },
-                        object! { sum: "12" },
-                    ]
-                },
-                object! {
-                    id: "0xbb",
-                    stats: vec![
-                        object! { sum: "60" },
-                        object! { sum: "40" },
-                    ]
-                },
-            ]
+        tokens: vec![
+            object! {
+                id: "0xaa",
+                stats: vec![
+                    object! { sum: "40" },
+                    object! { sum: "12" },
+                ]
+            },
+            object! {
+                id: "0xbb",
+                stats: vec![
+                    object! { sum: "60" },
+                    object! { sum: "40" },
+                ]
+            },
+        ]})
+    );
+}
+
+/// Synthetic stress test: processes a block with 200 triggers where each handler
+/// does a store.get + store.set on a shared entity, plus creates a per-event entity.
+/// This exercises the hot path at scale for meaningful per-trigger timings.
+#[graph::test]
+async fn stress_test_many_triggers() {
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("stress_test_many_triggers", "stress-test").await;
+
+    const NUM_TRIGGERS: u32 = 200;
+
+    let blocks = {
+        let block_0 = genesis();
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        for i in 0..NUM_TRIGGERS {
+            push_test_log(&mut block_1, format!("{i}"));
+        }
+        vec![block_0, block_1]
+    };
+
+    let stop_block = blocks.last().unwrap().block.ptr();
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
+
+    let start = std::time::Instant::now();
+    ctx.start_and_sync_to(stop_block).await;
+    let elapsed = start.elapsed();
+
+    let per_trigger_us = elapsed.as_micros() / NUM_TRIGGERS as u128;
+    eprintln!(
+        "stress_test_many_triggers: {NUM_TRIGGERS} triggers in {:.2}s ({per_trigger_us} us/trigger)",
+        elapsed.as_secs_f64()
+    );
+
+    // Verify the global counter was incremented by every trigger
+    let query_res = ctx
+        .query(r#"{ counter(id: "global") { id count } }"#)
+        .await
+        .unwrap();
+
+    assert_json_eq!(
+        query_res,
+        Some(object! {
+            counter: object! {
+                id: "global",
+                count: NUM_TRIGGERS.to_string(),
+            }
         })
     );
 }
