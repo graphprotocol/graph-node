@@ -110,7 +110,7 @@ pub async fn build_subgraph_with_pnpm_cmd_and_arg(
     let deploy_output = run_cmd(
         Command::new("pnpm")
             .args(&args)
-            .env("IPFS_URI", "http://127.0.0.1:5001")
+            .env("IPFS_URI", ipfs::ServerAddress::test_rpc_api().to_string())
             .env("GRAPH_NODE_ADMIN_URI", "http://localhost:0")
             .current_dir(dir),
     );
