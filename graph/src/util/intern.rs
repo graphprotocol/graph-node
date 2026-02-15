@@ -190,6 +190,9 @@ pub struct Object<V> {
     // This could be further improved by using two `Vec`s, one for keys and
     // one for values. That would avoid losing memory to padding.
     entries: Vec<Entry<V>>,
+    /// Set by `sort_by_key()`, cleared by mutations. When true, entries
+    /// are in key-sorted order and callers can skip re-sorting.
+    sorted: bool,
 }
 
 impl<V> Object<V> {
@@ -198,6 +201,7 @@ impl<V> Object<V> {
         Self {
             pool,
             entries: Vec::new(),
+            sorted: false,
         }
     }
 
@@ -266,6 +270,7 @@ impl<V> Object<V> {
         match self.entries.iter_mut().find(|entry| entry.key == key) {
             Some(entry) => Some(std::mem::replace(&mut entry.value, value)),
             None => {
+                self.sorted = false;
                 self.entries.push(Entry { key, value });
                 None
             }
@@ -279,6 +284,7 @@ impl<V> Object<V> {
     }
 
     pub fn merge(&mut self, other: Object<V>) {
+        self.sorted = false;
         if self.same_pool(&other) {
             for Entry { key, value } in other.entries {
                 self.insert_atom(key, value);
@@ -335,6 +341,14 @@ impl<V> Object<V> {
                 (None, None) => std::cmp::Ordering::Equal,
             }
         });
+        self.sorted = true;
+    }
+
+    /// Returns true if entries are known to be in key-sorted order,
+    /// i.e. `sort_by_key()` was called and no unsorted insertion has
+    /// happened since.
+    pub fn is_sorted(&self) -> bool {
+        self.sorted
     }
 }
 
