@@ -143,7 +143,8 @@ impl GraphNodeConfig {
         Self {
             bin,
             ports: GraphNodePorts::default(),
-            ipfs_uri: "http://localhost:3001".to_string(),
+            ipfs_uri: std::env::var("GRAPH_TEST_IPFS_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:3001".to_string()),
             log_file: TestFile::new("integration-tests/graph-node.log"),
         }
     }
@@ -157,7 +158,8 @@ impl Default for GraphNodeConfig {
         Self {
             bin,
             ports: GraphNodePorts::default(),
-            ipfs_uri: "http://localhost:3001".to_string(),
+            ipfs_uri: std::env::var("GRAPH_TEST_IPFS_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:3001".to_string()),
             log_file: TestFile::new("integration-tests/graph-node.log"),
         }
     }
