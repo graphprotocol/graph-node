@@ -1,6 +1,8 @@
 use reqwest::multipart;
 use serde::Deserialize;
 
+use crate::ipfs;
+
 #[derive(Clone, Debug)]
 pub struct IpfsAddFile {
     path: String,
@@ -53,7 +55,7 @@ where
     }
 
     let resp = reqwest::Client::new()
-        .post("http://127.0.0.1:5001/api/v0/add")
+        .post(format!("{}api/v0/add", ipfs::ServerAddress::test_rpc_api()))
         .multipart(form)
         .send()
         .await?
