@@ -1388,6 +1388,7 @@ impl DeclaredCall {
     }
 
     pub fn as_eth_call(self, block_ptr: BlockPtr, gas: Option<u32>) -> (ContractCall, String) {
+        let encoded_call = self.function.abi_encode_input(&self.args).ok();
         (
             ContractCall {
                 contract_name: self.contract_name,
@@ -1396,6 +1397,7 @@ impl DeclaredCall {
                 function: self.function,
                 args: self.args,
                 gas,
+                encoded_call,
             },
             self.label,
         )
@@ -1409,6 +1411,10 @@ pub struct ContractCall {
     pub function: abi::Function,
     pub args: Vec<abi::DynSolValue>,
     pub gas: Option<u32>,
+    /// Pre-encoded call data. When set, `contract_calls` skips type
+    /// checking and ABI encoding since the call was already validated and
+    /// encoded (e.g. for declared calls).
+    pub encoded_call: Option<Vec<u8>>,
 }
 
 #[cfg(test)]

@@ -336,6 +336,7 @@ async fn eth_call(
         function: function.clone(),
         args: unresolved_call.function_args.clone(),
         gas: eth_call_gas,
+        encoded_call: None,
     };
 
     // Run Ethereum call in tokio runtime

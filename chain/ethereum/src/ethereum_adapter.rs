@@ -1486,31 +1486,36 @@ impl EthereumAdapterTrait for EthereumAdapter {
             call: &ContractCall,
             index: u32,
         ) -> Result<call::Request, ContractCallError> {
-            // Emit custom error for type mismatches.
-            for (val, kind) in call
-                .args
-                .iter()
-                .zip(call.function.inputs.iter().map(|p| p.selector_type()))
-            {
-                let kind: abi::DynSolType = kind.parse().map_err(|err| {
-                    ContractCallError::ABIError(anyhow!(
-                        "failed to parse function input type '{kind}': {err}"
-                    ))
-                })?;
+            let encoded_call = match &call.encoded_call {
+                // Declared calls are pre-encoded; skip type checking and
+                // re-encoding
+                Some(pre_encoded) => pre_encoded.clone(),
+                None => {
+                    // Emit custom error for type mismatches.
+                    for (val, kind) in call
+                        .args
+                        .iter()
+                        .zip(call.function.inputs.iter().map(|p| p.selector_type()))
+                    {
+                        let kind: abi::DynSolType = kind.parse().map_err(|err| {
+                            ContractCallError::ABIError(anyhow!(
+                                "failed to parse function input type '{kind}': {err}"
+                            ))
+                        })?;
 
-                if !val.type_check(&kind) {
-                    return Err(ContractCallError::TypeError(val.clone(), kind.clone()));
+                        if !val.type_check(&kind) {
+                            return Err(ContractCallError::TypeError(val.clone(), kind.clone()));
+                        }
+                    }
+
+                    // Encode the call parameters according to the ABI
+                    call.function
+                        .abi_encode_input(&call.args)
+                        .map_err(ContractCallError::EncodingError)?
                 }
-            }
-
-            // Encode the call parameters according to the ABI
-            let req = {
-                let encoded_call = call
-                    .function
-                    .abi_encode_input(&call.args)
-                    .map_err(ContractCallError::EncodingError)?;
-                call::Request::new(call.address, encoded_call, index)
             };
+
+            let req = call::Request::new(call.address, encoded_call, index);
 
             trace!(logger, "eth_call";
                 "fn" => &call.function.name,
