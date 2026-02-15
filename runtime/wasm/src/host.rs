@@ -1,9 +1,10 @@
 use std::cmp::PartialEq;
-use std::panic;
+use std::panic::AssertUnwindSafe;
 use std::time::Instant;
 
 use anyhow::Context;
 use async_trait::async_trait;
+use graph::futures03::FutureExt as _;
 
 use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
@@ -147,8 +148,10 @@ where
     }
 
     /// Instantiate the WASM module and run the trigger handler directly
-    /// in the current async context, using `block_in_place` to avoid
-    /// blocking the tokio executor.
+    /// in the current async context. This works because subgraph runners
+    /// execute on dedicated OS threads (via `graph::spawn_thread`), not
+    /// on tokio worker threads, so blocking here doesn't starve the
+    /// executor.
     async fn run_mapping(
         &self,
         logger: &Logger,
@@ -194,31 +197,26 @@ where
         let logger_for_panic = logger.cheap_clone();
         let metrics_for_trigger = metrics.cheap_clone();
 
-        // Run the WASM instantiation and handler inside block_in_place.
-        // This tells tokio "I'm about to block" so it can move async work
-        // to other threads, preventing executor starvation.
-        let result = tokio::task::block_in_place(|| {
-            let handle_fut = async {
-                let _section = metrics_for_trigger.stopwatch.start_section("module_init");
-                let module = crate::module::WasmInstance::from_valid_module_with_ctx(
-                    valid_module,
-                    ctx,
-                    metrics_for_trigger.cheap_clone(),
-                    experimental_features,
-                )
-                .await
-                .context("module instantiation failed")?;
-                drop(_section);
+        let handle_fut = async {
+            let _section = metrics_for_trigger.stopwatch.start_section("module_init");
+            let module = crate::module::WasmInstance::from_valid_module_with_ctx(
+                valid_module,
+                ctx,
+                metrics_for_trigger.cheap_clone(),
+                experimental_features,
+            )
+            .await
+            .context("module instantiation failed")?;
+            drop(_section);
 
-                let _section = metrics_for_trigger.stopwatch.start_section("run_handler");
-                if ENV_VARS.log_trigger_data {
-                    debug!(logger_for_panic, "trigger data: {:?}", trigger);
-                }
-                module.handle_trigger(trigger).await
-            };
+            let _section = metrics_for_trigger.stopwatch.start_section("run_handler");
+            if ENV_VARS.log_trigger_data {
+                debug!(logger_for_panic, "trigger data: {:?}", trigger);
+            }
+            module.handle_trigger(trigger).await
+        };
 
-            panic::catch_unwind(panic::AssertUnwindSafe(|| graph::block_on(handle_fut)))
-        });
+        let result = AssertUnwindSafe(handle_fut).catch_unwind().await;
 
         let result = match result {
             Ok(result) => result,
