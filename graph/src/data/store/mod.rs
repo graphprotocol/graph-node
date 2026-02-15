@@ -970,6 +970,12 @@ impl Entity {
         v
     }
 
+    /// Iterate entries as `(Atom, &Value)` pairs, including VID.
+    /// Callers that need to skip VID should filter by the vid atom themselves.
+    pub fn atom_entries(&self) -> impl Iterator<Item = (intern::Atom, &Value)> + '_ {
+        self.0.atom_entries()
+    }
+
     fn check_id(&self) -> Result<(), EntityValidationError> {
         match self.get("id") {
             None => Err(EntityValidationError::missing_id_attribute(format!(

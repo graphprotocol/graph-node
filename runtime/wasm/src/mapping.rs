@@ -6,6 +6,7 @@ use graph::components::subgraph::SharedProofOfIndexing;
 use graph::parking_lot::RwLock;
 use graph::prelude::*;
 use graph::runtime::IndexForAscTypeId;
+use graph::util::intern::Atom;
 use parity_wasm::elements::ExportEntry;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, OnceLock};
@@ -108,6 +109,19 @@ fn shared_engine() -> &'static wasmtime::Engine {
     })
 }
 
+/// Pre-built byte blob containing all entity field key strings as AscString
+/// objects. Written to each WASM instance's heap once per trigger via a single
+/// `raw_new` call, eliminating per-key UTF-16 encoding and allocation overhead.
+pub struct KeyBlobData {
+    /// Concatenated AscString bytes (with headers/padding for API >= 0.0.5).
+    pub blob: Vec<u8>,
+    /// Indexed by `Atom::as_usize()` → byte offset within blob where the
+    /// AscPtr should point. `None` for atoms that have no blob entry.
+    pub offsets: Vec<Option<u32>>,
+    /// Atom for the "vid" field, used to skip during entity iteration.
+    pub vid_atom: Atom,
+}
+
 /// A pre-processed and valid WASM module, ready to be started as a WasmModule.
 pub struct ValidModule {
     pub module: wasmtime::Module,
@@ -139,6 +153,10 @@ pub struct ValidModule {
     /// Cache for asc_type_id results. Maps IndexForAscTypeId to their WASM runtime
     /// type IDs. Populated lazily on first use; deterministic per compiled module.
     asc_type_id_cache: RwLock<HashMap<IndexForAscTypeId, u32>>,
+
+    /// Cached key blob for entity field names. Built lazily on first store_get
+    /// and reused across all triggers for this module.
+    pub key_blob: RwLock<Option<KeyBlobData>>,
 }
 
 impl ValidModule {
@@ -216,6 +234,7 @@ impl ValidModule {
             start_function,
             timeout,
             asc_type_id_cache: RwLock::new(HashMap::new()),
+            key_blob: RwLock::new(None),
         })
     }
 

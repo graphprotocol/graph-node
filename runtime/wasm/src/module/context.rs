@@ -1,5 +1,11 @@
+use graph::data::store;
 use graph::data::value::Word;
 use graph::runtime::gas;
+use graph::runtime::AscHeap;
+use graph::runtime::IndexForAscTypeId;
+use graph::runtime::{asc_new, gas::GasCounter, DeterministicHostError, HostExportError};
+use graph::runtime::{padding_to_16, AscPtr, AscType, HEADER_SIZE};
+use graph::util::intern::Atom;
 use graph::util::lfu_cache::LfuCache;
 use std::collections::HashMap;
 use wasmtime::AsContext;
@@ -11,20 +17,17 @@ use std::time::Instant;
 
 use anyhow::Error;
 use graph::components::store::GetScope;
+use graph::data::subgraph::API_VERSION_0_0_4;
 use never::Never;
 
 use crate::asc_abi::class::*;
-use crate::HostExports;
-use graph::data::store;
-
-use crate::asc_abi::class::AscEntity;
-use crate::asc_abi::class::AscString;
+use crate::mapping::KeyBlobData;
 use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
+use crate::HostExports;
+
 use crate::ExperimentalFeatures;
 use graph::prelude::*;
-use graph::runtime::AscPtr;
-use graph::runtime::{asc_new, gas::GasCounter, DeterministicHostError, HostExportError};
 
 use super::asc_get;
 use super::AscHeapCtx;
@@ -101,6 +104,11 @@ pub struct WasmInstanceData {
     // This option is needed to break the cyclic dependency between, instance, store, and context.
     // during execution it should always be populated.
     asc_heap: Option<Arc<AscHeapCtx>>,
+
+    /// Per-trigger key blob state. Set lazily on first store_get that returns
+    /// an entity. Caches the WASM heap base pointer and the offset table so
+    /// subsequent store_gets don't need to read the ValidModule's RwLock.
+    key_blob_state: Option<KeyBlobState>,
 }
 
 impl WasmInstanceData {
@@ -120,6 +128,7 @@ impl WasmInstanceData {
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
+            key_blob_state: None,
         }
     }
 
@@ -138,6 +147,170 @@ impl WasmInstanceData {
             state,
             BlockState::new(state.entity_cache.store.cheap_clone(), LfuCache::default()),
         )
+    }
+}
+
+/// Per-trigger snapshot of the key blob data: the WASM heap base pointer
+/// plus the offset and vid_atom tables copied from `ValidModule::key_blob`.
+struct KeyBlobState {
+    base_ptr: u32,
+    offsets: Vec<Option<u32>>,
+    vid_atom: Atom,
+}
+
+impl WasmInstanceContext<'_> {
+    /// Build the key blob for a schema pool. Creates AscString representations
+    /// for every interned atom and packs them into a single contiguous blob.
+    async fn build_key_blob(
+        &mut self,
+        pool: &Arc<graph::util::intern::AtomPool>,
+        vid_atom: Atom,
+    ) -> Result<KeyBlobData, HostExportError> {
+        let api_version = self.asc_heap().api_version.clone();
+        let is_v0_0_5_plus = api_version > API_VERSION_0_0_4;
+
+        let string_type_id = if is_v0_0_5_plus {
+            Some(self.asc_type_id(IndexForAscTypeId::String).await?)
+        } else {
+            None
+        };
+
+        let mut blob = Vec::new();
+        let mut offsets = vec![None; pool.len()];
+
+        for (atom, s) in pool.iter_atoms() {
+            let utf16: Vec<u16> = s.encode_utf16().collect();
+            let asc_string = AscString::new(&utf16, &api_version)?;
+            let mut bytes = asc_string.to_asc_bytes()?;
+
+            if is_v0_0_5_plus {
+                let aligned_len = padding_to_16(bytes.len());
+                bytes.extend(std::iter::repeat_n(0, aligned_len));
+
+                let content_len = asc_string.content_len(&bytes);
+                let full_length = bytes.len();
+                let type_id = string_type_id.unwrap();
+
+                // Inline header generation (mirrors AscPtr::generate_header)
+                let mm_info = (16u32 + full_length as u32).to_le_bytes();
+                let gc_info = 0u32.to_le_bytes();
+                let gc_info2 = 0u32.to_le_bytes();
+                let rt_id = type_id.to_le_bytes();
+                let rt_size = (content_len as u32).to_le_bytes();
+
+                // AscPtr points after the header
+                offsets[atom.as_usize()] = Some(blob.len() as u32 + HEADER_SIZE as u32);
+
+                blob.extend(mm_info);
+                blob.extend(gc_info);
+                blob.extend(gc_info2);
+                blob.extend(rt_id);
+                blob.extend(rt_size);
+                blob.extend(bytes);
+            } else {
+                // API <= 0.0.4: no header, AscPtr points to start of bytes
+                offsets[atom.as_usize()] = Some(blob.len() as u32);
+                blob.extend(bytes);
+            }
+        }
+
+        Ok(KeyBlobData {
+            blob,
+            offsets,
+            vid_atom,
+        })
+    }
+
+    /// Ensure the key blob is built (on ValidModule) and written to this
+    /// trigger's WASM heap (on WasmInstanceData). Returns a reference to the
+    /// per-trigger `KeyBlobState`.
+    async fn ensure_key_blob_state(&mut self, gas: &GasCounter) -> Result<(), HostExportError> {
+        if self.as_ref().key_blob_state.is_some() {
+            return Ok(());
+        }
+
+        // Ensure blob is built on ValidModule (shared across triggers)
+        {
+            let needs_build = self.as_ref().valid_module.key_blob.read().is_none();
+            if needs_build {
+                let schema = &self.as_ref().ctx.state.entity_cache.schema;
+                let pool = schema.pool().clone();
+                let vid_atom = schema.vid_atom();
+                let blob_data = self.build_key_blob(&pool, vid_atom).await?;
+                *self.as_ref().valid_module.key_blob.write() = Some(blob_data);
+            }
+        }
+
+        // Clone blob bytes and metadata, then write to WASM heap
+        let (blob_bytes, offsets, vid_atom) = {
+            let guard = self.as_ref().valid_module.key_blob.read();
+            let data = guard.as_ref().unwrap();
+            (data.blob.clone(), data.offsets.clone(), data.vid_atom)
+        };
+
+        let base_ptr = self.raw_new(&blob_bytes, gas).await?;
+        self.as_mut().key_blob_state = Some(KeyBlobState {
+            base_ptr,
+            offsets,
+            vid_atom,
+        });
+        Ok(())
+    }
+
+    /// Convert an Entity to AscEntity using cached key AscPtrs from the
+    /// pre-built blob, avoiding per-key UTF-16 encoding and allocation.
+    async fn entity_to_asc(
+        &mut self,
+        entity: &graph::components::store::Entity,
+        gas: &GasCounter,
+    ) -> Result<AscPtr<AscEntity>, HostExportError> {
+        self.ensure_key_blob_state(gas).await?;
+
+        // Read cached state (ensure_key_blob_state guarantees it's Some)
+        let base_ptr = self.as_ref().key_blob_state.as_ref().unwrap().base_ptr;
+        let vid_atom = self.as_ref().key_blob_state.as_ref().unwrap().vid_atom;
+
+        // Collect (atom, value) pairs, filtering vid
+        let entries: Vec<(Atom, &store::Value)> = entity
+            .atom_entries()
+            .filter(|(atom, _)| *atom != vid_atom)
+            .collect();
+
+        // Build AscTypedMapEntry pointers for each field
+        let mut entry_ptrs: Vec<AscPtr<AscTypedMapEntry<AscString, AscEnum<StoreValueKind>>>> =
+            Vec::with_capacity(entries.len());
+
+        for (atom, value) in entries {
+            // Look up cached key AscPtr from blob
+            let offset = self.as_ref().key_blob_state.as_ref().unwrap().offsets[atom.as_usize()]
+                .unwrap_or_else(|| {
+                    panic!("key blob missing offset for atom {:?}; this is a bug", atom)
+                });
+            let key_ptr: AscPtr<AscString> = AscPtr::new(base_ptr + offset);
+
+            // Allocate value (always fresh)
+            let value_ptr: AscPtr<AscEnum<StoreValueKind>> = asc_new(self, value, gas).await?;
+
+            // Allocate entry struct
+            let entry = AscTypedMapEntry {
+                key: key_ptr,
+                value: value_ptr,
+            };
+            let entry_ptr = AscPtr::alloc_obj(entry, self, gas).await?;
+            entry_ptrs.push(entry_ptr);
+        }
+
+        // Allocate the entries array
+        let entries_array = Array::new(&entry_ptrs, self, gas).await?;
+        let entries_array_ptr = AscPtr::alloc_obj(entries_array, self, gas).await?;
+
+        // Allocate the AscTypedMap (AscEntity)
+        let typed_map = AscTypedMap {
+            entries: entries_array_ptr,
+        };
+        let entity_ptr = AscPtr::alloc_obj(typed_map, self, gas).await?;
+
+        Ok(entity_ptr)
     }
 }
 
@@ -180,7 +353,7 @@ impl WasmInstanceContext<'_> {
         let ret = match entity_option {
             Some(entity) => {
                 let _section = host_metrics.stopwatch.start_section("store_get_asc_new");
-                asc_new(self, &entity.sorted_ref(), gas).await?
+                self.entity_to_asc(&entity, gas).await?
             }
             None => match &debug_fork {
                 Some(fork) => {
