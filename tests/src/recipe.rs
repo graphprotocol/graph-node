@@ -92,7 +92,7 @@ pub async fn build_subgraph_with_pnpm_cmd_and_arg(
 ) -> DeploymentHash {
     // Test that IPFS is up.
     ipfs::IpfsRpcClient::new(
-        ipfs::ServerAddress::local_rpc_api(),
+        ipfs::ServerAddress::test_rpc_api(),
         ipfs::IpfsMetrics::new(&MetricsRegistry::mock()),
         &graph::log::discard(),
     )

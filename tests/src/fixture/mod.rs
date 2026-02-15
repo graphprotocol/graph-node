@@ -539,7 +539,7 @@ pub async fn setup_inner<C: Blockchain>(
 
     let ipfs_client: Arc<dyn IpfsClient> = Arc::new(
         graph::ipfs::IpfsRpcClient::new_unchecked(
-            graph::ipfs::ServerAddress::local_rpc_api(),
+            graph::ipfs::ServerAddress::test_rpc_api(),
             IpfsMetrics::new(&mock_registry),
             &logger,
         )
