@@ -1305,56 +1305,36 @@ mod data {
             .map(|row| row.map(|(return_value, expired)| (Bytes::from(return_value), expired)))
         }
 
-        pub(super) async fn get_calls_and_access(
+        /// Batch-fetch cached call results by their IDs. Unlike the
+        /// singular `get_call_and_access`, this skips the `call_meta`
+        /// JOIN since the batch path does not need the expired flag.
+        pub(super) async fn get_calls_batch(
             &self,
             conn: &mut AsyncPgConnection,
             ids: &[&[u8]],
-        ) -> Result<Vec<(Vec<u8>, Bytes, bool)>, Error> {
+        ) -> Result<Vec<(Vec<u8>, Bytes)>, Error> {
             let rows = match self {
                 Storage::Shared => {
                     use public::eth_call_cache as cache;
-                    use public::eth_call_meta as meta;
 
                     cache::table
-                        .inner_join(meta::table)
                         .filter(cache::id.eq_any(ids))
-                        .select((
-                            cache::id,
-                            cache::return_value,
-                            sql::<Bool>("CURRENT_DATE > eth_call_meta.accessed_at"),
-                        ))
+                        .select((cache::id, cache::return_value))
                         .load(conn)
                         .await
                         .map_err(Error::from)
                 }
-                Storage::Private(Schema {
-                    call_cache,
-                    call_meta,
-                    ..
-                }) => call_cache
+                Storage::Private(Schema { call_cache, .. }) => call_cache
                     .table()
-                    .inner_join(
-                        call_meta.table().on(call_meta
-                            .contract_address()
-                            .eq(call_cache.contract_address())),
-                    )
                     .filter(call_cache.id().eq_any(ids))
-                    .select((
-                        call_cache.id(),
-                        call_cache.return_value(),
-                        sql::<Bool>(&format!(
-                            "CURRENT_DATE > {}.{}",
-                            CallMetaTable::TABLE_NAME,
-                            CallMetaTable::ACCESSED_AT
-                        )),
-                    ))
-                    .load::<(Vec<u8>, Vec<u8>, bool)>(conn)
+                    .select((call_cache.id(), call_cache.return_value()))
+                    .load::<(Vec<u8>, Vec<u8>)>(conn)
                     .await
                     .map_err(Error::from),
             }?;
             Ok(rows
                 .into_iter()
-                .map(|(id, return_value, expired)| (id, Bytes::from(return_value), expired))
+                .map(|(id, return_value)| (id, Bytes::from(return_value)))
                 .collect())
         }
 
@@ -3327,15 +3307,13 @@ impl EthereumCallCache for ChainStore {
         let conn = &mut self.pool.get_permitted().await?;
         let rows = conn
             .transaction::<_, Error, _>(|conn| {
-                self.storage
-                    .get_calls_and_access(conn, &id_refs)
-                    .scope_boxed()
+                self.storage.get_calls_batch(conn, &id_refs).scope_boxed()
             })
             .await?;
 
         let mut found: Vec<usize> = Vec::new();
         let mut resps = Vec::new();
-        for (id, retval, _) in rows {
+        for (id, retval) in rows {
             let idx = ids.iter().position(|i| i.as_ref() == id).ok_or_else(|| {
                 internal_error!(
                     "get_calls returned a call id that was not requested: {}",
