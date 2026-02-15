@@ -1483,8 +1483,16 @@ impl InputSchema {
     }
 
     // A helper for the `EntityType` constructor
-    pub(in crate::schema) fn pool(&self) -> &Arc<AtomPool> {
+    pub fn pool(&self) -> &Arc<AtomPool> {
         &self.inner.pool
+    }
+
+    /// Return the interned atom for the VID field.
+    pub fn vid_atom(&self) -> Atom {
+        self.inner
+            .pool
+            .lookup(VID_FIELD)
+            .expect("vid is always interned")
     }
 
     /// Return the entity type for `named`. If the entity type does not

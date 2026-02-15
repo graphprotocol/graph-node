@@ -31,6 +31,13 @@ type AtomInt = u16;
 #[derive(Eq, Hash, PartialEq, PartialOrd, Ord, Clone, Copy, CheapClone, Debug)]
 pub struct Atom(AtomInt);
 
+impl Atom {
+    /// The underlying integer value of this atom, suitable for use as a Vec index.
+    pub fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+}
+
 /// An atom and the underlying pool. A `FatAtom` can be used in place of a
 /// `String` or `Word`
 #[allow(dead_code)]
@@ -125,6 +132,24 @@ impl AtomPool {
 
     /// Add `word` to this pool if it is not already in it. Return the atom
     /// for the word.
+    /// Total number of atoms across this pool and all ancestors.
+    pub fn len(&self) -> usize {
+        self.base_sym as usize + self.atoms.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Iterate all `(Atom, &str)` pairs across this pool and all ancestors.
+    pub fn iter_atoms(&self) -> impl Iterator<Item = (Atom, &str)> + '_ {
+        (0..self.len()).map(move |i| {
+            let atom = Atom(i as AtomInt);
+            let s = self.get(atom).unwrap();
+            (atom, s)
+        })
+    }
+
     pub fn intern(&mut self, word: &str) -> Atom {
         if let Some(atom) = self.lookup(word) {
             return atom;
@@ -315,6 +340,19 @@ impl<V> Object<V> {
 
     pub fn atoms(&self) -> AtomIter<'_, V> {
         AtomIter::new(self)
+    }
+
+    /// Iterate entries as `(Atom, &V)` pairs, filtering tombstones.
+    pub fn atom_entries(&self) -> impl Iterator<Item = (Atom, &V)> + '_ {
+        self.entries
+            .iter()
+            .filter(|entry| entry.key != TOMBSTONE_KEY)
+            .map(|entry| (entry.key, &entry.value))
+    }
+
+    /// Access the underlying atom pool.
+    pub fn pool(&self) -> &Arc<AtomPool> {
+        &self.pool
     }
 
     /// Sort entries by their string key. Tombstone entries are moved to the
