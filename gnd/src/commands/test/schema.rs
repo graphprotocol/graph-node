@@ -76,7 +76,7 @@ pub struct TestBlock {
     pub timestamp: Option<u64>,
 
     /// Base fee per gas (EIP-1559). If omitted, defaults to None (pre-EIP-1559 blocks).
-    /// Specified as a decimal string to handle large values (e.g., "15000000000").
+    /// Specified as a decimal string, parsed as u64 (e.g., "15000000000").
     #[serde(default, rename = "baseFeePerGas")]
     pub base_fee_per_gas: Option<String>,
 
@@ -159,7 +159,6 @@ pub struct MockEthCall {
 
 /// A GraphQL assertion to validate indexed entity state.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 pub struct Assertion {
     /// GraphQL query string. Example: `"{ transfer(id: \"1\") { from to value } }"`
     pub query: String,
@@ -250,9 +249,11 @@ pub fn parse_test_file(path: &Path) -> anyhow::Result<TestFile> {
         .map_err(|e| anyhow::anyhow!("Failed to parse test file {}: {}", path.display(), e))
 }
 
-/// Discover test files in a directory.
+/// Discover test files in a directory (recursive).
 ///
-/// Matches `*.json` and `*.test.json` files (non-recursive).
+/// Matches `*.json` and `*.test.json` files. Recurses into subdirectories.
+/// Entries whose name starts with a non-alphanumeric character (e.g., `.hidden`,
+/// `_fixture`) are skipped for both files and directories.
 /// Returns paths sorted alphabetically for deterministic execution order.
 pub fn discover_test_files(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
@@ -261,21 +262,34 @@ pub fn discover_test_files(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
         return Ok(files);
     }
 
+    discover_recursive(dir, &mut files)?;
+    files.sort();
+    Ok(files)
+}
+
+/// Recursively walk `dir`, collecting JSON test files and descending into subdirectories.
+///
+/// Skips entries whose name starts with a non-alphanumeric character (e.g., `.hidden`, `_fixture`).
+fn discover_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n,
+            None => continue,
+        };
 
-        if path.is_file() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if (name.ends_with(".test.json") || name.ends_with(".json"))
-                    && !name.starts_with('.')
-                {
-                    files.push(path);
-                }
-            }
+        // Skip entries whose name starts with a non-alphanumeric character.
+        if !name.starts_with(|c: char| c.is_alphanumeric()) {
+            continue;
+        }
+
+        if path.is_dir() {
+            discover_recursive(&path, files)?;
+        } else if path.is_file() && (name.ends_with(".test.json") || name.ends_with(".json")) {
+            files.push(path);
         }
     }
 
-    files.sort();
-    Ok(files)
+    Ok(())
 }
