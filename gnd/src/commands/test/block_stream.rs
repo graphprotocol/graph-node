@@ -142,7 +142,11 @@ impl BlockStreamBuilder<Chain> for MutexBlockStreamBuilder {
         filter: Arc<<Chain as Blockchain>::TriggerFilter>,
         unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<Chain>>> {
-        let builder = self.0.lock().unwrap().clone();
+        let builder = self
+            .0
+            .lock()
+            .expect("block stream builder lock poisoned")
+            .clone();
         builder
             .build_firehose(
                 chain,
@@ -166,7 +170,11 @@ impl BlockStreamBuilder<Chain> for MutexBlockStreamBuilder {
         filter: Arc<TriggerFilterWrapper<Chain>>,
         unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
     ) -> anyhow::Result<Box<dyn BlockStream<Chain>>> {
-        let builder = self.0.lock().unwrap().clone();
+        let builder = self
+            .0
+            .lock()
+            .expect("block stream builder lock poisoned")
+            .clone();
         builder
             .build_polling(
                 chain,

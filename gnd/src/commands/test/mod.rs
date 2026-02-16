@@ -226,8 +226,7 @@ fn resolve_test_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
             if in_default_dir.exists() {
                 files.push(in_default_dir);
             } else {
-                // Keep the original path — parse_test_file will report the error.
-                files.push(path.clone());
+                anyhow::bail!("Test file not found: {}", path.display());
             }
         }
     }

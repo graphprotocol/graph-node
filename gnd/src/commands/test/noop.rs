@@ -41,7 +41,9 @@ impl<C: Blockchain> BlockRefetcher<C> for StaticBlockRefetcher<C> {
         _logger: &Logger,
         _cursor: FirehoseCursor,
     ) -> Result<C::Block, Error> {
-        unimplemented!("StaticBlockRefetcher should never be called")
+        Err(anyhow::anyhow!(
+            "StaticBlockRefetcher::get_block should never be called — block refetching is disabled in test mode"
+        ))
     }
 }
 
