@@ -389,6 +389,7 @@ impl VisitorMut for Validator<'_> {
                 lateral: false,
                 subquery,
                 alias,
+                sample: None,
             };
         }
         ControlFlow::Continue(())

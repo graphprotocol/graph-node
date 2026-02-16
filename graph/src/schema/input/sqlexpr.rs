@@ -137,6 +137,7 @@ impl<'a> VisitExpr<'a> {
                 data_type: _,
                 kind,
                 format: _,
+                array: _,
             } => match kind {
                 // Cast: `CAST(<expr> as <datatype>)`
                 // DoubleColon: `<expr>::<datatype>`
