@@ -234,7 +234,7 @@ where
     pub fn hosts_for_trigger(
         &self,
         trigger: &TriggerData<C>,
-    ) -> Box<dyn Iterator<Item = &T::Host> + Send + '_> {
+    ) -> Box<dyn Iterator<Item = Arc<T::Host>> + Send + '_> {
         match trigger {
             TriggerData::Onchain(trigger) => self
                 .onchain_hosts

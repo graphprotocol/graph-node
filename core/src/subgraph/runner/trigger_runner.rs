@@ -49,7 +49,7 @@ where
     pub async fn execute(
         &self,
         block: &Arc<C::Block>,
-        runnables: Vec<RunnableTriggers<'a, C>>,
+        runnables: Vec<RunnableTriggers<C>>,
         block_state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,

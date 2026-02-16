@@ -1040,9 +1040,9 @@ impl DecoderHook {
         Ok(labels)
     }
 
-    fn collect_declared_calls<'a>(
+    fn collect_declared_calls(
         &self,
-        runnables: &Vec<RunnableTriggers<'a, Chain>>,
+        runnables: &[RunnableTriggers<Chain>],
     ) -> Vec<(Arc<HostMetrics>, DeclaredCall)> {
         // Extract all hosted triggers from runnables
         let all_triggers = runnables
@@ -1152,13 +1152,13 @@ impl DecoderHook {
 
 #[async_trait]
 impl blockchain::DecoderHook<Chain> for DecoderHook {
-    async fn after_decode<'a>(
+    async fn after_decode(
         &self,
         logger: &Logger,
         block_ptr: &BlockPtr,
-        runnables: Vec<RunnableTriggers<'a, Chain>>,
+        runnables: Vec<RunnableTriggers<Chain>>,
         metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<RunnableTriggers<'a, Chain>>, MappingError> {
+    ) -> Result<Vec<RunnableTriggers<Chain>>, MappingError> {
         if ENV_VARS.mappings.disable_declared_calls {
             return Ok(runnables);
         }

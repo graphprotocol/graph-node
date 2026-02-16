@@ -21,10 +21,10 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    async fn process_trigger<'a>(
-        &'a self,
+    async fn process_trigger(
+        &self,
         logger: &Logger,
-        triggers: Vec<HostedTrigger<'a, C>>,
+        triggers: Vec<HostedTrigger<C>>,
         block: &Arc<C::Block>,
         mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
@@ -108,14 +108,14 @@ where
 }
 
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> Decoder<C, T> {
-    fn match_and_decode_inner<'a>(
-        &'a self,
+    fn match_and_decode_inner(
+        &self,
         logger: &Logger,
         block: &Arc<C::Block>,
         trigger: &TriggerData<C>,
-        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        hosts: Vec<Arc<T::Host>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<HostedTrigger<'a, C>>, MappingError> {
+    ) -> Result<Vec<HostedTrigger<C>>, MappingError> {
         let mut host_mapping = vec![];
 
         {
@@ -139,14 +139,14 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> Decoder<C, T> {
         Ok(host_mapping)
     }
 
-    pub(crate) fn match_and_decode<'a>(
-        &'a self,
+    pub(crate) fn match_and_decode(
+        &self,
         logger: &Logger,
         block: &Arc<C::Block>,
         trigger: TriggerData<C>,
-        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        hosts: Vec<Arc<T::Host>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<RunnableTriggers<'a, C>, MappingError> {
+    ) -> Result<RunnableTriggers<C>, MappingError> {
         self.match_and_decode_inner(logger, block, &trigger, hosts, subgraph_metrics)
             .map_err(|e| e.add_trigger_context(&trigger))
             .map(|hosted_triggers| RunnableTriggers {
@@ -155,16 +155,16 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> Decoder<C, T> {
             })
     }
 
-    pub(crate) async fn match_and_decode_many<'a, F>(
-        &'a self,
+    pub(crate) async fn match_and_decode_many<F>(
+        &self,
         logger: &Logger,
         block: &Arc<C::Block>,
         triggers: impl Iterator<Item = TriggerData<C>>,
         hosts_filter: F,
         metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>
+    ) -> Result<Vec<RunnableTriggers<C>>, MappingError>
     where
-        F: Fn(&TriggerData<C>) -> Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        F: Fn(&TriggerData<C>) -> Vec<Arc<T::Host>>,
     {
         let mut runnables = vec![];
         for trigger in triggers {

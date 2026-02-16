@@ -16,22 +16,22 @@ use super::{
 
 /// A trigger that is almost ready to run: we have a host to run it on, and
 /// transformed the `TriggerData` into a `MappingTrigger`.
-pub struct HostedTrigger<'a, C>
+pub struct HostedTrigger<C>
 where
     C: Blockchain,
 {
-    pub host: &'a dyn RuntimeHost<C>,
+    pub host: Arc<dyn RuntimeHost<C>>,
     pub mapping_trigger: TriggerWithHandler<MappingTrigger<C>>,
 }
 
 /// The `TriggerData` and the `HostedTriggers` that were derived from it. We
 /// need to hang on to the `TriggerData` solely for error reporting.
-pub struct RunnableTriggers<'a, C>
+pub struct RunnableTriggers<C>
 where
     C: Blockchain,
 {
     pub trigger: TriggerData<C>,
-    pub hosted_triggers: Vec<HostedTrigger<'a, C>>,
+    pub hosted_triggers: Vec<HostedTrigger<C>>,
 }
 
 #[async_trait]
@@ -40,10 +40,10 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    async fn process_trigger<'a>(
-        &'a self,
+    async fn process_trigger(
+        &self,
         logger: &Logger,
-        triggers: Vec<HostedTrigger<'a, C>>,
+        triggers: Vec<HostedTrigger<C>>,
         block: &Arc<C::Block>,
         mut state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
@@ -63,25 +63,25 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    fn match_and_decode<'a>(
-        &'a self,
+    fn match_and_decode(
+        &self,
         logger: &Logger,
         block: &Arc<C::Block>,
         trigger: TriggerData<C>,
-        hosts: Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        hosts: Vec<Arc<T::Host>>,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<RunnableTriggers<'a, C>, MappingError>;
+    ) -> Result<RunnableTriggers<C>, MappingError>;
 
-    fn match_and_decode_many<'a, F>(
-        &'a self,
+    fn match_and_decode_many<F>(
+        &self,
         logger: &Logger,
         block: &Arc<C::Block>,
         triggers: Box<dyn Iterator<Item = TriggerData<C>>>,
         hosts_filter: F,
         subgraph_metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>
+    ) -> Result<Vec<RunnableTriggers<C>>, MappingError>
     where
-        F: Fn(&TriggerData<C>) -> Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        F: Fn(&TriggerData<C>) -> Vec<Arc<T::Host>>,
     {
         let mut runnables = vec![];
         for trigger in triggers {

@@ -497,13 +497,13 @@ pub trait MappingTriggerTrait {
 /// A callback that is called after the triggers have been decoded.
 #[async_trait]
 pub trait DecoderHook<C: Blockchain> {
-    async fn after_decode<'a>(
+    async fn after_decode(
         &self,
         logger: &Logger,
         block_ptr: &BlockPtr,
-        triggers: Vec<RunnableTriggers<'a, C>>,
+        triggers: Vec<RunnableTriggers<C>>,
         metrics: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>;
+    ) -> Result<Vec<RunnableTriggers<C>>, MappingError>;
 }
 
 /// A decoder hook that does nothing and just returns the triggers that were
@@ -512,13 +512,13 @@ pub struct NoopDecoderHook;
 
 #[async_trait]
 impl<C: Blockchain> DecoderHook<C> for NoopDecoderHook {
-    async fn after_decode<'a>(
+    async fn after_decode(
         &self,
         _: &Logger,
         _: &BlockPtr,
-        triggers: Vec<RunnableTriggers<'a, C>>,
+        triggers: Vec<RunnableTriggers<C>>,
         _: &Arc<SubgraphInstanceMetrics>,
-    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError> {
+    ) -> Result<Vec<RunnableTriggers<C>>, MappingError> {
         Ok(triggers)
     }
 }

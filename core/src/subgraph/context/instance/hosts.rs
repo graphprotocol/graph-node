@@ -99,9 +99,9 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHosts<C, T> {
     pub fn matches_by_address(
         &self,
         address: Option<&[u8]>,
-    ) -> Box<dyn Iterator<Item = &T::Host> + Send + '_> {
+    ) -> Box<dyn Iterator<Item = Arc<T::Host>> + Send + '_> {
         let Some(address) = address else {
-            return Box::new(self.hosts.iter().map(|host| host.as_ref()));
+            return Box::new(self.hosts.iter().cloned());
         };
 
         let mut matching_hosts: Vec<usize> = self
@@ -116,7 +116,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHosts<C, T> {
         Box::new(
             matching_hosts
                 .into_iter()
-                .map(move |idx| self.hosts[idx].as_ref()),
+                .map(move |idx| self.hosts[idx].clone()),
         )
     }
 }
@@ -191,12 +191,12 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHosts<C, T> {
         }
     }
 
-    pub fn matches_by_address<'a>(
-        &'a self,
+    pub fn matches_by_address(
+        &self,
         address: Option<&[u8]>,
-    ) -> Box<dyn Iterator<Item = &'a T::Host> + Send + 'a> {
+    ) -> Box<dyn Iterator<Item = Arc<T::Host>> + Send + '_> {
         let Some(address) = address else {
-            return Box::new(self.by_block.values().flatten().map(|host| host.as_ref()));
+            return Box::new(self.by_block.values().flatten().cloned());
         };
 
         Box::new(
@@ -204,8 +204,8 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHosts<C, T> {
                 .get(address)
                 .into_iter()
                 .flatten() // Flatten non-existing `address` into empty.
-                .map(|host| host.as_ref())
-                .chain(self.wildcard_address.iter().map(|host| host.as_ref())),
+                .cloned()
+                .chain(self.wildcard_address.iter().cloned()),
         )
     }
 }

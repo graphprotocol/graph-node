@@ -807,15 +807,15 @@ where
         }
     }
 
-    async fn match_and_decode_many<'a, F>(
-        &'a self,
+    async fn match_and_decode_many<F>(
+        &self,
         logger: &Logger,
         block: &Arc<C::Block>,
         triggers: Vec<Trigger<C>>,
         hosts_filter: F,
-    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError>
+    ) -> Result<Vec<RunnableTriggers<C>>, MappingError>
     where
-        F: Fn(&TriggerData<C>) -> Box<dyn Iterator<Item = &'a T::Host> + Send + 'a>,
+        F: Fn(&TriggerData<C>) -> Vec<Arc<T::Host>>,
     {
         let triggers = triggers.into_iter().map(|t| match t {
             Trigger::Chain(t) => TriggerData::Onchain(t),
@@ -853,13 +853,14 @@ where
     ///
     /// Takes raw triggers from a block and matches them against all registered
     /// hosts, returning runnable triggers ready for execution.
-    async fn match_triggers<'a>(
-        &'a self,
+    async fn match_triggers(
+        &self,
         logger: &Logger,
         block: &Arc<C::Block>,
         triggers: Vec<Trigger<C>>,
-    ) -> Result<Vec<RunnableTriggers<'a, C>>, MappingError> {
-        let hosts_filter = |trigger: &TriggerData<C>| self.ctx.instance.hosts_for_trigger(trigger);
+    ) -> Result<Vec<RunnableTriggers<C>>, MappingError> {
+        let hosts_filter =
+            |trigger: &TriggerData<C>| self.ctx.instance.hosts_for_trigger(trigger).collect();
         self.match_and_decode_many(logger, block, triggers, hosts_filter)
             .await
     }
@@ -871,7 +872,7 @@ where
     async fn execute_triggers(
         &self,
         block: &Arc<C::Block>,
-        runnables: Vec<RunnableTriggers<'_, C>>,
+        runnables: Vec<RunnableTriggers<C>>,
         block_state: BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         causality_region: &str,
@@ -969,9 +970,7 @@ where
 
             // Process the triggers in each host in the same order the
             // corresponding data sources have been created.
-            let hosts_filter = |_: &'_ TriggerData<C>| -> Box<dyn Iterator<Item = _> + Send> {
-                Box::new(runtime_hosts.iter().map(Arc::as_ref))
-            };
+            let hosts_filter = |_: &TriggerData<C>| -> Vec<Arc<T::Host>> { runtime_hosts.clone() };
             let runnables = self
                 .match_and_decode_many(logger, &block, triggers, hosts_filter)
                 .await;
@@ -1520,7 +1519,7 @@ where
 
             let trigger = TriggerData::Offchain(trigger);
             let process_res = {
-                let hosts = self.ctx.instance.hosts_for_trigger(&trigger);
+                let hosts: Vec<_> = self.ctx.instance.hosts_for_trigger(&trigger).collect();
                 let triggers_res = self.ctx.decoder.match_and_decode(
                     &self.logger,
                     block,
