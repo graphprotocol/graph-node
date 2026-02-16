@@ -4,12 +4,13 @@ use std::{
 };
 
 use graph::{
-    blockchain::Blockchain,
+    blockchain::{Blockchain, TriggerData as _},
     cheap_clone::CheapClone,
     components::{
         store::BlockNumber,
         subgraph::{RuntimeHost, RuntimeHostBuilder},
     },
+    data_source::TriggerData,
 };
 
 /// This structure maintains a partition of the hosts by address, for faster trigger matching. This
@@ -90,6 +91,15 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHosts<C, T> {
                 let idx = self.hosts_without_address.pop().unwrap();
                 assert_eq!(idx, self.hosts.len());
             }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn snapshot(&self) -> OnchainHostsSnapshot<C, T> {
+        OnchainHostsSnapshot {
+            hosts: self.hosts.clone(),
+            hosts_by_address: self.hosts_by_address.clone(),
+            hosts_without_address: self.hosts_without_address.clone(),
         }
     }
 
@@ -207,5 +217,127 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHosts<C, T> {
                 .cloned()
                 .chain(self.wildcard_address.iter().cloned()),
         )
+    }
+
+    #[allow(dead_code)]
+    pub fn snapshot(&self) -> OffchainHostsSnapshot<C, T> {
+        OffchainHostsSnapshot {
+            all_hosts: self.by_block.values().flatten().cloned().collect(),
+            by_address: self.by_address.clone(),
+            wildcard_address: self.wildcard_address.clone(),
+        }
+    }
+}
+
+/// A `Send + 'static` snapshot of `OnchainHosts` that supports `matches_by_address`.
+/// Created by cloning the Arc hosts and the address index; no mutation methods.
+#[allow(dead_code)]
+pub(super) struct OnchainHostsSnapshot<C: Blockchain, T: RuntimeHostBuilder<C>> {
+    hosts: Vec<Arc<T::Host>>,
+    hosts_by_address: HashMap<Box<[u8]>, Vec<usize>>,
+    hosts_without_address: Vec<usize>,
+}
+
+#[allow(dead_code)]
+impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHostsSnapshot<C, T> {
+    pub fn matches_by_address(
+        &self,
+        address: Option<&[u8]>,
+    ) -> Box<dyn Iterator<Item = Arc<T::Host>> + Send + '_> {
+        let Some(address) = address else {
+            return Box::new(self.hosts.iter().cloned());
+        };
+
+        let mut matching_hosts: Vec<usize> = self
+            .hosts_by_address
+            .get(address)
+            .into_iter()
+            .flatten()
+            .copied()
+            .chain(self.hosts_without_address.iter().copied())
+            .collect();
+        matching_hosts.sort();
+        Box::new(
+            matching_hosts
+                .into_iter()
+                .map(move |idx| self.hosts[idx].clone()),
+        )
+    }
+}
+
+/// A `Send + 'static` snapshot of `OffchainHosts` that supports `matches_by_address`.
+#[allow(dead_code)]
+pub(super) struct OffchainHostsSnapshot<C: Blockchain, T: RuntimeHostBuilder<C>> {
+    all_hosts: Vec<Arc<T::Host>>,
+    by_address: BTreeMap<Vec<u8>, Vec<Arc<T::Host>>>,
+    wildcard_address: Vec<Arc<T::Host>>,
+}
+
+#[allow(dead_code)]
+impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHostsSnapshot<C, T> {
+    pub fn matches_by_address(
+        &self,
+        address: Option<&[u8]>,
+    ) -> Box<dyn Iterator<Item = Arc<T::Host>> + Send + '_> {
+        let Some(address) = address else {
+            return Box::new(self.all_hosts.iter().cloned());
+        };
+
+        Box::new(
+            self.by_address
+                .get(address)
+                .into_iter()
+                .flatten()
+                .cloned()
+                .chain(self.wildcard_address.iter().cloned()),
+        )
+    }
+}
+
+/// A `Send + 'static` snapshot of all host collections, providing the same
+/// `hosts_for_trigger` dispatch as `SubgraphInstance`.
+#[allow(dead_code)]
+pub(crate) struct HostsSnapshot<C: Blockchain, T: RuntimeHostBuilder<C>> {
+    onchain: OnchainHostsSnapshot<C, T>,
+    subgraph: OnchainHostsSnapshot<C, T>,
+    offchain: OffchainHostsSnapshot<C, T>,
+    hosts_len: usize,
+}
+
+#[allow(dead_code)]
+impl<C: Blockchain, T: RuntimeHostBuilder<C>> HostsSnapshot<C, T> {
+    pub(super) fn new(
+        onchain: OnchainHostsSnapshot<C, T>,
+        subgraph: OnchainHostsSnapshot<C, T>,
+        offchain: OffchainHostsSnapshot<C, T>,
+        hosts_len: usize,
+    ) -> Self {
+        Self {
+            onchain,
+            subgraph,
+            offchain,
+            hosts_len,
+        }
+    }
+
+    pub fn hosts_for_trigger(&self, trigger: &TriggerData<C>) -> Vec<Arc<T::Host>> {
+        match trigger {
+            TriggerData::Onchain(trigger) => self
+                .onchain
+                .matches_by_address(trigger.address_match())
+                .collect(),
+            TriggerData::Offchain(trigger) => self
+                .offchain
+                .matches_by_address(trigger.source.address().as_deref())
+                .collect(),
+            TriggerData::Subgraph(trigger) => self
+                .subgraph
+                .matches_by_address(Some(trigger.source.to_bytes().as_slice()))
+                .collect(),
+        }
+    }
+
+    pub fn hosts_len(&self) -> usize {
+        self.hosts_len
     }
 }

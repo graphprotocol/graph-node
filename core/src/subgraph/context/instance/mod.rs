@@ -9,6 +9,8 @@ use graph::{
     },
     prelude::*,
 };
+#[allow(unused_imports)]
+pub(crate) use hosts::HostsSnapshot;
 use hosts::{OffchainHosts, OnchainHosts};
 use std::collections::HashMap;
 
@@ -254,5 +256,18 @@ where
 
     pub fn hosts_len(&self) -> usize {
         self.onchain_hosts.len() + self.offchain_hosts.len()
+    }
+
+    /// Creates a `Send + 'static` snapshot of the current host state for use
+    /// in a spawned prep task. The snapshot is cheap: it clones Arc pointers
+    /// and the address indices but not the underlying hosts.
+    #[allow(dead_code)]
+    pub fn hosts_snapshot(&self) -> HostsSnapshot<C, T> {
+        HostsSnapshot::new(
+            self.onchain_hosts.snapshot(),
+            self.subgraph_hosts.snapshot(),
+            self.offchain_hosts.snapshot(),
+            self.hosts_len(),
+        )
     }
 }
