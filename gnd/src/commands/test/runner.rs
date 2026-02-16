@@ -31,7 +31,7 @@ use super::schema::{TestFile, TestResult};
 use super::trigger::build_blocks_with_triggers;
 use super::TestOpt;
 use crate::manifest::{load_manifest, Manifest};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use graph::amp::FlightClient;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{BlockPtr, BlockchainMap, ChainIdentifier};
@@ -51,7 +51,7 @@ use graph::prelude::{
     DeploymentHash, LoggerFactory, NodeId, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
     SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
 };
-use graph::slog::{info, o, Drain, Logger, OwnedKVList, Record};
+use graph::slog::{info, o, Drain, Logger};
 use graph_chain_ethereum::chain::EthereumRuntimeAdapterBuilder;
 use graph_chain_ethereum::network::{EthereumNetworkAdapter, EthereumNetworkAdapters};
 use graph_chain_ethereum::{
@@ -73,38 +73,6 @@ use pgtemp::PgTempDBBuilder;
 
 /// Node ID used for all test deployments. Visible in store metadata.
 const NODE_ID: &str = "gnd-test";
-
-// ============ Test Infrastructure Types ============
-
-/// A slog drain that suppresses the "Store event stream ended" error message.
-///
-/// When a test completes and the pgtemp database is dropped, the store's
-/// background subscription listener loses its connection and logs an error.
-/// This is expected during cleanup and not a real problem, so we filter it
-/// out to avoid confusing test output. All other log messages pass through.
-///
-/// NOTE: String-based filtering is fragile - if the error message changes upstream,
-/// the filter breaks silently. Consider structured logging/error type matching.
-/// See: gnd-test.md "Next Iteration Improvements"
-struct FilterStoreEventEndedDrain<D: Drain> {
-    inner: D,
-}
-
-impl<D: Drain> Drain for FilterStoreEventEndedDrain<D> {
-    type Ok = Option<D::Ok>;
-    type Err = D::Err;
-
-    fn log(&self, record: &Record, values: &OwnedKVList) -> Result<Self::Ok, Self::Err> {
-        if record
-            .msg()
-            .to_string()
-            .contains("Store event stream ended")
-        {
-            return Ok(None);
-        }
-        self.inner.log(record, values).map(Some)
-    }
-}
 
 /// Bundles the store infrastructure needed for test execution.
 ///
@@ -128,8 +96,6 @@ struct TestStores {
 /// the store (for querying sync status), the deployment locator,
 /// and the GraphQL runner (for assertions).
 pub(super) struct TestContext {
-    #[allow(dead_code)]
-    pub(super) logger: Logger,
     /// Starts/stops subgraph indexing.
     pub(super) provider: Arc<graph_core::subgraph_provider::SubgraphProvider>,
     /// Used to check sync progress and health status.
@@ -196,6 +162,15 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
         return Ok(TestResult::Passed { assertions: vec![] });
     }
 
+    // Warn when a test has blocks but no assertions — likely a mistake.
+    if !test_file.blocks.is_empty() && test_file.assertions.is_empty() {
+        eprintln!(
+            "  {} Test '{}' has blocks but no assertions",
+            console::style("⚠").yellow(),
+            test_file.name
+        );
+    }
+
     // Resolve paths relative to the manifest location.
     let manifest_dir = opt
         .manifest
@@ -213,12 +188,7 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
         .and_then(|s| s.to_str())
         .unwrap_or("subgraph.yaml");
     let built_manifest_path = build_dir.join(manifest_filename);
-    let built_manifest_path = built_manifest_path.canonicalize().with_context(|| {
-        format!(
-            "Built manifest not found: {}",
-            built_manifest_path.display()
-        )
-    })?;
+    let built_manifest_path = built_manifest_path.canonicalize()?;
 
     let manifest = load_manifest(&built_manifest_path)?;
     // The network name from the manifest (e.g., "mainnet") determines which
@@ -244,6 +214,11 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
     let start_block_override = if min_start_block > 0 {
         use graph::prelude::alloy::primitives::keccak256;
         let hash = keccak256((min_start_block - 1).to_be_bytes());
+        ensure!(
+            min_start_block - 1 <= i32::MAX as u64,
+            "block number {} exceeds i32::MAX",
+            min_start_block - 1
+        );
         Some(BlockPtr::new(hash.into(), (min_start_block - 1) as i32))
     } else {
         None
@@ -301,8 +276,7 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
         &blocks,
         test_file,
     )
-    .await
-    .context("Failed to populate eth_call cache")?;
+    .await?;
 
     // Determine the target block — the indexer will process until it reaches this.
     let stop_block = if blocks.is_empty() {
@@ -319,7 +293,8 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
         .start_subgraph(ctx.deployment.clone(), Some(stop_block.number))
         .await;
 
-    match wait_for_sync(
+    // Capture the result so we can ensure cleanup happens regardless of outcome
+    let result = match wait_for_sync(
         &logger,
         ctx.store.clone(),
         &ctx.deployment,
@@ -339,7 +314,15 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
                 assertions: vec![],
             })
         }
-    }
+    };
+
+    // Always stop the subgraph to ensure cleanup, even when wait_for_sync errors
+    ctx.provider
+        .clone()
+        .stop_subgraph(ctx.deployment.clone())
+        .await;
+
+    result
 }
 
 /// Get a PostgreSQL connection URL for the test.
@@ -438,10 +421,7 @@ ingestor = "default"
     // Filter out the "Store event stream ended" error that fires during
     // cleanup when pgtemp drops the database out from under the listener.
     let base_logger = graph::log::logger(false);
-    let filtered_drain = FilterStoreEventEndedDrain {
-        inner: base_logger.clone(),
-    };
-    let store_logger = Logger::root(filtered_drain.fuse(), o!());
+    let store_logger = Logger::root(base_logger.fuse(), o!());
 
     // StoreBuilder runs migrations and creates connection pools.
     let store_builder = StoreBuilder::new(
@@ -729,7 +709,6 @@ async fn setup_context(
     .await?;
 
     Ok(TestContext {
-        logger: logger_factory.subgraph_logger(&deployment),
         provider: subgraph_provider,
         store: subgraph_store,
         deployment,
