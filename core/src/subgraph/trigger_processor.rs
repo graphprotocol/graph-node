@@ -90,8 +90,17 @@ where
     C: Blockchain,
     T: RuntimeHostBuilder<C>,
 {
-    hook: C::DecoderHook,
+    hook: Arc<C::DecoderHook>,
     _builder: PhantomData<T>,
+}
+
+impl<C: Blockchain, T: RuntimeHostBuilder<C>> Clone for Decoder<C, T> {
+    fn clone(&self) -> Self {
+        Decoder {
+            hook: self.hook.clone(),
+            _builder: PhantomData,
+        }
+    }
 }
 
 impl<C, T> Decoder<C, T>
@@ -101,7 +110,7 @@ where
 {
     pub fn new(hook: C::DecoderHook) -> Self {
         Decoder {
-            hook,
+            hook: Arc::new(hook),
             _builder: PhantomData,
         }
     }

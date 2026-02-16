@@ -487,7 +487,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
 
         let instrument = self.subgraph_store.instrument(&deployment).await?;
 
-        let decoder = Box::new(Decoder::new(decoder_hook));
+        let decoder = Decoder::new(decoder_hook);
 
         let subgraph_data_source_stores = self
             .get_sourceable_stores::<C>(subgraph_ds_source_deployments, is_runner_test)
