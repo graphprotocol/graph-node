@@ -606,7 +606,7 @@ async fn setup_context(
     // for manifest loading (FileLinkResolver handles that).
     let ipfs_metrics = IpfsMetrics::new(&mock_registry);
     let ipfs_client = Arc::new(
-        IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), ipfs_metrics, logger)
+        IpfsRpcClient::new_unchecked(ServerAddress::test_rpc_api(), ipfs_metrics, logger)
             .context("Failed to create IPFS client")?,
     );
 
