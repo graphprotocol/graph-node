@@ -140,8 +140,7 @@ fn write_version_cache(path: &Path, version: &str) -> Result<()> {
 /// - For versions > 0.5.4: simplified platform names (macos-12, linux-22)
 /// - For versions <= 0.5.4: legacy platform names with more OS-version granularity
 fn get_platform(version: &str) -> Result<String> {
-    let ver = semver::Version::parse(version)
-        .with_context(|| format!("Invalid Matchstick version: {version}"))?;
+    let ver = semver::Version::parse(version)?;
     let cutoff = semver::Version::new(0, 5, 4);
 
     let os = std::env::consts::OS;
@@ -229,40 +228,26 @@ async fn download_matchstick_binary(version: &str, platform: &str, force: bool) 
         return Ok(bin_path);
     }
 
-    std::fs::create_dir_all(&bin_dir)
-        .with_context(|| format!("Failed to create directory: {}", bin_dir.display()))?;
+    std::fs::create_dir_all(&bin_dir)?;
 
     let url = format!("{MATCHSTICK_DOWNLOAD_BASE}/{version}/{platform}");
     step(Step::Load, &format!("Downloading Matchstick {version}"));
 
     let client = reqwest::Client::builder().user_agent("gnd-cli").build()?;
 
-    let resp = client
-        .get(&url)
-        .send()
-        .await
-        .with_context(|| format!("Failed to download from {url}"))?
-        .error_for_status()
-        .with_context(|| {
-            format!(
-                "Download failed for {url}.\n\
-                 Try Docker mode instead: gnd test --matchstick -d"
-            )
-        })?;
+    let resp = client.get(&url).send().await?.error_for_status()?;
 
     let bytes = resp
         .bytes()
         .await
         .context("Failed to read download response")?;
 
-    std::fs::write(&bin_path, &bytes)
-        .with_context(|| format!("Failed to write binary to {}", bin_path.display()))?;
+    std::fs::write(&bin_path, &bytes)?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&bin_path, std::fs::Permissions::from_mode(0o755))
-            .with_context(|| format!("Failed to set permissions on {}", bin_path.display()))?;
+        std::fs::set_permissions(&bin_path, std::fs::Permissions::from_mode(0o755))?;
     }
 
     step(Step::Done, &format!("Downloaded to {}", bin_path.display()));
@@ -341,6 +326,17 @@ async fn run_docker_tests(opt: &TestOpt) -> Result<()> {
         test_args.push_str(" -r");
     }
     if let Some(datasource) = &opt.datasource {
+        // Validate datasource name to prevent shell injection via Docker's
+        // `sh -c "matchstick $ARGS"` expansion.
+        if !datasource
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        {
+            anyhow::bail!(
+                "Invalid datasource name '{}': must contain only alphanumeric characters, hyphens, or underscores",
+                datasource
+            );
+        }
         test_args.push_str(&format!(" {}", datasource));
     }
 
@@ -442,8 +438,7 @@ CMD ["sh", "-c", "matchstick $ARGS"]
         version = version
     );
 
-    fs::write(path, dockerfile_content)
-        .with_context(|| format!("Failed to write Dockerfile to {}", path.display()))?;
+    fs::write(path, dockerfile_content)?;
     step(Step::Write, &format!("Created {}", path.display()));
     Ok(())
 }
