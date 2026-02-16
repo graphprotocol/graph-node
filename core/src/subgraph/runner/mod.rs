@@ -103,12 +103,39 @@ where
     })
 }
 
+/// Wrapper around `JoinHandle` that aborts the spawned task on drop.
+/// This ensures the prep task is always cleaned up, even when the
+/// runner terminates due to error propagation or cancellation.
+struct AbortOnDrop<T>(Option<JoinHandle<T>>);
+
+impl<T> AbortOnDrop<T> {
+    fn new(handle: JoinHandle<T>) -> Self {
+        Self(Some(handle))
+    }
+
+    /// Await the task result, consuming the handle without aborting.
+    async fn await_result(&mut self) -> Result<T, tokio::task::JoinError> {
+        self.0
+            .take()
+            .expect("AbortOnDrop: handle already consumed")
+            .await
+    }
+}
+
+impl<T> Drop for AbortOnDrop<T> {
+    fn drop(&mut self) {
+        if let Some(handle) = self.0.take() {
+            handle.abort();
+        }
+    }
+}
+
 /// A prep result being computed ahead of time for the next block.
 /// Stored on the runner between `try_eagerly_prep_next_block` (which
 /// spawns the task) and `process_block` (which awaits and consumes it).
 struct PendingPrep<C: Blockchain> {
-    /// Handle to the spawned prep task.
-    handle: JoinHandle<Result<PrepResult<C>, MappingError>>,
+    /// Handle to the spawned prep task; aborted automatically on drop.
+    handle: AbortOnDrop<Result<PrepResult<C>, MappingError>>,
     /// Number of hosts at the time the prep was spawned, used to detect
     /// stale preps after DDS creation.
     hosts_len: usize,
@@ -1010,7 +1037,7 @@ where
                 // ProcessingBlock for the normal state machine flow.
                 let hosts_len = self.ctx.hosts_len();
                 self.pending_prep = Some(PendingPrep {
-                    handle,
+                    handle: AbortOnDrop::new(handle),
                     hosts_len,
                     trigger_count,
                 });
@@ -1045,11 +1072,10 @@ where
         }
     }
 
-    /// Discard any pending pipelined prep result.
+    /// Discard any pending pipelined prep result. The spawned task is
+    /// aborted automatically via `PendingPrep`'s `Drop` implementation.
     fn discard_pending_prep(&mut self) {
-        if let Some(pending) = self.pending_prep.take() {
-            // Aborting the JoinHandle cancels the spawned task.
-            pending.handle.abort();
+        if self.pending_prep.take().is_some() {
             debug!(self.logger, "Discarded pipelined prep result");
         }
     }
@@ -1291,7 +1317,7 @@ where
         // Stage 1: Match triggers to hosts and decode.
         // If we have a pipelined prep result from cross-block pipelining,
         // await it instead of prepping inline.
-        let prep = if let Some(pending) = self.pending_prep.take() {
+        let prep = if let Some(mut pending) = self.pending_prep.take() {
             // Validate that the host set hasn't changed (defense in depth).
             if pending.hosts_len != self.ctx.hosts_len() {
                 warn!(
@@ -1300,15 +1326,15 @@ where
                     "prep_hosts" => pending.hosts_len,
                     "current_hosts" => self.ctx.hosts_len()
                 );
-                pending.handle.abort();
                 // Triggers were moved to the prep task; since we're
                 // discarding it, we can't fall back to inline prep.
+                // The spawned task is aborted when `pending` is dropped.
                 // Return an error that will be retried (without pipelining).
                 return Err(ProcessingError::Unknown(anyhow!(
                     "Pipelined prep invalidated by host count change"
                 )));
             }
-            match pending.handle.await {
+            match pending.handle.await_result().await {
                 Ok(result) => {
                     debug!(logger, "Using pipelined prep for block");
                     result
