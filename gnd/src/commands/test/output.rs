@@ -99,16 +99,16 @@ pub fn print_failure_details(details: &[FailureDetail]) {
         println!(
             "    {} {} expected {} actual",
             style("Diff:").yellow(),
-            style("(-)").green(),
-            style("(+)").red(),
+            style("(-)").red(),
+            style("(+)").green(),
         );
 
         let diff = TextDiff::from_lines(&expected, &actual);
         for change in diff.iter_all_changes() {
             let text = change.value().trim_end_matches('\n');
             match change.tag() {
-                ChangeTag::Delete => println!("      {}", style(format!("- {text}")).green()),
-                ChangeTag::Insert => println!("      {}", style(format!("+ {text}")).red()),
+                ChangeTag::Delete => println!("      {}", style(format!("- {text}")).red()),
+                ChangeTag::Insert => println!("      {}", style(format!("+ {text}")).green()),
                 ChangeTag::Equal => println!("        {text}"),
             }
         }
