@@ -1,10 +1,8 @@
 use std::{
     collections::BTreeMap,
-    hash::{BuildHasher, Hash, Hasher},
     ops::{ControlFlow, RangeInclusive},
 };
 
-use ahash::RandomState;
 use alloy::primitives::BlockNumber;
 use sqlparser_latest::ast::{self, VisitMut, VisitorMut};
 
@@ -23,11 +21,8 @@ pub(super) fn new_block_range_query(
     block_range: &RangeInclusive<BlockNumber>,
 ) -> ast::Query {
     // CTE names are unique within a SQL query.
-    // The hasher ensures that CTEs created for block range do not collide with user-defined CTEs.
-    // Constant seeds ensure consistent block range queries for the same input parameters.
-    let mut hasher = RandomState::with_seeds(0, 0, 0, 0).build_hasher();
 
-    let tables_to_ctes_mapping = new_tables_to_ctes_mapping(query, &mut hasher);
+    let tables_to_ctes_mapping = new_tables_to_ctes_mapping(query);
     assert!(!tables_to_ctes_mapping.is_empty());
 
     let mut cte_tables = Vec::with_capacity(tables_to_ctes_mapping.len());
@@ -46,24 +41,18 @@ pub(super) fn new_block_range_query(
     let block_range_query = format!(
         "WITH {cte_tables}, {source} AS ({query}) SELECT {source}.* FROM {source} ORDER BY {source}.{block_number_column}",
         cte_tables = cte_tables.join(", "),
-        source = format!("source_{}", hasher.finish())
+        source = format!("amp_src")
     );
 
     parse_query(block_range_query).unwrap()
 }
 
 /// Creates unique CTE names for every table referenced by the SQL query.
-fn new_tables_to_ctes_mapping(
-    query: &ast::Query,
-    hasher: &mut impl Hasher,
-) -> BTreeMap<TableReference, String> {
+fn new_tables_to_ctes_mapping(query: &ast::Query) -> BTreeMap<TableReference, String> {
     extract_tables(query)
         .into_iter()
-        .map(|table| {
-            table.hash(hasher);
-
-            (table, format!("block_range_{}", hasher.finish()))
-        })
+        .enumerate()
+        .map(|(idx, table)| (table, format!("amp_br{}", idx + 1)))
         .collect()
 }
 
@@ -137,18 +126,18 @@ mod tests {
             block_range_query.to_string(),
             parse_query(
                 r#"
-                WITH block_range_14621009630487609643 AS (
+                WITH amp_br1 AS (
                     SELECT * FROM d WHERE _block_num BETWEEN 0 AND 1000000
                 ),
-                source_14621009630487609643 AS (
-                    SELECT a, b, c FROM block_range_14621009630487609643 AS d
+                amp_src AS (
+                    SELECT a, b, c FROM amp_br1 AS d
                 )
                 SELECT
-                    source_14621009630487609643.*
+                    amp_src.*
                 FROM
-                    source_14621009630487609643
+                    amp_src
                 ORDER BY
-                    source_14621009630487609643.b
+                    amp_src.b
                 "#
             )
             .unwrap()
@@ -167,21 +156,21 @@ mod tests {
             block_range_query.to_string(),
             parse_query(
                 r#"
-                WITH block_range_14621009630487609643 AS (
+                WITH amp_br1 AS (
                     SELECT * FROM d WHERE _block_num BETWEEN 0 AND 1000000
                 ),
-                block_range_12377422807768256314 AS (
+                amp_br2 AS (
                     SELECT * FROM e WHERE _block_num BETWEEN 0 AND 1000000
                 ),
-                source_12377422807768256314 AS (
-                    SELECT a, b, c FROM block_range_14621009630487609643 AS d JOIN block_range_12377422807768256314 AS e ON e.e = d.d
+                amp_src AS (
+                    SELECT a, b, c FROM amp_br1 AS d JOIN amp_br2 AS e ON e.e = d.d
                 )
                 SELECT
-                    source_12377422807768256314.*
+                    amp_src.*
                 FROM
-                    source_12377422807768256314
+                    amp_src
                 ORDER BY
-                    source_12377422807768256314.b
+                    amp_src.b
                 "#
             )
             .unwrap()

@@ -41,6 +41,7 @@ The minimum spec version for Amp-powered subgraphs is `1.5.0`.
           - name: Transfer
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### Data source structure
@@ -70,6 +71,7 @@ This is used to assign the subgraph to the appropriate indexing process.
           - name: Transfer
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### `name`
@@ -97,6 +99,7 @@ This name is used for observability purposes and to identify progress and potent
           - name: Transfer
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### `network`
@@ -127,6 +130,7 @@ This is used to validate that the SQL queries for this data source produce resul
           - name: Transfer
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### `source`
@@ -158,6 +162,7 @@ This is used to validate that the SQL queries for this data source only query th
           - name: Transfer
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### `source.tables`
@@ -185,6 +190,7 @@ This is used to validate that the SQL queries for this data source only query th
           - name: Transfer
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### Optional `source.address`
@@ -193,7 +199,7 @@ Contains the contract address with which SQL queries in the data source interact
 
 Enables SQL query reuse through `sg_source_address()` calls instead of hard-coding the contract address.
 SQL queries resolve `sg_source_address()` calls to this contract address.
-    
+
 <details>
 <summary>Example YAML:</summary>
 
@@ -215,6 +221,7 @@ SQL queries resolve `sg_source_address()` calls to this contract address.
           - name: Transfer
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### Optional `source.startBlock`
@@ -245,6 +252,7 @@ _When not provided, defaults to block number `0`._
           - name: Transfer
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### Optional `source.endBlock`
@@ -275,6 +283,7 @@ _When not provided, defaults to the maximum possible block number._
           - name: Transfer
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### `transformer`
@@ -309,6 +318,7 @@ Represents the version of this transformer. Each version may contain a different
           - name: Transfers
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### Optional `transformer.abis`
@@ -344,6 +354,7 @@ _When not provided, defaults to an empty list._
           - name: Transfer
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### `transformer.tables`
@@ -368,6 +379,7 @@ type Block @entity(immutable: true) {
 ```
 
 **YAML manifest:**
+
 ```diff
   specVersion: 1.5.0
 + dataSources:
@@ -386,6 +398,7 @@ type Block @entity(immutable: true) {
 +         - name: Block
             file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### `transformer.tables[i].query`
@@ -419,6 +432,7 @@ _When not provided, the `file` field is used instead._
           - name: Block
 +           query: SELECT * FROM "edgeandnode/ethereum_mainnet".blocks;
 ```
+
 </details>
 
 ### `transformer.tables[i].file`
@@ -451,6 +465,7 @@ _When not provided, the `query` field is used instead._
           - name: Block
 +           file: <IPFS CID of the SQL query file>
 ```
+
 </details>
 
 ### Amp-powered subgraph examples
@@ -459,6 +474,11 @@ Complete examples on how to create, deploy and query Amp-powered subgraphs are a
 https://github.com/edgeandnode/amp-subgraph-examples
 
 ## SQL query requirements
+
+### Names
+
+The names of tables, columns, and aliases must not start with `amp_` as this
+prefix is reserved for internal use.
 
 ### Block numbers
 
