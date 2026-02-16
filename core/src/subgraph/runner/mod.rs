@@ -60,12 +60,11 @@ const PROCESS_TRIGGERS_SECTION_NAME: &str = "process_triggers";
 const HANDLE_CREATED_DS_SECTION_NAME: &str = "handle_new_data_sources";
 
 /// The result of the prep stage: matched and decoded triggers ready for
-/// execution, plus a snapshot of the host count at prep time (used later
-/// by the pipelining logic to detect stale preps after DDS creation).
+/// execution, plus a snapshot of the host count at prep time (used by the
+/// pipelining logic to detect stale preps after DDS creation).
 pub(crate) struct PrepResult<C: Blockchain> {
     pub runnables: Vec<RunnableTriggers<C>>,
-    /// Number of hosts at prep time.  Planned for use in observability
-    /// metrics (Step 7) and as an additional staleness check.
+    /// Number of hosts at prep time, used as a staleness check.
     #[allow(dead_code)]
     pub hosts_len: usize,
 }
@@ -143,6 +142,9 @@ struct PendingPrep<C: Blockchain> {
     /// and the `BlockWithTriggers` passed through the state machine has
     /// empty `trigger_data`).
     trigger_count: usize,
+    /// When the prep task was spawned, used to compute overlap with the
+    /// previous block's execution.
+    spawn_time: Instant,
 }
 
 pub struct SubgraphRunner<C, T>
@@ -1040,6 +1042,7 @@ where
                     handle: AbortOnDrop::new(handle),
                     hosts_len,
                     trigger_count,
+                    spawn_time: Instant::now(),
                 });
 
                 // Jump directly to ProcessingBlock, bypassing AwaitingBlock.
@@ -1076,6 +1079,7 @@ where
     /// aborted automatically via `PendingPrep`'s `Drop` implementation.
     fn discard_pending_prep(&mut self) {
         if self.pending_prep.take().is_some() {
+            self.metrics.subgraph.observe_pipeline_prep_discard();
             debug!(self.logger, "Discarded pipelined prep result");
         }
     }
@@ -1320,6 +1324,7 @@ where
         let prep = if let Some(mut pending) = self.pending_prep.take() {
             // Validate that the host set hasn't changed (defense in depth).
             if pending.hosts_len != self.ctx.hosts_len() {
+                self.metrics.subgraph.observe_pipeline_prep_discard();
                 warn!(
                     logger,
                     "Discarding pipelined prep: host count changed";
@@ -1336,10 +1341,17 @@ where
             }
             match pending.handle.await_result().await {
                 Ok(result) => {
-                    debug!(logger, "Using pipelined prep for block");
+                    // Overlap = time from spawn until now (i.e. the time
+                    // the prep task ran concurrently with the previous
+                    // block's execution and finalization).
+                    let overlap = pending.spawn_time.elapsed().as_secs_f64();
+                    self.metrics.subgraph.observe_pipeline_prep_hit(overlap);
+                    debug!(logger, "Using pipelined prep for block";
+                           "overlap_secs" => format!("{:.3}", overlap));
                     result
                 }
                 Err(join_err) => {
+                    self.metrics.subgraph.observe_pipeline_prep_discard();
                     // Task panicked or was cancelled. Triggers were moved to
                     // the prep task so we can't fall back to inline prep.
                     // Signal a non-deterministic error; the next retry will
@@ -1351,6 +1363,7 @@ where
                 }
             }
         } else {
+            self.metrics.subgraph.observe_pipeline_prep_miss();
             self.match_triggers(&logger, &block, triggers).await
         };
 

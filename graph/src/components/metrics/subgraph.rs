@@ -24,6 +24,11 @@ pub struct SubgraphInstanceMetrics {
     trigger_processing_duration: Box<Histogram>,
     blocks_processed_secs: Box<Counter>,
     blocks_processed_count: Box<Counter>,
+
+    pipeline_prep_hit: Counter,
+    pipeline_prep_miss: Counter,
+    pipeline_prep_discard: Counter,
+    pipeline_prep_overlap_secs: Box<Histogram>,
 }
 
 impl SubgraphInstanceMetrics {
@@ -96,6 +101,36 @@ impl SubgraphInstanceMetrics {
         let deployment_synced =
             DeploymentSyncedMetric::register(&registry, subgraph_hash, &stopwatch.shard());
 
+        let pipeline_prep_hit = registry
+            .new_deployment_counter(
+                "deployment_pipeline_prep_hit",
+                "Number of blocks where a pipelined prep result was used",
+                subgraph_hash,
+            )
+            .expect("failed to create pipeline_prep_hit counter");
+        let pipeline_prep_miss = registry
+            .new_deployment_counter(
+                "deployment_pipeline_prep_miss",
+                "Number of blocks where prep was done inline (no pipelining)",
+                subgraph_hash,
+            )
+            .expect("failed to create pipeline_prep_miss counter");
+        let pipeline_prep_discard = registry
+            .new_deployment_counter(
+                "deployment_pipeline_prep_discard",
+                "Number of pipelined prep results discarded (DDS, revert, skip)",
+                subgraph_hash,
+            )
+            .expect("failed to create pipeline_prep_discard counter");
+        let pipeline_prep_overlap_secs = registry
+            .new_deployment_histogram(
+                "deployment_pipeline_prep_overlap_secs",
+                "Time saved by pipelining: overlap between prep and previous block's execution",
+                subgraph_hash,
+                vec![0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0],
+            )
+            .expect("failed to create pipeline_prep_overlap_secs histogram");
+
         Self {
             block_trigger_count,
             block_processing_duration,
@@ -107,6 +142,10 @@ impl SubgraphInstanceMetrics {
             trigger_processing_duration,
             blocks_processed_secs,
             blocks_processed_count,
+            pipeline_prep_hit,
+            pipeline_prep_miss,
+            pipeline_prep_discard,
+            pipeline_prep_overlap_secs,
         }
     }
 
@@ -119,6 +158,19 @@ impl SubgraphInstanceMetrics {
         if block_done {
             self.blocks_processed_count.inc();
         }
+    }
+
+    pub fn observe_pipeline_prep_hit(&self, overlap_secs: f64) {
+        self.pipeline_prep_hit.inc();
+        self.pipeline_prep_overlap_secs.observe(overlap_secs);
+    }
+
+    pub fn observe_pipeline_prep_miss(&self) {
+        self.pipeline_prep_miss.inc();
+    }
+
+    pub fn observe_pipeline_prep_discard(&self) {
+        self.pipeline_prep_discard.inc();
     }
 
     pub fn unregister(&self, registry: Arc<MetricsRegistry>) {
