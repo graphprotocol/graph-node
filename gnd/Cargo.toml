@@ -47,7 +47,7 @@ reqwest = { workspace = true }
 thiserror = { workspace = true }
 
 # Console output
-indicatif = "0.17"
+indicatif = "0.18"
 console = "0.15"
 
 # Code generation
