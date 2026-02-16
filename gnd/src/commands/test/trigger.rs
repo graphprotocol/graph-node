@@ -24,7 +24,7 @@
 //! - Auto-injected `Start` and `End` block triggers (so block handlers fire correctly)
 
 use super::schema::{LogEvent, TestFile};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, ensure, Context, Result};
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::prelude::alloy::dyn_abi::{DynSolType, DynSolValue};
 use graph::prelude::alloy::json_abi::Event;
@@ -88,6 +88,11 @@ pub fn build_blocks_with_triggers(
         // with any filter fire correctly:
         // - Start: matches `once` handlers (at start_block) and initialization handlers
         // - End: matches unfiltered and `polling` handlers
+        ensure!(
+            number <= i32::MAX as u64,
+            "block number {} exceeds i32::MAX",
+            number
+        );
         let block_ptr = BlockPtr::new(hash.into(), number as i32);
         triggers.push(EthereumTrigger::Block(
             block_ptr.clone(),
@@ -256,11 +261,13 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
         DynSolType::Uint(bits) => {
             let n = match value {
                 // String values support both decimal and "0x"-prefixed hex.
-                serde_json::Value::String(s) => U256::from_str_radix(
-                    s.trim_start_matches("0x"),
-                    if s.starts_with("0x") { 16 } else { 10 },
-                )
-                .context("Invalid uint")?,
+                serde_json::Value::String(s) => {
+                    let (digits, radix) = match s.strip_prefix("0x") {
+                        Some(hex) => (hex, 16),
+                        None => (s.as_str(), 10),
+                    };
+                    U256::from_str_radix(digits, radix).context("Invalid uint")?
+                }
                 // JSON numbers are limited to u64 range — use strings for larger values.
                 serde_json::Value::Number(n) => U256::from(n.as_u64().ok_or_else(|| {
                     anyhow!("uint value {} does not fit in u64, use a string instead", n)
@@ -270,18 +277,18 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
             Ok(DynSolValue::Uint(n, *bits))
         }
         DynSolType::Int(bits) => {
-            // Signed integers use two's complement representation in U256.
-            // Negative values: negate via !abs + 1 (two's complement).
             let n = match value {
                 serde_json::Value::String(s) => {
-                    let is_negative = s.starts_with('-');
-                    let s_clean = s.trim_start_matches('-');
-                    let abs = U256::from_str_radix(
-                        s_clean.trim_start_matches("0x"),
-                        if s_clean.starts_with("0x") { 16 } else { 10 },
-                    )
-                    .context("Invalid int")?;
-                    if is_negative {
+                    let (is_neg, s_abs) = match s.strip_prefix('-') {
+                        Some(rest) => (true, rest),
+                        None => (false, s.as_str()),
+                    };
+                    let (digits, radix) = match s_abs.strip_prefix("0x") {
+                        Some(hex) => (hex, 16),
+                        None => (s_abs, 10),
+                    };
+                    let abs = U256::from_str_radix(digits, radix).context("Invalid int")?;
+                    if is_neg {
                         !abs + U256::from(1) // Two's complement negation
                     } else {
                         abs
@@ -289,13 +296,16 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
                 }
                 serde_json::Value::Number(n) => {
                     if let Some(i) = n.as_i64() {
-                        if i < 0 {
-                            !U256::from((-i) as u64) + U256::from(1)
-                        } else {
-                            U256::from(i as u64)
-                        }
+                        // into_raw() gives the two's complement U256 representation.
+                        // Handles i64::MIN correctly (unlike `-i as u64` which overflows).
+                        I256::try_from(i).unwrap().into_raw()
                     } else {
-                        U256::from(n.as_u64().unwrap_or(0))
+                        U256::from(n.as_u64().ok_or_else(|| {
+                            anyhow!(
+                                "int value {} not representable as u64, use a string instead",
+                                n
+                            )
+                        })?)
                     }
                 }
                 _ => return Err(anyhow!("Expected string or number for int")),
@@ -310,7 +320,8 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
             let s = value
                 .as_str()
                 .ok_or_else(|| anyhow!("Expected string for bytes"))?;
-            let bytes = hex::decode(s.trim_start_matches("0x")).context("Invalid hex")?;
+            let hex_str = s.strip_prefix("0x").unwrap_or(s);
+            let bytes = hex::decode(hex_str).context("Invalid hex")?;
             Ok(DynSolValue::Bytes(bytes))
         }
         DynSolType::String => {
@@ -321,7 +332,8 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
             let s = value
                 .as_str()
                 .ok_or_else(|| anyhow!("Expected string for bytes{}", len))?;
-            let bytes = hex::decode(s.trim_start_matches("0x")).context("Invalid hex")?;
+            let hex_str = s.strip_prefix("0x").unwrap_or(s);
+            let bytes = hex::decode(hex_str).context("Invalid hex")?;
             if bytes.len() > *len {
                 return Err(anyhow!(
                     "bytes{}: got {} bytes, expected at most {}",
@@ -335,6 +347,49 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
             let mut padded = [0u8; 32];
             padded[..bytes.len()].copy_from_slice(&bytes);
             Ok(DynSolValue::FixedBytes(B256::from(padded), *len))
+        }
+        DynSolType::Array(inner) => {
+            let arr = value
+                .as_array()
+                .ok_or_else(|| anyhow!("Expected JSON array for array type"))?;
+            let elements: Vec<DynSolValue> = arr
+                .iter()
+                .map(|elem| json_to_sol_value(inner, elem))
+                .collect::<Result<_>>()?;
+            Ok(DynSolValue::Array(elements))
+        }
+        DynSolType::FixedArray(inner, size) => {
+            let arr = value
+                .as_array()
+                .ok_or_else(|| anyhow!("Expected JSON array for fixed array type"))?;
+            ensure!(
+                arr.len() == *size,
+                "Fixed array expects {} elements, got {}",
+                size,
+                arr.len()
+            );
+            let elements: Vec<DynSolValue> = arr
+                .iter()
+                .map(|elem| json_to_sol_value(inner, elem))
+                .collect::<Result<_>>()?;
+            Ok(DynSolValue::FixedArray(elements))
+        }
+        DynSolType::Tuple(types) => {
+            let arr = value
+                .as_array()
+                .ok_or_else(|| anyhow!("Expected JSON array for tuple type (positional)"))?;
+            ensure!(
+                arr.len() == types.len(),
+                "Tuple expects {} elements, got {}",
+                types.len(),
+                arr.len()
+            );
+            let values: Vec<DynSolValue> = types
+                .iter()
+                .zip(arr.iter())
+                .map(|(ty, val)| json_to_sol_value(ty, val))
+                .collect::<Result<_>>()?;
+            Ok(DynSolValue::Tuple(values))
         }
         _ => Err(anyhow!("Unsupported type: {:?}", sol_type)),
     }
