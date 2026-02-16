@@ -1,7 +1,7 @@
 mod state;
 mod trigger_runner;
 
-use crate::subgraph::context::IndexingContext;
+use crate::subgraph::context::{HostsSnapshot, IndexingContext};
 use crate::subgraph::error::{
     ClassifyErrorHelper as _, DetailHelper as _, NonDeterministicErrorHelper as _, ProcessingError,
     ProcessingErrorKind,
@@ -9,6 +9,7 @@ use crate::subgraph::error::{
 use crate::subgraph::inputs::IndexingInputs;
 use crate::subgraph::state::IndexingState;
 use crate::subgraph::stream::new_block_stream;
+use crate::subgraph::trigger_processor::Decoder;
 use anyhow::Context as _;
 use graph::blockchain::block_stream::{
     BlockStream, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
@@ -36,7 +37,7 @@ use graph::prelude::{
     anyhow, hex, retry, thiserror, BlockNumber, BlockPtr, BlockState, CancelGuard, CancelHandle,
     CancelToken as _, CheapClone as _, EntityCache, EntityModification, Error,
     InstanceDSTemplateInfo, LogCode, RunnerMetrics, RuntimeHostBuilder, StopwatchMetrics,
-    StoreError, StreamExtension, UnfailOutcome, Value, ENV_VARS,
+    StoreError, StreamExtension, SubgraphInstanceMetrics, UnfailOutcome, Value, ENV_VARS,
 };
 use graph::schema::EntityKey;
 use graph::slog::{debug, error, info, o, trace, warn, Logger};
@@ -56,6 +57,50 @@ const HANDLE_REVERT_SECTION_NAME: &str = "handle_revert";
 const PROCESS_BLOCK_SECTION_NAME: &str = "process_block";
 const PROCESS_TRIGGERS_SECTION_NAME: &str = "process_triggers";
 const HANDLE_CREATED_DS_SECTION_NAME: &str = "handle_new_data_sources";
+
+/// The result of the prep stage: matched and decoded triggers ready for
+/// execution, plus a snapshot of the host count at prep time (used later
+/// by the pipelining logic to detect stale preps after DDS creation).
+pub(crate) struct PrepResult<C: Blockchain> {
+    pub runnables: Vec<RunnableTriggers<C>>,
+    /// Used by cross-block pipelining (Step 5) to detect stale prep results
+    /// when DDS have been created between prep and execution.
+    #[allow(dead_code)]
+    pub hosts_len: usize,
+}
+
+/// Standalone prep function that matches and decodes triggers without
+/// borrowing the runner.  Takes owned/cloned state so it can be called
+/// inline *or* on a spawned task for cross-block pipelining.
+async fn prep_block<C, T>(
+    decoder: &Decoder<C, T>,
+    hosts: &HostsSnapshot<C, T>,
+    logger: &Logger,
+    block: &Arc<C::Block>,
+    triggers: Vec<Trigger<C>>,
+    metrics: &Arc<SubgraphInstanceMetrics>,
+) -> Result<PrepResult<C>, MappingError>
+where
+    C: Blockchain,
+    T: RuntimeHostBuilder<C>,
+{
+    let triggers = triggers.into_iter().map(|t| match t {
+        Trigger::Chain(t) => TriggerData::Onchain(t),
+        Trigger::Subgraph(t) => TriggerData::Subgraph(t),
+    });
+
+    let hosts_len = hosts.hosts_len();
+    let hosts_filter = |trigger: &TriggerData<C>| hosts.hosts_for_trigger(trigger);
+
+    let runnables = decoder
+        .match_and_decode_many(logger, block, triggers, hosts_filter, metrics)
+        .await?;
+
+    Ok(PrepResult {
+        runnables,
+        hosts_len,
+    })
+}
 
 pub struct SubgraphRunner<C, T>
 where
@@ -852,17 +897,25 @@ where
     /// Pipeline Stage 1: Match triggers to hosts and decode them.
     ///
     /// Takes raw triggers from a block and matches them against all registered
-    /// hosts, returning runnable triggers ready for execution.
+    /// hosts, returning runnable triggers ready for execution.  Delegates to
+    /// the standalone `prep_block` function so that the same logic can later
+    /// be driven from a spawned task for cross-block pipelining.
     async fn match_triggers(
         &self,
         logger: &Logger,
         block: &Arc<C::Block>,
         triggers: Vec<Trigger<C>>,
-    ) -> Result<Vec<RunnableTriggers<C>>, MappingError> {
-        let hosts_filter =
-            |trigger: &TriggerData<C>| self.ctx.instance.hosts_for_trigger(trigger).collect();
-        self.match_and_decode_many(logger, block, triggers, hosts_filter)
-            .await
+    ) -> Result<PrepResult<C>, MappingError> {
+        let hosts = self.ctx.instance.hosts_snapshot();
+        prep_block(
+            &self.ctx.decoder,
+            &hosts,
+            logger,
+            block,
+            triggers,
+            &self.metrics.subgraph,
+        )
+        .await
     }
 
     /// Pipeline Stage 2: Execute matched triggers.
@@ -1095,14 +1148,14 @@ where
             .start_section(PROCESS_TRIGGERS_SECTION_NAME);
 
         // Stage 1: Match triggers to hosts and decode
-        let runnables = self.match_triggers(&logger, &block, triggers).await;
+        let prep = self.match_triggers(&logger, &block, triggers).await;
 
         // Stage 2: Execute triggers
-        let res = match runnables {
-            Ok(runnables) => {
+        let res = match prep {
+            Ok(prep) => {
                 self.execute_triggers(
                     &block,
-                    runnables,
+                    prep.runnables,
                     block_state,
                     &proof_of_indexing,
                     &causality_region,

@@ -28,6 +28,7 @@ use std::sync::Arc;
 use graph::parking_lot::RwLock;
 use tokio::sync::mpsc;
 
+pub(crate) use self::instance::HostsSnapshot;
 use self::instance::SubgraphInstance;
 use super::Decoder;
 

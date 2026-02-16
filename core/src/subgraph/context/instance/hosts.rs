@@ -94,7 +94,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHosts<C, T> {
         }
     }
 
-    #[allow(dead_code)]
     pub fn snapshot(&self) -> OnchainHostsSnapshot<C, T> {
         OnchainHostsSnapshot {
             hosts: self.hosts.clone(),
@@ -219,7 +218,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHosts<C, T> {
         )
     }
 
-    #[allow(dead_code)]
     pub fn snapshot(&self) -> OffchainHostsSnapshot<C, T> {
         OffchainHostsSnapshot {
             all_hosts: self.by_block.values().flatten().cloned().collect(),
@@ -231,14 +229,12 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHosts<C, T> {
 
 /// A `Send + 'static` snapshot of `OnchainHosts` that supports `matches_by_address`.
 /// Created by cloning the Arc hosts and the address index; no mutation methods.
-#[allow(dead_code)]
 pub(super) struct OnchainHostsSnapshot<C: Blockchain, T: RuntimeHostBuilder<C>> {
     hosts: Vec<Arc<T::Host>>,
     hosts_by_address: HashMap<Box<[u8]>, Vec<usize>>,
     hosts_without_address: Vec<usize>,
 }
 
-#[allow(dead_code)]
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHostsSnapshot<C, T> {
     pub fn matches_by_address(
         &self,
@@ -266,14 +262,12 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OnchainHostsSnapshot<C, T> {
 }
 
 /// A `Send + 'static` snapshot of `OffchainHosts` that supports `matches_by_address`.
-#[allow(dead_code)]
 pub(super) struct OffchainHostsSnapshot<C: Blockchain, T: RuntimeHostBuilder<C>> {
     all_hosts: Vec<Arc<T::Host>>,
     by_address: BTreeMap<Vec<u8>, Vec<Arc<T::Host>>>,
     wildcard_address: Vec<Arc<T::Host>>,
 }
 
-#[allow(dead_code)]
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHostsSnapshot<C, T> {
     pub fn matches_by_address(
         &self,
@@ -296,7 +290,6 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> OffchainHostsSnapshot<C, T> {
 
 /// A `Send + 'static` snapshot of all host collections, providing the same
 /// `hosts_for_trigger` dispatch as `SubgraphInstance`.
-#[allow(dead_code)]
 pub(crate) struct HostsSnapshot<C: Blockchain, T: RuntimeHostBuilder<C>> {
     onchain: OnchainHostsSnapshot<C, T>,
     subgraph: OnchainHostsSnapshot<C, T>,
@@ -304,7 +297,6 @@ pub(crate) struct HostsSnapshot<C: Blockchain, T: RuntimeHostBuilder<C>> {
     hosts_len: usize,
 }
 
-#[allow(dead_code)]
 impl<C: Blockchain, T: RuntimeHostBuilder<C>> HostsSnapshot<C, T> {
     pub(super) fn new(
         onchain: OnchainHostsSnapshot<C, T>,
