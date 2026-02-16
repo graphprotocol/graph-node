@@ -96,6 +96,15 @@ pub struct EnvVarsMapping {
     ///
     /// Set by `GRAPH_WASM_INSTANCE_POOL_SIZE`. Defaults to 1000.
     pub wasm_instance_pool_size: u32,
+
+    /// Enable cross-block prep pipelining. When enabled, the runner eagerly
+    /// polls the block stream for the next block and spawns a prep task
+    /// (trigger matching + decoding) concurrently with the current block's
+    /// execution, hiding ~32ms of prep latency behind ~73ms of
+    /// execution + finalization.
+    ///
+    /// Set by the flag `GRAPH_NODE_PIPELINE_PREP`. On by default.
+    pub enable_pipeline_prep: bool,
 }
 
 /// Cranelift optimization level for WASM compilation. Maps to
@@ -172,6 +181,7 @@ impl TryFrom<InnerMappingHandlers> for EnvVarsMapping {
             fds_max_backoff: Duration::from_secs(x.fds_max_backoff),
             wasm_opt_level: x.wasm_opt_level,
             wasm_instance_pool_size: x.wasm_instance_pool_size,
+            enable_pipeline_prep: x.enable_pipeline_prep.0,
         };
         Ok(vars)
     }
@@ -219,6 +229,8 @@ pub struct InnerMappingHandlers {
     wasm_opt_level: WasmOptLevel,
     #[envconfig(from = "GRAPH_WASM_INSTANCE_POOL_SIZE", default = "1000")]
     wasm_instance_pool_size: u32,
+    #[envconfig(from = "GRAPH_NODE_PIPELINE_PREP", default = "true")]
+    enable_pipeline_prep: EnvVarBoolean,
 }
 
 fn validate_ipfs_cache_location(path: PathBuf) -> Result<PathBuf, anyhow::Error> {

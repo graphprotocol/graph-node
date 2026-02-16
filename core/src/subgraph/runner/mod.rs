@@ -46,6 +46,7 @@ use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::vec;
+use tokio::task::JoinHandle;
 
 use self::state::{RestartReason, RunnerState, StopReason};
 use self::trigger_runner::TriggerRunner;
@@ -63,8 +64,8 @@ const HANDLE_CREATED_DS_SECTION_NAME: &str = "handle_new_data_sources";
 /// by the pipelining logic to detect stale preps after DDS creation).
 pub(crate) struct PrepResult<C: Blockchain> {
     pub runnables: Vec<RunnableTriggers<C>>,
-    /// Used by cross-block pipelining (Step 5) to detect stale prep results
-    /// when DDS have been created between prep and execution.
+    /// Number of hosts at prep time.  Planned for use in observability
+    /// metrics (Step 7) and as an additional staleness check.
     #[allow(dead_code)]
     pub hosts_len: usize,
 }
@@ -102,6 +103,21 @@ where
     })
 }
 
+/// A prep result being computed ahead of time for the next block.
+/// Stored on the runner between `try_eagerly_prep_next_block` (which
+/// spawns the task) and `process_block` (which awaits and consumes it).
+struct PendingPrep<C: Blockchain> {
+    /// Handle to the spawned prep task.
+    handle: JoinHandle<Result<PrepResult<C>, MappingError>>,
+    /// Number of hosts at the time the prep was spawned, used to detect
+    /// stale preps after DDS creation.
+    hosts_len: usize,
+    /// Original trigger count (since triggers are moved to the prep task
+    /// and the `BlockWithTriggers` passed through the state machine has
+    /// empty `trigger_data`).
+    trigger_count: usize,
+}
+
 pub struct SubgraphRunner<C, T>
 where
     C: Blockchain,
@@ -116,6 +132,10 @@ where
     /// The current state in the runner's state machine.
     /// This field drives the main loop of the runner.
     runner_state: RunnerState<C>,
+    /// A prep result computed for the next block by cross-block pipelining.
+    /// Populated after a successful block processing when the next block is
+    /// immediately available from the stream.
+    pending_prep: Option<PendingPrep<C>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -157,6 +177,7 @@ where
             metrics,
             cancel_handle: None,
             runner_state: RunnerState::Initializing,
+            pending_prep: None,
         }
     }
 
@@ -595,20 +616,28 @@ where
             .deployment_head
             .set(block_ptr.number as f64);
 
-        if block.trigger_count() > 0 {
+        // When pipelining, triggers have been moved to the prep task so
+        // block.trigger_count() is 0. Use the saved count instead.
+        let trigger_count = self
+            .pending_prep
+            .as_ref()
+            .map_or_else(|| block.trigger_count(), |p| p.trigger_count);
+
+        if trigger_count > 0 {
             self.metrics
                 .subgraph
                 .block_trigger_count
-                .observe(block.trigger_count() as f64);
+                .observe(trigger_count as f64);
         }
 
         // Check if we should skip this block (optimization for blocks without triggers)
-        if block.trigger_count() == 0
+        if trigger_count == 0
             && self.state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
             && !self.inputs.store.is_deployment_synced()
             && !close_to_chain_head(&block_ptr, &self.inputs.chain.chain_head_ptr().await?, 1000)
         {
-            // Skip this block and continue with the same stream
+            // Skip this block — also discard pending prep if any.
+            self.discard_pending_prep();
             return Ok(RunnerState::AwaitingBlock { block_stream });
         } else {
             self.state.skip_ptr_updates_timer = Instant::now();
@@ -636,10 +665,17 @@ where
 
         // Convert Action to RunnerState
         match action {
-            Action::Continue => Ok(RunnerState::AwaitingBlock { block_stream }),
-            Action::Restart => Ok(RunnerState::Restarting {
-                reason: RestartReason::DynamicDataSourceCreated,
-            }),
+            Action::Continue => {
+                let next_state = self.try_eagerly_prep_next_block(block_stream);
+                Ok(next_state)
+            }
+            Action::Restart => {
+                // DDS created — discard any pending prep since the host set changed.
+                self.discard_pending_prep();
+                Ok(RunnerState::Restarting {
+                    reason: RestartReason::DynamicDataSourceCreated,
+                })
+            }
             Action::Stop => Ok(RunnerState::Stopped {
                 reason: StopReason::MaxEndBlockReached,
             }),
@@ -656,6 +692,9 @@ where
         revert_to_ptr: BlockPtr,
         cursor: FirehoseCursor,
     ) -> Result<RunnerState<C>, SubgraphRunnerError> {
+        // Discard any pipelined prep — the chain reorganized.
+        self.discard_pending_prep();
+
         let stopwatch = &self.metrics.stream.stopwatch;
         let _section = stopwatch.start_section(HANDLE_REVERT_SECTION_NAME);
 
@@ -918,6 +957,103 @@ where
         .await
     }
 
+    /// After block N completes successfully, try to eagerly poll the block
+    /// stream for the next event. If a `ProcessBlock` event is immediately
+    /// available, spawn a prep task (trigger matching + decoding) for it
+    /// so the work overlaps with the current block's finalization and the
+    /// next iteration of the state machine.
+    ///
+    /// Returns the next `RunnerState`:
+    /// - `ProcessingBlock` if we got the next block (prep task is running)
+    /// - `Reverting` / `AwaitingBlock` / `Stopped` for other events
+    fn try_eagerly_prep_next_block(
+        &mut self,
+        mut block_stream: Cancelable<Box<dyn BlockStream<C>>>,
+    ) -> RunnerState<C> {
+        use graph::futures03::Stream as _;
+        use std::pin::Pin;
+        use std::task::{Context as TaskContext, Poll, Waker};
+
+        if !ENV_VARS.mappings.enable_pipeline_prep {
+            return RunnerState::AwaitingBlock { block_stream };
+        }
+
+        // Non-blocking poll: check if the stream already has a next item
+        // buffered (firehose streams typically buffer at least 1 block).
+        let waker = Waker::noop();
+        let mut cx = TaskContext::from_waker(waker);
+        let poll_result = Pin::new(&mut block_stream).poll_next(&mut cx);
+
+        match poll_result {
+            Poll::Ready(Some(Ok(BlockStreamEvent::ProcessBlock(mut block, cursor)))) => {
+                // Next block is immediately available — spawn a prep task.
+                let trigger_count = block.trigger_count();
+                let triggers = std::mem::take(&mut block.trigger_data);
+
+                let decoder = self.ctx.decoder.clone();
+                let hosts = self.ctx.instance.hosts_snapshot();
+                let logger = self.logger.cheap_clone();
+                let metrics = self.metrics.subgraph.cheap_clone();
+                let block_arc: Arc<C::Block> = Arc::new(block.block.clone());
+
+                let handle = tokio::spawn(async move {
+                    prep_block(&decoder, &hosts, &logger, &block_arc, triggers, &metrics).await
+                });
+
+                debug!(
+                    self.logger,
+                    "Spawned pipelined prep for next block";
+                    "block" => block.ptr().number
+                );
+
+                // Store the join handle; the block itself goes into
+                // ProcessingBlock for the normal state machine flow.
+                let hosts_len = self.ctx.hosts_len();
+                self.pending_prep = Some(PendingPrep {
+                    handle,
+                    hosts_len,
+                    trigger_count,
+                });
+
+                // Jump directly to ProcessingBlock, bypassing AwaitingBlock.
+                RunnerState::ProcessingBlock {
+                    block_stream,
+                    block,
+                    cursor,
+                }
+            }
+            Poll::Ready(Some(Ok(BlockStreamEvent::Revert(to_ptr, cursor)))) => {
+                // Consumed a revert event — handle it.
+                RunnerState::Reverting {
+                    block_stream,
+                    to_ptr,
+                    cursor,
+                }
+            }
+            Poll::Ready(Some(Err(e))) => {
+                debug!(
+                    self.logger,
+                    "Block stream produced a non-fatal error during eager poll";
+                    "error" => format!("{}", e),
+                );
+                RunnerState::AwaitingBlock { block_stream }
+            }
+            Poll::Ready(None) => RunnerState::Stopped {
+                reason: StopReason::StreamEnded,
+            },
+            Poll::Pending => RunnerState::AwaitingBlock { block_stream },
+        }
+    }
+
+    /// Discard any pending pipelined prep result.
+    fn discard_pending_prep(&mut self) {
+        if let Some(pending) = self.pending_prep.take() {
+            // Aborting the JoinHandle cancels the spawned task.
+            pending.handle.abort();
+            debug!(self.logger, "Discarded pipelined prep result");
+        }
+    }
+
     /// Pipeline Stage 2: Execute matched triggers.
     ///
     /// Takes runnable triggers and executes them using the TriggerRunner,
@@ -1118,6 +1254,7 @@ where
         block: BlockWithTriggers<C>,
         firehose_cursor: FirehoseCursor,
     ) -> Result<Action, ProcessingError> {
+        let pipelined = self.pending_prep.is_some();
         let triggers = block.trigger_data;
         let block = Arc::new(block.block);
         let block_ptr = block.ptr();
@@ -1127,8 +1264,12 @@ where
                 "block_hash" => format!("{}", block_ptr.hash)
         ));
 
-        info!(logger, "Start processing block";
-               "triggers" => triggers.len());
+        if pipelined {
+            info!(logger, "Start processing block (pipelined)");
+        } else {
+            info!(logger, "Start processing block";
+                   "triggers" => triggers.len());
+        }
 
         let proof_of_indexing =
             SharedProofOfIndexing::new(block_ptr.number, self.inputs.poi_version);
@@ -1147,8 +1288,45 @@ where
             .stopwatch
             .start_section(PROCESS_TRIGGERS_SECTION_NAME);
 
-        // Stage 1: Match triggers to hosts and decode
-        let prep = self.match_triggers(&logger, &block, triggers).await;
+        // Stage 1: Match triggers to hosts and decode.
+        // If we have a pipelined prep result from cross-block pipelining,
+        // await it instead of prepping inline.
+        let prep = if let Some(pending) = self.pending_prep.take() {
+            // Validate that the host set hasn't changed (defense in depth).
+            if pending.hosts_len != self.ctx.hosts_len() {
+                warn!(
+                    logger,
+                    "Discarding pipelined prep: host count changed";
+                    "prep_hosts" => pending.hosts_len,
+                    "current_hosts" => self.ctx.hosts_len()
+                );
+                pending.handle.abort();
+                // Triggers were moved to the prep task; since we're
+                // discarding it, we can't fall back to inline prep.
+                // Return an error that will be retried (without pipelining).
+                return Err(ProcessingError::Unknown(anyhow!(
+                    "Pipelined prep invalidated by host count change"
+                )));
+            }
+            match pending.handle.await {
+                Ok(result) => {
+                    debug!(logger, "Using pipelined prep for block");
+                    result
+                }
+                Err(join_err) => {
+                    // Task panicked or was cancelled. Triggers were moved to
+                    // the prep task so we can't fall back to inline prep.
+                    // Signal a non-deterministic error; the next retry will
+                    // prep inline because pending_prep will be None.
+                    return Err(ProcessingError::Unknown(anyhow!(
+                        "Pipelined prep task failed: {}",
+                        join_err
+                    )));
+                }
+            }
+        } else {
+            self.match_triggers(&logger, &block, triggers).await
+        };
 
         // Stage 2: Execute triggers
         let res = match prep {
