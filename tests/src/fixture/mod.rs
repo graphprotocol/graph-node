@@ -636,6 +636,7 @@ pub async fn setup_inner<C: Blockchain>(
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
         Arc::new(Settings::default()),
+        Arc::new(graph::components::network_provider::AmpChainNames::default()),
     ));
 
     SubgraphRegistrar::create_subgraph(

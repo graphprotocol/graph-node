@@ -5,6 +5,7 @@ use graph::amp;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::{
     link_resolver::LinkResolverContext,
+    network_provider::AmpChainNames,
     store::{DeploymentId, DeploymentLocator, SubscriptionManager},
     subgraph::Settings,
 };
@@ -30,6 +31,7 @@ pub struct SubgraphRegistrar<P, S, SM, AC> {
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
     settings: Arc<Settings>,
+    amp_chain_names: Arc<AmpChainNames>,
 }
 
 impl<P, S, SM, AC> SubgraphRegistrar<P, S, SM, AC>
@@ -50,6 +52,7 @@ where
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
         settings: Arc<Settings>,
+        amp_chain_names: Arc<AmpChainNames>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphRegistrar", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -69,6 +72,7 @@ where
             version_switching_mode,
             assignment_event_stream_cancel_guard: CancelGuard::new(),
             settings,
+            amp_chain_names,
         }
     }
 
@@ -314,6 +318,7 @@ where
                     &resolver,
                     self.amp_client.cheap_clone(),
                     history_blocks,
+                    &self.amp_chain_names,
                 )
                 .await?
             }
@@ -333,6 +338,7 @@ where
                     &resolver,
                     self.amp_client.cheap_clone(),
                     history_blocks,
+                    &self.amp_chain_names,
                 )
                 .await?
             }
@@ -460,6 +466,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
     resolver: &Arc<dyn LinkResolver>,
     amp_client: Option<Arc<AC>>,
     history_blocks_override: Option<i32>,
+    amp_chain_names: &AmpChainNames,
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
     let raw_string = serde_yaml::to_string(&raw).unwrap();
 
@@ -488,9 +495,10 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
         .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
     let network_name: Word = manifest.network_name().into();
+    let resolved_name = amp_chain_names.resolve(&network_name);
 
     let chain = chains
-        .get::<C>(network_name.clone())
+        .get::<C>(resolved_name.clone())
         .map_err(SubgraphRegistrarError::NetworkNotSupported)?
         .cheap_clone();
 
@@ -570,7 +578,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
             &manifest.schema,
             deployment,
             node_id,
-            network_name.into(),
+            resolved_name.into(),
             version_switching_mode,
         )
         .await

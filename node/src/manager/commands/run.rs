@@ -209,6 +209,7 @@ pub async fn run(
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
 
+    let amp_chain_names = Arc::new(config.amp_chain_names());
     let subgraph_registrar = Arc::new(graph_core::subgraph::SubgraphRegistrar::new(
         &logger_factory,
         link_resolver.cheap_clone(),
@@ -220,6 +221,7 @@ pub async fn run(
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
         Arc::new(Settings::default()),
+        amp_chain_names,
     ));
 
     let (name, hash) = if subgraph.contains(':') {

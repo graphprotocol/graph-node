@@ -18,6 +18,7 @@ use graph::url::Url;
 use graph::{
     amp,
     blockchain::{Blockchain, BlockchainKind, BlockchainMap},
+    components::network_provider::AmpChainNames,
 };
 use graph_core::polling_monitor::{arweave_service, ArweaveService, IpfsService};
 use graph_graphql::prelude::GraphQlRunner;
@@ -276,6 +277,7 @@ fn build_subgraph_registrar<AC>(
     ipfs_service: IpfsService,
     amp_client: Option<Arc<AC>>,
     cancel_token: CancellationToken,
+    amp_chain_names: Arc<AmpChainNames>,
 ) -> Arc<
     graph_core::subgraph::SubgraphRegistrar<
         graph_core::subgraph_provider::SubgraphProvider,
@@ -354,6 +356,7 @@ where
         node_id.clone(),
         version_switching_mode,
         Arc::new(subgraph_settings),
+        amp_chain_names,
     ))
 }
 
@@ -581,6 +584,7 @@ pub async fn run(
             .await;
         }
 
+        let amp_chain_names = Arc::new(config.amp_chain_names());
         let subgraph_registrar = build_subgraph_registrar(
             metrics_registry.clone(),
             &network_store,
@@ -595,6 +599,7 @@ pub async fn run(
             ipfs_service,
             amp_client,
             cancel_token,
+            amp_chain_names,
         );
 
         graph::spawn(

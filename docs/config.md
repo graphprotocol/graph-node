@@ -114,6 +114,9 @@ The configuration for a chain `name` is specified in the section
 - `protocol`: the protocol type being indexed, default `ethereum`
   (alternatively `near`, `cosmos`,`arweave`,`starknet`)
 - `polling_interval`: the polling interval for the block ingestor (default 500ms)
+- `amp`: the network name used by AMP for this chain; defaults to the chain name.
+  Set this when AMP uses a different name than graph-node (e.g., `amp = "ethereum-mainnet"`
+  on a chain named `mainnet`).
 - `provider`: a list of providers for that chain
 
 A `provider` is an object with the following characteristics:
@@ -164,6 +167,7 @@ optimisations.
 ingestor = "block_ingestor_node"
 [chains.mainnet]
 shard = "vip"
+amp = "ethereum-mainnet"
 provider = [
   { label = "mainnet1", url = "http://..", features = [], headers = { Authorization = "Bearer foo" } },
   { label = "mainnet2", url = "http://..", features = [ "archive", "traces" ] }
