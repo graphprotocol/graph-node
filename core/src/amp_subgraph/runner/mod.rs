@@ -127,6 +127,20 @@ where
             }
         }
 
+        // Check if the Amp Flight server has data covering through every data
+        // source's endBlock. This handles the case where endBlock has no entity
+        // data — the persisted block pointer never advances to endBlock, but the
+        // server's latest block confirms all queries have been served.
+        if latest_block >= cx.max_end_block() {
+            cx.metrics.deployment_synced.record(true);
+
+            debug!(cx.logger, "Indexing completed; endBlock reached via server latest block";
+                "latest_block" => latest_block,
+                "max_end_block" => cx.max_end_block()
+            );
+            return Ok(());
+        }
+
         debug!(cx.logger, "Completed indexing iteration";
             "latest_synced_block_ptr" => ?cx.latest_synced_block_ptr()
         );
