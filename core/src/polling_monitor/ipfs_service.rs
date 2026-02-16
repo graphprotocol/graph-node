@@ -133,7 +133,7 @@ mod test {
         let dir_cid = add_resp.into_iter().find(|x| x.name == "dir").unwrap().hash;
 
         let client = IpfsRpcClient::new_unchecked(
-            ServerAddress::local_rpc_api(),
+            ServerAddress::test_rpc_api(),
             IpfsMetrics::test(),
             &graph::log::discard(),
         )

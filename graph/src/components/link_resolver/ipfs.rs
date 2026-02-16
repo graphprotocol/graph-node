@@ -262,7 +262,7 @@ mod tests {
         let logger = crate::log::discard();
 
         let client = IpfsRpcClient::new_unchecked(
-            ServerAddress::local_rpc_api(),
+            ServerAddress::test_rpc_api(),
             IpfsMetrics::test(),
             &logger,
         )
@@ -290,7 +290,7 @@ mod tests {
 
         let logger = crate::log::discard();
         let client = IpfsRpcClient::new_unchecked(
-            ServerAddress::local_rpc_api(),
+            ServerAddress::test_rpc_api(),
             IpfsMetrics::test(),
             &logger,
         )?;

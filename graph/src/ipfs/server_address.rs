@@ -74,8 +74,13 @@ impl ServerAddress {
         Self::new("http://127.0.0.1:8080").unwrap()
     }
 
-    pub fn local_rpc_api() -> Self {
-        Self::new("http://127.0.0.1:5001").unwrap()
+    pub fn test_rpc_api() -> Self {
+        match std::env::var("GRAPH_NODE_TEST_IPFS_URL") {
+            Ok(value) if !value.is_empty() => Self::new(&value).unwrap_or_else(|e| {
+                panic!("GRAPH_NODE_TEST_IPFS_URL contains an invalid URL: {value}: {e}")
+            }),
+            _ => Self::new("http://127.0.0.1:5001").unwrap(),
+        }
     }
 }
 
@@ -191,8 +196,8 @@ mod tests {
     }
 
     #[test]
-    fn local_rpc_api_server_address_is_valid() {
-        let addr = ServerAddress::local_rpc_api();
+    fn test_rpc_api_server_address_is_valid() {
+        let addr = ServerAddress::test_rpc_api();
 
         assert_eq!(addr.to_string(), "http://127.0.0.1:5001/");
     }

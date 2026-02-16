@@ -64,7 +64,7 @@ fn mock_host_exports(
     );
 
     let client =
-        IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), IpfsMetrics::test(), &LOGGER)
+        IpfsRpcClient::new_unchecked(ServerAddress::test_rpc_api(), IpfsMetrics::test(), &LOGGER)
             .unwrap();
 
     HostExports::new(
