@@ -75,9 +75,9 @@ impl ServerAddress {
     }
 
     pub fn test_rpc_api() -> Self {
-        match std::env::var("GRAPH_TEST_IPFS_URL") {
+        match std::env::var("GRAPH_NODE_TEST_IPFS_URL") {
             Ok(value) if !value.is_empty() => Self::new(&value).unwrap_or_else(|e| {
-                panic!("GRAPH_TEST_IPFS_URL contains an invalid URL: {value}: {e}")
+                panic!("GRAPH_NODE_TEST_IPFS_URL contains an invalid URL: {value}: {e}")
             }),
             _ => Self::new("http://127.0.0.1:5001").unwrap(),
         }
