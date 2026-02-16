@@ -119,7 +119,7 @@ arrow-flight = { version = "=57.3.0", features = ["flight-sql-experimental"] }
 futures = "0.3.31"
 half = "2.7.1"
 indoc = "2.0.7"
-lazy-regex = "3.4.1"
+lazy-regex = "3.6.0"
 parking_lot = "0.12.4"
 sqlparser-latest = { version = "0.57.0", package = "sqlparser", features = ["visitor"] }
 tokio-util = "0.7.15"
