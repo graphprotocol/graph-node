@@ -65,6 +65,15 @@ fn encode_function_call(function_sig: &str, params: &[serde_json::Value]) -> Res
         )
     })?;
 
+    if params.len() != function.inputs.len() {
+        return Err(anyhow!(
+            "Parameter count mismatch for '{}': expected {} parameters, got {}",
+            function_sig,
+            function.inputs.len(),
+            params.len()
+        ));
+    }
+
     let args: Vec<_> = params
         .iter()
         .zip(&function.inputs)
@@ -101,6 +110,15 @@ fn encode_return_value(function_sig: &str, returns: &[serde_json::Value]) -> Res
             e
         )
     })?;
+
+    if returns.len() != function.outputs.len() {
+        return Err(anyhow!(
+            "Return value count mismatch for '{}': expected {} return values, got {}",
+            function_sig,
+            function.outputs.len(),
+            returns.len()
+        ));
+    }
 
     let output_values: Vec<_> = returns
         .iter()
@@ -179,43 +197,22 @@ async fn populate_single_call(
     block_ptr: &BlockPtr,
     eth_call: &MockEthCall,
 ) -> Result<()> {
-    let address: Address = eth_call
-        .address
-        .parse()
-        .with_context(|| format!("Invalid contract address: {}", eth_call.address))?;
+    let address: Address = eth_call.address.parse()?;
 
-    let encoded_call =
-        encode_function_call(&eth_call.function, &eth_call.params).with_context(|| {
-            format!(
-                "Failed to encode call for {}::{}",
-                eth_call.address, eth_call.function
-            )
-        })?;
+    let encoded_call = encode_function_call(&eth_call.function, &eth_call.params)?;
 
     let request = call::Request::new(address, encoded_call, 0);
 
     let retval = if eth_call.reverts {
         call::Retval::Null
     } else {
-        let encoded_return = encode_return_value(&eth_call.function, &eth_call.returns)
-            .with_context(|| {
-                format!(
-                    "Failed to encode return value for {}::{}",
-                    eth_call.address, eth_call.function
-                )
-            })?;
+        let encoded_return = encode_return_value(&eth_call.function, &eth_call.returns)?;
         call::Retval::Value(encoded_return.into())
     };
 
     chain_store
         .set_call(logger, request, block_ptr.clone(), retval)
-        .await
-        .with_context(|| {
-            format!(
-                "Failed to cache eth_call for {}::{}",
-                eth_call.address, eth_call.function
-            )
-        })?;
+        .await?;
 
     Ok(())
 }
