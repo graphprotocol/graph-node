@@ -107,6 +107,7 @@ where
                 ),
                 entity_lfu_cache: LfuCache::new(),
                 cached_head_ptr: None,
+                postponed_indexes_created: false,
             },
             logger,
             metrics,
@@ -730,6 +731,21 @@ where
         }
 
         let is_caught_up = self.is_caught_up(&block_ptr).await.non_deterministic()?;
+
+        if !self.state.postponed_indexes_created
+            && close_to_chain_head(
+                &block_ptr,
+                &self.state.cached_head_ptr,
+                ENV_VARS.postpone_indexes_creation_threshold,
+            )
+        {
+            self.state.postponed_indexes_created = true;
+            self.inputs
+                .store
+                .create_postponed_indexes()
+                .await
+                .non_deterministic()?;
+        }
 
         self.inputs
             .store

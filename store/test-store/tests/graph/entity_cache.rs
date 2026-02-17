@@ -169,6 +169,10 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
+    async fn create_postponed_indexes(&self) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
     async fn flush(&self) -> Result<(), StoreError> {
         unimplemented!()
     }

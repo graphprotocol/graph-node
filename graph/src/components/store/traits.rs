@@ -447,6 +447,12 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
 
     async fn health(&self) -> Result<SubgraphHealth, StoreError>;
 
+    /// Create indexes whose creation was postponed at deployment time.
+    /// This should be called when a subgraph gets close to the chain
+    /// head. Calling it when all postponed indexes already exist is safe
+    /// and a no-op.
+    async fn create_postponed_indexes(&self) -> Result<(), StoreError>;
+
     /// Wait for the background writer to finish processing its queue
     async fn flush(&self) -> Result<(), StoreError>;
 

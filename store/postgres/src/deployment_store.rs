@@ -50,7 +50,7 @@ use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
 use crate::primary::{DeploymentId, Primary};
-use crate::relational::index::{CreateIndex, IndexList, Method};
+use crate::relational::index::{CreateIndex, IndexCreator, IndexList, Method};
 use crate::relational::{self, Layout, LayoutCache, SqlName, Table, STATEMENT_TIMEOUT};
 use crate::relational_queries::{FromEntityData, JSONData};
 use crate::{advisory_lock, catalog, retry, AsyncPgConnection};
@@ -1644,6 +1644,27 @@ impl DeploymentStore {
             crate::deployment::initialize_block_ptr(conn, &dst.site).scope_boxed()
         })
         .await?;
+        Ok(())
+    }
+
+    /// Create all indexes whose creation was postponed when the
+    /// deployment was first created. Using `IF NOT EXISTS` and
+    /// `CONCURRENTLY` makes this safe to call even when some or all
+    /// indexes already exist.
+    pub(crate) async fn create_postponed_indexes(&self, site: Arc<Site>) -> Result<(), StoreError> {
+        let layout = self.find_layout(site).await?;
+        let creat = layout.index_creator(true, true);
+        let mut conn = self.pool.get_permitted().await?;
+        for table in layout.tables.values() {
+            let indexes = table.indexes(&layout.input_schema).map_err(|e| {
+                StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
+            })?;
+            for idx in indexes {
+                if idx.to_postpone() {
+                    IndexCreator::execute(&creat, &mut conn, &idx).await?;
+                }
+            }
+        }
         Ok(())
     }
 
