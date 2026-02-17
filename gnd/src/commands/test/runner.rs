@@ -156,6 +156,11 @@ pub(super) struct ManifestInfo {
     pub start_block_override: Option<BlockPtr>,
     /// Deployment hash derived from the built manifest path.
     pub hash: DeploymentHash,
+    /// Subgraph name derived from the manifest's root directory (e.g., "test/my-subgraph").
+    /// Fixed across all tests so that `cleanup` can always find and remove the
+    /// previous test's entry — per-test names left dangling FK references that
+    /// prevented `drop_chain` from clearing the chain head.
+    pub subgraph_name: SubgraphName,
 }
 
 /// Load and pre-compute manifest data for the test run.
@@ -208,12 +213,27 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
         )
     })?;
 
+    // Derive subgraph name from the root directory (e.g., "my-subgraph" → "test/my-subgraph").
+    // Sanitize to alphanumeric + hyphens + underscores for SubgraphName compatibility.
+    let root_dir_name = manifest_dir
+        .canonicalize()
+        .unwrap_or(manifest_dir.clone())
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("gnd-test")
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect::<String>();
+    let subgraph_name =
+        SubgraphName::new(format!("test/{}", root_dir_name)).map_err(|e| anyhow!("{}", e))?;
+
     Ok(ManifestInfo {
         build_dir,
         network_name,
         min_start_block,
         start_block_override,
         hash,
+        subgraph_name,
     })
 }
 
@@ -301,19 +321,17 @@ pub async fn run_single_test(
     let logger = make_test_logger(opt.verbose).new(o!("test" => test_file.name.clone()));
 
     // Initialize stores with the network name from the manifest.
-    let stores = setup_stores(&logger, &db_url, &manifest_info.network_name).await?;
+    let stores = setup_stores(
+        &logger,
+        &db_url,
+        &manifest_info.network_name,
+        &manifest_info.subgraph_name,
+        &manifest_info.hash,
+    )
+    .await?;
 
     // Create the mock Ethereum chain that will feed our pre-built blocks.
     let chain = setup_chain(&logger, blocks.clone(), &stores).await?;
-
-    // Sanitize test name for use as a subgraph name (alphanumeric + hyphens + underscores).
-    let test_name_sanitized = test_file
-        .name
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
-        .collect::<String>();
-    let subgraph_name =
-        SubgraphName::new(format!("test/{}", test_name_sanitized)).map_err(|e| anyhow!("{}", e))?;
 
     // Wire up all graph-node components (instance manager, provider, registrar, etc.)
     // and deploy the subgraph.
@@ -323,7 +341,7 @@ pub async fn run_single_test(
         &chain,
         &manifest_info.build_dir,
         manifest_info.hash.clone(),
-        subgraph_name.clone(),
+        manifest_info.subgraph_name.clone(),
         manifest_info.start_block_override.clone(),
     )
     .await?;
@@ -456,6 +474,8 @@ async fn setup_stores(
     logger: &Logger,
     db_url: &str,
     network_name: &ChainName,
+    subgraph_name: &SubgraphName,
+    hash: &DeploymentHash,
 ) -> Result<TestStores> {
     // Minimal graph-node config: one primary shard, no chain providers.
     // The chain→shard mapping defaults to "primary" in StoreBuilder::make_store,
@@ -492,14 +512,22 @@ ingestor = "default"
     let network_identifiers: Vec<ChainName> = vec![network_name.clone()];
     let network_store = store_builder.network_store(network_identifiers).await;
 
+    // Clean up any leftover state from a previous run on this persistent database.
+    // Order matters: deployments must be removed before the chain can be dropped,
+    // because deployment_schemas has a FK constraint on the chains table.
+    let subgraph_store = network_store.subgraph_store();
+    cleanup(&subgraph_store, subgraph_name, hash).await.ok();
+
+    let block_store = network_store.block_store();
+    let _ = block_store.drop_chain(network_name).await;
+
     // Synthetic chain identifier — net_version "1" with zero genesis hash.
     let ident = ChainIdentifier {
         net_version: "1".into(),
         genesis_block_hash: graph::prelude::alloy::primitives::B256::ZERO.into(),
     };
 
-    let chain_store = network_store
-        .block_store()
+    let chain_store = block_store
         .create_chain_store(network_name, ident)
         .await
         .context("Failed to create chain store")?;
@@ -643,9 +671,6 @@ async fn setup_context(
 
     let subgraph_store = stores.network_store.subgraph_store();
 
-    // Remove any leftover deployment from a previous test run (idempotent).
-    cleanup(&subgraph_store, &subgraph_name, &hash).await.ok();
-
     // Map the network name to our mock chain so graph-node routes triggers correctly.
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(stores.network_name.clone(), chain.clone());
@@ -784,7 +809,10 @@ async fn cleanup(
     // Ignore errors - the subgraph might not exist on first run
     let _ = subgraph_store.remove_subgraph(name.clone()).await;
 
-    for locator in locators {
+    for locator in &locators {
+        // Unassign the deployment from its node first — remove_deployment
+        // silently skips deletion if the deployment is still assigned.
+        let _ = SubgraphStoreTrait::unassign_subgraph(subgraph_store, locator).await;
         subgraph_store.remove_deployment(locator.id.into()).await?;
     }
 
