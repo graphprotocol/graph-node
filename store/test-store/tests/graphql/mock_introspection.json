@@ -8,6 +8,29 @@
     "types": [
       {
         "kind": "ENUM",
+        "name": "Aggregation_current",
+        "description": "Indicates whether the current, partially filled bucket should be included in the response. Defaults to `exclude`",
+        "fields": null,
+        "inputFields": null,
+        "interfaces": null,
+        "enumValues": [
+          {
+            "name": "exclude",
+            "description": "Exclude the current, partially filled bucket from the response",
+            "isDeprecated": false,
+            "deprecationReason": null
+          },
+          {
+            "name": "include",
+            "description": "Include the current, partially filled bucket in the response",
+            "isDeprecated": false,
+            "deprecationReason": null
+          }
+        ],
+        "possibleTypes": null
+      },
+      {
+        "kind": "ENUM",
         "name": "Aggregation_interval",
         "description": null,
         "fields": null,
