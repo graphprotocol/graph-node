@@ -48,7 +48,7 @@ thiserror = { workspace = true }
 
 # Console output
 indicatif = "0.18"
-console = "0.15"
+console = "0.16"
 
 # Code generation
 graphql-tools = { workspace = true }
