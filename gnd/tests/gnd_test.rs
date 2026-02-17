@@ -21,18 +21,22 @@
 //! ```bash
 //! just test-gnd-test
 //! ```
+//!
+//! Tests run with `--test-threads=1` to avoid races when sharing a Postgres
+//! instance via `--postgres-url` (CI). With pgtemp (default) each test gets
+//! its own isolated database, but serial execution keeps things simple.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::LazyLock;
 
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
-/// Shared fixture: copied once, npm-installed once, codegen'd once.
-/// The `TempDir` is kept alive for the entire test binary lifetime.
-static FIXTURE: LazyLock<(TempDir, PathBuf)> = LazyLock::new(|| {
+/// Copy the fixture subgraph into a fresh temp directory, install npm
+/// dependencies, and run `gnd codegen`. Returns the temp dir handle (to
+/// keep it alive) and the path to the prepared subgraph directory.
+fn setup_fixture() -> (TempDir, PathBuf) {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let subgraph_dir = temp_dir.path().join("subgraph");
     fs::create_dir_all(&subgraph_dir).unwrap();
@@ -77,7 +81,7 @@ static FIXTURE: LazyLock<(TempDir, PathBuf)> = LazyLock::new(|| {
     );
 
     (temp_dir, subgraph_dir)
-});
+}
 
 /// Get the path to the gnd binary.
 fn gnd_binary_path() -> PathBuf {
@@ -173,7 +177,7 @@ fn run_gnd_test(args: &[&str], cwd: &Path) -> std::process::Output {
 
 #[test]
 fn test_gnd_test_all() {
-    let subgraph_dir = &FIXTURE.1;
+    let (_temp_dir, subgraph_dir) = setup_fixture();
 
     // Run only the passing test files (exclude failing.json which is used by the negative test).
     let output = run_gnd_test(
@@ -182,7 +186,7 @@ fn test_gnd_test_all() {
             "tests/blocks.json",
             "tests/templates.json",
         ],
-        subgraph_dir,
+        &subgraph_dir,
     );
 
     assert!(
@@ -200,9 +204,9 @@ fn test_gnd_test_all() {
 
 #[test]
 fn test_gnd_test_failing_assertions() {
-    let subgraph_dir = &FIXTURE.1;
+    let (_temp_dir, subgraph_dir) = setup_fixture();
 
-    let output = run_gnd_test(&["tests/failing.json"], subgraph_dir);
+    let output = run_gnd_test(&["tests/failing.json"], &subgraph_dir);
 
     assert!(
         !output.status.success(),

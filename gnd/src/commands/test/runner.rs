@@ -2,7 +2,8 @@
 //!
 //! This is the core of `gnd test`. For each test file, it:
 //!
-//! 1. Creates a temporary PostgreSQL database (pgtemp) for complete test isolation
+//! 1. Creates a test database (`TestDatabase::Temporary` via pgtemp, or
+//!    `TestDatabase::Persistent` via `--postgres-url`) for test isolation
 //! 2. Initializes graph-node stores (entity storage, block storage, chain store)
 //! 3. Constructs a mock Ethereum chain that feeds pre-defined blocks
 //! 4. Deploys the subgraph and starts the indexer
@@ -38,7 +39,9 @@ use graph::blockchain::{BlockPtr, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, FileLinkResolver};
 use graph::components::metrics::MetricsRegistry;
-use graph::components::network_provider::{ChainName, ProviderCheckStrategy, ProviderManager};
+use graph::components::network_provider::{
+    AmpChainNames, ChainName, ProviderCheckStrategy, ProviderManager,
+};
 use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::{Settings, SubgraphInstanceManager as _};
 use graph::data::graphql::load_manager::LoadManager;
@@ -314,16 +317,16 @@ pub async fn run_single_test(
     // test blocks without explicit numbers fall in the subgraph's indexed range.
     let blocks = build_blocks_with_triggers(test_file, manifest_info.min_start_block)?;
 
-    // Create a temporary database for this test. The `_temp_db` handle must
-    // be kept alive for the duration of the test — dropping it destroys the database.
-    let (db_url, _temp_db) = get_database_url(opt, &manifest_info.build_dir)?;
+    // Create the database for this test. For pgtemp, the `db` value must
+    // stay alive for the duration of the test — dropping it destroys the database.
+    let db = create_test_database(opt, &manifest_info.build_dir)?;
 
     let logger = make_test_logger(opt.verbose).new(o!("test" => test_file.name.clone()));
 
     // Initialize stores with the network name from the manifest.
     let stores = setup_stores(
         &logger,
-        &db_url,
+        &db,
         &manifest_info.network_name,
         &manifest_info.subgraph_name,
         &manifest_info.hash,
@@ -403,17 +406,17 @@ pub async fn run_single_test(
     result
 }
 
-/// Get a PostgreSQL connection URL for the test.
+/// Create the database for this test run.
 ///
-/// If `--postgres-url` was provided, uses that directly.
-/// Otherwise, on Unix, creates a temporary database via pgtemp in the build
-/// directory (matching `gnd dev`'s pattern). The database is automatically
-/// destroyed when `TempPgHandle` is dropped.
+/// If `--postgres-url` was provided, returns a `Persistent` database that
+/// requires cleanup between tests. Otherwise, on Unix, creates a `Temporary`
+/// pgtemp database in the build directory (matching `gnd dev`'s pattern) —
+/// dropped automatically when the returned value goes out of scope.
 ///
 /// On non-Unix systems, `--postgres-url` is required.
-fn get_database_url(opt: &TestOpt, build_dir: &Path) -> Result<(String, Option<TempPgHandle>)> {
+fn create_test_database(opt: &TestOpt, build_dir: &Path) -> Result<TestDatabase> {
     if let Some(url) = &opt.postgres_url {
-        return Ok((url.clone(), None));
+        return Ok(TestDatabase::Persistent { url: url.clone() });
     }
 
     #[cfg(unix)]
@@ -439,7 +442,7 @@ fn get_database_url(opt: &TestOpt, build_dir: &Path) -> Result<(String, Option<T
             .start();
 
         let url = db.connection_uri().to_string();
-        Ok((url, Some(TempPgHandle(db))))
+        Ok(TestDatabase::Temporary { url, _handle: db })
     }
 
     #[cfg(not(unix))]
@@ -451,15 +454,42 @@ fn get_database_url(opt: &TestOpt, build_dir: &Path) -> Result<(String, Option<T
     }
 }
 
-/// RAII handle that keeps a pgtemp database alive for the test's duration.
+/// Database used for a single test run.
 ///
-/// The inner `PgTempDB` is never read directly — its purpose is to prevent
-/// the temporary database from being destroyed until this handle is dropped.
-#[cfg(unix)]
-struct TempPgHandle(#[allow(dead_code)] pgtemp::PgTempDB);
+/// Encapsulates both the connection URL and the lifecycle semantics:
+/// - `Temporary`: pgtemp-managed, RAII — dropped when this value goes out of scope
+/// - `Persistent`: user-provided URL, requires explicit cleanup between tests
+enum TestDatabase {
+    #[cfg(unix)]
+    Temporary {
+        url: String,
+        _handle: pgtemp::PgTempDB,
+    },
+    Persistent {
+        url: String,
+    },
+}
 
-#[cfg(not(unix))]
-struct TempPgHandle;
+impl TestDatabase {
+    fn url(&self) -> &str {
+        match self {
+            #[cfg(unix)]
+            Self::Temporary { url, .. } => url,
+            Self::Persistent { url } => url,
+        }
+    }
+
+    /// Persistent databases accumulate state across test runs and need
+    /// explicit cleanup (remove prior deployments, drop chains) before
+    /// each test. Temporary databases start fresh — no cleanup needed.
+    fn needs_cleanup(&self) -> bool {
+        match self {
+            #[cfg(unix)]
+            Self::Temporary { .. } => false,
+            Self::Persistent { .. } => true,
+        }
+    }
+}
 
 /// Initialize graph-node stores from a database URL.
 ///
@@ -472,7 +502,7 @@ struct TempPgHandle;
 /// error that occurs when pgtemp is dropped during cleanup.
 async fn setup_stores(
     logger: &Logger,
-    db_url: &str,
+    db: &TestDatabase,
     network_name: &ChainName,
     subgraph_name: &SubgraphName,
     hash: &DeploymentHash,
@@ -495,7 +525,7 @@ indexers = [ "default" ]
 [chains]
 ingestor = "default"
 "#,
-        db_url
+        db.url()
     );
 
     let config = Config::from_str(&config_str, "default")
@@ -512,14 +542,17 @@ ingestor = "default"
     let network_identifiers: Vec<ChainName> = vec![network_name.clone()];
     let network_store = store_builder.network_store(network_identifiers).await;
 
-    // Clean up any leftover state from a previous run on this persistent database.
-    // Order matters: deployments must be removed before the chain can be dropped,
-    // because deployment_schemas has a FK constraint on the chains table.
-    let subgraph_store = network_store.subgraph_store();
-    cleanup(&subgraph_store, subgraph_name, hash).await.ok();
-
+    // Persistent databases accumulate state across test runs and need cleanup.
+    // Temporary (pgtemp) databases start fresh — no cleanup needed.
     let block_store = network_store.block_store();
-    let _ = block_store.drop_chain(network_name).await;
+    if db.needs_cleanup() {
+        // Order matters: deployments must be removed before the chain can be dropped,
+        // because deployment_schemas has a FK constraint on the chains table.
+        let subgraph_store = network_store.subgraph_store();
+        cleanup(&subgraph_store, subgraph_name, hash).await.ok();
+
+        let _ = block_store.drop_chain(network_name).await;
+    }
 
     // Synthetic chain identifier — net_version "1" with zero genesis hash.
     let ident = ChainIdentifier {
@@ -767,6 +800,7 @@ async fn setup_context(
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
         Arc::new(Settings::default()),
+        Arc::new(AmpChainNames::default()),
     ));
 
     // Register the subgraph name (e.g., "test/TransferCreatesEntity").
