@@ -3702,7 +3702,6 @@ dependencies = [
  "clap",
  "csv",
  "defer",
- "derivative",
  "derive_more",
  "diesel",
  "diesel_derives",

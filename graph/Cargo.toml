@@ -19,7 +19,6 @@ old_bigdecimal = { version = "=0.1.2", features = [
 bytes = "1.0.1"
 bs58 = { workspace = true }
 cid = "0.11.1"
-derivative = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 graph_derive = { path = "./derive" }
 diesel = { workspace = true }
