@@ -626,7 +626,7 @@ impl<'a> Loader<'a> {
                 let child_type = input_schema
                     .object_or_interface(field_type.field_type.get_base_type(), child_interval)
                     .expect("we only collect fields that are objects or interfaces");
-                let mut aggregation_current = field.aggregation_current()?;
+                let aggregation_current = field.aggregation_current()?;
 
                 let join = if at_root {
                     MaybeJoin::Root { child_type }
@@ -645,9 +645,6 @@ impl<'a> Loader<'a> {
                     let field_type = object_type
                         .field(&field.name)
                         .expect("field names are valid");
-
-                    // Loading the current bucket is not supported for nested queries
-                    aggregation_current = None;
 
                     MaybeJoin::Nested(Join::new(
                         &input_schema,

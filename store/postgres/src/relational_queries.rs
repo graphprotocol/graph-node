@@ -4342,17 +4342,29 @@ impl<'a> FilterQuery<'a> {
             return Ok(None);
         }
 
-        // Supporting window and/or multiple entity queries would make the existing SQL queries even more complicated.
-        // It is also unclear whether supporting that would be a valid use case.
-        let entity = match collection {
-            FilterCollection::All(entities) if entities.len() == 1 => &entities[0],
-            _ => return Err(QueryExecutionError::NotSupported(
-                "The current aggregation bucket can only be queried in a root query for one aggregation entity".to_string())
+        // Determine which table and column_names to check based on collection type.
+        // We support root queries (All with 1 entity) and single-window nested queries.
+        let (object_name, column_names) = match collection {
+            FilterCollection::All(entities) if entities.len() == 1 => {
+                let entity = &entities[0];
+                (
+                    entity.table.meta.object.as_str(),
+                    &entity.column_names,
+                )
+            }
+            FilterCollection::SingleWindow(window) => (
+                window.table.meta.object.as_str(),
+                &window.column_names,
             ),
+            _ => {
+                return Err(QueryExecutionError::NotSupported(
+                    "The current aggregation bucket can only be queried in a root query for one aggregation entity or a single-window nested query".to_string(),
+                ))
+            }
         };
 
         // This is not supported because the use of `SELECT *` does not always produce the expected results when combined with `UNION ALL`.
-        if matches!(entity.column_names, AttributeNames::All) {
+        if matches!(column_names, AttributeNames::All) {
             return Err(QueryExecutionError::NotSupported(
                 "The current aggregation bucket can only be queried when fields are explicitly selected".to_string())
             );
@@ -4361,7 +4373,7 @@ impl<'a> FilterQuery<'a> {
         Ok(layout
             .rollups
             .iter()
-            .find(|rollup| rollup.agg_table.object.as_str() == entity.table.meta.object.as_str()))
+            .find(|rollup| rollup.agg_table.object.as_str() == object_name))
     }
 
     /// Generate
@@ -4474,20 +4486,82 @@ impl<'a> FilterQuery<'a> {
     ///     from (select {column_names}, p.id as g$parent_id from {window.children(...)}) c
     ///     order by c.g$parent_id, {sort_key}
     ///     limit {first} offset {skip}
+    ///
+    /// For aggregation entity queries that require the current bucket,
+    /// the generated query has the following structure:
+    ///
+    ///   select '..' as entity, to_jsonb(e.*) as data
+    ///     from (
+    ///       (select {column_names}, p.id::text as g$parent_id from {window.children(...)})
+    ///       union all
+    ///       (select {column_names}, c.{link_col}::text as g$parent_id
+    ///          from ({current bucket query with filters}) c
+    ///         where c.{link_col} = any({parent_ids}))
+    ///     ) c
+    ///     order by c.g$parent_id, {sort_key}
     fn query_window_one_entity<'b>(
         &'b self,
         window: &'b FilterWindow,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(window.table, &mut out);
-        out.push_sql(" from (select ");
-        write_column_names(&window.column_names, window.table, Some("c."), &mut out)?;
-        out.push_sql(", p.id::text as ");
-        out.push_sql(PARENT_ID);
-        window.children(false, &self.limit, &mut out)?;
-        out.push_sql(") c");
-        out.push_sql("\n ");
-        self.limit.sort_key.order_by_parent(&mut out, false)
+
+        match self.rollup {
+            Some(rollup) => {
+                out.push_sql(" from ((select ");
+                write_column_names(&window.column_names, window.table, Some("c."), &mut out)?;
+                out.push_sql(", p.id::text as ");
+                out.push_sql(PARENT_ID);
+                window.children(false, &self.limit, &mut out)?;
+                out.push_sql(") union all (select ");
+                write_column_names(&window.column_names, window.table, Some("c."), &mut out)?;
+
+                // Determine the link column name from the window's link.
+                // For Direct links, the column name on the aggregation table
+                // matches the dimension column on the source timeseries table.
+                let link_col_name = match &window.link {
+                    TableLink::Direct(col, _) => col.name(),
+                    TableLink::Parent(_, _) => {
+                        return Err(diesel::result::Error::QueryBuilderError(
+                            "current aggregation bucket is not supported for Parent-linked nested queries".into(),
+                        ));
+                    }
+                };
+
+                out.push_sql(", c.\"");
+                out.push_sql(link_col_name);
+                out.push_sql("\"::text as ");
+                out.push_sql(PARENT_ID);
+                out.push_sql(" from (");
+
+                let mut current_sql_split = rollup.select_current_sql.split("--FILTERS;");
+                out.push_sql(current_sql_split.next().unwrap());
+                out.push_sql(" and ");
+                window.at_block.walk_ast(out.reborrow())?;
+                if let Some(filter) = &window.query_filter {
+                    out.push_sql(" and ");
+                    filter.walk_ast(out.reborrow())?;
+                }
+                out.push_sql(current_sql_split.next().unwrap());
+                out.push_sql(") c where c.\"");
+                out.push_sql(link_col_name);
+                out.push_sql("\" = any(");
+                window.ids.push_bind_param(&mut out)?;
+                out.push_sql("))) c");
+                out.push_sql("\n ");
+                self.limit.sort_key.order_by_parent(&mut out, false)
+            }
+            None => {
+                out.push_sql(" from (select ");
+                write_column_names(&window.column_names, window.table, Some("c."), &mut out)?;
+                out.push_sql(", p.id::text as ");
+                out.push_sql(PARENT_ID);
+                window.children(false, &self.limit, &mut out)?;
+                out.push_sql(") c");
+                out.push_sql("\n ");
+                self.limit.sort_key.order_by_parent(&mut out, false)
+            }
+        }
     }
 
     /// No windowing, but multiple entity types
