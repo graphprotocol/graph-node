@@ -566,37 +566,37 @@ impl<'a> RollupSql<'a> {
     ///
     /// The generated query has the following structure:
     ///
-    ///     with bucket as (
-    ///         {select current bucket query}
-    ///     ), prev as (
-    ///         select
-    ///             bucket.id,
-    ///             bucket.vid,
-    ///             bucket.block$
-    ///             bucket.timestamp,
-    ///             {dimensions},
-    ///             {prev aggregates}
-    ///         from bucket cross join lateral (
-    ///             select * from {agg table} where timestamp < {last rollup timestamp}
-    ///             order by timestamp desc limit 1
-    ///         )
-    ///     ), combined (
-    ///         {select * from bucket and prev}
-    ///         group by
-    ///             id,
-    ///             vid,
-    ///             block$,
-    ///             timestamp,
-    ///             {dimensions}
-    ///     )
+    ///   with bucket as (
+    ///     {select current bucket query}
+    ///   ), prev as (
     ///     select
-    ///         id,
-    ///         vid,
-    ///         block$,
-    ///         timestamp,
+    ///         bucket.id,
+    ///         bucket.vid,
+    ///         bucket.block$
+    ///         bucket.timestamp,
     ///         {dimensions},
-    ///         {aggregates}
-    ///     from combined;
+    ///         {prev aggregates}
+    ///     from bucket cross join lateral (
+    ///         select * from {agg table} where timestamp < {last rollup timestamp}
+    ///         order by timestamp desc limit 1
+    ///     )
+    ///   ), combined (
+    ///    {select * from bucket and prev}
+    ///    group by
+    ///        id,
+    ///        vid,
+    ///        block$,
+    ///        timestamp,
+    ///        {dimensions}
+    ///   )
+    ///   select
+    ///     id,
+    ///     vid,
+    ///     block$,
+    ///     timestamp,
+    ///     {dimensions},
+    ///     {aggregates}
+    ///   from combined;
     fn select_current_bucket_cumulative(&self, w: &mut dyn fmt::Write) -> fmt::Result {
         write!(w, "with bucket as (")?;
         self.select_current_bucket(w)?;
@@ -650,17 +650,17 @@ impl<'a> RollupSql<'a> {
     ///
     /// The generated query has the following structure:
     ///
-    ///     select
-    ///         max(id) as id,
-    ///         max(vid) as vid,
-    ///         max(block$) as block$,
-    ///         max(timestamp) as timestamp,
-    ///         {dimensions},
-    ///         {aggregates}
-    ///     from
-    ///         ({select timeseries entities} where timestamp >= {last rollup timestamp} {--FILTERS;})
-    ///     group by
-    ///         {dimensions};
+    ///   select
+    ///     max(id) as id,
+    ///     max(vid) as vid,
+    ///     max(block$) as block$,
+    ///     max(timestamp) as timestamp,
+    ///     {dimensions},
+    ///     {aggregates}
+    ///   from
+    ///     ({select timeseries entities} where timestamp >= {last rollup timestamp} {--FILTERS;})
+    ///   group by
+    ///     {dimensions};
     fn select_current_bucket(&self, w: &mut dyn fmt::Write) -> fmt::Result {
         write!(
             w,

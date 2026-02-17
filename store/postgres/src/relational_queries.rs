@@ -4425,12 +4425,12 @@ impl<'a> FilterQuery<'a> {
     /// For aggregation entity queries that require the current bucket,
     /// the generated query has the following structure:
     ///
-    ///     select '..' as entity, to_jsonb(e.*) as data
-    ///         from (
-    ///             (select {column names} from agg_table c where {filters} limit {limit + skip + 1})
-    ///             union all
-    ///             (select {column names} from ({current bucket query from agg source table} + {filters}) c)
-    ///         ) c order by .. limit .. skip ..
+    ///   select '..' as entity, to_jsonb(e.*) as data
+    ///     from (
+    ///       (select {column names} from agg_table c where {filters} limit {limit + skip + 1})
+    ///         union all
+    ///       (select {column names} from ({current bucket query from agg source table} + {filters}) c)
+    ///     ) c order by .. limit .. skip ..
     fn query_no_window_one_entity<'b>(
         &'b self,
         wh: &'b WholeTable<'a>,
