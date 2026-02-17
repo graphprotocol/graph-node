@@ -582,7 +582,7 @@ my-subgraph/
 | Log events | ✅ Supported |
 | Block handlers (all filters) | ✅ Supported |
 | eth_call mocking | ✅ Supported |
-| Dynamic/template data sources | (Untested)
+| Dynamic/template data sources | ✅ Supported |
 | Transaction receipts (`receipt: true`) | ❌ Not implemented — handlers get `null` |
 | File data sources / IPFS mocking | ❌ Not implemented |
 | Call triggers (traces) | ❌ Not implemented |
