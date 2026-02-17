@@ -1627,19 +1627,15 @@ impl DeploymentStore {
             .await?;
         }
 
-        let mut conn = self.pool.get_permitted().await?;
-        if ENV_VARS.postpone_attribute_index_creation {
-            // Check if all indexes are valid and recreate them if they
-            // aren't.
-            IndexList::load(&mut conn, &dst)
-                .await?
-                .recreate_invalid_indexes(&mut conn, &dst)
-                .await?;
-        }
+        // Create any indexes whose creation was postponed when the
+        // deployment was first created. Using `IF NOT EXISTS` and
+        // `CONCURRENTLY` makes this safe to call on every restart.
+        self.create_postponed_indexes(site.cheap_clone()).await?;
 
         // Make sure the block pointer is set. This is important for newly
         // deployed subgraphs so that we respect the 'startBlock' setting
         // the first time the subgraph is started
+        let mut conn = self.pool.get_permitted().await?;
         conn.transaction(|conn| {
             crate::deployment::initialize_block_ptr(conn, &dst.site).scope_boxed()
         })

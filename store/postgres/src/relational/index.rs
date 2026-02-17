@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::fmt::{Display, Write};
 
 use diesel::sql_query;
-use diesel::sql_types::{Bool, Text};
 use diesel_async::RunQueryDsl;
 use graph::components::store::StoreError;
 use graph::itertools::Itertools;
@@ -946,63 +945,6 @@ impl IndexList {
         });
 
         iter
-    }
-
-    pub async fn recreate_invalid_indexes(
-        &self,
-        conn: &mut AsyncPgConnection,
-        layout: &Layout,
-    ) -> Result<(), StoreError> {
-        #[derive(QueryableByName, Debug)]
-        struct IndexInfo {
-            #[diesel(sql_type = Bool)]
-            isvalid: bool,
-        }
-
-        let namespace = &layout.catalog.site.namespace;
-        let creat = layout.index_creator(true, true);
-        for table in layout.tables.values() {
-            let idxs = self
-                .indexes_for_table(table)
-                .filter(|idx| idx.to_postpone());
-            for idx in idxs {
-                if let Some(index_name) = idx.name() {
-                    let table_name = table.name.clone();
-                    let query = r#"
-                        SELECT  x.indisvalid           AS isvalid
-                        FROM pg_index x
-                                JOIN pg_class c ON c.oid = x.indrelid
-                                JOIN pg_class i ON i.oid = x.indexrelid
-                                LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE (c.relkind = ANY (ARRAY ['r'::"char", 'm'::"char", 'p'::"char"]))
-                        AND (i.relkind = ANY (ARRAY ['i'::"char", 'I'::"char"]))
-                        AND (n.nspname = $1)
-                        AND (c.relname = $2)
-                        AND (i.relname = $3);"#;
-                    let ii_vec = sql_query(query)
-                        .bind::<Text, _>(namespace.to_string())
-                        .bind::<Text, _>(table_name)
-                        .bind::<Text, _>(index_name.clone())
-                        .get_results::<IndexInfo>(conn)
-                        .await?
-                        .into_iter()
-                        .collect::<Vec<IndexInfo>>();
-                    assert!(ii_vec.len() <= 1);
-                    if ii_vec.is_empty() || !ii_vec[0].isvalid {
-                        // if a bad index exist lets first drop it
-                        if !ii_vec.is_empty() {
-                            let drop_query =
-                                sql_query(format!("DROP INDEX {}.{};", namespace, index_name));
-                            drop_query.execute(conn).await?;
-                        }
-                        // We are creating concurrently, which can't be done
-                        // in a transaction
-                        IndexCreator::execute(&creat, conn, idx).await?;
-                    }
-                }
-            }
-        }
-        Ok(())
     }
 }
 
