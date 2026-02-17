@@ -51,7 +51,7 @@ use graph::prelude::{
     DeploymentHash, LoggerFactory, NodeId, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
     SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
 };
-use graph::slog::{info, o, Drain, Logger};
+use graph::slog::{info, o, Logger};
 use graph_chain_ethereum::chain::EthereumRuntimeAdapterBuilder;
 use graph_chain_ethereum::network::{EthereumNetworkAdapter, EthereumNetworkAdapters};
 use graph_chain_ethereum::{
@@ -73,6 +73,34 @@ use pgtemp::PgTempDBBuilder;
 
 /// Node ID used for all test deployments. Visible in store metadata.
 const NODE_ID: &str = "gnd-test";
+
+/// Build a logger based on the `-v` verbosity flag.
+///
+/// When the `GRAPH_LOG` environment variable is set it always takes precedence
+/// (this is the existing graph-node convention). Otherwise:
+///
+/// | Flag     | Level |
+/// |----------|-------|
+/// | *(none)* | Off (discard) — only test pass/fail output via `println!` |
+/// | `-v`     | Info  |
+/// | `-vv`    | Debug |
+/// | `-vvv`   | Trace |
+fn make_test_logger(verbose: u8) -> Logger {
+    // GRAPH_LOG env var always wins — use the standard graph-node logger
+    // with debug enabled so GRAPH_LOG's own filtering is the sole authority.
+    if std::env::var("GRAPH_LOG").is_ok() {
+        return graph::log::logger(true);
+    }
+
+    match verbose {
+        0 => graph::log::discard(),
+        1 => graph::log::logger_with_levels(false, None),
+        2 => graph::log::logger_with_levels(true, None),
+        // "trace" is parsed by slog_envlogger::LogBuilder::parse() as a global
+        // level filter — equivalent to setting GRAPH_LOG=trace.
+        _ => graph::log::logger_with_levels(true, Some("trace")),
+    }
+}
 
 /// Bundles the store infrastructure needed for test execution.
 ///
@@ -106,7 +134,88 @@ pub(super) struct TestContext {
     pub(super) graphql_runner: Arc<GraphQlRunner<Store>>,
 }
 
-// ============ Test Execution ============
+// ============ Manifest Loading ============
+
+/// Pre-computed manifest data shared across all tests in a run.
+///
+/// Loaded once at the start of `run_test` and passed to each test,
+/// avoiding redundant manifest parsing and noisy log output.
+///
+/// All tests share the same `hash` (derived from the built manifest path).
+/// `cleanup()` removes prior deployments with that hash before each test,
+/// so tests MUST run sequentially. If parallelism is ever added, each test
+/// will need a unique hash (e.g., by incorporating the test name).
+pub(super) struct ManifestInfo {
+    /// The build directory containing compiled WASM, schema, and built manifest.
+    pub build_dir: PathBuf,
+    /// Network name from the manifest (e.g., "mainnet").
+    pub network_name: ChainName,
+    /// Minimum `startBlock` across all data sources.
+    pub min_start_block: u64,
+    /// Override for on-chain block validation when startBlock > 0.
+    pub start_block_override: Option<BlockPtr>,
+    /// Deployment hash derived from the built manifest path.
+    pub hash: DeploymentHash,
+}
+
+/// Load and pre-compute manifest data for the test run.
+///
+/// Resolves paths relative to the manifest location, loads the built manifest,
+/// extracts the network name and start block, and computes the deployment hash.
+/// Called once before any tests run.
+pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
+    let manifest_dir = opt
+        .manifest
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let build_dir = manifest_dir.join("build");
+
+    let manifest_filename = opt
+        .manifest
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("subgraph.yaml");
+    let built_manifest_path = build_dir.join(manifest_filename);
+    let built_manifest_path = built_manifest_path
+        .canonicalize()
+        .context("Failed to resolve built manifest path — did you run 'gnd build'?")?;
+
+    let manifest = load_manifest(&built_manifest_path)?;
+
+    let network_name: ChainName = extract_network_from_manifest(&manifest)?.into();
+    let min_start_block = extract_start_block_from_manifest(&manifest)?;
+
+    let start_block_override = if min_start_block > 0 {
+        use graph::prelude::alloy::primitives::keccak256;
+        let hash = keccak256((min_start_block - 1).to_be_bytes());
+        ensure!(
+            min_start_block - 1 <= i32::MAX as u64,
+            "block number {} exceeds i32::MAX",
+            min_start_block - 1
+        );
+        Some(BlockPtr::new(hash.into(), (min_start_block - 1) as i32))
+    } else {
+        None
+    };
+
+    let deployment_id = built_manifest_path.display().to_string();
+    let hash = DeploymentHash::new(&deployment_id).map_err(|_| {
+        anyhow!(
+            "Failed to create deployment hash from path: {}",
+            deployment_id
+        )
+    })?;
+
+    Ok(ManifestInfo {
+        build_dir,
+        network_name,
+        min_start_block,
+        start_block_override,
+        hash,
+    })
+}
 
 /// Extract the network name (e.g., "mainnet") from the first data source in a manifest.
 ///
@@ -148,15 +257,24 @@ fn extract_start_block_from_manifest(manifest: &Manifest) -> Result<u64> {
         .unwrap_or(0))
 }
 
+// ============ Test Execution ============
+
 /// Run a single test file end-to-end.
 ///
 /// This is the main entry point called from `mod.rs` for each test file.
 /// It creates isolated infrastructure (database, stores, chain), indexes
 /// the mock blocks, and checks the GraphQL assertions.
 ///
+/// The `manifest_info` is loaded once and shared across all tests to avoid
+/// redundant manifest parsing.
+///
 /// Returns `TestResult::Passed` if all assertions match, or `TestResult::Failed`
 /// with details about handler errors or assertion mismatches.
-pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<TestResult> {
+pub async fn run_single_test(
+    opt: &TestOpt,
+    manifest_info: &ManifestInfo,
+    test_file: &TestFile,
+) -> Result<TestResult> {
     // Empty test with no blocks and no assertions is trivially passing.
     if test_file.blocks.is_empty() && test_file.assertions.is_empty() {
         return Ok(TestResult::Passed { assertions: vec![] });
@@ -171,80 +289,22 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
         );
     }
 
-    // Resolve paths relative to the manifest location.
-    let manifest_dir = opt
-        .manifest
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("."));
-
-    // The build directory contains compiled WASM, schema, and the built manifest.
-    // Created by `gnd build` (which runs automatically unless --skip-build).
-    let build_dir = manifest_dir.join("build");
-
-    let manifest_filename = opt
-        .manifest
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("subgraph.yaml");
-    let built_manifest_path = build_dir.join(manifest_filename);
-    let built_manifest_path = built_manifest_path.canonicalize()?;
-
-    let manifest = load_manifest(&built_manifest_path)?;
-    // The network name from the manifest (e.g., "mainnet") determines which
-    // chain config the store uses. Must match exactly.
-    let network_name: ChainName = extract_network_from_manifest(&manifest)?.into();
-
-    // Extract the minimum startBlock from the manifest. When startBlock > 0,
-    // graph-node normally validates the block exists on-chain, but our test
-    // environment has no real chain. We provide a start_block_override to
-    // bypass validation, and also default test block numbering to start at
-    // the manifest's startBlock so blocks land in the indexed range.
-    let min_start_block = extract_start_block_from_manifest(&manifest)?;
-
     // Convert test JSON blocks into graph-node's internal block format.
     // Default block numbering starts at the manifest's startBlock so that
     // test blocks without explicit numbers fall in the subgraph's indexed range.
-    let blocks = build_blocks_with_triggers(test_file, min_start_block)?;
-
-    // Build a start_block_override when startBlock > 0 to bypass on-chain
-    // block validation (which would fail against the dummy firehose endpoint).
-    // This mirrors what resolve_start_block() computes: a BlockPtr for
-    // block (min_start_block - 1).
-    let start_block_override = if min_start_block > 0 {
-        use graph::prelude::alloy::primitives::keccak256;
-        let hash = keccak256((min_start_block - 1).to_be_bytes());
-        ensure!(
-            min_start_block - 1 <= i32::MAX as u64,
-            "block number {} exceeds i32::MAX",
-            min_start_block - 1
-        );
-        Some(BlockPtr::new(hash.into(), (min_start_block - 1) as i32))
-    } else {
-        None
-    };
+    let blocks = build_blocks_with_triggers(test_file, manifest_info.min_start_block)?;
 
     // Create a temporary database for this test. The `_temp_db` handle must
     // be kept alive for the duration of the test — dropping it destroys the database.
-    let (db_url, _temp_db) = get_database_url(opt, &build_dir)?;
+    let (db_url, _temp_db) = get_database_url(opt, &manifest_info.build_dir)?;
 
-    let logger = graph::log::logger(false).new(o!("test" => test_file.name.clone()));
+    let logger = make_test_logger(opt.verbose).new(o!("test" => test_file.name.clone()));
 
     // Initialize stores with the network name from the manifest.
-    let stores = setup_stores(&logger, &db_url, &network_name).await?;
+    let stores = setup_stores(&logger, &db_url, &manifest_info.network_name).await?;
 
     // Create the mock Ethereum chain that will feed our pre-built blocks.
-    let chain = setup_chain(&test_file.name, blocks.clone(), &stores).await?;
-
-    // Use the built manifest path as the deployment hash, matching gnd dev's pattern.
-    // FileLinkResolver resolves the hash back to the filesystem path when loading.
-    let deployment_id = built_manifest_path.display().to_string();
-    let hash = DeploymentHash::new(&deployment_id).map_err(|_| {
-        anyhow!(
-            "Failed to create deployment hash from path: {}",
-            deployment_id
-        )
-    })?;
+    let chain = setup_chain(&logger, blocks.clone(), &stores).await?;
 
     // Sanitize test name for use as a subgraph name (alphanumeric + hyphens + underscores).
     let test_name_sanitized = test_file
@@ -261,10 +321,10 @@ pub async fn run_single_test(opt: &TestOpt, test_file: &TestFile) -> Result<Test
         &logger,
         &stores,
         &chain,
-        &build_dir,
-        hash,
+        &manifest_info.build_dir,
+        manifest_info.hash.clone(),
         subgraph_name.clone(),
-        start_block_override,
+        manifest_info.start_block_override.clone(),
     )
     .await?;
 
@@ -387,7 +447,7 @@ struct TempPgHandle;
 /// Uses a filtered logger to suppress the expected "Store event stream ended"
 /// error that occurs when pgtemp is dropped during cleanup.
 async fn setup_stores(
-    _logger: &Logger,
+    logger: &Logger,
     db_url: &str,
     network_name: &ChainName,
 ) -> Result<TestStores> {
@@ -418,20 +478,9 @@ ingestor = "default"
     let mock_registry = Arc::new(MetricsRegistry::mock());
     let node_id = NodeId::new(NODE_ID).unwrap();
 
-    // Filter out the "Store event stream ended" error that fires during
-    // cleanup when pgtemp drops the database out from under the listener.
-    let base_logger = graph::log::logger(false);
-    let store_logger = Logger::root(base_logger.fuse(), o!());
-
     // StoreBuilder runs migrations and creates connection pools.
-    let store_builder = StoreBuilder::new(
-        &store_logger,
-        &node_id,
-        &config,
-        None,
-        mock_registry.clone(),
-    )
-    .await;
+    let store_builder =
+        StoreBuilder::new(logger, &node_id, &config, None, mock_registry.clone()).await;
 
     let chain_head_listener = store_builder.chain_head_update_listener();
     let network_identifiers: Vec<ChainName> = vec![network_name.clone()];
@@ -465,11 +514,10 @@ ingestor = "default"
 /// - `StaticBlockRefetcher`: no-op since there are no reorgs in tests
 /// - A dummy firehose endpoint (never actually connected to)
 async fn setup_chain(
-    test_name: &str,
+    logger: &Logger,
     blocks: Vec<BlockWithTriggers<Chain>>,
     stores: &TestStores,
 ) -> Result<Arc<Chain>> {
-    let logger = graph::log::logger(false).new(o!("test" => test_name.to_string()));
     let mock_registry = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
 

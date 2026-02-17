@@ -106,6 +106,11 @@ pub struct TestOpt {
     /// Specific data source to test (Matchstick only)
     #[clap(long, requires = "matchstick")]
     pub datasource: Option<String>,
+
+    /// Increase graph-node log verbosity (-v info, -vv debug, -vvv trace).
+    /// Overridden by GRAPH_LOG env var when set.
+    #[clap(short = 'v', long, action = clap::ArgAction::Count)]
+    pub verbose: u8,
 }
 
 /// Entry point for the `gnd test` command.
@@ -144,6 +149,9 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
         opt.tests.clone()
     };
 
+    step(Step::Load, "Loading manifest");
+    let manifest_info = runner::load_manifest_info(&opt)?;
+
     step(Step::Load, "Discovering test files");
     let test_files = resolve_test_paths(&tests)?;
 
@@ -178,7 +186,7 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
 
         // Run the test: set up infra, index blocks, check assertions.
         // Each test gets a fresh database so tests are fully isolated.
-        match runner::run_single_test(&opt, &test_file).await {
+        match runner::run_single_test(&opt, &manifest_info, &test_file).await {
             Ok(result) => {
                 output::print_test_result(&test_file.name, &result);
                 if result.is_passed() {
