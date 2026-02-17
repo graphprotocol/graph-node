@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt::Write;
 use std::{future::Future, sync::Arc};
 
@@ -6,13 +7,14 @@ use graph::{
     components::{
         metrics::stopwatch::StopwatchMetrics,
         store::{
-            AttributeNames, BlockNumber, DeploymentLocator, EntityCache, EntityCollection,
-            EntityOperation, EntityQuery, ReadStore, StoreError, SubgraphStore as _, WritableStore,
+            AggregationCurrent, AttributeNames, BlockNumber, DeploymentLocator, EntityCache,
+            EntityCollection, EntityFilter, EntityOperation, EntityQuery, ReadStore, StoreError,
+            SubgraphStore as _, WritableStore,
         },
     },
     data::{
         store::{
-            scalar::{BigDecimal, Bytes},
+            scalar::{BigDecimal, Bytes, Timestamp},
             Entity, Value,
         },
         subgraph::DeploymentHash,
@@ -62,8 +64,21 @@ fn minutes(n: u32) -> BlockTime {
 lazy_static! {
     static ref TOKEN1: Bytes = "0xdeadbeef01".parse().unwrap();
     static ref TOKEN2: Bytes = "0xdeadbeef02".parse().unwrap();
-    static ref TIMES: Vec<BlockTime> = vec![minutes(30), minutes(40), minutes(65), minutes(120)];
+    static ref TIMES: Vec<BlockTime> = vec![minutes(30), minutes(40), minutes(65), minutes(121)];
 }
+
+const STATS_HOUR_FIELDS: &[&str] = &[
+    "id",
+    "timestamp",
+    "token",
+    "sum",
+    "sum_sq",
+    "max",
+    "first",
+    "last",
+    "value",
+    "totalValue",
+];
 
 pub async fn insert(
     store: &Arc<dyn WritableStore>,
@@ -116,6 +131,10 @@ pub async fn insert(
 
 fn bd(n: i32) -> Value {
     Value::BigDecimal(BigDecimal::from(n))
+}
+
+fn ts(epoch_secs: i64) -> Value {
+    Value::Timestamp(Timestamp::since_epoch(epoch_secs, 0).unwrap())
 }
 
 async fn insert_test_data(store: Arc<dyn WritableStore>, deployment: DeploymentLocator) {
@@ -220,6 +239,44 @@ impl TestEnv {
             .await
             .expect("query succeeds")
     }
+
+    /// Build an `EntityQuery` for an aggregation entity with explicit column
+    /// selection and configurable `AggregationCurrent`. The current bucket
+    /// UNION ALL query requires `AttributeNames::Select` (not `All`).
+    fn aggregation_query(
+        &self,
+        entity_type_name: &str,
+        current: AggregationCurrent,
+        block: BlockNumber,
+    ) -> EntityQuery {
+        let schema = self.writable.input_schema();
+        let entity_type = schema
+            .entity_type(entity_type_name)
+            .expect("entity type exists");
+
+        let columns: BTreeSet<String> = STATS_HOUR_FIELDS.iter().map(|s| s.to_string()).collect();
+        let mut query = EntityQuery::new(
+            self.deployment.hash.clone(),
+            block,
+            EntityCollection::All(vec![(entity_type, AttributeNames::Select(columns))]),
+        );
+        query.aggregation_current = Some(current);
+        query
+    }
+
+    async fn find_aggregation(
+        &self,
+        entity_type_name: &str,
+        current: AggregationCurrent,
+        block: BlockNumber,
+    ) -> Vec<Entity> {
+        let query = self.aggregation_query(entity_type_name, current, block);
+        self.store
+            .subgraph_store()
+            .find(query)
+            .await
+            .expect("aggregation query succeeds")
+    }
 }
 
 fn run_test<R, F>(test: F)
@@ -296,5 +353,216 @@ fn simple() {
             }
             assert_eq!(exp[i], act, "entities for BLOCKS[{}] are the same", i);
         }
+    })
+}
+
+/// Query Stats_hour with AggregationCurrent::Include at BLOCKS[3].
+/// Expect 6 rows: 2 rolled-up from hour 0, 2 from hour 1, and 2
+/// current-bucket rows from hour 2 computed on-the-fly.
+#[test]
+fn current_include() {
+    run_test(|env| async move {
+        let result = env
+            .find_aggregation("Stats_hour", AggregationCurrent::Include, BLOCKS[3].number)
+            .await;
+
+        assert_eq!(
+            6,
+            result.len(),
+            "expected 6 rows (2 per hour for hours 0, 1, 2), got {}",
+            result.len()
+        );
+
+        let schema = env.writable.input_schema();
+
+        // The rolled-up rows (hours 0 and 1) should match the existing
+        // stats_hour expected data at BLOCKS[3].
+        let exp_rolled = stats_hour(&schema);
+        let hour2_ts = ts(7200);
+        let rolled_up: Vec<&Entity> = result
+            .iter()
+            .filter(|e| e.get("timestamp").unwrap() != &hour2_ts)
+            .collect();
+        assert_eq!(
+            4,
+            rolled_up.len(),
+            "expected 4 rolled-up rows, got {}",
+            rolled_up.len()
+        );
+
+        // Verify rolled-up entities match
+        for exp_entity in &exp_rolled[3] {
+            let matching = rolled_up.iter().find(|e| e.id() == exp_entity.id());
+            assert!(
+                matching.is_some(),
+                "expected rolled-up entity with id {} not found",
+                exp_entity.id()
+            );
+        }
+
+        // Current bucket rows (hour 2, timestamp = 7200)
+        let current_bucket: Vec<&Entity> = result
+            .iter()
+            .filter(|e| e.get("timestamp").unwrap() == &hour2_ts)
+            .collect();
+        assert_eq!(
+            2,
+            current_bucket.len(),
+            "expected 2 current-bucket rows for hour 2, got {}",
+            current_bucket.len()
+        );
+
+        // Verify current bucket values for TOKEN1:
+        // At BLOCKS[3], minute 120: price=4, amount=4
+        // sum(price) = 4, sum(price*price) = 16, max(amount) = 4,
+        // first(amount) = 4, last(amount) = 4, sum(price*amount) = 16
+        let token1_current = current_bucket
+            .iter()
+            .find(|e| e.get("token").unwrap() == &Value::Bytes(TOKEN1.clone()))
+            .expect("TOKEN1 current bucket row exists");
+        assert_eq!(token1_current.get("sum").unwrap(), &bd(4));
+        assert_eq!(token1_current.get("sum_sq").unwrap(), &bd(16));
+        assert_eq!(token1_current.get("max").unwrap(), &bd(4));
+        assert_eq!(token1_current.get("first").unwrap(), &bd(4));
+        assert_eq!(token1_current.get("last").unwrap(), &bd(4));
+        assert_eq!(token1_current.get("value").unwrap(), &bd(16));
+
+        // Verify current bucket values for TOKEN2:
+        // At BLOCKS[3], minute 120: price=4, amount=40
+        // sum(price) = 4, sum(price*price) = 16, max(amount) = 40,
+        // first(amount) = 40, last(amount) = 40, sum(price*amount) = 160
+        let token2_current = current_bucket
+            .iter()
+            .find(|e| e.get("token").unwrap() == &Value::Bytes(TOKEN2.clone()))
+            .expect("TOKEN2 current bucket row exists");
+        assert_eq!(token2_current.get("sum").unwrap(), &bd(4));
+        assert_eq!(token2_current.get("sum_sq").unwrap(), &bd(16));
+        assert_eq!(token2_current.get("max").unwrap(), &bd(40));
+        assert_eq!(token2_current.get("first").unwrap(), &bd(40));
+        assert_eq!(token2_current.get("last").unwrap(), &bd(40));
+        assert_eq!(token2_current.get("value").unwrap(), &bd(160));
+    })
+}
+
+/// Query Stats_hour with AggregationCurrent::Exclude at BLOCKS[3].
+/// Should return only the 4 rolled-up rows, same as the `simple` test.
+#[test]
+fn current_exclude() {
+    run_test(|env| async move {
+        let result = env
+            .find_aggregation("Stats_hour", AggregationCurrent::Exclude, BLOCKS[3].number)
+            .await;
+
+        let exp = stats_hour(&env.writable.input_schema());
+        assert_eq!(
+            exp[3].len(),
+            result.len(),
+            "expected {} rolled-up rows, got {}",
+            exp[3].len(),
+            result.len()
+        );
+
+        let diff = entity_diff(&exp[3], &result).unwrap();
+        if !diff.is_empty() {
+            panic!(
+                "current_exclude results differ from expected rolled-up data:\n{}",
+                diff
+            );
+        }
+    })
+}
+
+/// Query Stats_hour with AggregationCurrent::Include and an EntityFilter
+/// on token == TOKEN1. Should return 3 rows: TOKEN1 for hours 0, 1, and 2.
+#[test]
+fn current_include_with_filter() {
+    run_test(|env| async move {
+        let mut query =
+            env.aggregation_query("Stats_hour", AggregationCurrent::Include, BLOCKS[3].number);
+        query.filter = Some(EntityFilter::Equal(
+            "token".to_string(),
+            Value::Bytes(TOKEN1.clone()),
+        ));
+
+        let result = env
+            .store
+            .subgraph_store()
+            .find(query)
+            .await
+            .expect("filtered aggregation query succeeds");
+
+        assert_eq!(
+            3,
+            result.len(),
+            "expected 3 rows for TOKEN1 (hours 0, 1, 2), got {}",
+            result.len()
+        );
+
+        // All rows should be for TOKEN1
+        for entity in &result {
+            assert_eq!(
+                entity.get("token").unwrap(),
+                &Value::Bytes(TOKEN1.clone()),
+                "all rows should be for TOKEN1"
+            );
+        }
+
+        // Verify we have one row per hour (timestamps 0, 3600, 7200)
+        for expected_ts in [ts(0), ts(3600), ts(7200)] {
+            assert!(
+                result
+                    .iter()
+                    .any(|e| e.get("timestamp").unwrap() == &expected_ts),
+                "expected a row with timestamp {:?}",
+                expected_ts
+            );
+        }
+    })
+}
+
+/// Query Stats_hour with AggregationCurrent::Include and verify cumulative
+/// aggregate `totalValue` in the current bucket rows.
+/// For TOKEN1: prev hour 1 totalValue=104, current hour 2 value=4*4=16,
+///   so totalValue = 104 + 16 = 120
+/// For TOKEN2: prev hour 1 totalValue=50, current hour 2 value=4*40=160,
+///   so totalValue = 50 + 160 = 210
+#[test]
+fn current_include_cumulative() {
+    run_test(|env| async move {
+        let result = env
+            .find_aggregation("Stats_hour", AggregationCurrent::Include, BLOCKS[3].number)
+            .await;
+
+        let hour2_ts = ts(7200);
+        let current_bucket: Vec<&Entity> = result
+            .iter()
+            .filter(|e| e.get("timestamp").unwrap() == &hour2_ts)
+            .collect();
+        assert_eq!(
+            2,
+            current_bucket.len(),
+            "expected 2 current-bucket rows, got {}",
+            current_bucket.len()
+        );
+
+        let token1 = current_bucket
+            .iter()
+            .find(|e| e.get("token").unwrap() == &Value::Bytes(TOKEN1.clone()))
+            .expect("TOKEN1 current bucket exists");
+        assert_eq!(
+            token1.get("totalValue").unwrap(),
+            &bd(120),
+            "TOKEN1 cumulative totalValue = 104 + 16 = 120"
+        );
+
+        let token2 = current_bucket
+            .iter()
+            .find(|e| e.get("token").unwrap() == &Value::Bytes(TOKEN2.clone()))
+            .expect("TOKEN2 current bucket exists");
+        assert_eq!(
+            token2.get("totalValue").unwrap(),
+            &bd(210),
+            "TOKEN2 cumulative totalValue = 50 + 160 = 210"
+        );
     })
 }
