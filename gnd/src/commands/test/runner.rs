@@ -403,6 +403,21 @@ pub async fn run_single_test(
         .stop_subgraph(ctx.deployment.clone())
         .await;
 
+    // For persistent databases, clean up the deployment after the test so the
+    // database is left in a clean state. Without this, the last test's deployment
+    // (which uses a file path as its hash) remains in the DB and breaks unrelated
+    // unit test suites that call remove_all_subgraphs_for_test_use_only(), since
+    // they don't set GRAPH_NODE_DISABLE_DEPLOYMENT_HASH_VALIDATION.
+    if db.needs_cleanup() {
+        cleanup(
+            &ctx.store,
+            &manifest_info.subgraph_name,
+            &manifest_info.hash,
+        )
+        .await
+        .ok();
+    }
+
     result
 }
 
@@ -544,6 +559,11 @@ ingestor = "default"
 
     // Persistent databases accumulate state across test runs and need cleanup.
     // Temporary (pgtemp) databases start fresh — no cleanup needed.
+    //
+    // Pre-test cleanup: removes stale state left by a previously interrupted run.
+    // Each test also runs post-test cleanup (at the end of run_single_test) for
+    // the normal case. Together they ensure the DB is always clean before and
+    // after each test, even if a previous run was interrupted mid-way.
     let block_store = network_store.block_store();
     if db.needs_cleanup() {
         // Order matters: deployments must be removed before the chain can be dropped,
