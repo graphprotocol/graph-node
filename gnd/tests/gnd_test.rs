@@ -152,9 +152,16 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
 /// Returns the Output (status, stdout, stderr).
 fn run_gnd_test(args: &[&str], cwd: &Path) -> std::process::Output {
     let gnd = verify_gnd_binary();
-    Command::new(&gnd)
-        .arg("test")
-        .args(args)
+    let mut cmd = Command::new(&gnd);
+    cmd.arg("test");
+
+    // When a database URL is provided via env var (e.g. in CI), pass it through
+    // to skip pgtemp which may not be available.
+    if let Ok(db_url) = std::env::var("THEGRAPH_STORE_POSTGRES_DIESEL_URL") {
+        cmd.arg("--postgres-url").arg(db_url);
+    }
+
+    cmd.args(args)
         .current_dir(cwd)
         .output()
         .expect("Failed to execute gnd test")
