@@ -47,6 +47,7 @@ bs58 = "0.5.1"
 clap = { version = "4.5.4", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4"
 derivative = "2.2.0"
+derive_more = { version = "2.1.1", default-features = false }
 diesel = { version = "2.2.7", features = [
     "postgres",
     "serde_json",
