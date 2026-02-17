@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use derivative::Derivative;
+use derive_more::Debug;
 use http::header::ACCEPT;
 use http::header::CACHE_CONTROL;
 use reqwest::{redirect::Policy as RedirectPolicy, StatusCode};
@@ -17,12 +17,11 @@ use crate::ipfs::{
 /// A client that connects to an IPFS gateway.
 ///
 /// Reference: <https://specs.ipfs.tech/http-gateways/path-gateway>
-#[derive(Clone, Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, Debug)]
 pub struct IpfsGatewayClient {
     server_address: ServerAddress,
 
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     http_client: reqwest::Client,
 
     metrics: IpfsMetrics,
