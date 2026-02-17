@@ -1,4 +1,3 @@
-use index::CreateIndex;
 use itertools::Itertools;
 use pretty_assertions::assert_eq;
 
@@ -155,94 +154,67 @@ fn test_manual_index_creation_ddl() {
 fn generate_postponed_indexes() {
     let layout = test_layout(THING_GQL);
     let table = layout.table(&SqlName::from("Scalar")).unwrap();
-    let skip_colums = vec!["id".to_string()];
-    let query_vec = table.create_postponed_indexes(skip_colums, true);
-    assert!(query_vec.len() == 7);
-    let queries = query_vec.join(" ");
-    check_eqv(THING_POSTPONED_INDEXES, &queries)
+    let postponed: Vec<_> = table
+        .indexes(&layout.input_schema)
+        .unwrap()
+        .into_iter()
+        .filter(|idx| idx.to_postpone())
+        .collect();
+    assert_eq!(7, postponed.len());
+
+    let creat = layout.index_creator(true, true);
+    let queries: Vec<_> = postponed
+        .iter()
+        .map(|idx| creat.to_sql(idx).unwrap())
+        .collect();
+    let queries = queries.join(";\n");
+    check_eqv(THING_POSTPONED_INDEXES, &queries);
 }
 const THING_POSTPONED_INDEXES: &str = r#"
 create index concurrently if not exists attr_1_1_scalar_bool
-    on "sgd0815"."scalar" using btree("bool");
- create index concurrently if not exists attr_1_2_scalar_int
-    on "sgd0815"."scalar" using btree("int");
- create index concurrently if not exists attr_1_3_scalar_big_decimal
-    on "sgd0815"."scalar" using btree("big_decimal");
- create index concurrently if not exists attr_1_4_scalar_string
-    on "sgd0815"."scalar" using btree(left("string", 256));
- create index concurrently if not exists attr_1_5_scalar_bytes
-    on "sgd0815"."scalar" using btree(substring("bytes", 1, 64));
- create index concurrently if not exists attr_1_6_scalar_big_int
-    on "sgd0815"."scalar" using btree("big_int");
- create index concurrently if not exists attr_1_7_scalar_color
-    on "sgd0815"."scalar" using btree("color");
+    on "sgd0815"."scalar" using btree ("bool");
+create index concurrently if not exists attr_1_2_scalar_int
+    on "sgd0815"."scalar" using btree ("int");
+create index concurrently if not exists attr_1_3_scalar_big_decimal
+    on "sgd0815"."scalar" using btree ("big_decimal");
+create index concurrently if not exists attr_1_4_scalar_string
+    on "sgd0815"."scalar" using btree (left("string", 256));
+create index concurrently if not exists attr_1_5_scalar_bytes
+    on "sgd0815"."scalar" using btree (substring("bytes", 1, 64));
+create index concurrently if not exists attr_1_6_scalar_big_int
+    on "sgd0815"."scalar" using btree ("big_int");
+create index concurrently if not exists attr_1_7_scalar_color
+    on "sgd0815"."scalar" using btree ("color")
 "#;
-
-impl IndexList {
-    fn mock_thing_index_list() -> Self {
-        let mut indexes: HashMap<String, Vec<CreateIndex>> = HashMap::new();
-        let v1 = vec![
-            CreateIndex::parse(r#"create index thing_id_block_range_excl on sgd0815.thing using gist (id, block_range)"#.to_string()),
-            CreateIndex::parse(r#"create index brin_thing on sgd0815."thing" using brin (lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops)"#.to_string()),
-            // fixme: enable the index bellow once the parsing of statements is fixed, and BlockRangeUpper in particular (issue #5512)
-            // CreateIndex::parse(r#"create index thing_block_range_closed on sgd0815."thing" using btree (coalesce(upper(block_range), 2147483647)) where coalesce((upper(block_range), 2147483647) < 2147483647)"#.to_string()),
-            CreateIndex::parse(r#"create index attr_0_0_thing_id on sgd0815."thing" using btree (id)"#.to_string()),
-            CreateIndex::parse(r#"create index attr_0_1_thing_big_thing on sgd0815."thing" using gist (big_thing, block_range)"#.to_string()),
-        ];
-        indexes.insert("thing".to_string(), v1);
-        let v2 = vec![
-            CreateIndex::parse(r#"create index attr_1_0_scalar_id on sgd0815."scalar" using btree (id)"#.to_string(),),
-            CreateIndex::parse(r#"create index attr_1_1_scalar_bool on sgd0815."scalar" using btree (bool)"#.to_string(),),
-            CreateIndex::parse(r#"create index attr_1_2_scalar_int on sgd0815."scalar" using btree (int)"#.to_string(),),
-            CreateIndex::parse(r#"create index attr_1_3_scalar_big_decimal on sgd0815."scalar" using btree (big_decimal)"#.to_string()),
-            CreateIndex::parse(r#"create index attr_1_4_scalar_string on sgd0815."scalar" using btree (left(string, 256))"#.to_string()),
-            CreateIndex::parse(r#"create index attr_1_5_scalar_bytes on sgd0815."scalar" using btree (substring(bytes, 1, 64))"#.to_string()),
-            CreateIndex::parse(r#"create index attr_1_6_scalar_big_int on sgd0815."scalar" using btree (big_int)"#.to_string()),
-            CreateIndex::parse(r#"create index attr_1_7_scalar_color on sgd0815."scalar" using btree (color)"#.to_string()),
-        ];
-        indexes.insert("scalar".to_string(), v2);
-        let v3 = vec![CreateIndex::parse(
-            r#"create index attr_2_0_file_thing_id on sgd0815."file_thing" using btree (id)"#
-                .to_string(),
-        )];
-        indexes.insert("file_thing".to_string(), v3);
-        IndexList::new(indexes)
-    }
-}
 
 #[test]
 fn generate_ddl() {
     let layout = test_layout(THING_GQL);
-    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
     assert_eq!(THING_DDL, &sql); // Use `assert_eq!` to also test the formatting.
 
-    let il = IndexList::mock_thing_index_list();
-    let layout = test_layout(THING_GQL);
-    let sql = layout.as_ddl(Some(il)).expect("Failed to generate DDL");
-    check_eqv(THING_DDL_ON_COPY, &sql);
-
     let layout = test_layout(MUSIC_GQL);
-    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
     check_eqv(MUSIC_DDL, &sql);
 
     let layout = test_layout(FOREST_GQL);
-    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
     check_eqv(FOREST_DDL, &sql);
 
     let layout = test_layout(FULLTEXT_GQL);
-    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
     check_eqv(FULLTEXT_DDL, &sql);
 
     let layout = test_layout(FORWARD_ENUM_GQL);
-    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
     check_eqv(FORWARD_ENUM_SQL, &sql);
 
     let layout = test_layout(TS_GQL);
-    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
     check_eqv(TS_SQL, &sql);
 
     let layout = test_layout(LIFETIME_GQL);
-    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
+    let sql = layout.as_ddl().expect("Failed to generate DDL");
     check_eqv(LIFETIME_SQL, &sql);
 }
 
@@ -350,91 +322,44 @@ fn can_copy_from() {
     );
 }
 
-/// Check that we do not create the index on `block$` twice. There was a bug
-/// that if an immutable entity type had a `block` field and index creation
-/// was postponed, we would emit the index on `block$` twice, once from
-/// `Table.create_time_travel_indexes` and once through
-/// `IndexList.indexes_for_table`
+/// Check that we do not create the index on `block$` twice. With the new
+/// `Table::indexes()` approach, the `block$` index (time-travel) and the
+/// `attr_*_block` index (attribute) are both generated by `indexes()` but
+/// only the attribute one can be postponed.
 #[test]
 fn postponed_indexes_with_block_column() {
-    fn index_list() -> IndexList {
-        // To generate this list, print the output of `layout.as_ddl(None)`, run
-        // that in Postgres and do `select indexdef from pg_indexes where
-        // schemaname = 'sgd0815'`
-        const INDEX_DEFS: &[&str] = &[
-            "CREATE UNIQUE INDEX data_pkey ON sgd0815.data USING btree (vid)",
-            "CREATE UNIQUE INDEX data_id_key ON sgd0815.data USING btree (id)",
-            "CREATE INDEX data_block ON sgd0815.data USING btree (block$)",
-            "CREATE INDEX attr_1_0_data_block ON sgd0815.data USING btree (block, \"block$\")",
-        ];
-
-        let mut indexes: HashMap<String, Vec<CreateIndex>> = HashMap::new();
-        indexes.insert(
-            "data".to_string(),
-            INDEX_DEFS
-                .iter()
-                .map(|def| CreateIndex::parse(def.to_string()))
-                .collect(),
-        );
-        IndexList::new(indexes)
-    }
-
     fn cr(index: &str) -> String {
         format!("create index{}", index)
     }
 
-    fn cre(index: &str) -> String {
-        format!("create index if not exists{}", index)
-    }
-
-    // Names of the two indexes we are interested in. Not the leading space
+    // Names of the two indexes we are interested in. Note the leading space
     // to guard a little against overlapping names
     const BLOCK_IDX: &str = " data_block";
     const ATTR_IDX: &str = " attr_1_0_data_block";
 
     let layout = test_layout(BLOCK_GQL);
 
-    // Create everything
-    let sql = layout.as_ddl(None).unwrap();
+    // Create everything; when postpone is enabled (debug builds), the
+    // attribute btree index is omitted from the DDL
+    let sql = layout.as_ddl().unwrap();
     assert!(sql.contains(&cr(BLOCK_IDX)));
-    assert!(sql.contains(&cr(ATTR_IDX)));
-
-    // Defer attribute indexes
-    let sql = layout.as_ddl(Some(index_list())).unwrap();
-    assert!(sql.contains(&cr(BLOCK_IDX)));
-    assert!(!sql.contains(ATTR_IDX));
-    // This used to be duplicated
+    // The block$ time-travel index appears exactly once
     let count = sql.matches(BLOCK_IDX).count();
     assert_eq!(1, count);
 
     let table = layout.table(&SqlName::from("Data")).unwrap();
-    let sql = table.create_postponed_indexes(vec![], false);
-    assert_eq!(1, sql.len());
-    assert!(!sql[0].contains(BLOCK_IDX));
-    assert!(sql[0].contains(&cre(ATTR_IDX)));
-
-    let dst_nsp = Namespace::new("sgd2".to_string()).unwrap();
-    let list = index_list();
-    let creat = layout.index_creator(false, false);
-    let arr: Vec<_> = list
-        .indexes_for_table(table)
+    let postponed: Vec<_> = table
+        .indexes(&layout.input_schema)
+        .unwrap()
+        .into_iter()
         .filter(|idx| idx.to_postpone())
-        .map(|idx| creat.to_sql(idx).unwrap())
         .collect();
-    assert_eq!(1, arr.len());
-    assert!(!arr[0].contains(BLOCK_IDX));
-    assert!(arr[0].contains(&cr(ATTR_IDX)));
+    assert_eq!(1, postponed.len());
 
-    let arr: Vec<_> = list
-        .indexes_for_table(table)
-        .filter(|idx| !idx.to_postpone())
-        .map(|idx| {
-            let idx = idx.with_nsp(dst_nsp.to_string()).unwrap();
-            creat.to_sql(&idx).unwrap()
-        })
-        .collect();
-
-    assert_eq!(0, arr.len());
+    let creat = layout.index_creator(false, false);
+    let sql = creat.to_sql(&postponed[0]).unwrap();
+    assert!(!sql.contains(BLOCK_IDX));
+    assert!(sql.contains(&cr(ATTR_IDX)));
 }
 
 const THING_GQL: &str = r#"
@@ -477,17 +402,10 @@ create type sgd0815."size"
 
     alter table "sgd0815"."thing"
         add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_thing
-    on "sgd0815"."thing"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index thing_block_range_closed
-    on "sgd0815"."thing"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_0_0_thing_id
-    on "sgd0815"."thing" using btree("id");
-create index attr_0_1_thing_big_thing
-    on "sgd0815"."thing" using gist("big_thing", block_range);
-
+create index brin_thing on "sgd0815"."thing" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index thing_block_range_closed on "sgd0815"."thing" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_0_0_thing_id on "sgd0815"."thing" using btree ("id");
+create index attr_0_1_thing_big_thing on "sgd0815"."thing" using gist ("big_thing", block_range);
 
     create table "sgd0815"."scalar" (
         vid                  bigint primary key,
@@ -504,29 +422,9 @@ create index attr_0_1_thing_big_thing
 
     alter table "sgd0815"."scalar"
         add constraint scalar_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_scalar
-    on "sgd0815"."scalar"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index scalar_block_range_closed
-    on "sgd0815"."scalar"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_1_0_scalar_id
-    on "sgd0815"."scalar" using btree("id");
-create index attr_1_1_scalar_bool
-    on "sgd0815"."scalar" using btree("bool");
-create index attr_1_2_scalar_int
-    on "sgd0815"."scalar" using btree("int");
-create index attr_1_3_scalar_big_decimal
-    on "sgd0815"."scalar" using btree("big_decimal");
-create index attr_1_4_scalar_string
-    on "sgd0815"."scalar" using btree(left("string", 256));
-create index attr_1_5_scalar_bytes
-    on "sgd0815"."scalar" using btree(substring("bytes", 1, 64));
-create index attr_1_6_scalar_big_int
-    on "sgd0815"."scalar" using btree("big_int");
-create index attr_1_7_scalar_color
-    on "sgd0815"."scalar" using btree("color");
-
+create index brin_scalar on "sgd0815"."scalar" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index scalar_block_range_closed on "sgd0815"."scalar" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_1_0_scalar_id on "sgd0815"."scalar" using btree ("id");
 
     create table "sgd0815"."file_thing" (
         vid                  bigint primary key,
@@ -537,85 +435,9 @@ create index attr_1_7_scalar_color
 
     alter table "sgd0815"."file_thing"
         add constraint file_thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_file_thing
-    on "sgd0815"."file_thing"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index file_thing_block_range_closed
-    on "sgd0815"."file_thing"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_2_0_file_thing_id
-    on "sgd0815"."file_thing" using btree("id");
-
-"#;
-
-const THING_DDL_ON_COPY: &str = r#"create type sgd0815."color"
-    as enum ('BLUE', 'red', 'yellow');
-create type sgd0815."size"
-    as enum ('large', 'medium', 'small');
-
-    create table "sgd0815"."thing" (
-        vid                  bigint primary key,
-        block_range          int4range not null,
-        "id"                 text not null,
-        "big_thing"          text not null
-    );
-
-    alter table "sgd0815"."thing"
-        add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_thing
-    on "sgd0815"."thing"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index thing_block_range_closed
-    on "sgd0815"."thing"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_0_0_thing_id
-    on sgd0815."thing" using btree ("id");
-create index attr_0_1_thing_big_thing
-    on sgd0815."thing" using gist ("big_thing", block_range);
-
-
-    create table "sgd0815"."scalar" (
-        vid                  bigint primary key,
-        block_range          int4range not null,
-        "id"                 text not null,
-        "bool"               boolean,
-        "int"                int4,
-        "big_decimal"        numeric,
-        "string"             text,
-        "bytes"              bytea,
-        "big_int"            numeric,
-        "color"              "sgd0815"."color"
-    );
-
-    alter table "sgd0815"."scalar"
-        add constraint scalar_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_scalar
-    on "sgd0815"."scalar"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index scalar_block_range_closed
-    on "sgd0815"."scalar"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_1_0_scalar_id
-    on sgd0815."scalar" using btree ("id");
-
-
-    create table "sgd0815"."file_thing" (
-        vid                  bigint primary key,
-        block_range          int4range not null,
-        causality_region     int not null,
-        "id"                 text not null
-    );
-
-    alter table "sgd0815"."file_thing"
-        add constraint file_thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_file_thing
-    on "sgd0815"."file_thing"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index file_thing_block_range_closed
-    on "sgd0815"."file_thing"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_2_0_file_thing_id
-    on sgd0815."file_thing" using btree ("id");
+create index brin_file_thing on "sgd0815"."file_thing" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index file_thing_block_range_closed on "sgd0815"."file_thing" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_2_0_file_thing_id on "sgd0815"."file_thing" using btree ("id");
 "#;
 
 const BOOKS_GQL: &str = r#"type Author @entity {
@@ -659,84 +481,59 @@ type SongStat @entity {
     song: Song @derivedFrom(field: "id")
     played: Int!
 }"#;
-const MUSIC_DDL: &str = r#"create table "sgd0815"."musician" (
+const MUSIC_DDL: &str = r#"
+    create table "sgd0815"."musician" (
         vid                  bigint primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "name"               text not null,
         "main_band"          text,
         "bands"              text[] not null
-);
-alter table "sgd0815"."musician"
-  add constraint musician_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_musician
-    on "sgd0815"."musician"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index musician_block_range_closed
-    on "sgd0815"."musician"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_0_0_musician_id
-    on "sgd0815"."musician" using btree("id");
-create index attr_0_1_musician_name
-    on "sgd0815"."musician" using btree(left("name", 256));
-create index attr_0_2_musician_main_band
-    on "sgd0815"."musician" using gist("main_band", block_range);
+    );
 
-create table "sgd0815"."band" (
+    alter table "sgd0815"."musician"
+        add constraint musician_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_musician on "sgd0815"."musician" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index musician_block_range_closed on "sgd0815"."musician" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_0_0_musician_id on "sgd0815"."musician" using btree ("id");
+create index attr_0_2_musician_main_band on "sgd0815"."musician" using gist ("main_band", block_range);
+
+    create table "sgd0815"."band" (
         vid                  bigint primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "name"               text not null,
         "original_songs"     text[] not null
-);
-alter table "sgd0815"."band"
-  add constraint band_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_band
-    on "sgd0815"."band"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index band_block_range_closed
-    on "sgd0815"."band"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_1_0_band_id
-    on "sgd0815"."band" using btree("id");
-create index attr_1_1_band_name
-    on "sgd0815"."band" using btree(left("name", 256));
+    );
 
-create table "sgd0815"."song" (
+    alter table "sgd0815"."band"
+        add constraint band_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_band on "sgd0815"."band" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index band_block_range_closed on "sgd0815"."band" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_1_0_band_id on "sgd0815"."band" using btree ("id");
+
+    create table "sgd0815"."song" (
         vid                  bigint primary key,
-        block$               int not null,
-        "id"                 text not null,
+        block$                int not null,
+"id"                 text not null,
         "title"              text not null,
         "written_by"         text not null,
-
         unique(id)
-);
-create index song_block
-    on "sgd0815"."song"(block$);
-create index attr_2_0_song_title
-    on "sgd0815"."song" using btree(left("title", 256));
-create index attr_2_1_song_written_by
-    on "sgd0815"."song" using btree("written_by", block$);
+    );
+create index song_block on "sgd0815"."song" using btree (block$);
 
-create table "sgd0815"."song_stat" (
+    create table "sgd0815"."song_stat" (
         vid                  bigint primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "played"             int4 not null
-);
-alter table "sgd0815"."song_stat"
-  add constraint song_stat_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_song_stat
-    on "sgd0815"."song_stat"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index song_stat_block_range_closed
-    on "sgd0815"."song_stat"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_3_0_song_stat_id
-    on "sgd0815"."song_stat" using btree("id");
-create index attr_3_1_song_stat_played
-    on "sgd0815"."song_stat" using btree("played");
+    );
 
+    alter table "sgd0815"."song_stat"
+        add constraint song_stat_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_song_stat on "sgd0815"."song_stat" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index song_stat_block_range_closed on "sgd0815"."song_stat" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_3_0_song_stat_id on "sgd0815"."song_stat" using btree ("id");
 "#;
 
 const FOREST_GQL: &str = r#"
@@ -760,61 +557,47 @@ type Habitat @entity {
     dwellers: [ForestDweller!]!
 }"#;
 
-const FOREST_DDL: &str = r#"create table "sgd0815"."animal" (
+const FOREST_DDL: &str = r#"
+    create table "sgd0815"."animal" (
         vid                  bigint primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "forest"             text
-);
-alter table "sgd0815"."animal"
-  add constraint animal_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_animal
-    on "sgd0815"."animal"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index animal_block_range_closed
-    on "sgd0815"."animal"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_0_0_animal_id
-    on "sgd0815"."animal" using btree("id");
-create index attr_0_1_animal_forest
-    on "sgd0815"."animal" using gist("forest", block_range);
+    );
 
-create table "sgd0815"."forest" (
-        vid                bigint primary key,
-        block_range        int4range not null,
-        "id"               text not null
-);
-alter table "sgd0815"."forest"
-  add constraint forest_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_forest
-    on "sgd0815"."forest"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index forest_block_range_closed
-    on "sgd0815"."forest"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_1_0_forest_id
-    on "sgd0815"."forest" using btree("id");
+    alter table "sgd0815"."animal"
+        add constraint animal_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_animal on "sgd0815"."animal" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index animal_block_range_closed on "sgd0815"."animal" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_0_0_animal_id on "sgd0815"."animal" using btree ("id");
+create index attr_0_1_animal_forest on "sgd0815"."animal" using gist ("forest", block_range);
 
-create table "sgd0815"."habitat" (
+    create table "sgd0815"."forest" (
+        vid                  bigint primary key,
+        block_range          int4range not null,
+        "id"                 text not null
+    );
+
+    alter table "sgd0815"."forest"
+        add constraint forest_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_forest on "sgd0815"."forest" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index forest_block_range_closed on "sgd0815"."forest" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_1_0_forest_id on "sgd0815"."forest" using btree ("id");
+
+    create table "sgd0815"."habitat" (
         vid                  bigint primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "most_common"        text not null,
         "dwellers"           text[] not null
-);
-alter table "sgd0815"."habitat"
-  add constraint habitat_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_habitat
-    on "sgd0815"."habitat"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index habitat_block_range_closed
-    on "sgd0815"."habitat"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_2_0_habitat_id
-    on "sgd0815"."habitat" using btree("id");
-create index attr_2_1_habitat_most_common
-    on "sgd0815"."habitat" using gist("most_common", block_range);
+    );
 
+    alter table "sgd0815"."habitat"
+        add constraint habitat_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_habitat on "sgd0815"."habitat" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index habitat_block_range_closed on "sgd0815"."habitat" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_2_0_habitat_id on "sgd0815"."habitat" using btree ("id");
+create index attr_2_1_habitat_most_common on "sgd0815"."habitat" using gist ("most_common", block_range);
 "#;
 const FULLTEXT_GQL: &str = r#"
 type _Schema_ @fulltext(
@@ -847,7 +630,8 @@ type Habitat @entity {
     dwellers: [Animal!]!
 }"#;
 
-const FULLTEXT_DDL: &str = r#"create table "sgd0815"."animal" (
+const FULLTEXT_DDL: &str = r#"
+    create table "sgd0815"."animal" (
         vid                  bigint primary key,
         block_range          int4range not null,
         "id"                 text not null,
@@ -855,63 +639,42 @@ const FULLTEXT_DDL: &str = r#"create table "sgd0815"."animal" (
         "species"            text not null,
         "forest"             text,
         "search"             tsvector
-);
-alter table "sgd0815"."animal"
-  add constraint animal_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_animal
-    on "sgd0815"."animal"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index animal_block_range_closed
-    on "sgd0815"."animal"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_0_0_animal_id
-    on "sgd0815"."animal" using btree("id");
-create index attr_0_1_animal_name
-    on "sgd0815"."animal" using btree(left("name", 256));
-create index attr_0_2_animal_species
-    on "sgd0815"."animal" using btree(left("species", 256));
-create index attr_0_3_animal_forest
-    on "sgd0815"."animal" using gist("forest", block_range);
-create index attr_0_4_animal_search
-    on "sgd0815"."animal" using gin("search");
+    );
 
-create table "sgd0815"."forest" (
+    alter table "sgd0815"."animal"
+        add constraint animal_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_animal on "sgd0815"."animal" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index animal_block_range_closed on "sgd0815"."animal" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_0_0_animal_id on "sgd0815"."animal" using btree ("id");
+create index attr_0_3_animal_forest on "sgd0815"."animal" using gist ("forest", block_range);
+create index attr_0_4_animal_search on "sgd0815"."animal" using gin ("search");
+
+    create table "sgd0815"."forest" (
         vid                  bigint primary key,
         block_range          int4range not null,
         "id"                 text not null
-);
-alter table "sgd0815"."forest"
-  add constraint forest_id_block_range_excl exclude using gist (id with =, block_range with &&);
+    );
 
-create index brin_forest
-    on "sgd0815"."forest"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index forest_block_range_closed
-    on "sgd0815"."forest"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_1_0_forest_id
-    on "sgd0815"."forest" using btree("id");
+    alter table "sgd0815"."forest"
+        add constraint forest_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_forest on "sgd0815"."forest" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index forest_block_range_closed on "sgd0815"."forest" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_1_0_forest_id on "sgd0815"."forest" using btree ("id");
 
-create table "sgd0815"."habitat" (
+    create table "sgd0815"."habitat" (
         vid                  bigint primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "most_common"        text not null,
         "dwellers"           text[] not null
-);
-alter table "sgd0815"."habitat"
-  add constraint habitat_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_habitat
-    on "sgd0815"."habitat"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index habitat_block_range_closed
-    on "sgd0815"."habitat"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_2_0_habitat_id
-    on "sgd0815"."habitat" using btree("id");
-create index attr_2_1_habitat_most_common
-    on "sgd0815"."habitat" using gist("most_common", block_range);
+    );
 
+    alter table "sgd0815"."habitat"
+        add constraint habitat_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_habitat on "sgd0815"."habitat" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index habitat_block_range_closed on "sgd0815"."habitat" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_2_0_habitat_id on "sgd0815"."habitat" using btree ("id");
+create index attr_2_1_habitat_most_common on "sgd0815"."habitat" using gist ("most_common", block_range);
 "#;
 
 const FORWARD_ENUM_GQL: &str = r#"
@@ -927,25 +690,19 @@ enum Orientation {
 
 const FORWARD_ENUM_SQL: &str = r#"create type sgd0815."orientation"
     as enum ('DOWN', 'UP');
-create table "sgd0815"."thing" (
+
+    create table "sgd0815"."thing" (
         vid                  bigint primary key,
         block_range          int4range not null,
         "id"                 text not null,
         "orientation"        "sgd0815"."orientation" not null
-);
-alter table "sgd0815"."thing"
-  add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
-create index brin_thing
-    on "sgd0815"."thing"
- using brin(lower(block_range) int4_minmax_ops, coalesce(upper(block_range), 2147483647) int4_minmax_ops, vid int8_minmax_ops);
-create index thing_block_range_closed
-    on "sgd0815"."thing"(coalesce(upper(block_range), 2147483647))
- where coalesce(upper(block_range), 2147483647) < 2147483647;
-create index attr_0_0_thing_id
-    on "sgd0815"."thing" using btree("id");
-create index attr_0_1_thing_orientation
-    on "sgd0815"."thing" using btree("orientation");
+    );
 
+    alter table "sgd0815"."thing"
+        add constraint thing_id_block_range_excl exclude using gist (id with =, block_range with &&);
+create index brin_thing on "sgd0815"."thing" using brin (lower(block_range), coalesce(upper(block_range), 2147483647), vid);
+create index thing_block_range_closed on "sgd0815"."thing" using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647);
+create index attr_0_0_thing_id on "sgd0815"."thing" using btree ("id");
 "#;
 
 const TS_GQL: &str = r#"
@@ -964,56 +721,38 @@ type Stats @aggregation(intervals: ["hour", "day"], source: "Data") {
 "#;
 
 const TS_SQL: &str = r#"
-create table "sgd0815"."data" (
-    vid                  bigint primary key,
-    block$               int not null,
-    "id"                 int8 not null,
-    "timestamp"          timestamptz not null,
-    "amount"             numeric not null,
-    unique(id)
-);
-create index data_block
-    on "sgd0815"."data"(block$);
-create index attr_0_0_data_timestamp
-    on "sgd0815"."data" using btree("timestamp");
-create index attr_0_1_data_amount
-    on "sgd0815"."data" using btree("amount");
+    create table "sgd0815"."data" (
+        vid                  bigint primary key,
+        block$                int not null,
+"id"                 int8 not null,
+        "timestamp"          timestamptz not null,
+        "amount"             numeric not null,
+        unique(id)
+    );
+create index data_block on "sgd0815"."data" using btree (block$);
 
-create table "sgd0815"."stats_hour" (
-    vid                  bigserial primary key,
-    block$               int not null,
-    "id"                 int8 not null,
-    "timestamp"          timestamptz not null,
-    "volume"             numeric not null,
-    "max_price"          numeric not null,
-    unique(id)
-);
-create index stats_hour_block
-    on "sgd0815"."stats_hour"(block$);
-create index attr_1_0_stats_hour_timestamp
-    on "sgd0815"."stats_hour" using btree("timestamp");
-create index attr_1_1_stats_hour_volume
-    on "sgd0815"."stats_hour" using btree("volume");
-create index attr_1_2_stats_hour_max_price
-    on "sgd0815"."stats_hour" using btree("max_price");
+    create table "sgd0815"."stats_hour" (
+        vid                  bigserial primary key,
+        block$                int not null,
+"id"                 int8 not null,
+        "timestamp"          timestamptz not null,
+        "volume"             numeric not null,
+        "max_price"          numeric not null,
+        unique(id)
+    );
+create index stats_hour_block on "sgd0815"."stats_hour" using btree (block$);
 
-create table "sgd0815"."stats_day" (
-    vid                  bigserial primary key,
-    block$               int not null,
-    "id"                 int8 not null,
-    "timestamp"          timestamptz not null,
-    "volume"             numeric not null,
-    "max_price"          numeric not null,
-    unique(id)
-);
-create index stats_day_block
-    on "sgd0815"."stats_day"(block$);
-create index attr_2_0_stats_day_timestamp
-    on "sgd0815"."stats_day" using btree("timestamp");
-create index attr_2_1_stats_day_volume
-    on "sgd0815"."stats_day" using btree("volume");
-create index attr_2_2_stats_day_max_price
-    on "sgd0815"."stats_day" using btree("max_price");"#;
+    create table "sgd0815"."stats_day" (
+        vid                  bigserial primary key,
+        block$                int not null,
+"id"                 int8 not null,
+        "timestamp"          timestamptz not null,
+        "volume"             numeric not null,
+        "max_price"          numeric not null,
+        unique(id)
+    );
+create index stats_day_block on "sgd0815"."stats_day" using btree (block$);
+"#;
 
 const LIFETIME_GQL: &str = r#"
     type Data @entity(timeseries: true) {
@@ -1055,144 +794,87 @@ const LIFETIME_GQL: &str = r#"
     "#;
 
 const LIFETIME_SQL: &str = r#"
-create table "sgd0815"."data" (
-    vid                  bigint primary key,
-    block$               int not null,
-    "id"                 int8 not null,
-    "timestamp"          timestamptz not null,
-    "group_1"            int4 not null,
-    "group_2"            int4 not null,
-    "amount"             numeric not null,
-    unique(id)
-);
-create index data_block
-on "sgd0815"."data"(block$);
-create index attr_0_0_data_timestamp
-on "sgd0815"."data" using btree("timestamp");
-create index attr_0_1_data_group_1
-on "sgd0815"."data" using btree("group_1");
-create index attr_0_2_data_group_2
-on "sgd0815"."data" using btree("group_2");
-create index attr_0_3_data_amount
-on "sgd0815"."data" using btree("amount");
+    create table "sgd0815"."data" (
+        vid                  bigint primary key,
+        block$                int not null,
+"id"                 int8 not null,
+        "timestamp"          timestamptz not null,
+        "group_1"            int4 not null,
+        "group_2"            int4 not null,
+        "amount"             numeric not null,
+        unique(id)
+    );
+create index data_block on "sgd0815"."data" using btree (block$);
 
-create table "sgd0815"."stats_1_hour" (
-    vid                  bigserial primary key,
-    block$               int not null,
-    "id"                 int8 not null,
-    "timestamp"          timestamptz not null,
-    "volume"             numeric not null,
-    unique(id)
-);
-create index stats_1_hour_block
-on "sgd0815"."stats_1_hour"(block$);
-create index attr_1_0_stats_1_hour_timestamp
-on "sgd0815"."stats_1_hour" using btree("timestamp");
-create index attr_1_1_stats_1_hour_volume
-on "sgd0815"."stats_1_hour" using btree("volume");
+    create table "sgd0815"."stats_1_hour" (
+        vid                  bigserial primary key,
+        block$                int not null,
+"id"                 int8 not null,
+        "timestamp"          timestamptz not null,
+        "volume"             numeric not null,
+        unique(id)
+    );
+create index stats_1_hour_block on "sgd0815"."stats_1_hour" using btree (block$);
 
+    create table "sgd0815"."stats_1_day" (
+        vid                  bigserial primary key,
+        block$                int not null,
+"id"                 int8 not null,
+        "timestamp"          timestamptz not null,
+        "volume"             numeric not null,
+        unique(id)
+    );
+create index stats_1_day_block on "sgd0815"."stats_1_day" using btree (block$);
 
-create table "sgd0815"."stats_1_day" (
-    vid                  bigserial primary key,
-    block$               int not null,
-    "id"                 int8 not null,
-    "timestamp"          timestamptz not null,
-    "volume"             numeric not null,
-    unique(id)
-);
-create index stats_1_day_block
-on "sgd0815"."stats_1_day"(block$);
-create index attr_2_0_stats_1_day_timestamp
-on "sgd0815"."stats_1_day" using btree("timestamp");
-create index attr_2_1_stats_1_day_volume
-on "sgd0815"."stats_1_day" using btree("volume");
+    create table "sgd0815"."stats_2_hour" (
+        vid                  bigserial primary key,
+        block$                int not null,
+"id"                 int8 not null,
+        "timestamp"          timestamptz not null,
+        "group_1"            int4 not null,
+        "volume"             numeric not null,
+        unique(id)
+    );
+create index stats_2_hour_block on "sgd0815"."stats_2_hour" using btree (block$);
+create index stats_2_hour_dims on "sgd0815"."stats_2_hour" using btree ("group_1", "timestamp");
 
+    create table "sgd0815"."stats_2_day" (
+        vid                  bigserial primary key,
+        block$                int not null,
+"id"                 int8 not null,
+        "timestamp"          timestamptz not null,
+        "group_1"            int4 not null,
+        "volume"             numeric not null,
+        unique(id)
+    );
+create index stats_2_day_block on "sgd0815"."stats_2_day" using btree (block$);
+create index stats_2_day_dims on "sgd0815"."stats_2_day" using btree ("group_1", "timestamp");
 
-create table "sgd0815"."stats_2_hour" (
-    vid                  bigserial primary key,
-    block$               int not null,
-    "id"                 int8 not null,
-    "timestamp"          timestamptz not null,
-    "group_1"            int4 not null,
-    "volume"             numeric not null,
-    unique(id)
-);
-create index stats_2_hour_block
-on "sgd0815"."stats_2_hour"(block$);
-create index attr_5_0_stats_2_hour_timestamp
-on "sgd0815"."stats_2_hour" using btree("timestamp");
-create index attr_5_1_stats_2_hour_group_1
-on "sgd0815"."stats_2_hour" using btree("group_1");
-create index attr_5_2_stats_2_hour_volume
-on "sgd0815"."stats_2_hour" using btree("volume");
-create index stats_2_hour_dims
-on "sgd0815"."stats_2_hour"(group_1, timestamp);
+    create table "sgd0815"."stats_3_hour" (
+        vid                  bigserial primary key,
+        block$                int not null,
+"id"                 int8 not null,
+        "timestamp"          timestamptz not null,
+        "group_2"            int4 not null,
+        "group_1"            int4 not null,
+        "volume"             numeric not null,
+        unique(id)
+    );
+create index stats_3_hour_block on "sgd0815"."stats_3_hour" using btree (block$);
+create index stats_3_hour_dims on "sgd0815"."stats_3_hour" using btree ("group_2", "group_1", "timestamp");
 
-create table "sgd0815"."stats_2_day" (
-    vid                  bigserial primary key,
-    block$               int not null,
-    "id"                 int8 not null,
-    "timestamp"          timestamptz not null,
-    "group_1"            int4 not null,
-    "volume"             numeric not null,
-    unique(id)
-);
-create index stats_2_day_block
-on "sgd0815"."stats_2_day"(block$);
-create index attr_6_0_stats_2_day_timestamp
-on "sgd0815"."stats_2_day" using btree("timestamp");
-create index attr_6_1_stats_2_day_group_1
-on "sgd0815"."stats_2_day" using btree("group_1");
-create index attr_6_2_stats_2_day_volume
-on "sgd0815"."stats_2_day" using btree("volume");
-create index stats_2_day_dims
-on "sgd0815"."stats_2_day"(group_1, timestamp);
-
-create table "sgd0815"."stats_3_hour" (
-    vid                  bigserial primary key,
-    block$               int not null,
-    "id"                 int8 not null,
-    "timestamp"          timestamptz not null,
-    "group_2"            int4 not null,
-    "group_1"            int4 not null,
-    "volume"             numeric not null,
-    unique(id)
-);
-create index stats_3_hour_block
-on "sgd0815"."stats_3_hour"(block$);
-create index attr_7_0_stats_3_hour_timestamp
-on "sgd0815"."stats_3_hour" using btree("timestamp");
-create index attr_7_1_stats_3_hour_group_2
-on "sgd0815"."stats_3_hour" using btree("group_2");
-create index attr_7_2_stats_3_hour_group_1
-on "sgd0815"."stats_3_hour" using btree("group_1");
-create index attr_7_3_stats_3_hour_volume
-on "sgd0815"."stats_3_hour" using btree("volume");
-create index stats_3_hour_dims
-on "sgd0815"."stats_3_hour"(group_2, group_1, timestamp);
-
-create table "sgd0815"."stats_3_day" (
-    vid                  bigserial primary key,
-    block$               int not null,
-    "id"                 int8 not null,
-    "timestamp"          timestamptz not null,
-    "group_2"            int4 not null,
-    "group_1"            int4 not null,
-    "volume"             numeric not null,
-    unique(id)
-);
-create index stats_3_day_block
-on "sgd0815"."stats_3_day"(block$);
-create index attr_8_0_stats_3_day_timestamp
-on "sgd0815"."stats_3_day" using btree("timestamp");
-create index attr_8_1_stats_3_day_group_2
-on "sgd0815"."stats_3_day" using btree("group_2");
-create index attr_8_2_stats_3_day_group_1
-on "sgd0815"."stats_3_day" using btree("group_1");
-create index attr_8_3_stats_3_day_volume
-on "sgd0815"."stats_3_day" using btree("volume");
-create index stats_3_day_dims
-on "sgd0815"."stats_3_day"(group_2, group_1, timestamp);
+    create table "sgd0815"."stats_3_day" (
+        vid                  bigserial primary key,
+        block$                int not null,
+"id"                 int8 not null,
+        "timestamp"          timestamptz not null,
+        "group_2"            int4 not null,
+        "group_1"            int4 not null,
+        "volume"             numeric not null,
+        unique(id)
+    );
+create index stats_3_day_block on "sgd0815"."stats_3_day" using btree (block$);
+create index stats_3_day_dims on "sgd0815"."stats_3_day" using btree ("group_2", "group_1", "timestamp");
 "#;
 
 const BLOCK_GQL: &str = r#"

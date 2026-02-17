@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Write, sync::Arc};
+use std::{fmt::Write, sync::Arc};
 
 use diesel::{
     sql_query,
@@ -24,10 +24,7 @@ use crate::{
     AsyncPgConnection,
 };
 
-use super::{
-    index::{CreateIndex, IndexList},
-    Layout, Namespace,
-};
+use super::{Layout, Namespace};
 
 pub use status::{Phase, PruneState, PruneTableState, Viewer};
 
@@ -53,7 +50,6 @@ impl TablePair {
         src_layout: &Layout,
         src: Arc<Table>,
         dst_nsp: Namespace,
-        src_indexes: &IndexList,
     ) -> Result<Self, StoreError> {
         let src_nsp = src_layout.site.namespace.clone();
         let dst = src.new_like(&dst_nsp, &src.name);
@@ -62,25 +58,10 @@ impl TablePair {
         if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name).await? {
             writeln!(query, "truncate table {};", dst.qualified_name)?;
         } else {
-            let mut list = IndexList {
-                indexes: HashMap::new(),
-            };
-            let indexes = src_indexes
-                .indexes_for_table(&src)
-                .map(|index| index.with_nsp(dst_nsp.to_string()))
-                .collect::<Result<Vec<CreateIndex>, _>>()?;
-            list.indexes.insert(src.name.to_string(), indexes);
-
             // In case of pruning we don't do delayed creation of indexes,
             // as the asumption is that there is not that much data inserted.
             let creat = src_layout.index_creator(false, false);
-            dst.as_ddl(
-                &src_layout.input_schema,
-                &src_layout.catalog,
-                Some(&list),
-                &creat,
-                &mut query,
-            )?;
+            dst.as_ddl(&src_layout.input_schema, &creat, &mut query)?;
         }
         conn.batch_execute(&query).await?;
 
@@ -424,8 +405,6 @@ impl Layout {
         let dst_nsp = Namespace::prune(self.site.id);
         let mut recreate_dst_nsp = true;
 
-        let index_list = IndexList::load(conn, &self).await?;
-
         // Go table by table; note that the subgraph writer can write in
         // between the execution of the `with_lock` block below, and might
         // therefore work with tables where some are pruned and some are not
@@ -445,14 +424,8 @@ impl Layout {
                         catalog::recreate_schema(conn, dst_nsp.as_str()).await?;
                         recreate_dst_nsp = false;
                     }
-                    let pair = TablePair::create(
-                        conn,
-                        &self,
-                        table.cheap_clone(),
-                        dst_nsp.clone(),
-                        &index_list,
-                    )
-                    .await?;
+                    let pair = TablePair::create(conn, &self, table.cheap_clone(), dst_nsp.clone())
+                        .await?;
                     // Copy final entities. This can happen in parallel to indexing as
                     // that part of the table will not change
                     pair.copy_final_entities(

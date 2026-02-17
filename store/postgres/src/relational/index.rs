@@ -11,7 +11,7 @@ use graph::itertools::Itertools;
 use graph::prelude::{
     lazy_static,
     regex::{Captures, Regex},
-    BlockNumber,
+    BlockNumber, ENV_VARS,
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
@@ -640,6 +640,10 @@ impl CreateIndex {
     }
 
     pub fn to_postpone(&self) -> bool {
+        if !ENV_VARS.postpone_attribute_index_creation {
+            return false;
+        }
+
         fn has_prefix(s: &str, prefix: &str) -> bool {
             s.starts_with(prefix)
                 || s.ends_with("\"") && s.starts_with(format!("\"{}", prefix).as_str())
@@ -667,6 +671,19 @@ impl CreateIndex {
         match self {
             CreateIndex::Unknown { .. } => None,
             CreateIndex::Parsed { name, .. } => Some(name.clone()),
+        }
+    }
+
+    /// Return `true` if any of the attribute columns (user-defined columns,
+    /// not infrastructure columns like `vid`, `block$`, etc.) referenced by
+    /// this index are NOT in `columns`.
+    pub fn references_column_not_in(&self, columns: &std::collections::HashSet<&str>) -> bool {
+        match self {
+            CreateIndex::Unknown { .. } => false,
+            CreateIndex::Parsed { columns: exprs, .. } => exprs.iter().any(|expr| match expr {
+                Expr::Column(name) | Expr::Prefix(name, _) => !columns.contains(name.as_str()),
+                _ => false,
+            }),
         }
     }
 

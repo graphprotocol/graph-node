@@ -171,7 +171,7 @@ async fn create_schema(conn: &mut AsyncPgConnection) -> Layout {
         NAMESPACE.clone(),
         NETWORK_NAME.to_string(),
     );
-    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), None)
+    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new())
         .await
         .expect("Failed to create relational schema")
 }

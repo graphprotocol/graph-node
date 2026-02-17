@@ -43,7 +43,6 @@ use graph::schema::{
     InputSchema,
 };
 use graph::slog::warn;
-use index::IndexList;
 use inflector::Inflector;
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -380,13 +379,12 @@ impl Layout {
         site: Arc<Site>,
         schema: &InputSchema,
         entities_with_causality_region: BTreeSet<EntityType>,
-        index_def: Option<IndexList>,
     ) -> Result<Layout, StoreError> {
         let catalog =
             Catalog::for_creation(conn, site.cheap_clone(), entities_with_causality_region).await?;
         let layout = Self::new(site, schema, catalog)?;
         let sql = layout
-            .as_ddl(index_def)
+            .as_ddl()
             .map_err(|_| StoreError::Unknown(anyhow!("failed to generate DDL for layout")))?;
         conn.batch_execute(&sql).await?;
         Ok(layout)
