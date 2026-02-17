@@ -60,7 +60,7 @@ static FIXTURE: LazyLock<(TempDir, PathBuf)> = LazyLock::new(|| {
         String::from_utf8_lossy(&npm_output.stderr),
     );
 
-    verify_asc_available();
+    verify_asc_available(&subgraph_dir);
 
     let gnd = verify_gnd_binary();
     let codegen_output = Command::new(&gnd)
@@ -110,16 +110,25 @@ fn fixture_path() -> PathBuf {
         .join("subgraph")
 }
 
-/// Assert that `asc` (AssemblyScript compiler) is available in PATH.
-fn verify_asc_available() {
-    let output = Command::new("asc")
+/// Assert that `asc` (AssemblyScript compiler) is available in PATH or in local node_modules.
+fn verify_asc_available(subgraph_dir: &Path) {
+    // Check global PATH first
+    if Command::new("asc")
         .arg("--version")
         .output()
-        .expect("Failed to execute `asc --version`. Is AssemblyScript installed? Run: npm install -g assemblyscript@0.19.23");
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        return;
+    }
 
+    // Fall back to local node_modules/.bin/asc
+    let local_asc = subgraph_dir.join("node_modules").join(".bin").join("asc");
     assert!(
-        output.status.success(),
-        "`asc --version` failed. Install AssemblyScript: npm install -g assemblyscript@0.19.23"
+        local_asc.exists(),
+        "asc compiler not found globally or at {}. \
+         Install it with: npm install -g assemblyscript@0.19.23",
+        local_asc.display()
     );
 }
 
