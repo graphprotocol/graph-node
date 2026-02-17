@@ -69,7 +69,7 @@ use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphS
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
 use pgtemp::PgTempDBBuilder;
@@ -144,26 +144,46 @@ pub(super) struct TestContext {
 /// Loaded once at the start of `run_test` and passed to each test,
 /// avoiding redundant manifest parsing and noisy log output.
 ///
-/// All tests share the same `hash` (derived from the built manifest path).
-/// `cleanup()` removes prior deployments with that hash before each test,
-/// so tests MUST run sequentially. If parallelism is ever added, each test
-/// will need a unique hash (e.g., by incorporating the test name).
+/// All tests share the same `hash` and `subgraph_name` (derived from the built
+/// manifest path and a per-run seed), which are unique across runs. This means
+/// tests MUST still run sequentially within a single `gnd test` invocation, but
+/// sequential `gnd test` invocations never conflict with each other in the store.
 pub(super) struct ManifestInfo {
     /// The build directory containing compiled WASM, schema, and built manifest.
     pub build_dir: PathBuf,
+    /// Canonical path to the built manifest file (e.g., `build/subgraph.yaml`).
+    /// Registered as an alias for `hash` in `FileLinkResolver` so that
+    /// `clone_for_manifest` can resolve the Qm hash to a real filesystem path.
+    pub manifest_path: PathBuf,
     /// Network name from the manifest (e.g., "mainnet").
     pub network_name: ChainName,
     /// Minimum `startBlock` across all data sources.
     pub min_start_block: u64,
     /// Override for on-chain block validation when startBlock > 0.
     pub start_block_override: Option<BlockPtr>,
-    /// Deployment hash derived from the built manifest path.
+    /// Deployment hash derived from the built manifest path and a per-run seed.
+    /// Unique per run so that concurrent and sequential runs never conflict.
     pub hash: DeploymentHash,
-    /// Subgraph name derived from the manifest's root directory (e.g., "test/my-subgraph").
-    /// Fixed across all tests so that `cleanup` can always find and remove the
-    /// previous test's entry — per-test names left dangling FK references that
-    /// prevented `drop_chain` from clearing the chain head.
+    /// Subgraph name derived from the manifest's root directory with a per-run seed suffix
+    /// (e.g., "test/my-subgraph-1739800000000"). Unique per run for the same reason.
     pub subgraph_name: SubgraphName,
+}
+
+/// Compute a `DeploymentHash` for a local test run from a filesystem path and a seed.
+///
+/// Produces `"Qm" + hex(sha1(path + '\0' + seed))` — 42 alphanumeric characters that
+/// pass `DeploymentHash` validation. Not a real IPFS CIDv0, but visually consistent
+/// with one and requires no additional dependencies (`sha1` is already used by `gnd build`).
+///
+/// The `seed` (typically the current Unix epoch in milliseconds) makes each run produce a
+/// distinct hash so sequential or concurrent test runs never collide in the store.
+fn deployment_hash_from_path_and_seed(path: &Path, seed: u128) -> Result<DeploymentHash> {
+    use sha1::{Digest, Sha1};
+
+    let input = format!("{}\0{}", path.display(), seed);
+    let digest = Sha1::digest(input.as_bytes());
+    let qm = format!("Qm{:x}", digest);
+    DeploymentHash::new(qm).map_err(|e| anyhow!("Failed to create deployment hash: {}", e))
 }
 
 /// Load and pre-compute manifest data for the test run.
@@ -208,15 +228,16 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
         None
     };
 
-    let deployment_id = built_manifest_path.display().to_string();
-    let hash = DeploymentHash::new(&deployment_id).map_err(|_| {
-        anyhow!(
-            "Failed to create deployment hash from path: {}",
-            deployment_id
-        )
-    })?;
+    // Use Unix epoch millis as a per-run seed so each invocation gets a unique
+    // deployment hash and subgraph name, avoiding conflicts with previous runs.
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
 
-    // Derive subgraph name from the root directory (e.g., "my-subgraph" → "test/my-subgraph").
+    let hash = deployment_hash_from_path_and_seed(&built_manifest_path, seed)?;
+
+    // Derive subgraph name from the root directory (e.g., "my-subgraph" → "test/my-subgraph-<seed>").
     // Sanitize to alphanumeric + hyphens + underscores for SubgraphName compatibility.
     let root_dir_name = manifest_dir
         .canonicalize()
@@ -227,11 +248,12 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
         .collect::<String>();
-    let subgraph_name =
-        SubgraphName::new(format!("test/{}", root_dir_name)).map_err(|e| anyhow!("{}", e))?;
+    let subgraph_name = SubgraphName::new(format!("test/{}-{}", root_dir_name, seed))
+        .map_err(|e| anyhow!("{}", e))?;
 
     Ok(ManifestInfo {
         build_dir,
+        manifest_path: built_manifest_path,
         network_name,
         min_start_block,
         start_block_override,
@@ -324,30 +346,14 @@ pub async fn run_single_test(
     let logger = make_test_logger(opt.verbose).new(o!("test" => test_file.name.clone()));
 
     // Initialize stores with the network name from the manifest.
-    let stores = setup_stores(
-        &logger,
-        &db,
-        &manifest_info.network_name,
-        &manifest_info.subgraph_name,
-        &manifest_info.hash,
-    )
-    .await?;
+    let stores = setup_stores(&logger, &db, &manifest_info.network_name).await?;
 
     // Create the mock Ethereum chain that will feed our pre-built blocks.
     let chain = setup_chain(&logger, blocks.clone(), &stores).await?;
 
     // Wire up all graph-node components (instance manager, provider, registrar, etc.)
     // and deploy the subgraph.
-    let ctx = setup_context(
-        &logger,
-        &stores,
-        &chain,
-        &manifest_info.build_dir,
-        manifest_info.hash.clone(),
-        manifest_info.subgraph_name.clone(),
-        manifest_info.start_block_override.clone(),
-    )
-    .await?;
+    let ctx = setup_context(&logger, &stores, &chain, manifest_info).await?;
 
     // Populate eth_call cache with mock responses before starting indexer.
     // This ensures handlers can successfully retrieve mocked contract call results.
@@ -404,10 +410,9 @@ pub async fn run_single_test(
         .await;
 
     // For persistent databases, clean up the deployment after the test so the
-    // database is left in a clean state. Without this, the last test's deployment
-    // (which uses a file path as its hash) remains in the DB and breaks unrelated
-    // unit test suites that call remove_all_subgraphs_for_test_use_only(), since
-    // they don't set GRAPH_NODE_DISABLE_DEPLOYMENT_HASH_VALIDATION.
+    // database is left in a clean state. Each run generates a unique hash and
+    // subgraph name (via the seed), so pre-test cleanup is not needed — only
+    // post-test cleanup of the current run's deployment.
     if db.needs_cleanup() {
         cleanup(
             &ctx.store,
@@ -513,14 +518,10 @@ impl TestDatabase {
 /// - A `StoreBuilder` that runs database migrations and creates connection pools
 /// - A chain store for the test chain with a synthetic genesis block (hash=0x0)
 ///
-/// Uses a filtered logger to suppress the expected "Store event stream ended"
-/// error that occurs when pgtemp is dropped during cleanup.
 async fn setup_stores(
     logger: &Logger,
     db: &TestDatabase,
     network_name: &ChainName,
-    subgraph_name: &SubgraphName,
-    hash: &DeploymentHash,
 ) -> Result<TestStores> {
     // Minimal graph-node config: one primary shard, no chain providers.
     // The chain→shard mapping defaults to "primary" in StoreBuilder::make_store,
@@ -557,22 +558,7 @@ ingestor = "default"
     let network_identifiers: Vec<ChainName> = vec![network_name.clone()];
     let network_store = store_builder.network_store(network_identifiers).await;
 
-    // Persistent databases accumulate state across test runs and need cleanup.
-    // Temporary (pgtemp) databases start fresh — no cleanup needed.
-    //
-    // Pre-test cleanup: removes stale state left by a previously interrupted run.
-    // Each test also runs post-test cleanup (at the end of run_single_test) for
-    // the normal case. Together they ensure the DB is always clean before and
-    // after each test, even if a previous run was interrupted mid-way.
     let block_store = network_store.block_store();
-    if db.needs_cleanup() {
-        // Order matters: deployments must be removed before the chain can be dropped,
-        // because deployment_schemas has a FK constraint on the chains table.
-        let subgraph_store = network_store.subgraph_store();
-        cleanup(&subgraph_store, subgraph_name, hash).await.ok();
-
-        let _ = block_store.drop_chain(network_name).await;
-    }
 
     // Synthetic chain identifier — net_version "1" with zero genesis hash.
     let ident = ChainIdentifier {
@@ -712,11 +698,14 @@ async fn setup_context(
     logger: &Logger,
     stores: &TestStores,
     chain: &Arc<Chain>,
-    build_dir: &Path,
-    hash: DeploymentHash,
-    subgraph_name: SubgraphName,
-    start_block_override: Option<BlockPtr>,
+    manifest_info: &ManifestInfo,
 ) -> Result<TestContext> {
+    let build_dir = &manifest_info.build_dir;
+    let manifest_path = &manifest_info.manifest_path;
+    let hash = manifest_info.hash.clone();
+    let subgraph_name = manifest_info.subgraph_name.clone();
+    let start_block_override = manifest_info.start_block_override.clone();
+
     let env_vars = Arc::new(EnvVars::from_env().unwrap_or_default());
     let mock_registry = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
@@ -730,9 +719,14 @@ async fn setup_context(
     let blockchain_map = Arc::new(blockchain_map);
 
     // FileLinkResolver loads the manifest and WASM from the build directory
-    // instead of fetching from IPFS. This matches gnd dev's approach.
-    let link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver> =
-        Arc::new(FileLinkResolver::with_base_dir(build_dir));
+    // instead of fetching from IPFS. The alias maps the Qm deployment hash to the
+    // actual manifest path so that clone_for_manifest can resolve it without
+    // treating the hash as a filesystem path.
+    let aliases =
+        std::collections::HashMap::from([(hash.to_string(), manifest_path.to_path_buf())]);
+    let link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver> = Arc::new(
+        FileLinkResolver::new(Some(build_dir.to_path_buf()), aliases),
+    );
 
     // IPFS client is required by the instance manager constructor but not used
     // for manifest loading (FileLinkResolver handles that).
@@ -849,10 +843,9 @@ async fn setup_context(
     })
 }
 
-/// Remove a previous subgraph deployment and its data.
+/// Remove a subgraph deployment and its data after a test run.
 ///
-/// Called before each test to ensure a clean slate. Errors are ignored
-/// (the deployment might not exist on first run).
+/// Errors are ignored — the deployment is removed on a best-effort basis.
 async fn cleanup(
     subgraph_store: &SubgraphStore,
     name: &SubgraphName,
