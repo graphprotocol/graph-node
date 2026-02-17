@@ -70,10 +70,6 @@ impl ServerAddress {
         })
     }
 
-    pub fn local_gateway() -> Self {
-        Self::new("http://127.0.0.1:8080").unwrap()
-    }
-
     pub fn test_rpc_api() -> Self {
         match std::env::var("GRAPH_NODE_TEST_IPFS_URL") {
             Ok(value) if !value.is_empty() => Self::new(&value).unwrap_or_else(|e| {
@@ -186,19 +182,5 @@ mod tests {
         let addr = ServerAddress::new("https://example.com/ipfs").unwrap();
 
         assert_eq!(addr.to_string(), "https://example.com/ipfs/");
-    }
-
-    #[test]
-    fn local_gateway_server_address_is_valid() {
-        let addr = ServerAddress::local_gateway();
-
-        assert_eq!(addr.to_string(), "http://127.0.0.1:8080/");
-    }
-
-    #[test]
-    fn test_rpc_api_server_address_is_valid() {
-        let addr = ServerAddress::test_rpc_api();
-
-        assert_eq!(addr.to_string(), "http://127.0.0.1:5001/");
     }
 }
