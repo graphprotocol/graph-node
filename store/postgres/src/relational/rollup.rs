@@ -889,6 +889,87 @@ mod tests {
              order by "sgd007"."data".timestamp) data \
         group by timestamp"#;
 
+        const STATS_HOUR_CURRENT_SQL: &str = r#"\
+        select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
+               "token", sum("price") as "sum", max("amount") as "max" \
+          from (select id, vid, block$, date_bin('3600s', timestamp, 'epoch'::timestamptz) as timestamp, \
+                       "token", "amount", "price" \
+                  from "sgd007"."data" as c \
+                 where c.timestamp >= coalesce((select max(timestamp) + '3601 s'::interval as last_rollup \
+                       from "sgd007"."stats_hour"), '-infinity'::timestamptz) --FILTERS;) c \
+         group by "token""#;
+
+        const STATS_DAY_CURRENT_SQL: &str = r#"\
+        select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
+               "token", sum("price") as "sum", max("amount") as "max" \
+          from (select id, vid, block$, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp, \
+                       "token", "amount", "price" \
+                  from "sgd007"."data" as c \
+                 where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
+                       from "sgd007"."stats_day"), '-infinity'::timestamptz) --FILTERS;) c \
+         group by "token""#;
+
+        const TOTAL_CURRENT_SQL: &str = r#"\
+        select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
+               max("price") as "max", max("price" * "amount") as "max_value" \
+          from (select id, vid, block$, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp, \
+                       "amount", "price" \
+                  from "sgd007"."data" as c \
+                 where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
+                       from "sgd007"."total_stats_day"), '-infinity'::timestamptz) --FILTERS;) c"#;
+
+        const OPEN_CLOSE_CURRENT_SQL: &str = r#"\
+        select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
+               arg_min_numeric(("price", id)) as "open", \
+               arg_max_numeric(("price", id)) as "close", \
+               arg_min_int4(("amount", id)) as "first_amt" \
+          from (select id, vid, block$, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp, \
+                       "amount", "price" \
+                  from "sgd007"."data" as c \
+                 where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
+                       from "sgd007"."open_close_day"), '-infinity'::timestamptz) --FILTERS;) c"#;
+
+        const LIFETIME_CURRENT_SQL: &str = r#"
+        with bucket as (select max(id) as id, max(vid) as vid, max(block$) as block$,
+               max(timestamp) as timestamp,
+               count(*) as "count", sum("amount") as "sum",
+               count(*) as "total_count", sum("amount") as "total_sum"
+          from (select id, vid, block$,
+                       date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp,
+                       "amount"
+                  from "sgd007"."data" as c
+                 where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval
+                       as last_rollup from "sgd007"."lifetime_day"),
+                       '-infinity'::timestamptz) --FILTERS;) c),
+             prev as (select bucket.id, bucket.vid, bucket.block$, bucket.timestamp,
+                             null::int8 as "count", null::numeric as "sum",
+                             prev."total_count", prev."total_sum"
+                        from bucket cross join lateral (
+                             select * from "sgd007"."lifetime_day" prev
+                              where prev.timestamp < coalesce((select max(timestamp) + '86401 s'::interval
+                                    as last_rollup from "sgd007"."lifetime_day"),
+                                    '-infinity'::timestamptz)
+                              order by prev.timestamp desc limit 1) prev),
+             combined as (select id, vid, block$, timestamp,
+                                 sum("count") as "count", sum("sum") as "sum",
+                                 sum("total_count") as "total_count",
+                                 sum("total_sum") as "total_sum"
+                            from (select *, 1 as seq from prev
+                                  union all
+                                  select *, 2 as seq from bucket) u
+                            group by id, vid, block$, timestamp)select id, vid, block$, timestamp,
+               "count", "sum", "total_count", "total_sum"
+          from combined as c
+        "#;
+
+        const COUNT_ONLY_CURRENT_SQL: &str = r#"\
+        select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
+               count(*) as "count" \
+          from (select id, vid, block$, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp \
+                  from "sgd007"."data" as c \
+                 where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
+                       from "sgd007"."count_only_day"), '-infinity'::timestamptz) --FILTERS;) c"#;
+
         #[track_caller]
         fn rollup_for<'a>(layout: &'a Layout, table_name: &str) -> &'a Rollup {
             layout
@@ -926,5 +1007,13 @@ mod tests {
 
         let count_only = rollup_for(&layout, "count_only_day");
         check_eqv(COUNT_ONLY_SQL, &count_only.insert_sql);
+
+        // Generated select_current_sql is correct
+        check_eqv(STATS_HOUR_CURRENT_SQL, &stats_hour.select_current_sql);
+        check_eqv(STATS_DAY_CURRENT_SQL, &stats_day.select_current_sql);
+        check_eqv(TOTAL_CURRENT_SQL, &stats_total.select_current_sql);
+        check_eqv(OPEN_CLOSE_CURRENT_SQL, &open_close.select_current_sql);
+        check_eqv(LIFETIME_CURRENT_SQL, &lifetime.select_current_sql);
+        check_eqv(COUNT_ONLY_CURRENT_SQL, &count_only.select_current_sql);
     }
 }
