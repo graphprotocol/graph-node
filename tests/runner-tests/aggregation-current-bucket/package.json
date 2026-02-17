@@ -1,0 +1,13 @@
+{
+    "name": "aggregation-current-bucket",
+    "version": "0.0.0",
+    "private": true,
+    "scripts": {
+        "codegen": "graph codegen --skip-migrations",
+        "deploy:test": "graph deploy test/aggregation-current-bucket --version-label v0.0.1 --ipfs $IPFS_URI --node $GRAPH_NODE_ADMIN_URI 2>&1 | sed 's/\u001b[[0-9;]*m//g'"
+    },
+    "devDependencies": {
+        "@graphprotocol/graph-cli": "0.98.1",
+        "@graphprotocol/graph-ts": "0.35.0"
+    }
+}
