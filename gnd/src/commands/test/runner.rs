@@ -19,7 +19,8 @@
 //! RPC endpoint.
 //!
 //! This approach follows the same pattern as `gnd dev`, which also uses
-//! `FileLinkResolver` and filesystem-based deployment hashes instead of IPFS.
+//! `FileLinkResolver` to load the manifest and WASM from the build directory
+//! instead of fetching from IPFS.
 //!
 //! Noop/stub adapters (see [`super::noop`]) satisfy the `Chain` constructor's
 //! trait bounds without making real network calls.
@@ -500,8 +501,8 @@ impl TestDatabase {
     }
 
     /// Persistent databases accumulate state across test runs and need
-    /// explicit cleanup (remove prior deployments, drop chains) before
-    /// each test. Temporary databases start fresh — no cleanup needed.
+    /// explicit post-test cleanup to remove each run's deployment.
+    /// Temporary databases are dropped automatically — no cleanup needed.
     fn needs_cleanup(&self) -> bool {
         match self {
             #[cfg(unix)]
@@ -687,13 +688,12 @@ async fn setup_chain(
 /// Wire up all graph-node components and deploy the subgraph.
 ///
 /// This mirrors what `gnd dev` does via the launcher, but assembled directly:
-/// 1. Clean up any leftover deployment from a previous run
-/// 2. Create blockchain map (just our mock chain)
-/// 3. Set up link resolver (FileLinkResolver for local filesystem)
-/// 4. Create the subgraph instance manager (WASM runtime, trigger processing)
-/// 5. Create the subgraph provider (lifecycle management)
-/// 6. Create the GraphQL runner (for assertions)
-/// 7. Register and deploy the subgraph via the registrar
+/// 1. Create blockchain map (just our mock chain)
+/// 2. Set up link resolver (FileLinkResolver for local filesystem, with a hash alias)
+/// 3. Create the subgraph instance manager (WASM runtime, trigger processing)
+/// 4. Create the subgraph provider (lifecycle management)
+/// 5. Create the GraphQL runner (for assertions)
+/// 6. Register and deploy the subgraph via the registrar
 async fn setup_context(
     logger: &Logger,
     stores: &TestStores,

@@ -687,7 +687,7 @@ GraphQL queries → Assertions
 
 **Key design principles:**
 
-- **Fresh database per test:** Each test gets an isolated pgtemp database, automatically dropped on completion
+- **Isolated database per test:** Each test gets a pgtemp database dropped on completion (default), or a shared persistent database with post-test cleanup (`--postgres-url`)
 - **Real WASM runtime:** Uses `EthereumRuntimeAdapterBuilder` with real `ethereum.call` host function
 - **Pre-populated call cache:** `eth_call` responses are cached before indexing starts
 - **No IPFS for manifest:** Uses `FileLinkResolver` to load manifest/WASM from build directory
