@@ -93,7 +93,7 @@ slog-async = "2.5.0"
 slog-term = "2.7.0"
 sqlparser = { version = "0.61.0", features = ["visitor"] }
 strum = { version = "0.27", features = ["derive"] }
-syn = { version = "2.0.114", features = ["full"] }
+syn = { version = "2.0.116", features = ["full"] }
 test-store = { path = "./store/test-store" }
 thiserror = "2.0.18"
 deadpool = { version = "0.12", features = ["rt_tokio_1", "managed"] }
