@@ -1,9 +1,8 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use derivative::Derivative;
+use derive_more::Debug;
 use http::header::CONTENT_LENGTH;
 use reqwest::Response;
 use reqwest::StatusCode;
@@ -18,17 +17,15 @@ use crate::ipfs::{
 /// A client that connects to an IPFS RPC API.
 ///
 /// Reference: <https://docs.ipfs.tech/reference/kubo/rpc>
-#[derive(Clone, Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, Debug)]
 pub struct IpfsRpcClient {
     server_address: ServerAddress,
 
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     http_client: reqwest::Client,
 
     metrics: IpfsMetrics,
     logger: Logger,
-    test_request_timeout: Duration,
 }
 
 impl IpfsRpcClient {
@@ -64,7 +61,6 @@ impl IpfsRpcClient {
             http_client: reqwest::Client::new(),
             metrics,
             logger: logger.to_owned(),
-            test_request_timeout: ENV_VARS.ipfs_request_timeout,
         })
     }
 
@@ -140,6 +136,8 @@ impl IpfsClient for IpfsRpcClient {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use bytes::BytesMut;
     use futures03::TryStreamExt;
     use wiremock::matchers as m;

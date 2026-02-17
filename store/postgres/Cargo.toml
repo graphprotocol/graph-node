@@ -8,7 +8,7 @@ async-trait = { workspace = true }
 blake3 = "1.8"
 chrono = { workspace = true }
 deadpool = { workspace = true }
-derive_more = { version = "2.1.1", features = ["full"] }
+derive_more = { workspace = true, features = ["full"] }
 diesel = { workspace = true }
 diesel-async = { workspace = true }
 diesel-dynamic-schema = { workspace = true }

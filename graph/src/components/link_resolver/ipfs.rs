@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
-use derivative::Derivative;
+use derive_more::Debug;
 use futures03::compat::Stream01CompatExt;
 use futures03::stream::StreamExt;
 use futures03::stream::TryStreamExt;
@@ -22,10 +22,9 @@ use crate::prelude::*;
 
 use super::{LinkResolver, LinkResolverContext};
 
-#[derive(Clone, CheapClone, Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, CheapClone, Debug)]
 pub struct IpfsResolver {
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     client: Arc<dyn IpfsClient>,
 
     timeout: Duration,
