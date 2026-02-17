@@ -15,6 +15,10 @@ path = "tests/cli_commands.rs"
 name = "codegen_verification"
 path = "tests/codegen_verification.rs"
 
+[[test]]
+name = "gnd_test"
+path = "tests/gnd_test.rs"
+
 [dependencies]
 # Core graph dependencies
 graph = { path = "../graph" }

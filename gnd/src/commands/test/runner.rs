@@ -407,11 +407,17 @@ fn get_database_url(opt: &TestOpt, build_dir: &Path) -> Result<(String, Option<T
             );
         }
 
+        // pgtemp sets `unix_socket_directories` to the data dir by default.
+        // On macOS the temp dir path can exceed the 104-byte Unix socket limit
+        // (e.g. /private/var/folders/.../build/pgtemp-xxx/pg_data_dir/.s.PGSQL.PORT),
+        // causing postgres to silently fail to start. Override to /tmp so the
+        // socket path stays short. Different port numbers prevent conflicts.
         let db = PgTempDBBuilder::new()
             .with_data_dir_prefix(build_dir)
             .persist_data(false)
             .with_initdb_arg("-E", "UTF8")
             .with_initdb_arg("--locale", "C")
+            .with_config_param("unix_socket_directories", "/tmp")
             .start();
 
         let url = db.connection_uri().to_string();
@@ -459,7 +465,7 @@ async fn setup_stores(
 [store]
 [store.primary]
 connection = "{}"
-pool_size = 10
+pool_size = 2
 
 [deployment]
 [[deployment.rule]]
