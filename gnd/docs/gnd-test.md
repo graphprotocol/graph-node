@@ -78,7 +78,7 @@ Place test files in a `tests/` directory with `.json` or `.test.json` extension.
 |-------|----------|---------|-------------|
 | `number` | No | Auto-increments from lowest defined `startBlock` in the manifest file, or from  `0` if no `startBlock` are defined | Block number |
 | `hash` | No | `keccak256(block_number)` | Block hash |
-| `timestamp` | No | `block_number * 12` | Unix timestamp |
+| `timestamp` | No | `block_number` | Unix timestamp |
 | `baseFeePerGas` | No | None (pre-EIP-1559) | Base fee in wei |
 | `events` | No | Empty array | Log events in this block |
 | `ethCalls` | No | Empty array | Mock `eth_call` responses |
