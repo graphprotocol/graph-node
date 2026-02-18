@@ -1,8 +1,4 @@
 //! GraphQL assertion execution for test validation.
-//!
-//! After all mock blocks have been indexed, this module executes GraphQL
-//! queries against the indexed data and compares results to expected values
-//! from the test file.
 
 use super::runner::TestContext;
 use super::schema::{Assertion, AssertionFailure, AssertionOutcome, TestResult};
@@ -10,16 +6,11 @@ use anyhow::{anyhow, Result};
 use graph::data::query::{Query, QueryResults, QueryTarget};
 use graph::prelude::{q, r, ApiVersion, GraphQlRunner as GraphQlRunnerTrait};
 
-/// Run all GraphQL assertions from the test file.
-///
-/// Each assertion is a GraphQL query + expected JSON result. Returns `Passed`
-/// if all assertions match, or `Failed` with the list of mismatches.
 pub(super) async fn run_assertions(
     ctx: &TestContext,
     assertions: &[Assertion],
 ) -> Result<TestResult> {
     let mut outcomes = Vec::new();
-    let mut has_failure = false;
 
     for assertion in assertions {
         match run_single_assertion(ctx, assertion).await {
@@ -29,11 +20,9 @@ pub(super) async fn run_assertions(
                 });
             }
             Ok(Some(failure)) => {
-                has_failure = true;
                 outcomes.push(AssertionOutcome::Failed(failure));
             }
             Err(e) => {
-                has_failure = true;
                 outcomes.push(AssertionOutcome::Failed(AssertionFailure {
                     query: assertion.query.clone(),
                     expected: assertion.expected.clone(),
@@ -43,27 +32,17 @@ pub(super) async fn run_assertions(
         }
     }
 
-    if has_failure {
-        Ok(TestResult::Failed {
-            handler_error: None,
-            assertions: outcomes,
-        })
-    } else {
-        Ok(TestResult::Passed {
-            assertions: outcomes,
-        })
-    }
+    Ok(TestResult {
+        handler_error: None,
+        assertions: outcomes,
+    })
 }
 
-/// Execute a single GraphQL assertion and compare the result.
-///
-/// Returns `None` if the assertion passed (actual == expected),
-/// or `Some(AssertionFailure)` with the diff.
+/// Execute a single assertion. Returns `None` on pass, `Some(failure)` on mismatch.
 async fn run_single_assertion(
     ctx: &TestContext,
     assertion: &Assertion,
 ) -> Result<Option<AssertionFailure>> {
-    // Query targets the specific deployment (not by subgraph name).
     let target = QueryTarget::Deployment(ctx.deployment.hash.clone(), ApiVersion::default());
     let query = Query::new(
         q::parse_query(&assertion.query)
@@ -82,7 +61,6 @@ async fn run_single_assertion(
         .to_result()
         .map_err(|errors| anyhow!("Query errors: {:?}", errors))?;
 
-    // Convert graph-node's internal r::Value to serde_json::Value for comparison.
     let actual_json = match result {
         Some(value) => r_value_to_json(&value),
         None => serde_json::Value::Null,
@@ -141,7 +119,6 @@ pub(super) fn align_for_diff(
             let mut used = vec![false; act.len()];
             let mut aligned = Vec::with_capacity(exp.len().max(act.len()));
 
-            // For each expected element, find the most similar actual element.
             for exp_elem in exp {
                 let best = act
                     .iter()
@@ -155,7 +132,6 @@ pub(super) fn align_for_diff(
                 }
             }
 
-            // Append any unmatched actual elements at the end.
             for (i, elem) in act.iter().enumerate() {
                 if !used[i] {
                     aligned.push(elem.clone());
@@ -165,7 +141,6 @@ pub(super) fn align_for_diff(
             serde_json::Value::Array(aligned)
         }
         (serde_json::Value::Object(exp), serde_json::Value::Object(act)) => {
-            // Recurse into matching keys.
             let aligned: serde_json::Map<String, serde_json::Value> = act
                 .iter()
                 .map(|(k, v)| {
@@ -183,16 +158,12 @@ pub(super) fn align_for_diff(
     }
 }
 
-/// Score how similar two JSON values are (higher = more similar).
+/// Score how similar two JSON values are for use in [`align_for_diff`].
 ///
-/// For objects, counts matching key-value pairs with heavy weight on `id`
-/// (the most common GraphQL entity identifier). Returns 0 for non-matching
-/// leaf values.
-///
-/// Note: Both this and `json_equal`'s array arm are O(n²). This is fine for
-/// realistic test sizes (<1000 entities). If needed, an O(n) fast-path
-/// could pre-match elements by `id` field via HashMap before falling back
-/// to the similarity scan.
+/// For objects, counts the number of fields whose values are equal in both.
+/// A matching `"id"` field is weighted heavily (+100) since it is the
+/// strongest signal that two objects represent the same entity.
+/// For all other value types, returns 1 if equal, 0 otherwise.
 fn json_similarity(a: &serde_json::Value, b: &serde_json::Value) -> usize {
     match (a, b) {
         (serde_json::Value::Object(a_obj), serde_json::Value::Object(b_obj)) => {
@@ -201,8 +172,6 @@ fn json_similarity(a: &serde_json::Value, b: &serde_json::Value) -> usize {
                 if let Some(bv) = b_obj.get(k) {
                     if json_equal(v, bv) {
                         // `id` match is a strong signal for entity identity.
-                        // NOTE: Magic number 100 - weight for id field vs other fields (1).
-                        // Could be extracted to constant if tuning needed.
                         score += if k == "id" { 100 } else { 1 };
                     }
                 }
@@ -232,20 +201,13 @@ fn json_equal(a: &serde_json::Value, b: &serde_json::Value) -> bool {
         (serde_json::Value::Bool(a), serde_json::Value::Bool(b)) => a == b,
         (serde_json::Value::Number(a), serde_json::Value::Number(b)) => a == b,
         (serde_json::Value::String(a), serde_json::Value::String(b)) => a == b,
-        // String-vs-number coercion for BigInt/BigDecimal fields.
         (serde_json::Value::String(s), serde_json::Value::Number(n))
         | (serde_json::Value::Number(n), serde_json::Value::String(s)) => s == &n.to_string(),
         (serde_json::Value::Array(a), serde_json::Value::Array(b)) => {
             if a.len() != b.len() {
                 return false;
             }
-            // Order-insensitive comparison: each element in `a` must match
-            // exactly one unmatched element in `b`. This handles GraphQL
-            // collection queries where entity ordering is non-deterministic.
-            //
-            // TODO: O(n²) complexity - fine for <1000 entities but could be optimized
-            // with id-based HashMap lookup for objects with `id` fields.
-            // See: gnd-test.md "Next Iteration Improvements"
+            // Order-insensitive: O(n²), fine for realistic test sizes.
             let mut used = vec![false; b.len()];
             a.iter().all(|a_elem| {
                 for (i, b_elem) in b.iter().enumerate() {

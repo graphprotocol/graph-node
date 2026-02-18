@@ -26,18 +26,6 @@
 //!
 //! The `--matchstick` flag falls back to the external Matchstick test runner
 //! for backward compatibility with existing test suites.
-//!
-//! ## Module structure
-//!
-//! - [`schema`]: JSON input types (TestFile, TestBlock, etc.) and result types
-//! - [`trigger`]: ABI encoding of event parameters into Ethereum log triggers
-//! - [`mock_chain`]: Helpers for block pointer construction
-//! - [`runner`]: Test execution orchestration (store setup, indexing, sync)
-//! - [`assertion`]: GraphQL assertion execution and JSON comparison
-//! - [`block_stream`]: Mock block stream that feeds pre-built blocks
-//! - [`noop`]: Noop/stub trait implementations for the mock chain
-//! - [`matchstick`]: Legacy Matchstick test runner (version resolution, download, Docker)
-//! - [`output`]: Console output formatting for test results
 
 mod assertion;
 mod block_stream;
@@ -57,7 +45,6 @@ use std::path::PathBuf;
 
 use crate::output::{step, Step};
 
-/// Default directory for test file discovery.
 const DEFAULT_TEST_DIR: &str = "tests";
 
 #[derive(Clone, Debug, Parser)]
@@ -113,11 +100,6 @@ pub struct TestOpt {
     pub verbose: u8,
 }
 
-/// Entry point for the `gnd test` command.
-///
-/// Orchestrates the full test lifecycle: build -> discover -> run -> report.
-/// Each test file gets its own isolated database and subgraph deployment.
-/// Returns an error if any tests fail (for non-zero exit code).
 pub async fn run_test(opt: TestOpt) -> Result<()> {
     if opt.matchstick {
         return matchstick::run(&opt).await;
@@ -174,7 +156,6 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
     for path in test_files {
         output::print_test_start(&path);
 
-        // Parse the JSON test file into our schema types.
         let test_file = match schema::parse_test_file(&path) {
             Ok(tf) => tf,
             Err(e) => {
@@ -184,8 +165,6 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
             }
         };
 
-        // Run the test: set up infra, index blocks, check assertions.
-        // Each test gets a fresh database so tests are fully isolated.
         match runner::run_single_test(&opt, &manifest_info, &test_file).await {
             Ok(result) => {
                 output::print_test_result(&test_file.name, &result);
@@ -213,13 +192,6 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
     }
 }
 
-/// Resolve a list of paths into concrete test file paths.
-///
-/// Each path is either a JSON file (used directly) or a directory
-/// (scanned for `*.json` / `*.test.json`). Bare filenames that don't
-/// exist at the given path are also looked up in the default test
-/// directory (e.g. `gnd test foo.json` resolves to `tests/foo.json`).
-/// Results are sorted for deterministic execution order.
 fn resolve_test_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
@@ -229,13 +201,7 @@ fn resolve_test_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
         } else if path.exists() {
             files.push(path.clone());
         } else {
-            // Try resolving bare filename inside the default test directory.
-            let in_default_dir = PathBuf::from(DEFAULT_TEST_DIR).join(path);
-            if in_default_dir.exists() {
-                files.push(in_default_dir);
-            } else {
-                anyhow::bail!("Test file not found: {}", path.display());
-            }
+            anyhow::bail!("Test file not found: {}", path.display());
         }
     }
 

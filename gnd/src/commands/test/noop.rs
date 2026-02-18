@@ -18,13 +18,7 @@ use std::sync::Arc;
 
 use graph::slog::o;
 
-// ============ Block Refetcher ============
-
-/// Block refetcher that never refetches.
-///
-/// In production, block refetching handles reorgs by re-fetching blocks from
-/// the chain. In tests, all blocks are pre-defined and there are no reorgs,
-/// so this is a noop. `required()` returns false so it's never called.
+/// No-op block refetcher. Tests have no reorgs, so refetching is never needed.
 pub(super) struct StaticBlockRefetcher<C: Blockchain> {
     pub _phantom: PhantomData<C>,
 }
@@ -47,9 +41,6 @@ impl<C: Blockchain> BlockRefetcher<C> for StaticBlockRefetcher<C> {
     }
 }
 
-// ============ Triggers Adapters ============
-
-/// Always returns `NoopTriggersAdapter` regardless of deployment or capabilities.
 pub(super) struct NoopAdapterSelector<C> {
     pub _phantom: PhantomData<C>,
 }
@@ -67,12 +58,7 @@ impl<C: Blockchain> TriggersAdapterSelector<C> for NoopAdapterSelector<C> {
     }
 }
 
-/// A triggers adapter that returns empty/default results for all methods.
-///
-/// Since we feed pre-built triggers via `StaticStreamBuilder`, the adapter's
-/// scanning and fetching methods are never called during normal test execution.
-/// The methods that are called (like `parent_ptr` for chain traversal) return
-/// sensible defaults.
+/// Returns empty/default results. Never called since triggers come from `StaticStreamBuilder`.
 struct NoopTriggersAdapter<C: Blockchain> {
     _phantom: PhantomData<C>,
 }
@@ -123,8 +109,6 @@ impl<C: Blockchain> TriggersAdapter<C> for NoopTriggersAdapter<C> {
         Ok(true)
     }
 
-    /// Returns a synthetic parent pointer for chain traversal.
-    /// Block 0 has no parent; all others point to block N-1 with a default hash.
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {
         match block.number {
             0 => Ok(None),

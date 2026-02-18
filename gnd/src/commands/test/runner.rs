@@ -9,24 +9,9 @@
 //! 4. Deploys the subgraph and starts the indexer
 //! 5. Waits for all blocks to be processed (or a fatal error)
 //! 6. Runs GraphQL assertions against the indexed entity state
-//!
-//! ## Architecture
-//!
-//! The runner reuses real graph-node infrastructure — the same store, WASM runtime,
-//! and trigger processing code used in production. Only the blockchain layer is
-//! mocked via `StaticStreamBuilder` (see [`super::block_stream`]), which feeds
-//! pre-built `BlockWithTriggers` from the test JSON instead of fetching from an
-//! RPC endpoint.
-//!
-//! This approach follows the same pattern as `gnd dev`, which also uses
-//! `FileLinkResolver` to load the manifest and WASM from the build directory
-//! instead of fetching from IPFS.
-//!
-//! Noop/stub adapters (see [`super::noop`]) satisfy the `Chain` constructor's
-//! trait bounds without making real network calls.
 
 use super::assertion::run_assertions;
-use super::block_stream::{MutexBlockStreamBuilder, StaticStreamBuilder};
+use super::block_stream::StaticStreamBuilder;
 use super::mock_chain;
 use super::noop::{NoopAdapterSelector, StaticBlockRefetcher};
 use super::schema::{TestFile, TestResult};
@@ -69,29 +54,17 @@ use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
 use pgtemp::PgTempDBBuilder;
 
-/// Node ID used for all test deployments. Visible in store metadata.
 const NODE_ID: &str = "gnd-test";
 
-/// Build a logger based on the `-v` verbosity flag.
-///
-/// When the `GRAPH_LOG` environment variable is set it always takes precedence
-/// (this is the existing graph-node convention). Otherwise:
-///
-/// | Flag     | Level |
-/// |----------|-------|
-/// | *(none)* | Off (discard) — only test pass/fail output via `println!` |
-/// | `-v`     | Info  |
-/// | `-vv`    | Debug |
-/// | `-vvv`   | Trace |
+/// Build a logger from the `-v` flag. `GRAPH_LOG` env var always takes precedence.
+/// `verbose`: 0=off, 1=Info, 2=Debug, 3+=Trace.
 fn make_test_logger(verbose: u8) -> Logger {
-    // GRAPH_LOG env var always wins — use the standard graph-node logger
-    // with debug enabled so GRAPH_LOG's own filtering is the sole authority.
     if std::env::var("GRAPH_LOG").is_ok() {
         return graph::log::logger(true);
     }
@@ -106,78 +79,43 @@ fn make_test_logger(verbose: u8) -> Logger {
     }
 }
 
-/// Bundles the store infrastructure needed for test execution.
-///
-/// Created once per test and holds the connection pools, chain store,
-/// and chain head listener that the indexer needs.
 struct TestStores {
-    /// Network name from the subgraph manifest (e.g., "mainnet").
-    /// Must match the chain config so graph-node routes triggers correctly.
     network_name: ChainName,
     /// Listens for chain head updates — needed by the Chain constructor.
     chain_head_listener: Arc<ChainHeadUpdateListener>,
-    /// The top-level store (wraps subgraph store + block store).
     network_store: Arc<Store>,
-    /// Per-chain block storage.
     chain_store: Arc<ChainStore>,
 }
 
-/// All the pieces needed to run a test after infrastructure setup.
-///
-/// Holds references to the subgraph provider (for starting indexing),
-/// the store (for querying sync status), the deployment locator,
-/// and the GraphQL runner (for assertions).
+/// Components needed to run a test after infrastructure setup.
 pub(super) struct TestContext {
-    /// Starts/stops subgraph indexing.
     pub(super) provider: Arc<graph_core::subgraph_provider::SubgraphProvider>,
-    /// Used to check sync progress and health status.
     pub(super) store: Arc<SubgraphStore>,
-    /// Identifies this specific subgraph deployment in the store.
     pub(super) deployment: DeploymentLocator,
-    /// Executes GraphQL queries against the indexed data.
     pub(super) graphql_runner: Arc<GraphQlRunner<Store>>,
 }
 
-// ============ Manifest Loading ============
-
 /// Pre-computed manifest data shared across all tests in a run.
 ///
-/// Loaded once at the start of `run_test` and passed to each test,
-/// avoiding redundant manifest parsing and noisy log output.
-///
-/// All tests share the same `hash` and `subgraph_name` (derived from the built
-/// manifest path and a per-run seed), which are unique across runs. This means
-/// tests MUST still run sequentially within a single `gnd test` invocation, but
-/// sequential `gnd test` invocations never conflict with each other in the store.
+/// Loaded once to avoid redundant parsing.
 pub(super) struct ManifestInfo {
-    /// The build directory containing compiled WASM, schema, and built manifest.
     pub build_dir: PathBuf,
     /// Canonical path to the built manifest file (e.g., `build/subgraph.yaml`).
     /// Registered as an alias for `hash` in `FileLinkResolver` so that
     /// `clone_for_manifest` can resolve the Qm hash to a real filesystem path.
     pub manifest_path: PathBuf,
-    /// Network name from the manifest (e.g., "mainnet").
     pub network_name: ChainName,
-    /// Minimum `startBlock` across all data sources.
     pub min_start_block: u64,
     /// Override for on-chain block validation when startBlock > 0.
     pub start_block_override: Option<BlockPtr>,
-    /// Deployment hash derived from the built manifest path and a per-run seed.
-    /// Unique per run so that concurrent and sequential runs never conflict.
     pub hash: DeploymentHash,
-    /// Subgraph name derived from the manifest's root directory with a per-run seed suffix
-    /// (e.g., "test/my-subgraph-1739800000000"). Unique per run for the same reason.
     pub subgraph_name: SubgraphName,
 }
 
-/// Compute a `DeploymentHash` for a local test run from a filesystem path and a seed.
+/// Compute a `DeploymentHash` from a path and seed.
 ///
-/// Produces `"Qm" + hex(sha1(path + '\0' + seed))` — 42 alphanumeric characters that
-/// pass `DeploymentHash` validation. Not a real IPFS CIDv0, but visually consistent
-/// with one and requires no additional dependencies (`sha1` is already used by `gnd build`).
-///
-/// The `seed` (typically the current Unix epoch in milliseconds) makes each run produce a
-/// distinct hash so sequential or concurrent test runs never collide in the store.
+/// Produces `"Qm" + hex(sha1(path + '\0' + seed))`. The seed makes each run
+/// produce a distinct hash so sequential runs never collide in the store.
 fn deployment_hash_from_path_and_seed(path: &Path, seed: u128) -> Result<DeploymentHash> {
     use sha1::{Digest, Sha1};
 
@@ -187,11 +125,6 @@ fn deployment_hash_from_path_and_seed(path: &Path, seed: u128) -> Result<Deploym
     DeploymentHash::new(qm).map_err(|e| anyhow!("Failed to create deployment hash: {}", e))
 }
 
-/// Load and pre-compute manifest data for the test run.
-///
-/// Resolves paths relative to the manifest location, loads the built manifest,
-/// extracts the network name and start block, and computes the deployment hash.
-/// Called once before any tests run.
 pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
     let manifest_dir = opt
         .manifest
@@ -263,11 +196,6 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
     })
 }
 
-/// Extract the network name (e.g., "mainnet") from the first data source in a manifest.
-///
-/// The network name must match the chain configuration passed to the store,
-/// otherwise graph-node won't route triggers to the correct chain.
-/// Falls back to "mainnet" if not found (the common case for Ethereum subgraphs).
 fn extract_network_from_manifest(manifest: &Manifest) -> Result<String> {
     let network = manifest
         .data_sources
@@ -278,22 +206,9 @@ fn extract_network_from_manifest(manifest: &Manifest) -> Result<String> {
     Ok(network)
 }
 
-/// Extract the minimum `startBlock` across all Ethereum data sources in a manifest.
+/// Extract the minimum `startBlock` across all data sources.
 ///
-/// When a manifest specifies `startBlock` on its data sources, graph-node
-/// normally validates that the block exists on-chain during deployment.
-/// In tests there is no real chain, so the caller uses this value to build
-/// a `start_block_override` that bypasses validation.
-///
-/// Only considers Ethereum data sources (kind: "ethereum" or "ethereum/contract")
-/// since gnd test only supports testing Ethereum contracts.
-///
-/// Returns 0 if no Ethereum data source specifies a `startBlock`.
-///
-/// NOTE: When multiple datasources have different startBlocks, taking the minimum
-/// is correct for default block numbering, but users must use explicit "number"
-/// fields to test datasources with higher startBlocks. Consider adding a warning
-/// when this is detected. See: gnd-test.md "Next Iteration Improvements"
+/// Used to build `start_block_override` for bypassing on-chain validation.
 fn extract_start_block_from_manifest(manifest: &Manifest) -> Result<u64> {
     Ok(manifest
         .data_sources
@@ -303,39 +218,32 @@ fn extract_start_block_from_manifest(manifest: &Manifest) -> Result<u64> {
         .unwrap_or(0))
 }
 
-// ============ Test Execution ============
-
-/// Run a single test file end-to-end.
-///
-/// This is the main entry point called from `mod.rs` for each test file.
-/// It creates isolated infrastructure (database, stores, chain), indexes
-/// the mock blocks, and checks the GraphQL assertions.
-///
-/// The `manifest_info` is loaded once and shared across all tests to avoid
-/// redundant manifest parsing.
-///
-/// Returns `TestResult::Passed` if all assertions match, or `TestResult::Failed`
-/// with details about handler errors or assertion mismatches.
 pub async fn run_single_test(
     opt: &TestOpt,
     manifest_info: &ManifestInfo,
     test_file: &TestFile,
 ) -> Result<TestResult> {
-    // Empty test with no blocks and no assertions is trivially passing.
-    if test_file.blocks.is_empty() && test_file.assertions.is_empty() {
-        return Ok(TestResult::Passed { assertions: vec![] });
+    // Warn (and short-circuit) when there are no assertions.
+    if test_file.assertions.is_empty() {
+        if test_file.blocks.is_empty() {
+            eprintln!(
+                "  {} Test '{}' has no blocks and no assertions",
+                console::style("⚠").yellow(),
+                test_file.name
+            );
+            return Ok(TestResult {
+                handler_error: None,
+                assertions: vec![],
+            });
+        } else {
+            eprintln!(
+                "  {} Test '{}' has blocks but no assertions",
+                console::style("⚠").yellow(),
+                test_file.name
+            );
+        }
     }
 
-    // Warn when a test has blocks but no assertions — likely a mistake.
-    if !test_file.blocks.is_empty() && test_file.assertions.is_empty() {
-        eprintln!(
-            "  {} Test '{}' has blocks but no assertions",
-            console::style("⚠").yellow(),
-            test_file.name
-        );
-    }
-
-    // Convert test JSON blocks into graph-node's internal block format.
     // Default block numbering starts at the manifest's startBlock so that
     // test blocks without explicit numbers fall in the subgraph's indexed range.
     let blocks = build_blocks_with_triggers(test_file, manifest_info.min_start_block)?;
@@ -346,14 +254,10 @@ pub async fn run_single_test(
 
     let logger = make_test_logger(opt.verbose).new(o!("test" => test_file.name.clone()));
 
-    // Initialize stores with the network name from the manifest.
     let stores = setup_stores(&logger, &db, &manifest_info.network_name).await?;
 
-    // Create the mock Ethereum chain that will feed our pre-built blocks.
     let chain = setup_chain(&logger, blocks.clone(), &stores).await?;
 
-    // Wire up all graph-node components (instance manager, provider, registrar, etc.)
-    // and deploy the subgraph.
     let ctx = setup_context(&logger, &stores, &chain, manifest_info).await?;
 
     // Populate eth_call cache with mock responses before starting indexer.
@@ -373,7 +277,6 @@ pub async fn run_single_test(
         mock_chain::final_block_ptr(&blocks).ok_or_else(|| anyhow!("No blocks to process"))?
     };
 
-    // Start the indexer and wait for it to process all blocks.
     info!(logger, "Starting subgraph indexing"; "stop_block" => stop_block.number);
 
     ctx.provider
@@ -381,7 +284,6 @@ pub async fn run_single_test(
         .start_subgraph(ctx.deployment.clone(), Some(stop_block.number))
         .await;
 
-    // Capture the result so we can ensure cleanup happens regardless of outcome
     let result = match wait_for_sync(
         &logger,
         ctx.store.clone(),
@@ -390,14 +292,11 @@ pub async fn run_single_test(
     )
     .await
     {
-        Ok(()) => {
-            // Indexing succeeded — now validate the entity state via GraphQL.
-            run_assertions(&ctx, &test_file.assertions).await
-        }
+        Ok(()) => run_assertions(&ctx, &test_file.assertions).await,
         Err(subgraph_error) => {
             // The subgraph handler threw a fatal error during indexing.
             // Report it as a test failure without running assertions.
-            Ok(TestResult::Failed {
+            Ok(TestResult {
                 handler_error: Some(subgraph_error.message),
                 assertions: vec![],
             })
@@ -429,11 +328,7 @@ pub async fn run_single_test(
 
 /// Create the database for this test run.
 ///
-/// If `--postgres-url` was provided, returns a `Persistent` database that
-/// requires cleanup between tests. Otherwise, on Unix, creates a `Temporary`
-/// pgtemp database in the build directory (matching `gnd dev`'s pattern) —
-/// dropped automatically when the returned value goes out of scope.
-///
+/// Returns `Temporary` (pgtemp, auto-dropped) or `Persistent` (--postgres-url).
 /// On non-Unix systems, `--postgres-url` is required.
 fn create_test_database(opt: &TestOpt, build_dir: &Path) -> Result<TestDatabase> {
     if let Some(url) = &opt.postgres_url {
@@ -476,10 +371,6 @@ fn create_test_database(opt: &TestOpt, build_dir: &Path) -> Result<TestDatabase>
 }
 
 /// Database used for a single test run.
-///
-/// Encapsulates both the connection URL and the lifecycle semantics:
-/// - `Temporary`: pgtemp-managed, RAII — dropped when this value goes out of scope
-/// - `Persistent`: user-provided URL, requires explicit cleanup between tests
 enum TestDatabase {
     #[cfg(unix)]
     Temporary {
@@ -512,21 +403,11 @@ impl TestDatabase {
     }
 }
 
-/// Initialize graph-node stores from a database URL.
-///
-/// Creates:
-/// - A TOML config with the database URL and a chain entry for the test network
-/// - A `StoreBuilder` that runs database migrations and creates connection pools
-/// - A chain store for the test chain with a synthetic genesis block (hash=0x0)
-///
 async fn setup_stores(
     logger: &Logger,
     db: &TestDatabase,
     network_name: &ChainName,
 ) -> Result<TestStores> {
-    // Minimal graph-node config: one primary shard, no chain providers.
-    // The chain→shard mapping defaults to "primary" in StoreBuilder::make_store,
-    // and we construct EthereumNetworkAdapters directly in setup_chain.
     let config_str = format!(
         r#"
 [store]
@@ -582,11 +463,8 @@ ingestor = "default"
 
 /// Construct a mock Ethereum `Chain` with pre-built blocks.
 ///
-/// The chain uses:
-/// - `StaticStreamBuilder`: feeds pre-defined blocks instead of RPC/Firehose
-/// - `NoopAdapterSelector` / `NoopRuntimeAdapterBuilder`: stubs for unused interfaces
-/// - `StaticBlockRefetcher`: no-op since there are no reorgs in tests
-/// - A dummy firehose endpoint (never actually connected to)
+/// Uses `StaticStreamBuilder` for blocks, noops for unused adapters,
+/// and a dummy firehose endpoint (never connected to).
 async fn setup_chain(
     logger: &Logger,
     blocks: Vec<BlockWithTriggers<Chain>>,
@@ -596,7 +474,6 @@ async fn setup_chain(
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
 
     // Dummy firehose endpoint — required by Chain constructor but never used.
-    // Uses 0.0.0.0:0 to prevent accidental DNS lookups if the endpoint is ever reached.
     let firehose_endpoints = FirehoseEndpoints::for_testing(vec![Arc::new(FirehoseEndpoint::new(
         "",
         "http://0.0.0.0:0",
@@ -611,8 +488,8 @@ async fn setup_chain(
     let client =
         Arc::new(graph::blockchain::client::ChainClient::<Chain>::new_firehose(firehose_endpoints));
 
-    let static_block_stream = Arc::new(StaticStreamBuilder { chain: blocks });
-    let block_stream_builder = Arc::new(MutexBlockStreamBuilder(Mutex::new(static_block_stream)));
+    let block_stream_builder: Arc<dyn graph::blockchain::block_stream::BlockStreamBuilder<Chain>> =
+        Arc::new(StaticStreamBuilder { chain: blocks });
 
     // Create a dummy Ethereum adapter with archive capabilities.
     // The adapter itself is never used for RPC — ethereum.call results come from
@@ -686,14 +563,6 @@ async fn setup_chain(
 }
 
 /// Wire up all graph-node components and deploy the subgraph.
-///
-/// This mirrors what `gnd dev` does via the launcher, but assembled directly:
-/// 1. Create blockchain map (just our mock chain)
-/// 2. Set up link resolver (FileLinkResolver for local filesystem, with a hash alias)
-/// 3. Create the subgraph instance manager (WASM runtime, trigger processing)
-/// 4. Create the subgraph provider (lifecycle management)
-/// 5. Create the GraphQL runner (for assertions)
-/// 6. Register and deploy the subgraph via the registrar
 async fn setup_context(
     logger: &Logger,
     stores: &TestStores,
@@ -755,8 +624,6 @@ async fn setup_context(
     let sg_count = Arc::new(SubgraphCountMetric::new(mock_registry.cheap_clone()));
     let static_filters = env_vars.experimental_static_filters;
 
-    // The instance manager handles WASM compilation, trigger processing,
-    // and entity storage for running subgraphs.
     let subgraph_instance_manager = Arc::new(graph_core::subgraph::SubgraphInstanceManager::<
         SubgraphStore,
         FlightClient,
@@ -774,7 +641,6 @@ async fn setup_context(
         static_filters,
     ));
 
-    // The provider manages subgraph lifecycle (start/stop indexing).
     let mut subgraph_instance_managers =
         graph_core::subgraph_provider::SubgraphInstanceManagers::new();
     subgraph_instance_managers.add(
@@ -791,7 +657,6 @@ async fn setup_context(
         subgraph_instance_managers,
     ));
 
-    // GraphQL runner for executing assertion queries against indexed data.
     let load_manager = LoadManager::new(logger, Vec::new(), Vec::new(), mock_registry.clone());
     let graphql_runner = Arc::new(GraphQlRunner::new(
         logger,
@@ -817,7 +682,6 @@ async fn setup_context(
         Arc::new(AmpChainNames::default()),
     ));
 
-    // Register the subgraph name (e.g., "test/TransferCreatesEntity").
     SubgraphRegistrar::create_subgraph(subgraph_registrar.as_ref(), subgraph_name.clone()).await?;
 
     // Deploy the subgraph version (loads manifest, compiles WASM, creates schema tables).
@@ -843,9 +707,7 @@ async fn setup_context(
     })
 }
 
-/// Remove a subgraph deployment and its data after a test run.
-///
-/// Errors are ignored — the deployment is removed on a best-effort basis.
+/// Remove a subgraph deployment after a test run. Errors are ignored.
 async fn cleanup(
     subgraph_store: &SubgraphStore,
     name: &SubgraphName,
@@ -866,13 +728,9 @@ async fn cleanup(
     Ok(())
 }
 
-/// Poll the store until the subgraph reaches the target block or fails.
+/// Poll until the subgraph reaches `stop_block` or fails.
 ///
-/// Periodically flushes the store's write buffer to speed up block processing
-/// (the store batches writes and flush forces them through immediately).
-///
-/// Returns `Ok(())` when the subgraph reaches `stop_block`, or `Err(SubgraphError)`
-/// if the subgraph fails with a fatal error or times out after 60 seconds.
+/// Returns `Ok(())` on success or `Err(SubgraphError)` on fatal error or timeout.
 async fn wait_for_sync(
     logger: &Logger,
     store: Arc<SubgraphStore>,
@@ -881,14 +739,11 @@ async fn wait_for_sync(
 ) -> Result<(), SubgraphError> {
     // NOTE: Hardcoded timeout/interval - could be made configurable via env var
     // or CLI flag for slow subgraphs or faster iteration during development.
-    // See: gnd-test.md "Next Iteration Improvements"
     const MAX_WAIT: Duration = Duration::from_secs(60);
     const WAIT_TIME: Duration = Duration::from_millis(500);
 
     let start = Instant::now();
 
-    /// Force the store to flush its write buffer, making pending entity
-    /// changes visible to queries sooner.
     async fn flush(logger: &Logger, store: &Arc<SubgraphStore>, deployment: &DeploymentLocator) {
         if let Ok(writable) = store
             .clone()
@@ -899,14 +754,12 @@ async fn wait_for_sync(
         }
     }
 
-    // Initial flush to ensure any pre-existing writes are visible.
     flush(logger, &store, deployment).await;
 
     while start.elapsed() < MAX_WAIT {
         tokio::time::sleep(WAIT_TIME).await;
         flush(logger, &store, deployment).await;
 
-        // Check current indexing progress.
         let block_ptr = match store.least_block_ptr(&deployment.hash).await {
             Ok(Some(ptr)) => ptr,
             _ => continue, // Not started yet
@@ -926,7 +779,6 @@ async fn wait_for_sync(
         }
     }
 
-    // Timeout — return a synthetic error.
     Err(SubgraphError {
         subgraph_id: deployment.hash.clone(),
         message: format!("Sync timeout after {}s", MAX_WAIT.as_secs()),

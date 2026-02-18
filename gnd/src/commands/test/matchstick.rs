@@ -26,9 +26,6 @@ struct VersionCache {
     timestamp: u64,
 }
 
-/// Entry point for the legacy Matchstick test runner.
-///
-/// Dispatches to Docker mode or binary mode depending on the `--docker` flag.
 pub(super) async fn run(opt: &TestOpt) -> Result<()> {
     if opt.docker {
         run_docker_tests(opt).await
@@ -36,10 +33,6 @@ pub(super) async fn run(opt: &TestOpt) -> Result<()> {
         run_binary_tests(opt).await
     }
 }
-
-// ---------------------------------------------------------------------------
-// Version resolution
-// ---------------------------------------------------------------------------
 
 /// Resolve the Matchstick version to use.
 ///
@@ -77,7 +70,6 @@ async fn resolve_matchstick_version(
     }
 }
 
-/// Fetch the latest release tag from the Matchstick GitHub repo.
 async fn fetch_latest_version() -> Result<String> {
     let client = reqwest::Client::builder().user_agent("gnd-cli").build()?;
 
@@ -98,7 +90,6 @@ async fn fetch_latest_version() -> Result<String> {
         .ok_or_else(|| anyhow!("GitHub API response missing tag_name"))
 }
 
-/// Read the cached version from `.latest.json` if it exists and is fresh.
 fn read_version_cache(path: &Path) -> Option<String> {
     let data = std::fs::read_to_string(path).ok()?;
     let cache: VersionCache = serde_json::from_str(&data).ok()?;
@@ -111,7 +102,6 @@ fn read_version_cache(path: &Path) -> Option<String> {
     }
 }
 
-/// Write a version cache entry to `.latest.json`.
 fn write_version_cache(path: &Path, version: &str) -> Result<()> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -130,15 +120,8 @@ fn write_version_cache(path: &Path, version: &str) -> Result<()> {
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Platform detection
-// ---------------------------------------------------------------------------
-
-/// Determine the platform-specific binary name for a given Matchstick version.
-///
-/// Mirrors the `getPlatform` logic from graph-tooling's test.ts:
-/// - For versions > 0.5.4: simplified platform names (macos-12, linux-22)
-/// - For versions <= 0.5.4: legacy platform names with more OS-version granularity
+/// Platform-specific binary name for a Matchstick version.
+/// Mirrors getPlatform from graph-tooling: versions > 0.5.4 use simplified names.
 fn get_platform(version: &str) -> Result<String> {
     let ver = semver::Version::parse(version)?;
     let cutoff = semver::Version::new(0, 5, 4);
@@ -183,9 +166,7 @@ fn get_platform(version: &str) -> Result<String> {
     }
 }
 
-/// Parse the major Darwin kernel version from `uname -r` output.
-///
-/// Darwin 18.x → macOS 10.14 Mojave, Darwin 19.x → macOS 10.15 Catalina.
+/// Darwin kernel major version from `uname -r`. Darwin 18/19 → macOS 10.14/10.15.
 fn get_darwin_major_version() -> Option<u32> {
     let output = std::process::Command::new("uname")
         .arg("-r")
@@ -195,7 +176,6 @@ fn get_darwin_major_version() -> Option<u32> {
     release.trim().split('.').next()?.parse().ok()
 }
 
-/// Parse the major OS version from `/etc/os-release` VERSION_ID field.
 fn get_linux_major_version() -> Option<u32> {
     let content = std::fs::read_to_string("/etc/os-release").ok()?;
     for line in content.lines() {
@@ -208,14 +188,7 @@ fn get_linux_major_version() -> Option<u32> {
     None
 }
 
-// ---------------------------------------------------------------------------
-// Binary download
-// ---------------------------------------------------------------------------
-
-/// Download the Matchstick binary from GitHub releases.
-///
-/// The binary is saved to `node_modules/.bin/matchstick-{platform}`.
-/// Skips download if the binary already exists, unless `force` is true.
+/// Download the Matchstick binary to `node_modules/.bin/matchstick-{platform}`. Skips if already exists.
 async fn download_matchstick_binary(version: &str, platform: &str, force: bool) -> Result<PathBuf> {
     let bin_dir = PathBuf::from("node_modules/.bin");
     let bin_path = bin_dir.join(format!("matchstick-{platform}"));
@@ -254,13 +227,6 @@ async fn download_matchstick_binary(version: &str, platform: &str, force: bool) 
     Ok(bin_path)
 }
 
-// ---------------------------------------------------------------------------
-// Binary test runner
-// ---------------------------------------------------------------------------
-
-/// Run Matchstick tests by downloading and executing the native binary.
-///
-/// Resolves version → detects platform → downloads binary → spawns process.
 async fn run_binary_tests(opt: &TestOpt) -> Result<()> {
     step(Step::Generate, "Running Matchstick tests (legacy mode)");
 
@@ -301,15 +267,7 @@ async fn run_binary_tests(opt: &TestOpt) -> Result<()> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Docker test runner
-// ---------------------------------------------------------------------------
-
-/// Run Matchstick tests inside a Docker container.
-///
-/// This is the recommended mode on macOS where the native Matchstick binary
-/// has known issues. The Docker image is built automatically if it doesn't
-/// exist or if `--force` is specified.
+/// Run Matchstick tests in Docker (recommended on macOS where the native binary is bugged).
 async fn run_docker_tests(opt: &TestOpt) -> Result<()> {
     step(Step::Generate, "Running Matchstick tests in Docker");
 
@@ -399,11 +357,7 @@ async fn run_docker_tests(opt: &TestOpt) -> Result<()> {
     }
 }
 
-/// Create a Dockerfile for running Matchstick tests in a container.
-///
-/// The Dockerfile downloads the Matchstick binary directly from GitHub releases
-/// (not npm — `matchstick-as` is the AssemblyScript library, not the runner binary).
-/// Based on <https://github.com/LimeChain/demo-subgraph/blob/main/Dockerfile>.
+/// Generate a Dockerfile that downloads the Matchstick runner binary (not from npm).
 fn create_dockerfile(path: &PathBuf, version: &str) -> Result<()> {
     use std::fs;
 

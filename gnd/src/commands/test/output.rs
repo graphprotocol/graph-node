@@ -1,7 +1,4 @@
 //! Console output formatting for test results.
-//!
-//! Formats test results with colored pass/fail indicators per query and
-//! detailed assertion failure diffs collected at the end of the run.
 
 use console::style;
 use similar::{ChangeTag, TextDiff};
@@ -10,16 +7,11 @@ use super::assertion::align_for_diff;
 use super::schema::{AssertionFailure, AssertionOutcome, TestResult};
 use crate::output::{step, Step};
 
-/// Print the header line when starting a test file.
 pub fn print_test_start(path: &std::path::Path) {
     step(Step::Load, &format!("Running {}", path.display()));
 }
 
-/// Print the result of a single test case with per-query pass/fail indicators.
-///
-/// Shows ✔/✘ for the test name, then ✔/✘ for each individual assertion query.
-/// Detailed diffs are NOT printed here — they are collected and printed at the end
-/// via [`print_failure_details`].
+/// Print pass/fail for a test case. Diffs are deferred to `print_failure_details`.
 pub fn print_test_result(name: &str, result: &TestResult) {
     if result.is_passed() {
         println!("  {} {}", style("✔").green(), name);
@@ -27,11 +19,11 @@ pub fn print_test_result(name: &str, result: &TestResult) {
         println!("  {} {}", style("✘").red(), name);
     }
 
-    if let Some(err) = result.handler_error() {
+    if let Some(err) = &result.handler_error {
         println!("    {} {}", style("Handler error:").red(), err);
     }
 
-    for outcome in result.assertions() {
+    for outcome in &result.assertions {
         match outcome {
             AssertionOutcome::Passed { query } => {
                 println!("    {} {}", style("✔").green(), style(query).dim());
@@ -43,18 +35,14 @@ pub fn print_test_result(name: &str, result: &TestResult) {
     }
 }
 
-/// Collected failure info for deferred output.
 pub struct FailureDetail {
-    /// Name of the test that failed.
     pub test_name: String,
-    /// The assertion failure details.
     pub failure: AssertionFailure,
 }
 
-/// Collect assertion failures from a test result for deferred display.
 pub fn collect_failures(test_name: &str, result: &TestResult) -> Vec<FailureDetail> {
     result
-        .assertions()
+        .assertions
         .iter()
         .filter_map(|outcome| match outcome {
             AssertionOutcome::Passed { .. } => None,
@@ -70,19 +58,16 @@ pub fn collect_failures(test_name: &str, result: &TestResult) -> Vec<FailureDeta
         .collect()
 }
 
-/// Print all collected failure details at the end of the test run.
 pub fn print_failure_details(details: &[FailureDetail]) {
     if details.is_empty() {
         return;
     }
 
-    println!();
-    println!("{}", style("Failures:").red().bold());
+    println!("\n{}", style("Failures:").red().bold());
 
     for detail in details {
-        println!();
         println!(
-            "  {} {} {}",
+            "\n  {} {} {}",
             style("●").red(),
             style(&detail.test_name).bold(),
             style("→").dim(),
@@ -90,9 +75,6 @@ pub fn print_failure_details(details: &[FailureDetail]) {
         println!("    {} {}", style("Query:").yellow(), detail.failure.query);
 
         let expected = serde_json::to_string_pretty(&detail.failure.expected).unwrap_or_default();
-        // Align actual arrays to expected's element ordering so the diff
-        // highlights real value differences instead of showing every line
-        // as changed due to non-deterministic GraphQL collection ordering.
         let aligned_actual = align_for_diff(&detail.failure.expected, &detail.failure.actual);
         let actual = serde_json::to_string_pretty(&aligned_actual).unwrap_or_default();
 
@@ -115,7 +97,6 @@ pub fn print_failure_details(details: &[FailureDetail]) {
     }
 }
 
-/// Print the final summary line with total pass/fail counts.
 pub fn print_summary(passed: usize, failed: usize) {
     println!();
     if failed == 0 {

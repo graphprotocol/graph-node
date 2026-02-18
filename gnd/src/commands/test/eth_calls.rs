@@ -1,31 +1,9 @@
-//! Mock eth_call cache population for `gnd test`.
+//! Pre-populates the eth_call cache with mock responses for `gnd test`.
 //!
-//! When a subgraph handler executes `ethereum.call()`, graph-node looks up
-//! the result in its call cache (PostgreSQL `eth_call_cache` table). By
-//! pre-populating this cache with mock responses before indexing starts,
-//! tests can control what contract calls return without a real Ethereum node.
-//!
-//! ## Encoding
-//!
-//! The cache key is derived from the contract address, the ABI-encoded call
-//! data (4-byte selector + encoded parameters), and the block pointer. This
-//! module encodes call data using the same `FunctionExt::abi_encode_input()`
-//! method that graph-node uses in production (`ethereum_adapter.rs`), ensuring
-//! cache IDs match exactly.
-//!
-//! ## Function signature format
-//!
-//! Function signatures follow the graph-node convention:
-//! ```text
-//! functionName(inputTypes):(outputTypes)
-//! ```
-//! Examples:
-//! - `"balanceOf(address):(uint256)"`
-//! - `"getReserves():(uint112,uint112,uint32)"`
-//! - `"symbol():(string)"`
-//!
-//! The colon-separated output syntax is converted internally to alloy's
-//! `"returns"` syntax for parsing.
+//! Function signatures use graph-node's convention: `name(inputs):(outputs)`
+//! e.g. `"balanceOf(address):(uint256)"`, `"getReserves():(uint112,uint112,uint32)"`.
+//! Call data is encoded using the same path as production graph-node, so cache
+//! IDs match exactly what the runtime generates.
 
 use super::schema::{MockEthCall, TestFile};
 use super::trigger::json_to_sol_value;
@@ -43,18 +21,7 @@ use graph_chain_ethereum::Chain;
 use graph_store_postgres::ChainStore;
 use std::sync::Arc;
 
-/// Parse a function signature and ABI-encode the call data (selector + params).
-///
-/// Uses graph-node's `FunctionExt::abi_encode_input()` — the same encoding path
-/// as production `ethereum_adapter.rs:1483-1487` — so the resulting call data
-/// produces identical cache IDs.
-///
-/// # Arguments
-/// * `function_sig` - Function signature, e.g. `"balanceOf(address):(uint256)"`
-/// * `params` - JSON values for each input parameter
-///
-/// # Returns
-/// Encoded call data: 4-byte selector followed by ABI-encoded parameters.
+/// ABI-encode a function call (selector + params) using graph-node's encoding path.
 fn encode_function_call(function_sig: &str, params: &[serde_json::Value]) -> Result<Vec<u8>> {
     let alloy_sig = to_alloy_signature(function_sig);
     let function = Function::parse(&alloy_sig).map_err(|e| {
@@ -89,18 +56,7 @@ fn encode_function_call(function_sig: &str, params: &[serde_json::Value]) -> Res
     GraphFunctionExt::abi_encode_input(&function, &args).context("Failed to encode function call")
 }
 
-/// Parse function outputs from the signature and ABI-encode return values.
-///
-/// Uses alloy's `JsonAbiExt::abi_encode_output()` which encodes the return
-/// values without a selector prefix (just ABI-encoded parameters), matching
-/// what an `eth_call` RPC response would contain.
-///
-/// # Arguments
-/// * `function_sig` - Function signature, e.g. `"balanceOf(address):(uint256)"`
-/// * `returns` - JSON values for each output parameter
-///
-/// # Returns
-/// ABI-encoded return data (no selector prefix).
+/// ABI-encode function return values (no selector prefix).
 fn encode_return_value(function_sig: &str, returns: &[serde_json::Value]) -> Result<Vec<u8>> {
     let alloy_sig = to_alloy_signature(function_sig);
     let function = Function::parse(&alloy_sig).map_err(|e| {
@@ -162,19 +118,7 @@ fn to_alloy_signature(sig: &str) -> String {
     }
 }
 
-/// Populate the eth_call cache with mock call responses from test blocks.
-///
-/// For each `MockEthCall` in the test file's blocks, this function:
-/// 1. Parses the contract address
-/// 2. Encodes the function call (selector + params) using the same encoding
-///    as production graph-node
-/// 3. Creates a `call::Request` matching what the runtime would generate
-/// 4. Encodes the return value (or marks as revert)
-/// 5. Inserts into the cache via `ChainStore::set_call()`
-///
-/// The cache uses BLAKE3 hashing internally to compute cache IDs from the
-/// request + block pointer, ensuring our mock entries are found by the same
-/// lookup code that production uses.
+/// Populate the eth_call cache from test block mock calls before indexing starts.
 pub async fn populate_eth_call_cache(
     logger: &Logger,
     chain_store: Arc<ChainStore>,

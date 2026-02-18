@@ -6,8 +6,6 @@
 //! for every block (both `Start` and `End` types) so block handlers with any
 //! filter (`once`, `polling`, or none) fire correctly without explicit config.
 //!
-//! ## Test file format
-//!
 //! ```json
 //! {
 //!   "name": "Transfer creates entity",
@@ -36,28 +34,20 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-// ============ JSON Input Types ============
-
-/// Top-level test file structure. Each file represents one named test case
-/// with a sequence of blocks to index and assertions to check afterward.
+/// Top-level test file. A named test case with mock blocks and GraphQL assertions.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TestFile {
-    /// Human-readable name for this test case (shown in output).
     pub name: String,
 
-    /// Ordered sequence of blocks to feed through the indexer.
-    /// Blocks are processed sequentially; triggers within each block are
-    /// sorted by graph-node's standard trigger ordering logic.
+    /// Ordered sequence of mock blocks to index.
     #[serde(default)]
     pub blocks: Vec<TestBlock>,
 
-    /// GraphQL assertions to run after all blocks have been indexed.
-    /// Each assertion queries the subgraph and compares the result to an expected value.
+    /// GraphQL assertions to run after indexing.
     #[serde(default)]
     pub assertions: Vec<Assertion>,
 }
 
-/// A mock blockchain block containing zero or more events.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TestBlock {
     /// Block number. If omitted, auto-increments starting from `start_block`
@@ -70,39 +60,21 @@ pub struct TestBlock {
     #[serde(default)]
     pub hash: Option<String>,
 
-    /// Unix timestamp. If omitted, defaults to `block_number * 12`
-    /// (simulating 12-second block times).
+    /// Unix timestamp in seconds. If omitted, defaults to the block number
+    /// (monotonically increasing, chain-agnostic).
     #[serde(default)]
     pub timestamp: Option<u64>,
 
-    /// Base fee per gas (EIP-1559). If omitted, defaults to None (pre-EIP-1559 blocks).
-    /// Specified as a decimal string, parsed as u64 (e.g., "15000000000").
-    #[serde(default, rename = "baseFeePerGas")]
-    pub base_fee_per_gas: Option<String>,
-
-    /// Log events within this block. Block triggers are auto-injected.
-    /// Multiple events per block are supported and will be sorted by
-    /// graph-node's trigger ordering (block start -> events by logIndex -> block end).
+    /// Log events within this block. Block triggers (Start/End) are auto-injected.
     #[serde(default)]
     pub events: Vec<LogEvent>,
 
-    /// Mock contract call responses for this specific block.
-    /// These are pre-cached in the database before the test runs so that
-    /// `ethereum.call()` invocations in handlers return the mocked values.
+    /// Mock contract call responses pre-cached before the test runs.
     #[serde(default, rename = "ethCalls")]
     pub eth_calls: Vec<MockEthCall>,
 }
 
 /// A mock Ethereum event log.
-///
-/// The event signature is parsed and parameters are ABI-encoded into the
-/// proper topics (indexed params) and data (non-indexed params) format
-/// that graph-node expects.
-///
-/// JSON example:
-/// ```json
-/// { "address": "0x...", "event": "Transfer(...)", "params": {...} }
-/// ```
 #[derive(Debug, Clone, Deserialize)]
 pub struct LogEvent {
     /// Contract address that emitted the event (checksummed or lowercase hex).
@@ -125,123 +97,61 @@ pub struct LogEvent {
     #[serde(default)]
     pub params: serde_json::Map<String, Value>,
 
-    /// Transaction hash. If omitted, generated deterministically as
-    /// `keccak256(block_number || log_index)`.
+    /// Explicit tx hash, or generated as `keccak256(block_number || log_index)`.
     #[serde(default)]
     pub tx_hash: Option<String>,
 }
 
-/// A mock contract call response that will be pre-cached for a specific block.
-///
-/// When a subgraph handler calls `ethereum.call()` during indexing, graph-node
-/// looks up the result in its call cache. By pre-populating this cache with
-/// mock responses, tests can control what contract calls return without needing
-/// a real Ethereum node.
+/// A mock contract call response pre-cached for a specific block.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MockEthCall {
-    /// Contract address to mock (checksummed or lowercase hex).
     pub address: String,
-
-    /// Function signature to mock.
-    /// Example: `"balanceOf(address):(uint256)"`
     pub function: String,
-
-    /// Input parameters for the function call.
     pub params: Vec<Value>,
-
-    /// Return values for the function call.
     pub returns: Vec<Value>,
 
-    /// If true, the call will revert instead of returning values.
     #[serde(default)]
     pub reverts: bool,
 }
 
-/// A GraphQL assertion to validate indexed entity state.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Assertion {
-    /// GraphQL query string. Example: `"{ transfer(id: \"1\") { from to value } }"`
     pub query: String,
 
-    /// Expected JSON result. Compared against the actual query response.
-    /// Object key order doesn't matter. String-vs-number coercion is applied
-    /// to handle GraphQL's BigInt/BigDecimal string representation.
+    /// Expected JSON result. String/number coercion is applied (BigInt/BigDecimal).
     pub expected: Value,
 }
 
-// ============ Result Types ============
-
-/// Outcome of running a single test case.
 #[derive(Debug)]
-pub enum TestResult {
-    /// All assertions passed and no handler errors occurred.
-    Passed {
-        /// Per-assertion outcomes (all passed).
-        assertions: Vec<AssertionOutcome>,
-    },
-    /// The test failed due to handler errors and/or assertion mismatches.
-    Failed {
-        /// If the subgraph handler threw a fatal error during indexing,
-        /// this contains the error message. The test fails immediately
-        /// without running assertions.
-        handler_error: Option<String>,
-        /// Per-assertion outcomes (mix of passed and failed).
-        assertions: Vec<AssertionOutcome>,
-    },
+pub struct TestResult {
+    pub handler_error: Option<String>,
+    pub assertions: Vec<AssertionOutcome>,
 }
 
 impl TestResult {
     pub fn is_passed(&self) -> bool {
-        matches!(self, TestResult::Passed { .. })
-    }
-
-    pub fn assertions(&self) -> &[AssertionOutcome] {
-        match self {
-            TestResult::Passed { assertions } | TestResult::Failed { assertions, .. } => assertions,
-        }
-    }
-
-    pub fn handler_error(&self) -> Option<&str> {
-        match self {
-            TestResult::Failed {
-                handler_error: Some(e),
-                ..
-            } => Some(e),
-            _ => None,
-        }
+        self.handler_error.is_none()
+            && self
+                .assertions
+                .iter()
+                .all(|a| matches!(a, AssertionOutcome::Passed { .. }))
     }
 }
 
-/// Outcome of a single assertion query.
 #[derive(Debug)]
 pub enum AssertionOutcome {
-    /// The assertion passed — actual matched expected.
-    Passed {
-        /// The GraphQL query that was executed.
-        query: String,
-    },
-    /// The assertion failed — actual did not match expected.
+    Passed { query: String },
     Failed(AssertionFailure),
 }
 
-/// Details about a single failed assertion.
 #[derive(Debug)]
 pub struct AssertionFailure {
-    /// The GraphQL query that was executed.
     pub query: String,
-    /// What the test expected to get back.
     pub expected: Value,
-    /// What the query actually returned.
     pub actual: Value,
 }
 
-// ============ Parsing ============
-
-/// Parse a JSON test file from disk into a [`TestFile`].
-///
-/// NOTE: Only validates JSON schema, not semantic correctness (e.g., block ordering,
-/// valid addresses, parseable event signatures). Consider adding validation pass
-/// for better error messages. See: gnd-test.md "Next Iteration Improvements"
+/// Parse a JSON test file. NOTE: Only validates JSON schema, not semantic correctness.
 pub fn parse_test_file(path: &Path) -> anyhow::Result<TestFile> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Failed to read test file {}: {}", path.display(), e))?;
@@ -249,12 +159,7 @@ pub fn parse_test_file(path: &Path) -> anyhow::Result<TestFile> {
         .map_err(|e| anyhow::anyhow!("Failed to parse test file {}: {}", path.display(), e))
 }
 
-/// Discover test files in a directory (recursive).
-///
-/// Matches `*.json` and `*.test.json` files. Recurses into subdirectories.
-/// Entries whose name starts with a non-alphanumeric character (e.g., `.hidden`,
-/// `_fixture`) are skipped for both files and directories.
-/// Returns paths sorted alphabetically for deterministic execution order.
+/// Discover `*.json` / `*.test.json` test files in a directory (recursive). Skips entries starting with non-alphanumeric characters.
 pub fn discover_test_files(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
@@ -267,9 +172,6 @@ pub fn discover_test_files(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
     Ok(files)
 }
 
-/// Recursively walk `dir`, collecting JSON test files and descending into subdirectories.
-///
-/// Skips entries whose name starts with a non-alphanumeric character (e.g., `.hidden`, `_fixture`).
 fn discover_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;

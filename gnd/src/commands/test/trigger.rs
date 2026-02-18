@@ -1,27 +1,10 @@
-//! ABI encoding of test triggers into graph-node's Ethereum trigger types.
-//!
-//! This module converts the human-readable JSON test format (event signatures
-//! with named parameters) into the binary format that graph-node expects:
-//! - Event signatures → topic0 (keccak256 hash)
-//! - Indexed parameters → topics[1..3] (ABI-encoded, 32 bytes each)
-//! - Non-indexed parameters → data (ABI-encoded tuple)
-//!
-//! ## Encoding example
+//! ABI encoding of JSON test triggers into graph-node's Ethereum trigger types.
 //!
 //! For `Transfer(address indexed from, address indexed to, uint256 value)`:
 //! - topic0 = keccak256("Transfer(address,address,uint256)")
-//! - topic1 = left-padded `from` address
-//! - topic2 = left-padded `to` address
-//! - data = ABI-encoded `value` (uint256, 32 bytes)
-//!
-//! ## Block construction
-//!
-//! Each test block is converted to a `BlockWithTriggers<Chain>` containing:
-//! - A `LightEthereumBlock` with proper parent hash chaining
-//! - Dummy transactions for each unique tx hash (graph-node requires
-//!   matching transactions in the block for log processing)
-//! - `EthereumTrigger` variants for each log trigger in the test JSON
-//! - Auto-injected `Start` and `End` block triggers (so block handlers fire correctly)
+//! - topic1 = left-padded `from` address (indexed)
+//! - topic2 = left-padded `to` address (indexed)
+//! - data = ABI-encoded `value` (non-indexed)
 
 use super::schema::{LogEvent, TestFile};
 use anyhow::{anyhow, ensure, Context, Result};
@@ -36,27 +19,19 @@ use graph_chain_ethereum::trigger::{EthereumBlockTriggerType, EthereumTrigger, L
 use graph_chain_ethereum::Chain;
 use std::sync::Arc;
 
-/// Convert all blocks from a test file into graph-node's `BlockWithTriggers` format.
-///
-/// Blocks are chained together with proper parent hashes (each block's parent_hash
-/// points to the previous block's hash). Block numbers auto-increment from
-/// `start_block` when not explicitly specified in the test JSON.
-///
-/// The returned blocks can be fed directly into a `StaticStreamBuilder` for indexing.
+/// Convert test blocks into `BlockWithTriggers`, chained by parent hash.
+/// Block numbers auto-increment from `start_block` when not explicit.
 pub fn build_blocks_with_triggers(
     test_file: &TestFile,
     start_block: u64,
 ) -> Result<Vec<BlockWithTriggers<Chain>>> {
     let mut blocks = Vec::new();
     let mut current_number = start_block;
-    // Chain blocks together: each block's parent_hash = previous block's hash.
     let mut parent_hash = B256::ZERO;
 
     for test_block in &test_file.blocks {
-        // Use explicit block number or auto-increment from the last block.
         let number = test_block.number.unwrap_or(current_number);
 
-        // Use explicit hash or generate deterministically from block number.
         let hash = test_block
             .hash
             .as_ref()
@@ -65,17 +40,10 @@ pub fn build_blocks_with_triggers(
             .context("Invalid block hash")?
             .unwrap_or_else(|| keccak256(number.to_be_bytes()));
 
-        // Default timestamp simulates 12-second block times (Ethereum mainnet average).
-        // NOTE: Magic number - could be extracted to a named constant.
-        let timestamp = test_block.timestamp.unwrap_or(number * 12);
-
-        // Parse base fee per gas if provided (EIP-1559 support).
-        let base_fee_per_gas = test_block
-            .base_fee_per_gas
-            .as_ref()
-            .map(|s| s.parse::<u64>())
-            .transpose()
-            .context("Invalid baseFeePerGas value")?;
+        // Default: use block number as timestamp (seconds since epoch).
+        // Avoids assuming a chain-specific block time and prevents future timestamps
+        // on chains with high block numbers (e.g. Arbitrum).
+        let timestamp = test_block.timestamp.unwrap_or(number);
 
         let mut triggers = Vec::new();
 
@@ -103,17 +71,9 @@ pub fn build_blocks_with_triggers(
             EthereumBlockTriggerType::End,
         ));
 
-        let block = create_block_with_triggers(
-            number,
-            hash,
-            parent_hash,
-            timestamp,
-            base_fee_per_gas,
-            triggers,
-        )?;
+        let block = create_block_with_triggers(number, hash, parent_hash, timestamp, triggers)?;
         blocks.push(block);
 
-        // Chain to next block.
         parent_hash = hash;
         current_number = number + 1;
     }
@@ -121,12 +81,7 @@ pub fn build_blocks_with_triggers(
     Ok(blocks)
 }
 
-/// Build a single Ethereum log trigger from a test JSON log trigger.
-///
-/// Creates a fully-formed `EthereumTrigger::Log` with:
-/// - ABI-encoded topics and data from the event signature and parameters
-/// - Block context (hash, number)
-/// - Transaction hash (explicit or deterministic from block_number + log_index)
+/// Build an `EthereumTrigger::Log` from a test JSON event.
 fn build_log_trigger(
     block_number: u64,
     block_hash: B256,
@@ -138,11 +93,9 @@ fn build_log_trigger(
         .parse()
         .context("Invalid contract address")?;
 
-    // Encode the event signature and parameters into EVM log format.
     let (topics, data) = encode_event_log(&trigger.event, &trigger.params)?;
 
     // Generate deterministic tx hash if not provided: keccak256(block_number || log_index).
-    // This ensures each log in a block gets a unique tx hash by default.
     let tx_hash = trigger
         .tx_hash
         .as_ref()
@@ -153,7 +106,6 @@ fn build_log_trigger(
             keccak256([block_number.to_be_bytes(), log_index.to_be_bytes()].concat())
         });
 
-    // Construct the alloy Log type that graph-node's trigger processing expects.
     let inner_log = graph::prelude::alloy::primitives::Log {
         address,
         data: graph::prelude::alloy::primitives::LogData::new_unchecked(topics, data),
@@ -204,7 +156,6 @@ pub fn encode_event_log(
     let event = Event::parse(&sig_with_prefix)
         .map_err(|e| anyhow!("Failed to parse event signature '{}': {:?}", event_sig, e))?;
 
-    // topic0 is the event selector (keccak256 of canonical signature)
     let topic0 = event.selector();
     let mut topics = vec![topic0];
     let mut data_values = Vec::new();
@@ -239,16 +190,8 @@ pub fn encode_event_log(
     Ok((topics, data))
 }
 
-/// Convert a JSON value to the corresponding Solidity dynamic value type.
-///
-/// Handles the common Solidity types that appear in event parameters:
-/// - `address`: hex string → 20-byte address
-/// - `uint8`..`uint256`: string (decimal/hex) or JSON number → unsigned integer
-/// - `int8`..`int256`: string (decimal/hex, optionally negative) → signed integer (two's complement)
-/// - `bool`: JSON boolean
-/// - `bytes`: hex string → dynamic byte array
-/// - `string`: JSON string
-/// - `bytes1`..`bytes32`: hex string → fixed-length byte array (right-zero-padded to 32 bytes)
+/// Convert a JSON value to the corresponding Solidity type.
+/// Supports: address, uint/int (decimal or hex string), bool, bytes, string, bytes1-32, arrays, tuples.
 pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Result<DynSolValue> {
     match sol_type {
         DynSolType::Address => {
@@ -260,7 +203,6 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
         }
         DynSolType::Uint(bits) => {
             let n = match value {
-                // String values support both decimal and "0x"-prefixed hex.
                 serde_json::Value::String(s) => {
                     let (digits, radix) = match s.strip_prefix("0x") {
                         Some(hex) => (hex, 16),
@@ -289,7 +231,7 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
                     };
                     let abs = U256::from_str_radix(digits, radix).context("Invalid int")?;
                     if is_neg {
-                        !abs + U256::from(1) // Two's complement negation
+                        !abs + U256::from(1)
                     } else {
                         abs
                     }
@@ -395,18 +337,10 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
     }
 }
 
-/// Convert a Solidity value to a 32-byte topic for indexed event parameters.
-///
-/// EVM log topics are always exactly 32 bytes. The encoding depends on the type:
-/// - Addresses: left-padded to 32 bytes (12 zero bytes + 20 address bytes)
-/// - Integers: stored as big-endian 32-byte values
-/// - Booleans: 0x00...00 (false) or 0x00...01 (true)
-/// - Fixed bytes: stored directly (already 32 bytes in B256)
-/// - Dynamic types (bytes, string): keccak256-hashed (the value itself is not recoverable)
+/// Encode a Solidity value as a 32-byte EVM log topic.
 fn sol_value_to_topic(value: &DynSolValue) -> Result<B256> {
     match value {
         DynSolValue::Address(addr) => {
-            // Addresses are left-padded: 12 zero bytes + 20 address bytes.
             let mut bytes = [0u8; 32];
             bytes[12..].copy_from_slice(addr.as_slice());
             Ok(B256::from(bytes))
@@ -421,18 +355,15 @@ fn sol_value_to_topic(value: &DynSolValue) -> Result<B256> {
             Ok(B256::from(bytes))
         }
         DynSolValue::FixedBytes(b, _) => Ok(*b),
-        // Dynamic types are hashed per Solidity spec — the original value
-        // cannot be recovered from the topic.
+        // Dynamic types are hashed per Solidity spec — the original value cannot be recovered from the topic.
         DynSolValue::Bytes(b) => Ok(keccak256(b)),
         DynSolValue::String(s) => Ok(keccak256(s.as_bytes())),
         _ => Err(anyhow!("Cannot convert {:?} to topic", value)),
     }
 }
 
-/// Create a dummy transaction with a specific hash for block transaction lists.
-///
-/// Graph-node looks up transactions by hash during log processing, so we need
-/// matching dummy transactions in the block body.
+/// Create a dummy transaction for block transaction lists.
+/// Graph-node requires matching transactions for log processing.
 fn dummy_transaction(
     block_number: u64,
     block_hash: B256,
@@ -459,13 +390,11 @@ fn dummy_transaction(
     }
 }
 
-/// Create a `BlockWithTriggers<Chain>` from block metadata and triggers.
 fn create_block_with_triggers(
     number: u64,
     hash: B256,
     parent_hash: B256,
     timestamp: u64,
-    base_fee_per_gas: Option<u64>,
     triggers: Vec<EthereumTrigger>,
 ) -> Result<BlockWithTriggers<Chain>> {
     use graph::prelude::alloy::consensus::Header as ConsensusHeader;
@@ -494,7 +423,6 @@ fn create_block_with_triggers(
             number,
             parent_hash,
             timestamp,
-            base_fee_per_gas,
             ..Default::default()
         },
         total_difficulty: None,

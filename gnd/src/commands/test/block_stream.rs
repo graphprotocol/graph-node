@@ -1,9 +1,4 @@
-//! Mock block stream infrastructure for feeding pre-defined test blocks.
-//!
-//! These types implement graph-node's `BlockStreamBuilder`/`BlockStream` traits
-//! to feed pre-defined test blocks instead of connecting to a real RPC endpoint.
-//! This is the core mock: everything else (store, WASM runtime, trigger processing)
-//! is real graph-node code.
+//! Mock `BlockStreamBuilder` that feeds pre-defined test blocks.
 
 use async_trait::async_trait;
 use graph::blockchain::block_stream::{
@@ -16,17 +11,9 @@ use graph::futures03::Stream;
 use graph::prelude::BlockNumber;
 use graph_chain_ethereum::Chain;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::task::{Context as TaskContext, Poll};
 
-/// Builds block streams that yield pre-defined blocks from test data.
-///
-/// Implements `BlockStreamBuilder<Chain>` so it can be plugged into graph-node's
-/// `Chain` constructor. Both `build_firehose` and `build_polling` return the
-/// same static stream since we don't care about the transport mechanism.
-///
-/// If `current_block` is provided (e.g., after a restart), the stream skips
-/// blocks up to and including that pointer to avoid reprocessing.
 pub(super) struct StaticStreamBuilder {
     pub chain: Vec<BlockWithTriggers<Chain>>,
 }
@@ -120,71 +107,5 @@ impl Stream for StaticStream {
         self.current_idx += 1;
 
         Poll::Ready(Some(Ok(BlockStreamEvent::ProcessBlock(block, cursor))))
-    }
-}
-
-/// Thread-safe wrapper around a `BlockStreamBuilder` to allow dynamic replacement.
-///
-/// Graph-node's `Chain` takes an `Arc<dyn BlockStreamBuilder>` at construction time.
-/// This wrapper uses a `Mutex` so we could theoretically swap the inner builder
-/// (e.g., for re-running with different blocks), though currently only used once.
-pub(super) struct MutexBlockStreamBuilder(pub Mutex<Arc<dyn BlockStreamBuilder<Chain>>>);
-
-#[async_trait]
-impl BlockStreamBuilder<Chain> for MutexBlockStreamBuilder {
-    async fn build_firehose(
-        &self,
-        chain: &Chain,
-        deployment: DeploymentLocator,
-        block_cursor: FirehoseCursor,
-        start_blocks: Vec<BlockNumber>,
-        subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<<Chain as Blockchain>::TriggerFilter>,
-        unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
-    ) -> anyhow::Result<Box<dyn BlockStream<Chain>>> {
-        let builder = self
-            .0
-            .lock()
-            .expect("block stream builder lock poisoned")
-            .clone();
-        builder
-            .build_firehose(
-                chain,
-                deployment,
-                block_cursor,
-                start_blocks,
-                subgraph_current_block,
-                filter,
-                unified_api_version,
-            )
-            .await
-    }
-
-    async fn build_polling(
-        &self,
-        chain: &Chain,
-        deployment: DeploymentLocator,
-        start_blocks: Vec<BlockNumber>,
-        source_subgraph_stores: Vec<Arc<dyn SourceableStore>>,
-        subgraph_current_block: Option<BlockPtr>,
-        filter: Arc<TriggerFilterWrapper<Chain>>,
-        unified_api_version: graph::data::subgraph::UnifiedMappingApiVersion,
-    ) -> anyhow::Result<Box<dyn BlockStream<Chain>>> {
-        let builder = self
-            .0
-            .lock()
-            .expect("block stream builder lock poisoned")
-            .clone();
-        builder
-            .build_polling(
-                chain,
-                deployment,
-                start_blocks,
-                source_subgraph_stores,
-                subgraph_current_block,
-                filter,
-                unified_api_version,
-            )
-            .await
     }
 }
