@@ -13,6 +13,7 @@ use graph::{
         store::{DeploymentLocator, SubgraphStore},
         subgraph::SubgraphInstanceManager,
     },
+    data::subgraph::network_name_from_raw_manifest,
     env::EnvVars,
     log::factory::LoggerFactory,
     prelude::CheapClone,
@@ -122,14 +123,7 @@ where
 
                     // Extract the network name from the raw manifest to look
                     // up the per-chain Amp client.
-                    let network_name = raw_manifest
-                        .get(serde_yaml::Value::String("dataSources".to_owned()))
-                        .and_then(|ds| ds.as_sequence())
-                        .and_then(|ds| ds.first())
-                        .and_then(|ds| ds.as_mapping())
-                        .and_then(|ds| ds.get(serde_yaml::Value::String("network".to_owned())))
-                        .and_then(|n| n.as_str())
-                        .map(|s| s.to_owned());
+                    let network_name = network_name_from_raw_manifest(&raw_manifest);
 
                     let amp_client = match &network_name {
                         Some(network) => match manager.amp_clients.get(network) {

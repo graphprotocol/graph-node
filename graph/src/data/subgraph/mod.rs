@@ -1383,6 +1383,21 @@ fn display_vector(input: &[impl std::fmt::Display]) -> impl std::fmt::Display {
     format!("[{}]", formatted_errors)
 }
 
+/// Extracts the network name from the first data source in a raw manifest YAML mapping.
+///
+/// Navigates `dataSources[0].network` and returns the network name as an owned string,
+/// or `None` if any step in the path is missing.
+pub fn network_name_from_raw_manifest(raw: &serde_yaml::Mapping) -> Option<String> {
+    use serde_yaml::Value;
+    raw.get(Value::String("dataSources".to_owned()))
+        .and_then(|ds| ds.as_sequence())
+        .and_then(|ds| ds.first())
+        .and_then(|ds| ds.as_mapping())
+        .and_then(|ds| ds.get(Value::String("network".to_owned())))
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_owned())
+}
+
 #[test]
 fn test_subgraph_name_validation() {
     assert!(SubgraphName::new("a").is_ok());
@@ -1428,4 +1443,48 @@ fn test_display_vector() {
         expected_display_message,
         format!("{}", manifest_validation_error)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn network_name_from_raw_manifest_extracts_network() {
+        use serde_yaml::{Mapping, Value};
+
+        let mut ds = Mapping::new();
+        ds.insert(
+            Value::String("network".to_owned()),
+            Value::String("mainnet".to_owned()),
+        );
+
+        let mut raw = Mapping::new();
+        raw.insert(
+            Value::String("dataSources".to_owned()),
+            Value::Sequence(vec![Value::Mapping(ds)]),
+        );
+
+        assert_eq!(
+            network_name_from_raw_manifest(&raw),
+            Some("mainnet".to_string())
+        );
+    }
+
+    #[test]
+    fn network_name_from_raw_manifest_returns_none_when_missing() {
+        use serde_yaml::{Mapping, Value};
+
+        // Empty mapping — no dataSources key at all
+        let empty = Mapping::new();
+        assert_eq!(network_name_from_raw_manifest(&empty), None);
+
+        // dataSources is an empty sequence
+        let mut raw = Mapping::new();
+        raw.insert(
+            Value::String("dataSources".to_owned()),
+            Value::Sequence(vec![]),
+        );
+        assert_eq!(network_name_from_raw_manifest(&raw), None);
+    }
 }

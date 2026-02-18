@@ -10,7 +10,7 @@ use graph::components::{
     subgraph::Settings,
 };
 use graph::data::{
-    subgraph::{schema::DeploymentCreate, Graft},
+    subgraph::{network_name_from_raw_manifest, schema::DeploymentCreate, Graft},
     value::Word,
 };
 use graph::futures03::{self, future::TryFutureExt, Stream, StreamExt, TryStreamExt};
@@ -302,7 +302,7 @@ where
 
         // Extract the network name from the raw manifest and resolve the
         // per-chain Amp client (if any).
-        let resolved_amp_chain = network_name_from_raw(&raw).map(|network| {
+        let resolved_amp_chain = network_name_from_raw_manifest(&raw).map(|network| {
             let resolved = self.amp_chain_names.resolve(&Word::from(network));
             resolved.to_string()
         });
@@ -516,18 +516,6 @@ async fn resolve_graft_block(
                 )),
             ])
         })
-}
-
-/// Extracts the network name from the first data source in a raw manifest.
-fn network_name_from_raw(raw: &serde_yaml::Mapping) -> Option<String> {
-    use serde_yaml::Value;
-    raw.get(Value::String("dataSources".to_owned()))
-        .and_then(|ds| ds.as_sequence())
-        .and_then(|ds| ds.first())
-        .and_then(|ds| ds.as_mapping())
-        .and_then(|ds| ds.get(Value::String("network".to_owned())))
-        .and_then(|n| n.as_str())
-        .map(|s| s.to_owned())
 }
 
 async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Client>(

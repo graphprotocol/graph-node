@@ -14,7 +14,7 @@ use graph::components::network_provider::AmpClients;
 use graph::components::store::{BlockPtrForNumber, BlockStore, QueryPermit, Store};
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
-use graph::data::subgraph::{status, DeploymentFeatures};
+use graph::data::subgraph::{network_name_from_raw_manifest, status, DeploymentFeatures};
 use graph::data::value::Object;
 use graph::futures03::TryFutureExt;
 use graph::prelude::*;
@@ -523,13 +523,8 @@ where
 
         // Extract the network name from the raw yaml to look up the
         // per-chain Amp client.
-        let amp_client = raw_yaml
-            .get(serde_yaml::Value::String("dataSources".to_owned()))
-            .and_then(|ds| ds.as_sequence())
-            .and_then(|ds| ds.first())
-            .and_then(|ds| ds.as_mapping())
-            .and_then(|ds| ds.get(serde_yaml::Value::String("network".to_owned())))
-            .and_then(|n| n.as_str())
+        let amp_client = network_name_from_raw_manifest(&raw_yaml)
+            .as_deref()
             .and_then(|network| self.amp_clients.get(network));
 
         let max_spec_version = ENV_VARS.max_spec_version.clone();

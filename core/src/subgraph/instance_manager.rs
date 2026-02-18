@@ -18,7 +18,9 @@ use graph::components::metrics::subgraph::DeploymentStatusMetric;
 use graph::components::network_provider::AmpClients;
 use graph::components::store::SourceableStore;
 use graph::components::subgraph::ProofOfIndexingVersion;
-use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
+use graph::data::subgraph::{
+    network_name_from_raw_manifest, UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6,
+};
 use graph::data::value::Word;
 use graph::data_source::causality_region::CausalityRegionSeq;
 use graph::env::EnvVars;
@@ -270,13 +272,8 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
 
         // Look up the per-chain Amp client based on the network from the
         // raw manifest (before the manifest is moved into parse).
-        let amp_client = raw_manifest
-            .get(serde_yaml::Value::String("dataSources".to_owned()))
-            .and_then(|ds| ds.as_sequence())
-            .and_then(|ds| ds.first())
-            .and_then(|ds| ds.as_mapping())
-            .and_then(|ds| ds.get(serde_yaml::Value::String("network".to_owned())))
-            .and_then(|n| n.as_str())
+        let amp_client = network_name_from_raw_manifest(&raw_manifest)
+            .as_deref()
             .and_then(|network| self.amp_clients.get(network));
 
         let manifest =
