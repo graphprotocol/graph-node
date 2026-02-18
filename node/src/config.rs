@@ -1,4 +1,5 @@
 use graph::{
+    amp::sql::normalize_sql_ident,
     anyhow::Error,
     blockchain::BlockchainKind,
     components::network_provider::{AmpChainConfig, AmpChainNames, ChainName},
@@ -155,8 +156,8 @@ impl Config {
                     AmpChainConfig {
                         address: uri,
                         token: amp.token.clone(),
-                        context_dataset: amp.context_dataset.clone(),
-                        context_table: amp.context_table.clone(),
+                        context_dataset: normalize_sql_ident(&amp.context_dataset),
+                        context_table: normalize_sql_ident(&amp.context_table),
                         network: amp.network.clone(),
                     },
                 );
@@ -2527,5 +2528,85 @@ fdw_pool_size = [
         assert_eq!(amp.context_dataset, "eth");
         assert_eq!(amp.context_table, "blocks");
         assert_eq!(amp.network, Some("ethereum-mainnet".to_string()));
+    }
+
+    #[test]
+    fn amp_chain_config_normalizes_context_idents() {
+        let section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            provider = []
+            [mainnet.amp]
+            address = "http://localhost:50051"
+            context_dataset = "ns/data@v1"
+            context_table = "my/table@2"
+            "#,
+        )
+        .unwrap();
+
+        let config = Config {
+            node: NodeId::new("test").unwrap(),
+            general: None,
+            stores: {
+                let mut s = std::collections::BTreeMap::new();
+                s.insert(
+                    "primary".to_string(),
+                    toml::from_str::<Shard>(r#"connection = "postgresql://u:p@h/db""#).unwrap(),
+                );
+                s
+            },
+            chains: section,
+            deployment: toml::from_str("[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]")
+                .unwrap(),
+        };
+
+        let map = config.amp_chain_configs().unwrap();
+        let mainnet = map.get("mainnet").expect("mainnet should be in map");
+
+        // Identifiers with special characters should be double-quoted
+        assert_eq!(mainnet.context_dataset, "\"ns/data@v1\"");
+        assert_eq!(mainnet.context_table, "\"my/table@2\"");
+    }
+
+    #[test]
+    fn amp_chain_config_lowercases_simple_context_idents() {
+        let section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            provider = []
+            [mainnet.amp]
+            address = "http://localhost:50051"
+            context_dataset = "Eth"
+            context_table = "Blocks"
+            "#,
+        )
+        .unwrap();
+
+        let config = Config {
+            node: NodeId::new("test").unwrap(),
+            general: None,
+            stores: {
+                let mut s = std::collections::BTreeMap::new();
+                s.insert(
+                    "primary".to_string(),
+                    toml::from_str::<Shard>(r#"connection = "postgresql://u:p@h/db""#).unwrap(),
+                );
+                s
+            },
+            chains: section,
+            deployment: toml::from_str("[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]")
+                .unwrap(),
+        };
+
+        let map = config.amp_chain_configs().unwrap();
+        let mainnet = map.get("mainnet").expect("mainnet should be in map");
+
+        // Simple identifiers should be lowercased and unquoted
+        assert_eq!(mainnet.context_dataset, "eth");
+        assert_eq!(mainnet.context_table, "blocks");
     }
 }

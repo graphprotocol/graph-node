@@ -8,7 +8,6 @@ use anyhow::anyhow;
 use arrow::{array::RecordBatch, datatypes::Schema};
 use futures03::future::try_join_all;
 use itertools::Itertools;
-use lazy_regex::regex_is_match;
 use semver::Version;
 use serde::Deserialize;
 use slog::{debug, Logger};
@@ -22,7 +21,9 @@ use crate::{
             auto_block_hash_decoder, auto_block_number_decoder, auto_block_timestamp_decoder,
         },
         error::IsDeterministic,
-        sql::{BlockRangeQueryBuilder, ContextQuery, ValidQuery},
+        sql::{
+            normalize_sql_ident, validate_ident, BlockRangeQueryBuilder, ContextQuery, ValidQuery,
+        },
     },
     components::link_resolver::{LinkResolver, LinkResolverContext},
     data::subgraph::DeploymentHash,
@@ -80,7 +81,8 @@ impl RawDataSource {
         let logger = logger.new(slog::o!("data_source" => name.clone()));
         debug!(logger, "Resolving data source");
 
-        validate_ident(&name).map_err(|e| e.source_context("invalid `name`"))?;
+        validate_ident(&name)
+            .map_err(|e| Error::InvalidValue(e).source_context("invalid `name`"))?;
         Self::validate_kind(kind)?;
 
         let source = source
@@ -380,7 +382,8 @@ impl RawAbi {
     ) -> Result<Abi, Error> {
         let Self { name, file } = self;
 
-        validate_ident(&name).map_err(|e| e.source_context("invalid `name`"))?;
+        validate_ident(&name)
+            .map_err(|e| Error::InvalidValue(e).source_context("invalid `name`"))?;
         let contract = Self::resolve_contract(logger, link_resolver, file).await?;
 
         Ok(Abi { name, contract })
@@ -448,7 +451,8 @@ impl RawTable {
     ) -> Result<Table, Error> {
         let Self { name, query, file } = self;
 
-        validate_ident(&name).map_err(|e| e.source_context("invalid `name`"))?;
+        validate_ident(&name)
+            .map_err(|e| Error::InvalidValue(e).source_context("invalid `name`"))?;
         let query = match Self::resolve_query(query, source, abis)? {
             Some(query) => query,
             None => Self::resolve_file(logger, link_resolver, file, source, abis).await?,
@@ -459,7 +463,7 @@ impl RawTable {
 
         for field in schema.fields() {
             validate_ident(field.name()).map_err(|e| {
-                e.source_context(format!(
+                Error::InvalidValue(e).source_context(format!(
                     "invalid query output schema: invalid column '{}'",
                     field.name()
                 ))
@@ -682,22 +686,6 @@ impl IsDeterministic for Error {
                 is_deterministic, ..
             } => *is_deterministic,
         }
-    }
-}
-
-fn validate_ident(s: &str) -> Result<(), Error> {
-    if !regex_is_match!("^[a-zA-Z_][a-zA-Z0-9_-]{0,100}$", s) {
-        return Err(Error::InvalidValue(
-            anyhow!("invalid identifier '{s}': must start with a letter or an underscore, and contain only letters, numbers, hyphens, and underscores")
-        ));
-    }
-    Ok(())
-}
-
-fn normalize_sql_ident(s: &str) -> String {
-    match validate_ident(s) {
-        Ok(()) => s.to_lowercase(),
-        Err(_e) => sqlparser_latest::ast::Ident::with_quote('"', s).to_string(),
     }
 }
 
