@@ -276,6 +276,10 @@ fn build_subgraph_registrar<AC>(
     arweave_service: ArweaveService,
     ipfs_service: IpfsService,
     amp_clients: AmpClients<AC>,
+    amp_chain_configs: std::collections::HashMap<
+        String,
+        graph::components::network_provider::AmpChainConfig,
+    >,
     cancel_token: CancellationToken,
     amp_chain_names: Arc<AmpChainNames>,
 ) -> Arc<
@@ -304,6 +308,7 @@ where
             network_store.subgraph_store(),
             link_resolver.cheap_clone(),
             amp_clients.clone(),
+            amp_chain_configs.clone(),
         );
 
         subgraph_instance_managers.add(
@@ -352,6 +357,7 @@ where
         network_store.subgraph_store(),
         subscription_manager,
         amp_clients,
+        amp_chain_configs,
         blockchain_map,
         node_id.clone(),
         version_switching_mode,
@@ -505,11 +511,11 @@ pub async fn run(
         &logger_factory,
     );
 
-    let amp_clients = {
-        let amp_chain_configs = config
-            .amp_chain_configs()
-            .expect("Failed to load Amp chain configs");
+    let amp_chain_configs = config
+        .amp_chain_configs()
+        .expect("Failed to load Amp chain configs");
 
+    let amp_clients = {
         if amp_chain_configs.is_empty() {
             info!(
                 logger,
@@ -618,6 +624,7 @@ pub async fn run(
             arweave_service,
             ipfs_service,
             amp_clients,
+            amp_chain_configs,
             cancel_token,
             amp_chain_names,
         );

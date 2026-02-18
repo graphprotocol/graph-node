@@ -44,6 +44,7 @@ impl Manifest {
         max_spec_version: Version,
         deployment: DeploymentHash,
         raw_manifest: serde_yaml::Mapping,
+        amp_context: Option<(String, String)>,
     ) -> Result<Self> {
         let unresolved_manifest =
             UnresolvedSubgraphManifest::<C>::parse(deployment.cheap_clone(), raw_manifest)
@@ -54,6 +55,7 @@ impl Manifest {
                 &deployment,
                 &link_resolver,
                 Some(amp_client),
+                amp_context,
                 logger,
                 max_spec_version,
             )

@@ -143,11 +143,11 @@ pub async fn run(
     let mut subgraph_instance_managers =
         graph_core::subgraph_provider::SubgraphInstanceManagers::new();
 
-    let amp_clients = {
-        let amp_chain_configs = config
-            .amp_chain_configs()
-            .expect("Failed to load Amp chain configs");
+    let amp_chain_configs = config
+        .amp_chain_configs()
+        .expect("Failed to load Amp chain configs");
 
+    let amp_clients = {
         if amp_chain_configs.is_empty() {
             info!(
                 logger,
@@ -203,6 +203,7 @@ pub async fn run(
             network_store.subgraph_store(),
             link_resolver.cheap_clone(),
             amp_clients.clone(),
+            amp_chain_configs.clone(),
         );
 
         subgraph_instance_managers.add(
@@ -249,6 +250,7 @@ pub async fn run(
         subgraph_store.clone(),
         panicking_subscription_manager,
         amp_clients,
+        amp_chain_configs,
         blockchain_map,
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,

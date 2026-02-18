@@ -822,6 +822,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
         amp_client: Option<Arc<AC>>,
+        amp_context: Option<(String, String)>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
@@ -831,6 +832,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
                 raw,
                 resolver,
                 amp_client,
+                amp_context,
                 logger,
                 max_spec_version,
             )
@@ -971,12 +973,20 @@ impl<C: Blockchain> SubgraphManifest<C> {
         raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
         amp_client: Option<Arc<AC>>,
+        amp_context: Option<(String, String)>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         let unresolved = UnresolvedSubgraphManifest::parse(id.cheap_clone(), raw)?;
         let resolved = unresolved
-            .resolve(&id, resolver, amp_client, logger, max_spec_version)
+            .resolve(
+                &id,
+                resolver,
+                amp_client,
+                amp_context,
+                logger,
+                max_spec_version,
+            )
             .await?;
         Ok(resolved)
     }
@@ -1114,6 +1124,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         amp_client: Option<Arc<AC>>,
+        amp_context: Option<(String, String)>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<SubgraphManifest<C>, SubgraphManifestResolveError> {
@@ -1166,10 +1177,12 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         };
 
         let data_sources = try_join_all(data_sources.into_iter().enumerate().map(|(idx, ds)| {
+            let amp_context = amp_context.clone();
             ds.resolve(
                 deployment_hash,
                 resolver,
                 amp_client.cheap_clone(),
+                amp_context,
                 logger,
                 idx as u32,
                 &spec_version,

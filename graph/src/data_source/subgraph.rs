@@ -331,6 +331,7 @@ impl UnresolvedDataSource {
                 &deployment_hash,
                 &resolver,
                 amp_client,
+                None,
                 logger,
                 LATEST_VERSION.clone(),
             )
@@ -383,6 +384,7 @@ impl UnresolvedDataSource {
                         &manifest.id,
                         resolver,
                         amp_client.cheap_clone(),
+                        None,
                         logger,
                         LATEST_VERSION.clone(),
                     )

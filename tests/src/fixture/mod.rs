@@ -632,6 +632,7 @@ pub async fn setup_inner<C: Blockchain>(
         subgraph_store.clone(),
         panicking_subscription_manager,
         graph::components::network_provider::AmpClients::<amp::FlightClient>::default(),
+        std::collections::HashMap::new(),
         blockchain_map.clone(),
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,

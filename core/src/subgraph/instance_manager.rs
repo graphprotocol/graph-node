@@ -313,6 +313,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
                 &deployment.hash,
                 &link_resolver,
                 amp_client,
+                None,
                 &logger,
                 ENV_VARS.max_spec_version.clone(),
             )

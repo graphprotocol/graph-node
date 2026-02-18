@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use alloy::primitives::BlockNumber;
@@ -8,7 +9,7 @@ use graph::{
     components::{
         link_resolver::{LinkResolver, LinkResolverContext},
         metrics::MetricsRegistry,
-        network_provider::AmpClients,
+        network_provider::{AmpChainConfig, AmpClients},
         store::{DeploymentLocator, SubgraphStore},
         subgraph::SubgraphInstanceManager,
     },
@@ -33,6 +34,7 @@ pub struct Manager<SS, NC> {
     subgraph_store: Arc<SS>,
     link_resolver: Arc<dyn LinkResolver>,
     amp_clients: AmpClients<NC>,
+    amp_chain_configs: HashMap<String, AmpChainConfig>,
 }
 
 impl<SS, NC> Manager<SS, NC>
@@ -49,6 +51,7 @@ where
         subgraph_store: Arc<SS>,
         link_resolver: Arc<dyn LinkResolver>,
         amp_clients: AmpClients<NC>,
+        amp_chain_configs: HashMap<String, AmpChainConfig>,
     ) -> Self {
         let logger = logger_factory.component_logger("AmpSubgraphManager", None);
         let logger_factory = logger_factory.with_parent(logger);
@@ -63,6 +66,7 @@ where
             subgraph_store,
             link_resolver,
             amp_clients,
+            amp_chain_configs,
         }
     }
 }
@@ -147,6 +151,13 @@ where
                         }
                     };
 
+                    let amp_context = network_name.as_deref().and_then(|chain| {
+                        manager
+                            .amp_chain_configs
+                            .get(chain)
+                            .map(|cfg| (cfg.context_dataset.clone(), cfg.context_table.clone()))
+                    });
+
                     let mut manifest = amp::Manifest::resolve::<graph_chain_ethereum::Chain, _>(
                         &logger,
                         manager.link_resolver.cheap_clone(),
@@ -154,6 +165,7 @@ where
                         manager.env_vars.max_spec_version.cheap_clone(),
                         deployment.hash.cheap_clone(),
                         raw_manifest,
+                        amp_context,
                     )
                     .await?;
 

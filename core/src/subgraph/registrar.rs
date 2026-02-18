@@ -1,11 +1,11 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use async_trait::async_trait;
 use graph::amp;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::{
     link_resolver::LinkResolverContext,
-    network_provider::{AmpChainNames, AmpClients},
+    network_provider::{AmpChainConfig, AmpChainNames, AmpClients},
     store::{DeploymentId, DeploymentLocator, SubscriptionManager},
     subgraph::Settings,
 };
@@ -26,6 +26,7 @@ pub struct SubgraphRegistrar<P, S, SM, AC> {
     store: Arc<S>,
     subscription_manager: Arc<SM>,
     amp_clients: AmpClients<AC>,
+    amp_chain_configs: HashMap<String, AmpChainConfig>,
     chains: Arc<BlockchainMap>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
@@ -48,6 +49,7 @@ where
         store: Arc<S>,
         subscription_manager: Arc<SM>,
         amp_clients: AmpClients<AC>,
+        amp_chain_configs: HashMap<String, AmpChainConfig>,
         chains: Arc<BlockchainMap>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
@@ -67,6 +69,7 @@ where
             store,
             subscription_manager,
             amp_clients,
+            amp_chain_configs,
             chains,
             node_id,
             version_switching_mode,
@@ -299,10 +302,17 @@ where
 
         // Extract the network name from the raw manifest and resolve the
         // per-chain Amp client (if any).
-        let amp_client = network_name_from_raw(&raw).and_then(|network| {
+        let resolved_amp_chain = network_name_from_raw(&raw).map(|network| {
             let resolved = self.amp_chain_names.resolve(&Word::from(network));
-            self.amp_clients.get(resolved.as_str())
+            resolved.to_string()
         });
+        let amp_client = resolved_amp_chain
+            .as_deref()
+            .and_then(|chain| self.amp_clients.get(chain));
+        let amp_context = resolved_amp_chain
+            .as_deref()
+            .and_then(|chain| self.amp_chain_configs.get(chain))
+            .map(|cfg| (cfg.context_dataset.clone(), cfg.context_table.clone()));
 
         // Give priority to deployment specific history_blocks value.
         let history_blocks =
@@ -324,6 +334,7 @@ where
                     self.version_switching_mode,
                     &resolver,
                     amp_client.cheap_clone(),
+                    amp_context.clone(),
                     history_blocks,
                     &self.amp_chain_names,
                 )
@@ -344,6 +355,7 @@ where
                     self.version_switching_mode,
                     &resolver,
                     amp_client,
+                    amp_context,
                     history_blocks,
                     &self.amp_chain_names,
                 )
@@ -484,6 +496,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
     version_switching_mode: SubgraphVersionSwitchingMode,
     resolver: &Arc<dyn LinkResolver>,
     amp_client: Option<Arc<AC>>,
+    amp_context: Option<(String, String)>,
     history_blocks_override: Option<i32>,
     amp_chain_names: &AmpChainNames,
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
@@ -494,6 +507,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
         raw,
         resolver,
         amp_client,
+        amp_context,
         logger,
         ENV_VARS.max_spec_version.clone(),
     )

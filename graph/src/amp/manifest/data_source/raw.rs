@@ -11,7 +11,7 @@ use itertools::Itertools;
 use lazy_regex::regex_is_match;
 use semver::Version;
 use serde::Deserialize;
-use slog::{debug, error, Logger};
+use slog::{debug, Logger};
 use thiserror::Error;
 
 use super::{Abi, DataSource, Source, Table, Transformer};
@@ -67,6 +67,7 @@ impl RawDataSource {
         link_resolver: &dyn LinkResolver,
         amp_client: &impl amp::Client,
         input_schema: Option<&InputSchema>,
+        amp_context: Option<(String, String)>,
     ) -> Result<DataSource, Error> {
         let Self {
             name,
@@ -87,7 +88,14 @@ impl RawDataSource {
             .map_err(|e| e.source_context("invalid `source`"))?;
 
         let transformer = transformer
-            .resolve(&logger, link_resolver, amp_client, input_schema, &source)
+            .resolve(
+                &logger,
+                link_resolver,
+                amp_client,
+                input_schema,
+                &source,
+                amp_context,
+            )
             .await
             .map_err(|e| e.source_context("invalid `transformer`"))?;
 
@@ -233,6 +241,7 @@ impl RawTransformer {
         amp_client: &impl amp::Client,
         input_schema: Option<&InputSchema>,
         source: &Source,
+        amp_context: Option<(String, String)>,
     ) -> Result<Transformer, Error> {
         let Self {
             api_version,
@@ -250,6 +259,7 @@ impl RawTransformer {
             tables,
             source,
             &abis,
+            amp_context,
         )
         .await?;
 
@@ -307,6 +317,7 @@ impl RawTransformer {
         tables: Vec<RawTable>,
         source: &Source,
         abis: &[Abi],
+        amp_context: Option<(String, String)>,
     ) -> Result<Vec<Table>, Error> {
         const MAX_TABLES: usize = 100;
 
@@ -320,23 +331,27 @@ impl RawTransformer {
             )));
         }
 
-        let table_futs = tables.into_iter().enumerate().map(|(i, table)| async move {
-            let logger = logger.new(slog::o!("table_name" => table.name.clone()));
-            debug!(logger, "Resolving table";
-                "file" => ?&table.file
-            );
+        let table_futs = tables.into_iter().enumerate().map(|(i, table)| {
+            let amp_context = amp_context.clone();
+            async move {
+                let logger = logger.new(slog::o!("table_name" => table.name.clone()));
+                debug!(logger, "Resolving table";
+                    "file" => ?&table.file
+                );
 
-            table
-                .resolve(
-                    &logger,
-                    link_resolver,
-                    amp_client,
-                    input_schema,
-                    source,
-                    abis,
-                )
-                .await
-                .map_err(|e| e.source_context(format!("invalid `tables` at index {i}")))
+                table
+                    .resolve(
+                        &logger,
+                        link_resolver,
+                        amp_client,
+                        input_schema,
+                        source,
+                        abis,
+                        amp_context,
+                    )
+                    .await
+                    .map_err(|e| e.source_context(format!("invalid `tables` at index {i}")))
+            }
         });
 
         try_join_all(table_futs).await
@@ -429,6 +444,7 @@ impl RawTable {
         input_schema: Option<&InputSchema>,
         source: &Source,
         abis: &[Abi],
+        amp_context: Option<(String, String)>,
     ) -> Result<Table, Error> {
         let Self { name, query, file } = self;
 
@@ -454,9 +470,9 @@ impl RawTable {
             logger,
             amp_client,
             input_schema,
-            source,
             query,
             schema.clone(),
+            amp_context,
         )
         .await?;
 
@@ -551,9 +567,9 @@ impl RawTable {
         logger: &Logger,
         amp_client: &impl amp::Client,
         input_schema: Option<&InputSchema>,
-        source: &Source,
         query: ValidQuery,
         schema: Schema,
+        amp_context: Option<(String, String)>,
     ) -> Result<BlockRangeQueryBuilder, Error> {
         debug!(logger, "Resolving block range query builder");
 
@@ -571,79 +587,52 @@ impl RawTable {
             return Ok(BlockRangeQueryBuilder::new(query, block_number_column));
         }
 
-        debug!(logger, "Resolving context query");
-        let mut context_query: Option<ContextQuery> = None;
+        let (context_dataset, context_table) = amp_context.ok_or_else(|| {
+            Error::InvalidQuery(anyhow!(
+                "query requires context columns (block hash/timestamp) but no Amp context config is available"
+            ))
+        })?;
 
-        // TODO: Context is embedded in the original query using INNER JOIN to ensure availability for every output row.
-        //       This requires all source tables to match or exceed the expected query output size.
-        let context_sources_iter = source
-            .tables
-            .iter()
-            .map(|table| (source.dataset.as_str(), table.as_str()));
+        debug!(logger, "Resolving context query";
+            "context_dataset" => &context_dataset,
+            "context_table" => &context_table
+        );
 
-        for (dataset, table) in context_sources_iter {
-            let context_logger = logger.new(slog::o!(
-                "context_dataset" => dataset.to_string(),
-                "context_table" => table.to_string()
-            ));
-            debug!(context_logger, "Loading context schema");
-            let schema_query = format!("SELECT * FROM {dataset}.{table}");
-            let schema = match Self::resolve_schema(logger, amp_client, schema_query).await {
-                Ok(schema) => schema,
-                Err(e) => {
-                    error!(context_logger, "Failed to load context schema";
-                        "e" => ?e
-                    );
-                    continue;
-                }
-            };
+        let schema_query = format!("SELECT * FROM {context_dataset}.{context_table}");
+        let context_schema = Self::resolve_schema(logger, amp_client, schema_query).await?;
 
-            let record_batch = RecordBatch::new_empty(schema.clone().into());
-            let mut columns = Vec::new();
+        let context_record_batch = RecordBatch::new_empty(context_schema.into());
+        let mut columns = Vec::new();
 
-            if need_block_hash_column {
-                let Ok((block_hash_column, _)) = auto_block_hash_decoder(&record_batch) else {
-                    debug!(
-                        context_logger,
-                        "Context schema does not contain block hash column, skipping"
-                    );
-                    continue;
-                };
-
-                columns.push(block_hash_column);
-            }
-
-            if need_block_timestamp_column {
-                let Ok((block_timestamp_column, _)) = auto_block_timestamp_decoder(&record_batch)
-                else {
-                    debug!(
-                        context_logger,
-                        "Context schema does not contain block timestamp column, skipping"
-                    );
-                    continue;
-                };
-
-                columns.push(block_timestamp_column);
-            }
-
-            debug!(context_logger, "Creating context query");
-            context_query = Some(ContextQuery::new(
-                query,
-                block_number_column,
-                dataset,
-                table,
-                columns,
-            ));
-            break;
+        if need_block_hash_column {
+            let (block_hash_column, _) =
+                auto_block_hash_decoder(&context_record_batch).map_err(|_| {
+                    Error::InvalidQuery(anyhow!(
+                        "context table '{context_dataset}.{context_table}' does not contain a block hash column"
+                    ))
+                })?;
+            columns.push(block_hash_column);
         }
 
-        if let Some(context_query) = context_query {
-            return Ok(BlockRangeQueryBuilder::new_with_context(context_query));
+        if need_block_timestamp_column {
+            let (block_timestamp_column, _) =
+                auto_block_timestamp_decoder(&context_record_batch).map_err(|_| {
+                    Error::InvalidQuery(anyhow!(
+                        "context table '{context_dataset}.{context_table}' does not contain a block timestamp column"
+                    ))
+                })?;
+            columns.push(block_timestamp_column);
         }
 
-        Err(Error::InvalidQuery(anyhow!(
-            "query is required to output block numbers, block hashes and block timestamps"
-        )))
+        let context_query = ContextQuery::new(
+            query,
+            block_number_column,
+            &context_dataset,
+            &context_table,
+            columns,
+        );
+
+        Ok(BlockRangeQueryBuilder::new_with_context(context_query))
     }
 }
 
@@ -709,5 +698,262 @@ fn normalize_sql_ident(s: &str) -> String {
     match validate_ident(s) {
         Ok(()) => s.to_lowercase(),
         Err(_e) => sqlparser_latest::ast::Ident::with_quote('"', s).to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::amp::error::IsDeterministic;
+    use arrow::datatypes::{DataType, Field, Schema, TimeUnit};
+    use futures03::future::BoxFuture;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    #[derive(Debug, thiserror::Error)]
+    #[error("mock error: schema not found for query")]
+    struct MockError;
+
+    impl IsDeterministic for MockError {
+        fn is_deterministic(&self) -> bool {
+            true
+        }
+    }
+
+    /// A mock Amp client that returns pre-configured schemas keyed by query string.
+    struct MockAmpClient {
+        schemas: Mutex<HashMap<String, Schema>>,
+    }
+
+    impl MockAmpClient {
+        fn new() -> Self {
+            Self {
+                schemas: Mutex::new(HashMap::new()),
+            }
+        }
+
+        fn add_schema(&self, query: &str, schema: Schema) {
+            self.schemas
+                .lock()
+                .unwrap()
+                .insert(query.to_string(), schema);
+        }
+    }
+
+    impl amp::Client for MockAmpClient {
+        type Error = MockError;
+
+        fn schema(
+            &self,
+            _logger: &slog::Logger,
+            query: impl ToString,
+        ) -> BoxFuture<'static, Result<Schema, Self::Error>> {
+            let query_str = query.to_string();
+            let schema = self.schemas.lock().unwrap().get(&query_str).cloned();
+            Box::pin(async move { schema.ok_or(MockError) })
+        }
+
+        fn query(
+            &self,
+            _logger: &slog::Logger,
+            _query: impl ToString,
+            _request_metadata: Option<amp::client::RequestMetadata>,
+        ) -> futures03::stream::BoxStream<'static, Result<amp::client::ResponseBatch, Self::Error>>
+        {
+            Box::pin(futures03::stream::empty())
+        }
+    }
+
+    fn test_logger() -> slog::Logger {
+        slog::Logger::root(slog::Discard, slog::o!())
+    }
+
+    fn schema_without_hash() -> Schema {
+        Schema::new(vec![
+            Field::new("_block_num", DataType::UInt64, false),
+            Field::new("value", DataType::Utf8, true),
+        ])
+    }
+
+    fn schema_with_all_columns() -> Schema {
+        Schema::new(vec![
+            Field::new("_block_num", DataType::UInt64, false),
+            Field::new("block_hash", DataType::FixedSizeBinary(32), false),
+            Field::new(
+                "timestamp",
+                DataType::Timestamp(TimeUnit::Nanosecond, None),
+                false,
+            ),
+            Field::new("value", DataType::Utf8, true),
+        ])
+    }
+
+    fn context_schema_with_hash() -> Schema {
+        Schema::new(vec![
+            Field::new("_block_num", DataType::UInt64, false),
+            Field::new("block_hash", DataType::FixedSizeBinary(32), false),
+        ])
+    }
+
+    fn make_valid_query(sql: &str) -> ValidQuery {
+        ValidQuery::new(
+            sql,
+            "my_dataset",
+            ["my_table"].iter().copied(),
+            &alloy::primitives::Address::ZERO,
+            std::iter::empty::<(&str, &alloy::json_abi::JsonAbi)>(),
+        )
+        .unwrap()
+    }
+
+    /// When a query lacks block hash/timestamp columns, the context CTE uses
+    /// context_dataset and context_table from config.
+    #[tokio::test]
+    async fn context_query_uses_config() {
+        let logger = test_logger();
+        let client = MockAmpClient::new();
+
+        let main_query = "SELECT _block_num, value FROM my_dataset.my_table";
+        client.add_schema(main_query, schema_without_hash());
+        client.add_schema(
+            "SELECT * FROM ctx_dataset.ctx_blocks",
+            context_schema_with_hash(),
+        );
+
+        let valid_query = make_valid_query(main_query);
+
+        let result = RawTable::resolve_block_range_query_builder(
+            &logger,
+            &client,
+            None,
+            valid_query,
+            schema_without_hash(),
+            Some(("ctx_dataset".to_string(), "ctx_blocks".to_string())),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "Expected success when config provides context; got: {:?}",
+            result.err()
+        );
+    }
+
+    /// The old source.tables iteration is replaced — config values are the sole
+    /// source of context dataset and table. When no config is provided and context
+    /// columns are needed, resolution fails.
+    #[tokio::test]
+    async fn context_query_always_has_config() {
+        let logger = test_logger();
+        let client = MockAmpClient::new();
+
+        let main_query = "SELECT _block_num, value FROM my_dataset.my_table";
+        client.add_schema(main_query, schema_without_hash());
+
+        let valid_query = make_valid_query(main_query);
+
+        let result = RawTable::resolve_block_range_query_builder(
+            &logger,
+            &client,
+            None,
+            valid_query,
+            schema_without_hash(),
+            None,
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "Expected error when amp_context is None and context columns are needed"
+        );
+        let err_msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            err_msg.contains("no Amp context config"),
+            "Error should mention missing config; got: {err_msg}"
+        );
+    }
+
+    /// When the query already includes block hash and timestamp columns,
+    /// context config is not needed and resolution succeeds.
+    #[tokio::test]
+    async fn context_query_not_needed_when_columns_present() {
+        let logger = test_logger();
+        let client = MockAmpClient::new();
+
+        let main_query = "SELECT _block_num, block_hash, timestamp, value FROM my_dataset.my_table";
+        client.add_schema(main_query, schema_with_all_columns());
+
+        let valid_query = make_valid_query(main_query);
+
+        let result = RawTable::resolve_block_range_query_builder(
+            &logger,
+            &client,
+            None,
+            valid_query,
+            schema_with_all_columns(),
+            None,
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "Expected success when all columns present; got: {:?}",
+            result.err()
+        );
+    }
+
+    /// AmpChainConfig context fields are threaded through the full resolution
+    /// chain (RawDataSource → RawTransformer → RawTable).
+    #[tokio::test]
+    async fn context_config_threaded_through_resolution() {
+        let logger = test_logger();
+        let client = MockAmpClient::new();
+
+        let main_query = "SELECT _block_num, value FROM my_dataset.my_table";
+        client.add_schema(main_query, schema_without_hash());
+        client.add_schema(
+            "SELECT * FROM ctx_dataset.ctx_blocks",
+            context_schema_with_hash(),
+        );
+
+        let link_resolver = crate::components::link_resolver::FileLinkResolver::default();
+
+        let raw_data_source = RawDataSource {
+            name: "test_ds".to_string(),
+            kind: "amp".to_string(),
+            network: "mainnet".to_string(),
+            source: RawSource {
+                dataset: "my_dataset".to_string(),
+                tables: vec!["my_table".to_string()],
+                address: None,
+                start_block: None,
+                end_block: None,
+            },
+            transformer: RawTransformer {
+                api_version: semver::Version::new(0, 0, 1),
+                abis: None,
+                tables: vec![RawTable {
+                    name: "TestEntity".to_string(),
+                    query: Some(main_query.to_string()),
+                    file: None,
+                }],
+            },
+        };
+
+        let result = raw_data_source
+            .resolve(
+                &logger,
+                &link_resolver,
+                &client,
+                None,
+                Some(("ctx_dataset".to_string(), "ctx_blocks".to_string())),
+            )
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "Expected successful resolution with threaded context config; got: {:?}",
+            result.err()
+        );
     }
 }

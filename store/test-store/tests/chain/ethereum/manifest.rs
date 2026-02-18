@@ -145,6 +145,7 @@ async fn try_resolve_manifest(
         raw,
         &resolver,
         Option::<Arc<amp::FlightClient>>::None,
+        None,
         &LOGGER,
         max_spec_version,
     )
@@ -175,6 +176,7 @@ async fn resolve_unvalidated(text: &str) -> UnvalidatedSubgraphManifest<Chain> {
         raw,
         &resolver,
         Option::<Arc<amp::FlightClient>>::None,
+        None,
         &LOGGER,
         SPEC_VERSION_0_0_4.clone(),
     )
@@ -1330,6 +1332,7 @@ schema:
                 raw,
                 &resolver,
                 Option::<Arc<amp::FlightClient>>::None,
+                None,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -1373,6 +1376,7 @@ schema:
                 raw,
                 &resolver,
                 Option::<Arc<amp::FlightClient>>::None,
+                None,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -1450,6 +1454,7 @@ dataSources:
                 raw,
                 &resolver,
                 Option::<Arc<amp::FlightClient>>::None,
+                None,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -1529,6 +1534,7 @@ dataSources:
                 raw,
                 &resolver,
                 Option::<Arc<amp::FlightClient>>::None,
+                None,
                 &LOGGER,
                 SPEC_VERSION_0_0_4.clone(),
             )
@@ -1619,6 +1625,7 @@ dataSources:
                 raw,
                 &resolver,
                 Option::<Arc<amp::FlightClient>>::None,
+                None,
                 &LOGGER,
                 SPEC_VERSION_1_2_0.clone(),
             )
@@ -1693,6 +1700,7 @@ dataSources:
                 raw,
                 &resolver,
                 Option::<Arc<amp::FlightClient>>::None,
+                None,
                 &LOGGER,
                 SPEC_VERSION_1_3_0.clone(),
             )
@@ -1844,6 +1852,7 @@ specVersion: 1.3.0
                 raw,
                 &resolver,
                 Option::<Arc<amp::FlightClient>>::None,
+                None,
                 &LOGGER,
                 SPEC_VERSION_1_3_0.clone(),
             )

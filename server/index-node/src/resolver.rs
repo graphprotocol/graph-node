@@ -542,6 +542,7 @@ where
                         raw_yaml,
                         &self.link_resolver,
                         amp_client.cheap_clone(),
+                        None,
                         &self.logger,
                         max_spec_version,
                     )
@@ -560,6 +561,7 @@ where
                         raw_yaml,
                         &self.link_resolver,
                         amp_client,
+                        None,
                         &self.logger,
                         max_spec_version,
                     )
