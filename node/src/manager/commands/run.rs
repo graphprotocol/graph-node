@@ -147,36 +147,51 @@ pub async fn run(
         let amp_chain_configs = config
             .amp_chain_configs()
             .expect("Failed to load Amp chain configs");
-        let mut clients = std::collections::HashMap::new();
-        for (chain_name, amp_chain_config) in amp_chain_configs {
-            debug!(logger, "Connecting to Amp Flight service";
-                "chain" => &chain_name,
-                "host" => ?amp_chain_config.address.host(),
-                "port" => ?amp_chain_config.address.port()
+
+        if amp_chain_configs.is_empty() {
+            info!(
+                logger,
+                "Amp support disabled — no chains have [amp] configuration"
             );
-            match amp::FlightClient::new(amp_chain_config.address.clone()).await {
-                Ok(mut client) => {
-                    if let Some(token) = &amp_chain_config.token {
-                        client.set_auth_token(token);
+            AmpClients::new(std::collections::HashMap::new())
+        } else {
+            let mut clients = std::collections::HashMap::new();
+            for (chain_name, amp_chain_config) in &amp_chain_configs {
+                debug!(logger, "Connecting to Amp Flight service";
+                    "chain" => chain_name.as_str(),
+                    "host" => ?amp_chain_config.address.host(),
+                    "port" => ?amp_chain_config.address.port()
+                );
+                match amp::FlightClient::new(amp_chain_config.address.clone()).await {
+                    Ok(mut client) => {
+                        if let Some(token) = &amp_chain_config.token {
+                            client.set_auth_token(token);
+                        }
+                        info!(logger, "Amp Flight client connected";
+                            "chain" => chain_name.as_str(),
+                            "host" => ?amp_chain_config.address.host()
+                        );
+                        clients.insert(chain_name.clone(), Arc::new(client));
                     }
-                    info!(logger, "Amp Flight client connected";
-                        "chain" => &chain_name,
-                        "host" => ?amp_chain_config.address.host()
-                    );
-                    clients.insert(chain_name, Arc::new(client));
-                }
-                Err(e) => {
-                    error!(logger, "Failed to connect Amp Flight client";
-                        "chain" => &chain_name,
-                        "error" => e.to_string()
-                    );
+                    Err(e) => {
+                        error!(logger, "Failed to connect Amp Flight client";
+                            "chain" => chain_name.as_str(),
+                            "error" => e.to_string()
+                        );
+                    }
                 }
             }
+            if clients.is_empty() {
+                warn!(
+                    logger,
+                    "Amp-powered subgraphs disabled — all configured chains failed to connect"
+                );
+            } else {
+                let chain_names: Vec<&str> = clients.keys().map(|s| s.as_str()).collect();
+                info!(logger, "Amp enabled for chains: {}", chain_names.join(", "));
+            }
+            AmpClients::new(clients)
         }
-        if clients.is_empty() {
-            warn!(logger, "Amp-powered subgraphs disabled");
-        }
-        AmpClients::new(clients)
     };
 
     if !amp_clients.is_empty() {

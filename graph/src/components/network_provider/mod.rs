@@ -158,6 +158,30 @@ mod tests {
         assert!(clients.get("mainnet").is_none());
     }
 
+    /// Verifies the condition that causes Amp manager registration:
+    /// `!amp_clients.is_empty()` is true when at least one chain has config.
+    #[test]
+    fn amp_manager_registered_when_chain_has_config() {
+        let mut map = HashMap::new();
+        map.insert("mainnet".to_string(), Arc::new(42u32));
+        let clients = AmpClients::new(map);
+        assert!(
+            !clients.is_empty(),
+            "Amp manager should be registered when at least one chain has config"
+        );
+    }
+
+    /// Verifies the condition that skips Amp manager registration:
+    /// `amp_clients.is_empty()` is true when no chains have config.
+    #[test]
+    fn amp_manager_not_registered_without_config() {
+        let clients: AmpClients<u32> = AmpClients::new(HashMap::new());
+        assert!(
+            clients.is_empty(),
+            "Amp manager should not be registered when no chains have config"
+        );
+    }
+
     /// Simulates the error path in downstream consumers: when a subgraph
     /// references a chain with no Amp client, the consumer should treat
     /// `get()` returning `None` as an error.
