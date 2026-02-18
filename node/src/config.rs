@@ -1,7 +1,7 @@
 use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
-    components::network_provider::{AmpChainNames, ChainName},
+    components::network_provider::{AmpChainConfig, AmpChainNames, ChainName},
     env::ENV_VARS,
     firehose::{SubgraphLimit, SUBGRAPHS_PER_CONN},
     itertools::Itertools,
@@ -132,6 +132,37 @@ impl Config {
             })
             .collect();
         AmpChainNames::new(mapping)
+    }
+
+    /// Build a map from chain name to [`AmpChainConfig`] for every chain
+    /// that has an `[amp]` section. The `AmpConfig.address` string is parsed
+    /// into a `Uri`; this is expected to always succeed because
+    /// `ChainSection::validate` already rejects invalid URIs.
+    pub fn amp_chain_configs(&self) -> Result<HashMap<String, AmpChainConfig>> {
+        let mut map = HashMap::new();
+        for (chain_name, chain) in &self.chains.chains {
+            if let Some(amp) = &chain.amp {
+                let uri = amp.address.parse::<Uri>().map_err(|e| {
+                    anyhow!(
+                        "invalid Amp address URI '{}' for chain '{}': {}",
+                        amp.address,
+                        chain_name,
+                        e
+                    )
+                })?;
+                map.insert(
+                    chain_name.clone(),
+                    AmpChainConfig {
+                        address: uri,
+                        token: amp.token.clone(),
+                        context_dataset: amp.context_dataset.clone(),
+                        context_table: amp.context_table.clone(),
+                        network: amp.network.clone(),
+                    },
+                );
+            }
+        }
+        Ok(map)
     }
 
     /// Check that the config is valid.
@@ -2329,5 +2360,134 @@ fdw_pool_size = [
         section
             .validate()
             .expect("validation should pass for a valid URI");
+    }
+
+    #[test]
+    fn amp_chain_config_constructable() {
+        use graph::components::network_provider::AmpChainConfig;
+        use graph::http::Uri;
+
+        let uri: Uri = "http://localhost:50051".parse().unwrap();
+        let cfg = AmpChainConfig {
+            address: uri,
+            token: Some("secret".to_string()),
+            context_dataset: "eth".to_string(),
+            context_table: "blocks".to_string(),
+            network: Some("ethereum-mainnet".to_string()),
+        };
+
+        assert_eq!(cfg.address.to_string(), "http://localhost:50051/");
+        assert_eq!(cfg.token.as_deref(), Some("secret"));
+        assert_eq!(cfg.context_dataset, "eth");
+        assert_eq!(cfg.context_table, "blocks");
+        assert_eq!(cfg.network.as_deref(), Some("ethereum-mainnet"));
+    }
+
+    #[test]
+    fn amp_chain_configs_from_mixed() {
+        let section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            provider = []
+            [mainnet.amp]
+            address = "http://localhost:50051"
+            token = "my-token"
+            context_dataset = "eth"
+            context_table = "blocks"
+            network = "ethereum-mainnet"
+            [sepolia]
+            shard = "primary"
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let config = Config {
+            node: NodeId::new("test").unwrap(),
+            general: None,
+            stores: {
+                let mut s = std::collections::BTreeMap::new();
+                s.insert(
+                    "primary".to_string(),
+                    toml::from_str::<Shard>(r#"connection = "postgresql://u:p@h/db""#).unwrap(),
+                );
+                s
+            },
+            chains: section,
+            deployment: toml::from_str("[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]")
+                .unwrap(),
+        };
+
+        let map = config.amp_chain_configs().unwrap();
+
+        // Only mainnet (with amp) should be in the map
+        assert_eq!(map.len(), 1);
+        assert!(!map.contains_key("sepolia"));
+
+        let mainnet = map.get("mainnet").expect("mainnet should be in map");
+        assert_eq!(mainnet.address.to_string(), "http://localhost:50051/");
+        assert_eq!(mainnet.token.as_deref(), Some("my-token"));
+        assert_eq!(mainnet.context_dataset, "eth");
+        assert_eq!(mainnet.context_table, "blocks");
+        assert_eq!(mainnet.network.as_deref(), Some("ethereum-mainnet"));
+    }
+
+    #[test]
+    fn amp_chain_config_invalid_address_returns_error() {
+        // Build a Config with an invalid address that bypasses validation
+        // (constructed directly, not via from_str which calls validate).
+        let section = ChainSection {
+            ingestor: "default".to_string(),
+            chains: {
+                let mut chains = std::collections::BTreeMap::new();
+                chains.insert(
+                    "mainnet".to_string(),
+                    Chain {
+                        shard: "primary".to_string(),
+                        protocol: BlockchainKind::Ethereum,
+                        polling_interval: default_polling_interval(),
+                        providers: vec![],
+                        amp: Some(AmpConfig {
+                            address: "not a valid uri!@#".to_string(),
+                            token: None,
+                            context_dataset: "eth".to_string(),
+                            context_table: "blocks".to_string(),
+                            network: None,
+                        }),
+                    },
+                );
+                chains
+            },
+        };
+
+        let config = Config {
+            node: NodeId::new("test").unwrap(),
+            general: None,
+            stores: {
+                let mut s = std::collections::BTreeMap::new();
+                s.insert(
+                    "primary".to_string(),
+                    toml::from_str::<Shard>(r#"connection = "postgresql://u:p@h/db""#).unwrap(),
+                );
+                s
+            },
+            chains: section,
+            deployment: toml::from_str("[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]")
+                .unwrap(),
+        };
+
+        let result = config.amp_chain_configs();
+        assert!(result.is_err(), "expected error for invalid URI");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("invalid Amp address URI"),
+            "expected 'invalid Amp address URI' in error, got: {msg}"
+        );
+        assert!(
+            msg.contains("mainnet"),
+            "expected chain name in error, got: {msg}"
+        );
     }
 }

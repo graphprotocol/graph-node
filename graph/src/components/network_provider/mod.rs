@@ -16,6 +16,7 @@ pub use self::provider_check::ProviderCheckStatus;
 pub use self::provider_manager::ProviderCheckStrategy;
 pub use self::provider_manager::ProviderManager;
 
+use crate::http::Uri;
 use std::collections::HashMap;
 
 // Used to increase memory efficiency.
@@ -26,10 +27,24 @@ pub type ChainName = crate::data::value::Word;
 // Currently, there is no need to create a separate type for this.
 pub type ProviderName = crate::data::value::Word;
 
-/// Maps AMP network names to internal graph-node chain names.
+/// Resolved per-chain Amp configuration, with the address parsed as a `Uri`.
 ///
-/// AMP-powered subgraphs may use different network names than graph-node
-/// (e.g., AMP uses `"ethereum-mainnet"` while graph-node uses `"mainnet"`).
+/// This struct is the *runtime* counterpart of the TOML-level `AmpConfig`
+/// (which stores the address as a plain `String`). The `Config::amp_chain_configs()`
+/// method bridges the two by parsing each address string into a `Uri`.
+#[derive(Clone, Debug)]
+pub struct AmpChainConfig {
+    pub address: Uri,
+    pub token: Option<String>,
+    pub context_dataset: String,
+    pub context_table: String,
+    pub network: Option<String>,
+}
+
+/// Maps Amp network names to internal graph-node chain names.
+///
+/// Amp-powered subgraphs may use different network names than graph-node
+/// (e.g., Amp uses `"ethereum-mainnet"` while graph-node uses `"mainnet"`).
 /// This type provides a config-driven translation layer.
 #[derive(Clone, Debug, Default)]
 pub struct AmpChainNames(HashMap<ChainName, ChainName>);
