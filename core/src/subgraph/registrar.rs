@@ -312,7 +312,7 @@ where
         let amp_context = resolved_amp_chain
             .as_deref()
             .and_then(|chain| self.amp_chain_configs.get(chain))
-            .map(|cfg| (cfg.context_dataset.clone(), cfg.context_table.clone()));
+            .map(|cfg| cfg.context());
 
         // Give priority to deployment specific history_blocks value.
         let history_blocks =

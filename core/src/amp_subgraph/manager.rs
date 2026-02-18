@@ -149,7 +149,7 @@ where
                         manager
                             .amp_chain_configs
                             .get(chain)
-                            .map(|cfg| (cfg.context_dataset.clone(), cfg.context_table.clone()))
+                            .map(|cfg| cfg.context())
                     });
 
                     let mut manifest = amp::Manifest::resolve::<graph_chain_ethereum::Chain, _>(

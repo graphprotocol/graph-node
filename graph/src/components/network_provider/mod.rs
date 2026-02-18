@@ -42,6 +42,13 @@ pub struct AmpChainConfig {
     pub network: Option<String>,
 }
 
+impl AmpChainConfig {
+    /// Returns the context dataset and table as a tuple.
+    pub fn context(&self) -> (String, String) {
+        (self.context_dataset.clone(), self.context_table.clone())
+    }
+}
+
 /// Holds per-chain Amp Flight clients, keyed by chain name.
 ///
 /// This wrapper is used to pass per-chain Amp clients through the system
@@ -117,6 +124,21 @@ impl AmpChainNames {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn amp_chain_config_context_returns_tuple() {
+        let cfg = AmpChainConfig {
+            address: "http://localhost:50051".parse().unwrap(),
+            token: None,
+            context_dataset: "eth_mainnet".to_string(),
+            context_table: "blocks".to_string(),
+            network: None,
+        };
+        assert_eq!(
+            cfg.context(),
+            ("eth_mainnet".to_string(), "blocks".to_string())
+        );
+    }
 
     #[test]
     fn amp_chain_names_resolve_known_alias() {
