@@ -114,12 +114,31 @@ async fn create_inner(
         .await?;
     let network = query_store.network_name();
 
-    let src_ptr = query_store.block_ptr().await?.ok_or_else(|| anyhow!("subgraph {} has not indexed any blocks yet and can not be used as the source of a copy", src))?;
-    let src_number = if src_ptr.number <= block_offset {
-        bail!("subgraph {} has only indexed up to block {}, but we need at least block {} before we can copy from it", src, src_ptr.number, block_offset);
-    } else {
-        src_ptr.number - block_offset
-    };
+    let src_ptr = query_store
+        .block_ptr()
+        .await?
+        .ok_or_else(|| anyhow!("subgraph {} has not indexed any blocks yet and can not be used as the source of a copy", src))?;
+
+    if src_ptr.number <= block_offset {
+        bail!("subgraph {} has only indexed up to block {}, but we need at least block {} before we can copy from it",
+            src,
+            src_ptr.number,
+            block_offset
+        );
+    }
+
+    // Validate that the offset block does not fall behind the subgraph's earliest block.
+    let src_state = query_store.deployment_state().await?;
+    let src_number = src_ptr.number - block_offset;
+    if src_number < src_state.earliest_block_number {
+        bail!(
+            "cannot copy subgraph {} with --offset {}: the offset block number {} is behind the subgraph's earliest_block_number {}",
+            src,
+            block_offset,
+            src_number,
+            src_state.earliest_block_number,
+        );
+    }
 
     let chain_store = store
         .block_store()
