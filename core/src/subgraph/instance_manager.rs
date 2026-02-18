@@ -15,6 +15,7 @@ use graph::blockchain::block_stream::{BlockStreamMetrics, TriggersAdapterWrapper
 use graph::blockchain::{Blockchain, BlockchainKind, DataSource, NodeCapabilities};
 use graph::components::metrics::gas::GasMetrics;
 use graph::components::metrics::subgraph::DeploymentStatusMetric;
+use graph::components::network_provider::AmpClients;
 use graph::components::store::SourceableStore;
 use graph::components::subgraph::ProofOfIndexingVersion;
 use graph::data::subgraph::{UnresolvedSubgraphManifest, SPEC_VERSION_0_0_6};
@@ -41,7 +42,7 @@ pub struct SubgraphInstanceManager<S: SubgraphStore, AC> {
     link_resolver: Arc<dyn LinkResolver>,
     ipfs_service: IpfsService,
     arweave_service: ArweaveService,
-    amp_client: Option<Arc<AC>>,
+    amp_clients: AmpClients<AC>,
     static_filters: bool,
     env_vars: Arc<EnvVars>,
 
@@ -175,7 +176,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
         link_resolver: Arc<dyn LinkResolver>,
         ipfs_service: IpfsService,
         arweave_service: ArweaveService,
-        amp_client: Option<Arc<AC>>,
+        amp_clients: AmpClients<AC>,
         static_filters: bool,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphInstanceManager", None);
@@ -189,7 +190,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
             instances: SubgraphKeepAlive::new(sg_metrics),
             link_resolver,
             ipfs_service,
-            amp_client,
+            amp_clients,
             static_filters,
             env_vars,
             arweave_service,
@@ -267,6 +268,17 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
         let subgraph_store = self.subgraph_store.cheap_clone();
         let registry = self.metrics_registry.cheap_clone();
 
+        // Look up the per-chain Amp client based on the network from the
+        // raw manifest (before the manifest is moved into parse).
+        let amp_client = raw_manifest
+            .get(serde_yaml::Value::String("dataSources".to_owned()))
+            .and_then(|ds| ds.as_sequence())
+            .and_then(|ds| ds.first())
+            .and_then(|ds| ds.as_mapping())
+            .and_then(|ds| ds.get(serde_yaml::Value::String("network".to_owned())))
+            .and_then(|n| n.as_str())
+            .and_then(|network| self.amp_clients.get(network));
+
         let manifest =
             UnresolvedSubgraphManifest::parse(deployment.hash.cheap_clone(), raw_manifest)?;
 
@@ -300,7 +312,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
             .resolve(
                 &deployment.hash,
                 &link_resolver,
-                self.amp_client.cheap_clone(),
+                amp_client,
                 &logger,
                 ENV_VARS.max_spec_version.clone(),
             )

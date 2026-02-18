@@ -5,7 +5,7 @@ use graph::amp;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::{
     link_resolver::LinkResolverContext,
-    network_provider::AmpChainNames,
+    network_provider::{AmpChainNames, AmpClients},
     store::{DeploymentId, DeploymentLocator, SubscriptionManager},
     subgraph::Settings,
 };
@@ -25,7 +25,7 @@ pub struct SubgraphRegistrar<P, S, SM, AC> {
     provider: Arc<P>,
     store: Arc<S>,
     subscription_manager: Arc<SM>,
-    amp_client: Option<Arc<AC>>,
+    amp_clients: AmpClients<AC>,
     chains: Arc<BlockchainMap>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
@@ -47,7 +47,7 @@ where
         provider: Arc<P>,
         store: Arc<S>,
         subscription_manager: Arc<SM>,
-        amp_client: Option<Arc<AC>>,
+        amp_clients: AmpClients<AC>,
         chains: Arc<BlockchainMap>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
@@ -66,7 +66,7 @@ where
             provider,
             store,
             subscription_manager,
-            amp_client,
+            amp_clients,
             chains,
             node_id,
             version_switching_mode,
@@ -297,6 +297,13 @@ where
             SubgraphRegistrarError::ResolveError(SubgraphManifestResolveError::ResolveError(e))
         })?;
 
+        // Extract the network name from the raw manifest and resolve the
+        // per-chain Amp client (if any).
+        let amp_client = network_name_from_raw(&raw).and_then(|network| {
+            let resolved = self.amp_chain_names.resolve(&Word::from(network));
+            self.amp_clients.get(resolved.as_str())
+        });
+
         // Give priority to deployment specific history_blocks value.
         let history_blocks =
             history_blocks.or(self.settings.for_name(&name).map(|c| c.history_blocks));
@@ -316,7 +323,7 @@ where
                     debug_fork,
                     self.version_switching_mode,
                     &resolver,
-                    self.amp_client.cheap_clone(),
+                    amp_client.cheap_clone(),
                     history_blocks,
                     &self.amp_chain_names,
                 )
@@ -336,7 +343,7 @@ where
                     debug_fork,
                     self.version_switching_mode,
                     &resolver,
-                    self.amp_client.cheap_clone(),
+                    amp_client,
                     history_blocks,
                     &self.amp_chain_names,
                 )
@@ -449,6 +456,18 @@ async fn resolve_graft_block(
                 )),
             ])
         })
+}
+
+/// Extracts the network name from the first data source in a raw manifest.
+fn network_name_from_raw(raw: &serde_yaml::Mapping) -> Option<String> {
+    use serde_yaml::Value;
+    raw.get(Value::String("dataSources".to_owned()))
+        .and_then(|ds| ds.as_sequence())
+        .and_then(|ds| ds.first())
+        .and_then(|ds| ds.as_mapping())
+        .and_then(|ds| ds.get(Value::String("network".to_owned())))
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_owned())
 }
 
 async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Client>(

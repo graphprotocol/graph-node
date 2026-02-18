@@ -11,7 +11,7 @@ use graph::amp;
 use graph::anyhow::bail;
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
-use graph::components::network_provider::chain_id_validator;
+use graph::components::network_provider::{chain_id_validator, AmpClients};
 use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::{Settings, SubgraphInstanceManager as _};
 use graph::endpoint::EndpointMetrics;
@@ -21,7 +21,7 @@ use graph::prelude::{
     SubgraphCountMetric, SubgraphName, SubgraphRegistrar, SubgraphStore,
     SubgraphVersionSwitchingMode, ENV_VARS,
 };
-use graph::slog::{debug, info, Logger};
+use graph::slog::{debug, error, info, warn, Logger};
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use tokio_util::sync::CancellationToken;
 
@@ -40,7 +40,6 @@ pub async fn run(
     _network_name: String,
     ipfs_url: Vec<String>,
     arweave_url: String,
-    amp_flight_service_address: Option<String>,
     config: Config,
     metrics_ctx: MetricsContext,
     node_id: NodeId,
@@ -144,40 +143,58 @@ pub async fn run(
     let mut subgraph_instance_managers =
         graph_core::subgraph_provider::SubgraphInstanceManagers::new();
 
-    let amp_client = match amp_flight_service_address {
-        Some(amp_flight_service_address) => {
-            let addr = amp_flight_service_address
-                .parse()
-                .expect("Invalid Amp Flight service address");
-
-            let mut amp_client = amp::FlightClient::new(addr)
-                .await
-                .expect("Failed to connect to Amp Flight service");
-
-            if let Some(auth_token) = &env_vars.amp.flight_service_token {
-                amp_client.set_auth_token(auth_token);
+    let amp_clients = {
+        let amp_chain_configs = config
+            .amp_chain_configs()
+            .expect("Failed to load Amp chain configs");
+        let mut clients = std::collections::HashMap::new();
+        for (chain_name, amp_chain_config) in amp_chain_configs {
+            debug!(logger, "Connecting to Amp Flight service";
+                "chain" => &chain_name,
+                "host" => ?amp_chain_config.address.host(),
+                "port" => ?amp_chain_config.address.port()
+            );
+            match amp::FlightClient::new(amp_chain_config.address.clone()).await {
+                Ok(mut client) => {
+                    if let Some(token) = &amp_chain_config.token {
+                        client.set_auth_token(token);
+                    }
+                    info!(logger, "Amp Flight client connected";
+                        "chain" => &chain_name,
+                        "host" => ?amp_chain_config.address.host()
+                    );
+                    clients.insert(chain_name, Arc::new(client));
+                }
+                Err(e) => {
+                    error!(logger, "Failed to connect Amp Flight client";
+                        "chain" => &chain_name,
+                        "error" => e.to_string()
+                    );
+                }
             }
-
-            let amp_client = Arc::new(amp_client);
-            let amp_instance_manager = graph_core::amp_subgraph::Manager::new(
-                &logger_factory,
-                metrics_registry.cheap_clone(),
-                env_vars.cheap_clone(),
-                &cancel_token,
-                network_store.subgraph_store(),
-                link_resolver.cheap_clone(),
-                amp_client.cheap_clone(),
-            );
-
-            subgraph_instance_managers.add(
-                graph_core::subgraph_provider::SubgraphProcessingKind::Amp,
-                Arc::new(amp_instance_manager),
-            );
-
-            Some(amp_client)
         }
-        None => None,
+        if clients.is_empty() {
+            warn!(logger, "Amp-powered subgraphs disabled");
+        }
+        AmpClients::new(clients)
     };
+
+    if !amp_clients.is_empty() {
+        let amp_instance_manager = graph_core::amp_subgraph::Manager::new(
+            &logger_factory,
+            metrics_registry.cheap_clone(),
+            env_vars.cheap_clone(),
+            &cancel_token,
+            network_store.subgraph_store(),
+            link_resolver.cheap_clone(),
+            amp_clients.clone(),
+        );
+
+        subgraph_instance_managers.add(
+            graph_core::subgraph_provider::SubgraphProcessingKind::Amp,
+            Arc::new(amp_instance_manager),
+        );
+    }
 
     let subgraph_instance_manager = graph_core::subgraph::SubgraphInstanceManager::new(
         &logger_factory,
@@ -189,7 +206,7 @@ pub async fn run(
         link_resolver.cheap_clone(),
         ipfs_service,
         arweave_service,
-        amp_client.cheap_clone(),
+        amp_clients.clone(),
         static_filters,
     );
 
@@ -216,7 +233,7 @@ pub async fn run(
         subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
-        amp_client,
+        amp_clients,
         blockchain_map,
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,

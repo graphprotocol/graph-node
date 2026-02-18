@@ -18,6 +18,7 @@ pub use self::provider_manager::ProviderManager;
 
 use crate::http::Uri;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // Used to increase memory efficiency.
 // Currently, there is no need to create a separate type for this.
@@ -41,6 +42,58 @@ pub struct AmpChainConfig {
     pub network: Option<String>,
 }
 
+/// Holds per-chain Amp Flight clients, keyed by chain name.
+///
+/// This wrapper is used to pass per-chain Amp clients through the system
+/// instead of a single global `Option<Arc<AC>>`. Use `get(chain_name)` to
+/// retrieve the client for a specific chain.
+pub struct AmpClients<AC> {
+    clients: HashMap<String, Arc<AC>>,
+}
+
+impl<AC> AmpClients<AC> {
+    /// Creates a new `AmpClients` from a map of chain names to clients.
+    pub fn new(clients: HashMap<String, Arc<AC>>) -> Self {
+        Self { clients }
+    }
+
+    /// Returns the Amp client for the given chain, or `None` if no client
+    /// is configured for that chain.
+    pub fn get(&self, chain_name: &str) -> Option<Arc<AC>> {
+        self.clients.get(chain_name).cloned()
+    }
+
+    /// Returns `true` if no Amp clients are configured.
+    pub fn is_empty(&self) -> bool {
+        self.clients.is_empty()
+    }
+}
+
+// Manual Clone impl: only requires `Arc<AC>: Clone` (always true), not `AC: Clone`.
+impl<AC> Clone for AmpClients<AC> {
+    fn clone(&self) -> Self {
+        Self {
+            clients: self.clients.clone(),
+        }
+    }
+}
+
+impl<AC> std::fmt::Debug for AmpClients<AC> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AmpClients")
+            .field("chains", &self.clients.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+impl<AC> Default for AmpClients<AC> {
+    fn default() -> Self {
+        Self {
+            clients: HashMap::new(),
+        }
+    }
+}
+
 /// Maps Amp network names to internal graph-node chain names.
 ///
 /// Amp-powered subgraphs may use different network names than graph-node
@@ -54,7 +107,7 @@ impl AmpChainNames {
         AmpChainNames(mapping)
     }
 
-    /// Returns the internal chain name for an AMP alias, or the input
+    /// Returns the internal chain name for an Amp alias, or the input
     /// unchanged if no alias matches.
     pub fn resolve(&self, name: &ChainName) -> ChainName {
         self.0.get(name).cloned().unwrap_or_else(|| name.clone())
@@ -85,6 +138,43 @@ mod tests {
         assert_eq!(
             names.resolve(&ChainName::from("mainnet")),
             ChainName::from("mainnet")
+        );
+    }
+
+    #[test]
+    fn amp_clients_returns_client_for_configured_chain() {
+        let mut map = HashMap::new();
+        map.insert("mainnet".to_string(), Arc::new(42u32));
+        let clients = AmpClients::new(map);
+        let client = clients.get("mainnet");
+        assert!(client.is_some());
+        assert_eq!(*client.unwrap(), 42);
+    }
+
+    #[test]
+    fn amp_clients_returns_none_for_unconfigured_chain() {
+        let map: HashMap<String, Arc<u32>> = HashMap::new();
+        let clients = AmpClients::new(map);
+        assert!(clients.get("mainnet").is_none());
+    }
+
+    /// Simulates the error path in downstream consumers: when a subgraph
+    /// references a chain with no Amp client, the consumer should treat
+    /// `get()` returning `None` as an error.
+    #[test]
+    fn amp_clients_error_for_unconfigured_amp_chain() {
+        let mut map = HashMap::new();
+        map.insert("mainnet".to_string(), Arc::new(1u32));
+        let clients = AmpClients::new(map);
+
+        // "matic" is not configured.
+        let result = clients
+            .get("matic")
+            .ok_or_else(|| "Amp is not configured for chain 'matic'".to_string());
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            "Amp is not configured for chain 'matic'"
         );
     }
 }

@@ -8,6 +8,7 @@ use graph::{
     components::{
         link_resolver::{LinkResolver, LinkResolverContext},
         metrics::MetricsRegistry,
+        network_provider::AmpClients,
         store::{DeploymentLocator, SubgraphStore},
         subgraph::SubgraphInstanceManager,
     },
@@ -31,7 +32,7 @@ pub struct Manager<SS, NC> {
     monitor: Monitor,
     subgraph_store: Arc<SS>,
     link_resolver: Arc<dyn LinkResolver>,
-    amp_client: Arc<NC>,
+    amp_clients: AmpClients<NC>,
 }
 
 impl<SS, NC> Manager<SS, NC>
@@ -47,7 +48,7 @@ where
         cancel_token: &CancellationToken,
         subgraph_store: Arc<SS>,
         link_resolver: Arc<dyn LinkResolver>,
-        amp_client: Arc<NC>,
+        amp_clients: AmpClients<NC>,
     ) -> Self {
         let logger = logger_factory.component_logger("AmpSubgraphManager", None);
         let logger_factory = logger_factory.with_parent(logger);
@@ -61,7 +62,7 @@ where
             monitor,
             subgraph_store,
             link_resolver,
-            amp_client,
+            amp_clients,
         }
     }
 }
@@ -112,13 +113,44 @@ where
                         .await
                         .context("failed to load subgraph manifest")?;
 
-                    let raw_manifest = serde_yaml::from_slice(&manifest_bytes)
+                    let raw_manifest: serde_yaml::Mapping = serde_yaml::from_slice(&manifest_bytes)
                         .context("failed to parse subgraph manifest")?;
+
+                    // Extract the network name from the raw manifest to look
+                    // up the per-chain Amp client.
+                    let network_name = raw_manifest
+                        .get(serde_yaml::Value::String("dataSources".to_owned()))
+                        .and_then(|ds| ds.as_sequence())
+                        .and_then(|ds| ds.first())
+                        .and_then(|ds| ds.as_mapping())
+                        .and_then(|ds| ds.get(serde_yaml::Value::String("network".to_owned())))
+                        .and_then(|n| n.as_str())
+                        .map(|s| s.to_owned());
+
+                    let amp_client = match &network_name {
+                        Some(network) => match manager.amp_clients.get(network) {
+                            Some(client) => client,
+                            None => {
+                                anyhow::bail!(
+                                    "Amp is not configured for chain '{}'; \
+                                     cannot start Amp subgraph '{}'",
+                                    network,
+                                    deployment.hash
+                                );
+                            }
+                        },
+                        None => {
+                            anyhow::bail!(
+                                "no network name found in manifest for Amp subgraph '{}'",
+                                deployment.hash
+                            );
+                        }
+                    };
 
                     let mut manifest = amp::Manifest::resolve::<graph_chain_ethereum::Chain, _>(
                         &logger,
                         manager.link_resolver.cheap_clone(),
-                        manager.amp_client.cheap_clone(),
+                        amp_client.cheap_clone(),
                         manager.env_vars.max_spec_version.cheap_clone(),
                         deployment.hash.cheap_clone(),
                         raw_manifest,
@@ -139,7 +171,7 @@ where
                     let runner_context = runner::Context::new(
                         &logger,
                         &manager.env_vars.amp,
-                        manager.amp_client.cheap_clone(),
+                        amp_client,
                         store,
                         deployment.hash.cheap_clone(),
                         manifest,

@@ -18,7 +18,7 @@ use graph::url::Url;
 use graph::{
     amp,
     blockchain::{Blockchain, BlockchainKind, BlockchainMap},
-    components::network_provider::AmpChainNames,
+    components::network_provider::{AmpChainNames, AmpClients},
 };
 use graph_core::polling_monitor::{arweave_service, ArweaveService, IpfsService};
 use graph_graphql::prelude::GraphQlRunner;
@@ -275,7 +275,7 @@ fn build_subgraph_registrar<AC>(
     subscription_manager: Arc<SubscriptionManager>,
     arweave_service: ArweaveService,
     ipfs_service: IpfsService,
-    amp_client: Option<Arc<AC>>,
+    amp_clients: AmpClients<AC>,
     cancel_token: CancellationToken,
     amp_chain_names: Arc<AmpChainNames>,
 ) -> Arc<
@@ -295,7 +295,7 @@ where
     let mut subgraph_instance_managers =
         graph_core::subgraph_provider::SubgraphInstanceManagers::new();
 
-    if let Some(amp_client) = amp_client.cheap_clone() {
+    if !amp_clients.is_empty() {
         let amp_instance_manager = graph_core::amp_subgraph::Manager::new(
             logger_factory,
             metrics_registry.cheap_clone(),
@@ -303,7 +303,7 @@ where
             &cancel_token,
             network_store.subgraph_store(),
             link_resolver.cheap_clone(),
-            amp_client,
+            amp_clients.clone(),
         );
 
         subgraph_instance_managers.add(
@@ -322,7 +322,7 @@ where
         link_resolver.clone(),
         ipfs_service,
         arweave_service,
-        amp_client.cheap_clone(),
+        amp_clients.clone(),
         static_filters,
     );
 
@@ -351,7 +351,7 @@ where
         Arc::new(subgraph_provider),
         network_store.subgraph_store(),
         subscription_manager,
-        amp_client,
+        amp_clients,
         blockchain_map,
         node_id.clone(),
         version_switching_mode,
@@ -505,35 +505,40 @@ pub async fn run(
         &logger_factory,
     );
 
-    let amp_client = match opt.amp_flight_service_address.as_deref() {
-        Some(amp_flight_service_address) => {
-            let addr: graph::http::Uri = amp_flight_service_address
-                .parse()
-                .expect("Invalid Amp Flight service address");
-
+    let amp_clients = {
+        let amp_chain_configs = config
+            .amp_chain_configs()
+            .expect("Failed to load Amp chain configs");
+        let mut clients = std::collections::HashMap::new();
+        for (chain_name, amp_chain_config) in amp_chain_configs {
             debug!(logger, "Connecting to Amp Flight service";
-                "host" => ?addr.host(),
-                "port" => ?addr.port()
+                "chain" => &chain_name,
+                "host" => ?amp_chain_config.address.host(),
+                "port" => ?amp_chain_config.address.port()
             );
-
-            let mut amp_client = amp::FlightClient::new(addr.clone())
-                .await
-                .expect("Failed to connect to Amp Flight service");
-
-            if let Some(auth_token) = &env_vars.amp.flight_service_token {
-                amp_client.set_auth_token(auth_token);
+            match amp::FlightClient::new(amp_chain_config.address.clone()).await {
+                Ok(mut client) => {
+                    if let Some(token) = &amp_chain_config.token {
+                        client.set_auth_token(token);
+                    }
+                    info!(logger, "Amp Flight client connected";
+                        "chain" => &chain_name,
+                        "host" => ?amp_chain_config.address.host()
+                    );
+                    clients.insert(chain_name, Arc::new(client));
+                }
+                Err(e) => {
+                    error!(logger, "Failed to connect Amp Flight client";
+                        "chain" => &chain_name,
+                        "error" => e.to_string()
+                    );
+                }
             }
-
-            info!(logger, "Amp-powered subgraphs enabled";
-                "amp_flight_service_host" => ?addr.host()
-            );
-
-            Some(Arc::new(amp_client))
         }
-        None => {
+        if clients.is_empty() {
             warn!(logger, "Amp-powered subgraphs disabled");
-            None
         }
+        AmpClients::new(clients)
     };
 
     start_graphman_server(opt.graphman_port, graphman_server_config).await;
@@ -570,7 +575,7 @@ pub async fn run(
             blockchain_map.clone(),
             network_store.clone(),
             link_resolver.clone(),
-            amp_client.cheap_clone(),
+            amp_clients.clone(),
         );
 
         if !opt.disable_block_ingestor {
@@ -597,7 +602,7 @@ pub async fn run(
             subscription_manager,
             arweave_service,
             ipfs_service,
-            amp_client,
+            amp_clients,
             cancel_token,
             amp_chain_names,
         );

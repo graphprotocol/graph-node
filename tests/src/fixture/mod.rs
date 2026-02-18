@@ -585,7 +585,7 @@ pub async fn setup_inner<C: Blockchain>(
         link_resolver.cheap_clone(),
         ipfs_service,
         arweave_service,
-        None,
+        graph::components::network_provider::AmpClients::<amp::FlightClient>::default(),
         static_filters,
     ));
 
@@ -620,7 +620,7 @@ pub async fn setup_inner<C: Blockchain>(
         blockchain_map.cheap_clone(),
         stores.network_store.cheap_clone(),
         link_resolver.cheap_clone(),
-        None,
+        graph::components::network_provider::AmpClients::<amp::FlightClient>::default(),
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
@@ -631,7 +631,7 @@ pub async fn setup_inner<C: Blockchain>(
         subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
-        Option::<Arc<amp::FlightClient>>::None,
+        graph::components::network_provider::AmpClients::<amp::FlightClient>::default(),
         blockchain_map.clone(),
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
