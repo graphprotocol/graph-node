@@ -229,13 +229,18 @@ impl<'a> Agg<'a> {
 #[derive(Debug, Clone)]
 pub(crate) struct Rollup {
     pub(crate) interval: AggregationInterval,
-    #[allow(dead_code)]
-    agg_table: Arc<Table>,
+    pub(crate) agg_table: Arc<Table>,
     insert_sql: String,
     /// A query that determines the last time a rollup was done. The query
     /// finds the latest timestamp in the aggregation table and adds the
     /// length of the aggregation interval to deduce the last rollup time
     last_rollup_sql: String,
+
+    /// The SQL query that loads the current, partially filled bucket.
+    ///
+    /// Contains a `/*FILTERS*/` comment that can be replaced with additional filters like `and c.block$ <= $1`.
+    /// The filters are applied to the SQL query that loads the time series entities, not to the aggregated values.
+    pub(crate) select_current_sql: String,
 }
 
 impl Rollup {
@@ -264,11 +269,15 @@ impl Rollup {
         let mut insert_sql = String::new();
         sql.insert(&mut insert_sql)?;
         let last_rollup_sql = sql.last_rollup();
+        let mut select_current_sql = String::new();
+        sql.select_current(&mut select_current_sql)?;
+
         Ok(Self {
             interval,
             agg_table,
             insert_sql,
             last_rollup_sql,
+            select_current_sql,
         })
     }
 
@@ -363,23 +372,22 @@ impl<'a> RollupSql<'a> {
     ///   $2: end timestamp (exclusive)
     ///   $3: block number
     fn select_bucket(&self, with_block: bool, w: &mut dyn fmt::Write) -> fmt::Result {
-        let max_id = match self.agg_table.primary_key().column_type.id_type() {
-            Ok(IdType::Bytes) => "max(id::text)::bytea",
-            Ok(IdType::String) | Ok(IdType::Int8) => "max(id)",
-            Err(_) => unreachable!("we make sure that the primary key has an id_type"),
-        };
-        write!(w, "select {max_id} as id, timestamp")?;
+        write!(
+            w,
+            "select {max_id} as id, timestamp",
+            max_id = self.max_id(),
+        )?;
         if with_block {
             write!(w, ", $3")?;
         }
-        write_dims(self.dimensions, w)?;
-        comma_sep(self.aggregates, w, |w, agg| agg.aggregate("id", w))?;
+        write_dims(self.dimensions, w, true)?;
+        comma_sep(self.aggregates, w, true, |w, agg| agg.aggregate("id", w))?;
         let secs = self.interval.as_duration().as_secs();
         write!(
             w,
             " from (select id, date_bin('{secs}s', timestamp, 'epoch'::timestamptz) as timestamp"
         )?;
-        write_dims(self.dimensions, w)?;
+        write_dims(self.dimensions, w, true)?;
         let agg_srcs: Vec<&str> = {
             let mut agg_srcs: Vec<_> = self
                 .aggregates
@@ -392,7 +400,7 @@ impl<'a> RollupSql<'a> {
             agg_srcs.dedup();
             agg_srcs
         };
-        comma_sep(agg_srcs, w, |w, col: &str| write!(w, "\"{}\"", col))?;
+        comma_sep(agg_srcs, w, true, |w, col: &str| write!(w, "\"{}\"", col))?;
         write!(
             w,
             " from {src_table} where {src_table}.timestamp >= $1 and {src_table}.timestamp < $2",
@@ -403,7 +411,7 @@ impl<'a> RollupSql<'a> {
             " order by {src_table}.timestamp) data group by timestamp",
             src_table = self.src_table
         )?;
-        write_dims(self.dimensions, w)
+        write_dims(self.dimensions, w, true)
     }
 
     fn select(&self, w: &mut dyn fmt::Write) -> fmt::Result {
@@ -420,8 +428,8 @@ impl<'a> RollupSql<'a> {
             "insert into {}(id, timestamp, block$",
             self.agg_table.qualified_name
         )?;
-        write_dims(self.dimensions, w)?;
-        comma_sep(self.aggregates, w, |w, agg| {
+        write_dims(self.dimensions, w, true)?;
+        comma_sep(self.aggregates, w, true, |w, agg| {
             write!(w, "\"{}\"", agg.agg_column.name)
         })?;
         write!(w, ") ")
@@ -442,10 +450,10 @@ impl<'a> RollupSql<'a> {
     /// for any group keys that appear in `bucket`
     fn select_prev(&self, w: &mut dyn fmt::Write) -> fmt::Result {
         write!(w, "select bucket.id, bucket.timestamp")?;
-        comma_sep(self.dimensions, w, |w, col| {
+        comma_sep(self.dimensions, w, true, |w, col| {
             write!(w, "bucket.\"{}\"", col.name)
         })?;
-        comma_sep(self.aggregates, w, |w, agg| agg.prev_agg(w))?;
+        comma_sep(self.aggregates, w, true, |w, agg| agg.prev_agg(w))?;
         write!(w, " from bucket cross join lateral (")?;
         write!(w, "select * from {} prev", self.agg_table.qualified_name)?;
         write!(w, " where prev.timestamp < $1")?;
@@ -461,14 +469,16 @@ impl<'a> RollupSql<'a> {
 
     fn select_combined(&self, w: &mut dyn fmt::Write) -> fmt::Result {
         write!(w, "select id, timestamp")?;
-        comma_sep(self.dimensions, w, |w, col| write!(w, "\"{}\"", col.name))?;
-        comma_sep(self.aggregates, w, |w, agg| agg.combine("seq", w))?;
+        comma_sep(self.dimensions, w, true, |w, col| {
+            write!(w, "\"{}\"", col.name)
+        })?;
+        comma_sep(self.aggregates, w, true, |w, agg| agg.combine("seq", w))?;
         write!(
             w,
             " from (select *, 1 as seq from prev union all select *, 2 as seq from bucket) u "
         )?;
         write!(w, " group by id, timestamp")?;
-        write_dims(self.dimensions, w)?;
+        write_dims(self.dimensions, w, true)?;
         Ok(())
     }
 
@@ -501,8 +511,8 @@ impl<'a> RollupSql<'a> {
         write!(w, " ")?;
         self.insert_into(w)?;
         write!(w, "select id, timestamp, $3 as block$")?;
-        write_dims(self.dimensions, w)?;
-        comma_sep(self.aggregates, w, |w, agg| {
+        write_dims(self.dimensions, w, true)?;
+        comma_sep(self.aggregates, w, true, |w, agg| {
             write!(w, "\"{}\"", agg.agg_column.name)
         })?;
         write!(w, " from combined")
@@ -528,16 +538,186 @@ impl<'a> RollupSql<'a> {
             secs, self.agg_table.qualified_name
         )
     }
+
+    fn max_id(&self) -> &'static str {
+        match self.agg_table.primary_key().column_type.id_type() {
+            Ok(IdType::Bytes) => "max(id::text)::bytea",
+            Ok(IdType::String) | Ok(IdType::Int8) => "max(id)",
+            Err(_) => unreachable!("we make sure that the primary key has an id_type"),
+        }
+    }
+
+    /// Generates the SQL query that loads the current, partially filled bucket.
+    ///
+    /// The generated SQL query contains a `/*FILTERS*/` comment that can be replaced
+    /// with additional filters like `and c.block$ <= $1`. The filters are applied to
+    /// the SQL query that loads the time series entities, not to the aggregated values.
+    fn select_current(&self, w: &mut dyn fmt::Write) -> fmt::Result {
+        if self.has_cumulative_aggregates() {
+            self.select_current_bucket_cumulative(w)?;
+        } else {
+            self.select_current_bucket(w)?;
+        }
+        Ok(())
+    }
+
+    /// Generates the SQL query that loads the current, partially filled bucket when
+    /// the aggregation has cumulative aggregates.
+    ///
+    /// The generated query has the following structure:
+    ///
+    ///   with bucket as (
+    ///     {select current bucket query}
+    ///   ), prev as (
+    ///     select
+    ///         bucket.id,
+    ///         bucket.vid,
+    ///         bucket.block$
+    ///         bucket.timestamp,
+    ///         {dimensions},
+    ///         {prev aggregates}
+    ///     from bucket cross join lateral (
+    ///         select * from {agg table} where timestamp < {last rollup timestamp}
+    ///         order by timestamp desc limit 1
+    ///     )
+    ///   ), combined (
+    ///    {select * from bucket and prev}
+    ///    group by
+    ///        id,
+    ///        vid,
+    ///        block$,
+    ///        timestamp,
+    ///        {dimensions}
+    ///   )
+    ///   select
+    ///     id,
+    ///     vid,
+    ///     block$,
+    ///     timestamp,
+    ///     {dimensions},
+    ///     {aggregates}
+    ///   from combined;
+    fn select_current_bucket_cumulative(&self, w: &mut dyn fmt::Write) -> fmt::Result {
+        write!(w, "with bucket as (")?;
+        self.select_current_bucket(w)?;
+        write!(w, "), prev as (")?;
+        write!(
+            w,
+            "select bucket.id, bucket.vid, bucket.block$, bucket.timestamp"
+        )?;
+        comma_sep(self.dimensions, w, true, |w, col| {
+            write!(w, "bucket.\"{}\"", col.name)
+        })?;
+        comma_sep(self.aggregates, w, true, |w, agg| agg.prev_agg(w))?;
+        write!(w, " from bucket cross join lateral (")?;
+        write!(w, "select * from {} prev", self.agg_table.qualified_name)?;
+        write!(
+            w,
+            " where prev.timestamp < coalesce(({last_rollup}), '-infinity'::timestamptz)",
+            last_rollup = self.last_rollup()
+        )?;
+        for dim in self.dimensions {
+            write!(
+                w,
+                " and prev.\"{name}\" = bucket.\"{name}\"",
+                name = dim.name
+            )?;
+        }
+        write!(w, " order by prev.timestamp desc limit 1) prev")?;
+        write!(w, "), combined as (")?;
+        write!(w, "select id, vid, block$, timestamp")?;
+        comma_sep(self.dimensions, w, true, |w, col| {
+            write!(w, "\"{}\"", col.name)
+        })?;
+        comma_sep(self.aggregates, w, true, |w, agg| agg.combine("seq", w))?;
+        write!(
+            w,
+            " from (select *, 1 as seq from prev union all select *, 2 as seq from bucket) u "
+        )?;
+        write!(w, " group by id, vid, block$, timestamp")?;
+        write_dims(self.dimensions, w, true)?;
+        write!(w, ")")?;
+        write!(w, "select id, vid, block$, timestamp")?;
+        write_dims(self.dimensions, w, true)?;
+        comma_sep(self.aggregates, w, true, |w, agg| {
+            write!(w, "\"{}\"", agg.agg_column.name)
+        })?;
+        write!(w, " from combined as c")
+    }
+
+    /// Generates the SQL query that loads the current, partially filled bucket when
+    /// the aggregation does not have cumulative aggregates.
+    ///
+    /// The generated query has the following structure:
+    ///
+    ///   select
+    ///     max(id) as id,
+    ///     max(vid) as vid,
+    ///     max(block$) as block$,
+    ///     max(timestamp) as timestamp,
+    ///     {dimensions},
+    ///     {aggregates}
+    ///   from
+    ///     ({select timeseries entities} where timestamp >= {last rollup timestamp} {/*FILTERS*/})
+    ///   group by
+    ///     {dimensions};
+    fn select_current_bucket(&self, w: &mut dyn fmt::Write) -> fmt::Result {
+        write!(
+            w,
+            "select {max_id} as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp",
+            max_id = self.max_id(),
+        )?;
+        write_dims(self.dimensions, w, true)?;
+        comma_sep(self.aggregates, w, true, |w, agg| agg.aggregate("id", w))?;
+        write!(
+            w,
+            " from (select id, vid, block$, date_bin('{secs}s', timestamp, 'epoch'::timestamptz) as timestamp",
+            secs = self.interval.as_duration().as_secs(),
+        )?;
+        write_dims(self.dimensions, w, true)?;
+        let agg_srcs: Vec<&str> = {
+            let mut agg_srcs: Vec<_> = self
+                .aggregates
+                .iter()
+                .flat_map(|agg| &agg.src_columns)
+                .copied()
+                .filter(|&col| col != "id" && col != "timestamp")
+                .collect();
+            agg_srcs.sort();
+            agg_srcs.dedup();
+            agg_srcs
+        };
+        comma_sep(agg_srcs, w, true, |w, col: &str| write!(w, "\"{}\"", col))?;
+        write!(
+            w,
+            " from {src_table} as c where c.timestamp >= coalesce(({last_rollup}), '-infinity'::timestamptz)",
+            src_table = self.src_table,
+            last_rollup = self.last_rollup(),
+        )?;
+        write!(w, " /*FILTERS*/) c")?;
+        if !self.dimensions.is_empty() {
+            write!(w, " group by ")?;
+            write_dims(self.dimensions, w, false)?;
+        }
+        Ok(())
+    }
 }
 
 /// Write the elements in `list` separated by commas into `w`. The list
 /// elements are written by calling `out` with each of them.
-fn comma_sep<T, F>(list: impl IntoIterator<Item = T>, w: &mut dyn fmt::Write, out: F) -> fmt::Result
+fn comma_sep<T, F>(
+    list: impl IntoIterator<Item = T>,
+    w: &mut dyn fmt::Write,
+    comma_prefix: bool,
+    out: F,
+) -> fmt::Result
 where
     F: Fn(&mut dyn fmt::Write, T) -> fmt::Result,
 {
-    for elem in list {
-        write!(w, ", ")?;
+    for (i, elem) in list.into_iter().enumerate() {
+        if comma_prefix || i != 0 {
+            write!(w, ", ")?;
+        }
         out(w, elem)?;
     }
     Ok(())
@@ -545,8 +725,10 @@ where
 
 /// Write the names of the columns in `dimensions` into `w` as a
 /// comma-separated list of quoted column names.
-fn write_dims(dimensions: &[&Column], w: &mut dyn fmt::Write) -> fmt::Result {
-    comma_sep(dimensions, w, |w, col| write!(w, "\"{}\"", col.name))
+fn write_dims(dimensions: &[&Column], w: &mut dyn fmt::Write, comma_prefix: bool) -> fmt::Result {
+    comma_sep(dimensions, w, comma_prefix, |w, col| {
+        write!(w, "\"{}\"", col.name)
+    })
 }
 
 #[cfg(test)]
@@ -707,6 +889,87 @@ mod tests {
              order by "sgd007"."data".timestamp) data \
         group by timestamp"#;
 
+        const STATS_HOUR_CURRENT_SQL: &str = r#"\
+        select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
+               "token", sum("price") as "sum", max("amount") as "max" \
+          from (select id, vid, block$, date_bin('3600s', timestamp, 'epoch'::timestamptz) as timestamp, \
+                       "token", "amount", "price" \
+                  from "sgd007"."data" as c \
+                 where c.timestamp >= coalesce((select max(timestamp) + '3601 s'::interval as last_rollup \
+                       from "sgd007"."stats_hour"), '-infinity'::timestamptz) /*FILTERS*/) c \
+         group by "token""#;
+
+        const STATS_DAY_CURRENT_SQL: &str = r#"\
+        select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
+               "token", sum("price") as "sum", max("amount") as "max" \
+          from (select id, vid, block$, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp, \
+                       "token", "amount", "price" \
+                  from "sgd007"."data" as c \
+                 where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
+                       from "sgd007"."stats_day"), '-infinity'::timestamptz) /*FILTERS*/) c \
+         group by "token""#;
+
+        const TOTAL_CURRENT_SQL: &str = r#"\
+        select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
+               max("price") as "max", max("price" * "amount") as "max_value" \
+          from (select id, vid, block$, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp, \
+                       "amount", "price" \
+                  from "sgd007"."data" as c \
+                 where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
+                       from "sgd007"."total_stats_day"), '-infinity'::timestamptz) /*FILTERS*/) c"#;
+
+        const OPEN_CLOSE_CURRENT_SQL: &str = r#"\
+        select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
+               arg_min_numeric(("price", id)) as "open", \
+               arg_max_numeric(("price", id)) as "close", \
+               arg_min_int4(("amount", id)) as "first_amt" \
+          from (select id, vid, block$, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp, \
+                       "amount", "price" \
+                  from "sgd007"."data" as c \
+                 where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
+                       from "sgd007"."open_close_day"), '-infinity'::timestamptz) /*FILTERS*/) c"#;
+
+        const LIFETIME_CURRENT_SQL: &str = r#"
+        with bucket as (select max(id) as id, max(vid) as vid, max(block$) as block$,
+               max(timestamp) as timestamp,
+               count(*) as "count", sum("amount") as "sum",
+               count(*) as "total_count", sum("amount") as "total_sum"
+          from (select id, vid, block$,
+                       date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp,
+                       "amount"
+                  from "sgd007"."data" as c
+                 where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval
+                       as last_rollup from "sgd007"."lifetime_day"),
+                       '-infinity'::timestamptz) /*FILTERS*/) c),
+             prev as (select bucket.id, bucket.vid, bucket.block$, bucket.timestamp,
+                             null::int8 as "count", null::numeric as "sum",
+                             prev."total_count", prev."total_sum"
+                        from bucket cross join lateral (
+                             select * from "sgd007"."lifetime_day" prev
+                              where prev.timestamp < coalesce((select max(timestamp) + '86401 s'::interval
+                                    as last_rollup from "sgd007"."lifetime_day"),
+                                    '-infinity'::timestamptz)
+                              order by prev.timestamp desc limit 1) prev),
+             combined as (select id, vid, block$, timestamp,
+                                 sum("count") as "count", sum("sum") as "sum",
+                                 sum("total_count") as "total_count",
+                                 sum("total_sum") as "total_sum"
+                            from (select *, 1 as seq from prev
+                                  union all
+                                  select *, 2 as seq from bucket) u
+                            group by id, vid, block$, timestamp)select id, vid, block$, timestamp,
+               "count", "sum", "total_count", "total_sum"
+          from combined as c
+        "#;
+
+        const COUNT_ONLY_CURRENT_SQL: &str = r#"\
+        select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
+               count(*) as "count" \
+          from (select id, vid, block$, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp \
+                  from "sgd007"."data" as c \
+                 where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
+                       from "sgd007"."count_only_day"), '-infinity'::timestamptz) /*FILTERS*/) c"#;
+
         #[track_caller]
         fn rollup_for<'a>(layout: &'a Layout, table_name: &str) -> &'a Rollup {
             layout
@@ -744,5 +1007,13 @@ mod tests {
 
         let count_only = rollup_for(&layout, "count_only_day");
         check_eqv(COUNT_ONLY_SQL, &count_only.insert_sql);
+
+        // Generated select_current_sql is correct
+        check_eqv(STATS_HOUR_CURRENT_SQL, &stats_hour.select_current_sql);
+        check_eqv(STATS_DAY_CURRENT_SQL, &stats_day.select_current_sql);
+        check_eqv(TOTAL_CURRENT_SQL, &stats_total.select_current_sql);
+        check_eqv(OPEN_CLOSE_CURRENT_SQL, &open_close.select_current_sql);
+        check_eqv(LIFETIME_CURRENT_SQL, &lifetime.select_current_sql);
+        check_eqv(COUNT_ONLY_CURRENT_SQL, &count_only.select_current_sql);
     }
 }

@@ -12,6 +12,7 @@ use graph::data::value::Object;
 use graph::data::value::Value as DataValue;
 use graph::prelude::{r, TryFromValue, ENV_VARS};
 use graph::schema::ast::{self as sast, FilterOp};
+use graph::schema::kw;
 use graph::schema::{EntityType, InputSchema, ObjectOrInterface};
 
 use crate::execution::ast as a;
@@ -551,6 +552,14 @@ fn build_order(
                     ))
                 }
             }
+        }
+        // Apply a default ordering to the aggregations so that the most recent buckets are returned first
+        (None, _) if entity.is_aggregation() => {
+            let ts = entity
+                .field(kw::TIMESTAMP)
+                .expect("aggregation entities have timestamps");
+
+            EntityOrder::Descending(ts.name.to_string(), ts.value_type)
         }
         (None, _) => EntityOrder::Default,
     };

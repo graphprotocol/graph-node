@@ -466,6 +466,8 @@ pub struct EntityQuery {
     pub query_id: Option<String>,
 
     pub trace: bool,
+
+    pub aggregation_current: Option<AggregationCurrent>,
 }
 
 impl EntityQuery {
@@ -484,6 +486,7 @@ impl EntityQuery {
             logger: None,
             query_id: None,
             trace: false,
+            aggregation_current: None,
         }
     }
 
@@ -541,6 +544,19 @@ impl EntityQuery {
         }
         self
     }
+}
+
+/// Indicates whether the current, partially filled bucket should be included in the response.
+///
+/// This is only relevant for aggregation entity queries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AggregationCurrent {
+    /// Exclude the current, partially filled bucket from the response.
+    #[default]
+    Exclude,
+
+    /// Include the current, partially filled bucket in the response.
+    Include,
 }
 
 /// Operation types that lead to changes in assignments

@@ -25,6 +25,7 @@ lcov.info
 
 # Node dependencies
 node_modules/
+.pnpm-store/
 
 # Docker volumes and debug logs
 .postgres

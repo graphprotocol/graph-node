@@ -23,6 +23,14 @@ use graph_tests::fixture::ethereum::{
     push_test_polling_trigger,
 };
 
+use graph::blockchain::Trigger;
+use graph::prelude::alloy::rpc::types::BlockTransactions;
+use graph::prelude::{create_dummy_transaction, create_minimal_block_for_test, LightEthereumBlock};
+use graph_chain_ethereum::{
+    chain::BlockFinality,
+    trigger::{EthereumBlockTriggerType, EthereumTrigger},
+};
+
 use graph_tests::fixture::{
     self, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector,
     StaticArweaveResolver, TestChainTrait, TestContext, TestInfo,
@@ -1185,5 +1193,166 @@ async fn arweave_file_data_sources() {
     assert_json_eq!(
         query_res,
         Some(object! { file: object!{ id: id, content: content.clone() } })
+    );
+}
+
+#[graph::test]
+async fn aggregation_current_bucket() {
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("aggregation_current_bucket", "aggregation-current-bucket").await;
+
+    // Helper to create a block with a specific timestamp (seconds since epoch)
+    fn empty_block_with_timestamp(
+        parent_ptr: BlockPtr,
+        ptr: BlockPtr,
+        timestamp: u64,
+    ) -> BlockWithTriggers<graph_chain_ethereum::Chain> {
+        let dummy_txn =
+            create_dummy_transaction(ptr.number as u64, ptr.hash.as_b256(), Some(0), B256::ZERO);
+        let transactions = BlockTransactions::Full(vec![dummy_txn]);
+        let alloy_block = create_minimal_block_for_test(ptr.number as u64, ptr.hash.as_b256())
+            .map_header(|mut header| {
+                header.inner.parent_hash = parent_ptr.hash.as_b256();
+                header.inner.timestamp = timestamp;
+                header
+            })
+            .with_transactions(transactions);
+
+        BlockWithTriggers::<graph_chain_ethereum::Chain> {
+            block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block.into()))),
+            trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
+                ptr,
+                EthereumBlockTriggerType::End,
+            ))],
+        }
+    }
+
+    // Block layout:
+    // Block 0: genesis (timestamp 0)
+    // Block 1: timestamp 3601 (hour 1, +1s) — create tokens
+    // Block 2: timestamp 3660 (hour 1, +1 min) — create data: TOKEN_A=10, TOKEN_B=20
+    // Block 3: timestamp 3720 (hour 1, +2 min) — create data: TOKEN_A=30, TOKEN_B=40
+    // Block 4: timestamp 7201 (hour 2, +1s, triggers hour-1 rollup) — create data: TOKEN_A=5, TOKEN_B=15
+    // Block 5: timestamp 7261 (hour 2, +1 min +1s) — create data: TOKEN_A=7, TOKEN_B=25
+    //
+    // Expected results:
+    // Hour 1 (rolled up): TOKEN_A sum=40, TOKEN_B sum=60
+    // Hour 2 (current):   TOKEN_A sum=12, TOKEN_B sum=40
+
+    let block_0 = genesis();
+
+    let mut block_1 = empty_block_with_timestamp(block_0.ptr(), test_ptr(1), 3601);
+    push_test_log(&mut block_1, "token:0xaa:TokenA");
+    push_test_log(&mut block_1, "token:0xbb:TokenB");
+
+    let mut block_2 = empty_block_with_timestamp(block_1.ptr(), test_ptr(2), 3660);
+    push_test_log(&mut block_2, "data:0xaa:10");
+    push_test_log(&mut block_2, "data:0xbb:20");
+
+    let mut block_3 = empty_block_with_timestamp(block_2.ptr(), test_ptr(3), 3720);
+    push_test_log(&mut block_3, "data:0xaa:30");
+    push_test_log(&mut block_3, "data:0xbb:40");
+
+    let mut block_4 = empty_block_with_timestamp(block_3.ptr(), test_ptr(4), 7201);
+    push_test_log(&mut block_4, "data:0xaa:5");
+    push_test_log(&mut block_4, "data:0xbb:15");
+
+    let mut block_5 = empty_block_with_timestamp(block_4.ptr(), test_ptr(5), 7261);
+    push_test_log(&mut block_5, "data:0xaa:7");
+    push_test_log(&mut block_5, "data:0xbb:25");
+
+    let blocks = vec![block_0, block_1, block_2, block_3, block_4, block_5];
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
+
+    ctx.start_and_sync_to(test_ptr(5)).await;
+
+    // Query 1: Root query with current: include
+    // Expect 4 rows: hour-1 TOKEN_A(sum=40), hour-1 TOKEN_B(sum=60),
+    //                hour-2 TOKEN_A(sum=12), hour-2 TOKEN_B(sum=40)
+    let query_res = ctx
+        .query(
+            r#"{
+                stats_collection(interval: "hour", current: include, orderBy: timestamp, orderDirection: asc) {
+                    token { id }
+                    sum
+                }
+            }"#,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! {
+            stats_collection: vec![
+                object! { token: object! { id: "0xaa" }, sum: "40" },
+                object! { token: object! { id: "0xbb" }, sum: "60" },
+                object! { token: object! { id: "0xaa" }, sum: "12" },
+                object! { token: object! { id: "0xbb" }, sum: "40" },
+            ]
+        })
+    );
+
+    // Query 2: Root query with current: exclude (only rolled-up data)
+    // Expect 2 rows: hour-1 TOKEN_A(sum=40), hour-1 TOKEN_B(sum=60)
+    let query_res = ctx
+        .query(
+            r#"{
+                stats_collection(interval: "hour", current: exclude, orderBy: timestamp, orderDirection: asc) {
+                    token { id }
+                    sum
+                }
+            }"#,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! {
+            stats_collection: vec![
+                object! { token: object! { id: "0xaa" }, sum: "40" },
+                object! { token: object! { id: "0xbb" }, sum: "60" },
+            ]
+        })
+    );
+
+    // Query 3: Nested query with current: include
+    // Each token should have 2 stats entries (hour-1 rolled-up + hour-2 current)
+    let query_res = ctx
+        .query(
+            r#"{
+                tokens(orderBy: id) {
+                    id
+                    stats(interval: "hour", current: include, orderBy: timestamp, orderDirection: asc) {
+                        sum
+                    }
+                }
+            }"#,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! {
+            tokens: vec![
+                object! {
+                    id: "0xaa",
+                    stats: vec![
+                        object! { sum: "40" },
+                        object! { sum: "12" },
+                    ]
+                },
+                object! {
+                    id: "0xbb",
+                    stats: vec![
+                        object! { sum: "60" },
+                        object! { sum: "40" },
+                    ]
+                },
+            ]
+        })
     );
 }
