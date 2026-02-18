@@ -273,7 +273,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
         // Look up the per-chain Amp client based on the network from the
         // raw manifest (before the manifest is moved into parse).
         let amp_client = network_name_from_raw_manifest(&raw_manifest)
-            .as_deref()
+            .as_ref()
             .and_then(|network| self.amp_clients.get(network));
 
         let manifest =

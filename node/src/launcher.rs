@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     io::{BufRead, BufReader},
     path::Path,
     time::Duration,
@@ -6,8 +7,11 @@ use std::{
 
 use anyhow::Result;
 use git_testament::{git_testament, render_testament};
-use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
 use graph::components::subgraph::Settings;
+use graph::components::{
+    link_resolver::{ArweaveClient, FileSizeLimit},
+    network_provider::ChainName,
+};
 use graph::data::graphql::load_manager::LoadManager;
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
@@ -276,10 +280,7 @@ fn build_subgraph_registrar<AC>(
     arweave_service: ArweaveService,
     ipfs_service: IpfsService,
     amp_clients: AmpClients<AC>,
-    amp_chain_configs: std::collections::HashMap<
-        String,
-        graph::components::network_provider::AmpChainConfig,
-    >,
+    amp_chain_configs: HashMap<ChainName, graph::components::network_provider::AmpChainConfig>,
     cancel_token: CancellationToken,
     amp_chain_names: Arc<AmpChainNames>,
 ) -> Arc<

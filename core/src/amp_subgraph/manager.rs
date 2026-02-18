@@ -9,7 +9,7 @@ use graph::{
     components::{
         link_resolver::{LinkResolver, LinkResolverContext},
         metrics::MetricsRegistry,
-        network_provider::{AmpChainConfig, AmpClients},
+        network_provider::{AmpChainConfig, AmpClients, ChainName},
         store::{DeploymentLocator, SubgraphStore},
         subgraph::SubgraphInstanceManager,
     },
@@ -35,7 +35,7 @@ pub struct Manager<SS, NC> {
     subgraph_store: Arc<SS>,
     link_resolver: Arc<dyn LinkResolver>,
     amp_clients: AmpClients<NC>,
-    amp_chain_configs: HashMap<String, AmpChainConfig>,
+    amp_chain_configs: HashMap<ChainName, AmpChainConfig>,
 }
 
 impl<SS, NC> Manager<SS, NC>
@@ -52,7 +52,7 @@ where
         subgraph_store: Arc<SS>,
         link_resolver: Arc<dyn LinkResolver>,
         amp_clients: AmpClients<NC>,
-        amp_chain_configs: HashMap<String, AmpChainConfig>,
+        amp_chain_configs: HashMap<ChainName, AmpChainConfig>,
     ) -> Self {
         let logger = logger_factory.component_logger("AmpSubgraphManager", None);
         let logger_factory = logger_factory.with_parent(logger);
@@ -145,7 +145,7 @@ where
                         }
                     };
 
-                    let amp_context = network_name.as_deref().and_then(|chain| {
+                    let amp_context = network_name.as_ref().and_then(|chain| {
                         manager
                             .amp_chain_configs
                             .get(chain)

@@ -55,18 +55,18 @@ impl AmpChainConfig {
 /// instead of a single global `Option<Arc<AC>>`. Use `get(chain_name)` to
 /// retrieve the client for a specific chain.
 pub struct AmpClients<AC> {
-    clients: HashMap<String, Arc<AC>>,
+    clients: HashMap<ChainName, Arc<AC>>,
 }
 
 impl<AC> AmpClients<AC> {
     /// Creates a new `AmpClients` from a map of chain names to clients.
-    pub fn new(clients: HashMap<String, Arc<AC>>) -> Self {
+    pub fn new(clients: HashMap<ChainName, Arc<AC>>) -> Self {
         Self { clients }
     }
 
     /// Returns the Amp client for the given chain, or `None` if no client
     /// is configured for that chain.
-    pub fn get(&self, chain_name: &str) -> Option<Arc<AC>> {
+    pub fn get(&self, chain_name: &ChainName) -> Option<Arc<AC>> {
         self.clients.get(chain_name).cloned()
     }
 
@@ -166,18 +166,18 @@ mod tests {
     #[test]
     fn amp_clients_returns_client_for_configured_chain() {
         let mut map = HashMap::new();
-        map.insert("mainnet".to_string(), Arc::new(42u32));
+        map.insert(ChainName::from("mainnet"), Arc::new(42u32));
         let clients = AmpClients::new(map);
-        let client = clients.get("mainnet");
+        let client = clients.get(&ChainName::from("mainnet"));
         assert!(client.is_some());
         assert_eq!(*client.unwrap(), 42);
     }
 
     #[test]
     fn amp_clients_returns_none_for_unconfigured_chain() {
-        let map: HashMap<String, Arc<u32>> = HashMap::new();
+        let map: HashMap<ChainName, Arc<u32>> = HashMap::new();
         let clients = AmpClients::new(map);
-        assert!(clients.get("mainnet").is_none());
+        assert!(clients.get(&ChainName::from("mainnet")).is_none());
     }
 
     /// Verifies the condition that causes Amp manager registration:
@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn amp_manager_registered_when_chain_has_config() {
         let mut map = HashMap::new();
-        map.insert("mainnet".to_string(), Arc::new(42u32));
+        map.insert(ChainName::from("mainnet"), Arc::new(42u32));
         let clients = AmpClients::new(map);
         assert!(
             !clients.is_empty(),
@@ -210,12 +210,12 @@ mod tests {
     #[test]
     fn amp_clients_error_for_unconfigured_amp_chain() {
         let mut map = HashMap::new();
-        map.insert("mainnet".to_string(), Arc::new(1u32));
+        map.insert(ChainName::from("mainnet"), Arc::new(1u32));
         let clients = AmpClients::new(map);
 
         // "matic" is not configured.
         let result = clients
-            .get("matic")
+            .get(&ChainName::from("matic"))
             .ok_or_else(|| "Amp is not configured for chain 'matic'".to_string());
         assert!(result.is_err());
         assert_eq!(

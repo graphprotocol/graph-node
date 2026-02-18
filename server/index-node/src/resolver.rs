@@ -524,7 +524,7 @@ where
         // Extract the network name from the raw yaml to look up the
         // per-chain Amp client.
         let amp_client = network_name_from_raw_manifest(&raw_yaml)
-            .as_deref()
+            .as_ref()
             .and_then(|network| self.amp_clients.get(network));
 
         let max_spec_version = ENV_VARS.max_spec_version.clone();

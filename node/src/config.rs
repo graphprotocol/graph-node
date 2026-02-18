@@ -139,7 +139,7 @@ impl Config {
     /// that has an `[amp]` section. The `AmpConfig.address` string is parsed
     /// into a `Uri`; this is expected to always succeed because
     /// `ChainSection::validate` already rejects invalid URIs.
-    pub fn amp_chain_configs(&self) -> Result<HashMap<String, AmpChainConfig>> {
+    pub fn amp_chain_configs(&self) -> Result<HashMap<ChainName, AmpChainConfig>> {
         let mut map = HashMap::new();
         for (chain_name, chain) in &self.chains.chains {
             if let Some(amp) = &chain.amp {
@@ -152,7 +152,7 @@ impl Config {
                     )
                 })?;
                 map.insert(
-                    chain_name.clone(),
+                    chain_name.as_str().into(),
                     AmpChainConfig {
                         address: uri,
                         token: amp.token.clone(),
@@ -1375,8 +1375,8 @@ mod tests {
     use crate::config::{default_polling_interval, ChainSection, Web3Rule};
 
     use super::{
-        AmpConfig, Chain, Config, FirehoseProvider, Provider, ProviderDetails, Shard, Transport,
-        Web3Provider,
+        AmpConfig, Chain, ChainName, Config, FirehoseProvider, Provider, ProviderDetails, Shard,
+        Transport, Web3Provider,
     };
     use graph::blockchain::BlockchainKind;
     use graph::firehose::SubgraphLimit;
@@ -2425,9 +2425,11 @@ fdw_pool_size = [
 
         // Only mainnet (with amp) should be in the map
         assert_eq!(map.len(), 1);
-        assert!(!map.contains_key("sepolia"));
+        assert!(!map.contains_key(&ChainName::from("sepolia")));
 
-        let mainnet = map.get("mainnet").expect("mainnet should be in map");
+        let mainnet = map
+            .get(&ChainName::from("mainnet"))
+            .expect("mainnet should be in map");
         assert_eq!(mainnet.address.to_string(), "http://localhost:50051/");
         assert_eq!(mainnet.token.as_deref(), Some("my-token"));
         assert_eq!(mainnet.context_dataset, "eth");
@@ -2563,7 +2565,9 @@ fdw_pool_size = [
         };
 
         let map = config.amp_chain_configs().unwrap();
-        let mainnet = map.get("mainnet").expect("mainnet should be in map");
+        let mainnet = map
+            .get(&ChainName::from("mainnet"))
+            .expect("mainnet should be in map");
 
         // Identifiers with special characters should be double-quoted
         assert_eq!(mainnet.context_dataset, "\"ns/data@v1\"");
@@ -2603,7 +2607,9 @@ fdw_pool_size = [
         };
 
         let map = config.amp_chain_configs().unwrap();
-        let mainnet = map.get("mainnet").expect("mainnet should be in map");
+        let mainnet = map
+            .get(&ChainName::from("mainnet"))
+            .expect("mainnet should be in map");
 
         // Simple identifiers should be lowercased and unquoted
         assert_eq!(mainnet.context_dataset, "eth");

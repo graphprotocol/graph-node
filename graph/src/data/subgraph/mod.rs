@@ -14,7 +14,11 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
-use crate::{cheap_clone::CheapClone, components::store::BLOCK_NUMBER_MAX, object};
+use crate::{
+    cheap_clone::CheapClone,
+    components::{network_provider::ChainName, store::BLOCK_NUMBER_MAX},
+    object,
+};
 use anyhow::{anyhow, Context, Error};
 use futures03::future::try_join_all;
 use itertools::Itertools;
@@ -1393,7 +1397,7 @@ fn display_vector(input: &[impl std::fmt::Display]) -> impl std::fmt::Display {
 ///
 /// Navigates `dataSources[0].network` and returns the network name as an owned string,
 /// or `None` if any step in the path is missing.
-pub fn network_name_from_raw_manifest(raw: &serde_yaml::Mapping) -> Option<String> {
+pub fn network_name_from_raw_manifest(raw: &serde_yaml::Mapping) -> Option<ChainName> {
     use serde_yaml::Value;
     raw.get(Value::String("dataSources".to_owned()))
         .and_then(|ds| ds.as_sequence())
@@ -1401,7 +1405,7 @@ pub fn network_name_from_raw_manifest(raw: &serde_yaml::Mapping) -> Option<Strin
         .and_then(|ds| ds.as_mapping())
         .and_then(|ds| ds.get(Value::String("network".to_owned())))
         .and_then(|n| n.as_str())
-        .map(|s| s.to_owned())
+        .map(|s| s.into())
 }
 
 #[test]
@@ -1473,7 +1477,7 @@ mod tests {
 
         assert_eq!(
             network_name_from_raw_manifest(&raw),
-            Some("mainnet".to_string())
+            Some(ChainName::from("mainnet"))
         );
     }
 

@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use async_trait::async_trait;
 use graph::amp;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
+use graph::components::network_provider::ChainName;
 use graph::components::{
     link_resolver::LinkResolverContext,
     network_provider::{AmpChainConfig, AmpChainNames, AmpClients},
@@ -26,7 +27,7 @@ pub struct SubgraphRegistrar<P, S, SM, AC> {
     store: Arc<S>,
     subscription_manager: Arc<SM>,
     amp_clients: AmpClients<AC>,
-    amp_chain_configs: HashMap<String, AmpChainConfig>,
+    amp_chain_configs: HashMap<ChainName, AmpChainConfig>,
     chains: Arc<BlockchainMap>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
@@ -49,7 +50,7 @@ where
         store: Arc<S>,
         subscription_manager: Arc<SM>,
         amp_clients: AmpClients<AC>,
-        amp_chain_configs: HashMap<String, AmpChainConfig>,
+        amp_chain_configs: HashMap<ChainName, AmpChainConfig>,
         chains: Arc<BlockchainMap>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
@@ -302,15 +303,13 @@ where
 
         // Extract the network name from the raw manifest and resolve the
         // per-chain Amp client (if any).
-        let resolved_amp_chain = network_name_from_raw_manifest(&raw).map(|network| {
-            let resolved = self.amp_chain_names.resolve(&Word::from(network));
-            resolved.to_string()
-        });
+        let resolved_amp_chain = network_name_from_raw_manifest(&raw)
+            .map(|network| self.amp_chain_names.resolve(&network));
         let amp_client = resolved_amp_chain
-            .as_deref()
+            .as_ref()
             .and_then(|chain| self.amp_clients.get(chain));
         let amp_context = resolved_amp_chain
-            .as_deref()
+            .as_ref()
             .and_then(|chain| self.amp_chain_configs.get(chain))
             .map(|cfg| cfg.context());
 
