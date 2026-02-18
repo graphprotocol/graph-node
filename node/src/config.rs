@@ -2490,4 +2490,42 @@ fdw_pool_size = [
             "expected chain name in error, got: {msg}"
         );
     }
+
+    #[test]
+    fn parse_full_config() {
+        let content = read_resource_as_string("full_config.toml");
+        let actual: Config = toml::from_str(&content).unwrap();
+
+        let mainnet = actual
+            .chains
+            .chains
+            .get("mainnet")
+            .expect("mainnet chain should exist");
+        assert!(
+            mainnet.amp.is_some(),
+            "mainnet should have a non-None amp field"
+        );
+    }
+
+    #[test]
+    fn parse_full_config_amp_values() {
+        let content = read_resource_as_string("full_config.toml");
+        let actual: Config = toml::from_str(&content).unwrap();
+
+        let mainnet = actual
+            .chains
+            .chains
+            .get("mainnet")
+            .expect("mainnet chain should exist");
+        let amp = mainnet
+            .amp
+            .as_ref()
+            .expect("mainnet should have amp config");
+
+        assert_eq!(amp.address, "http://localhost:50051");
+        assert_eq!(amp.token, Some("secret-token".to_string()));
+        assert_eq!(amp.context_dataset, "eth");
+        assert_eq!(amp.context_table, "blocks");
+        assert_eq!(amp.network, Some("ethereum-mainnet".to_string()));
+    }
 }
