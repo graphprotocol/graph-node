@@ -4451,7 +4451,7 @@ impl<'a> FilterQuery<'a> {
                 out.push_sql(") union all (select ");
                 write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
                 out.push_sql(" from (");
-                let mut current_sql_split = rollup.select_current_sql.split("--FILTERS;");
+                let mut current_sql_split = rollup.select_current_sql.split("/*FILTERS*/");
                 out.push_sql(current_sql_split.next().unwrap());
                 out.push_sql(" and ");
                 wh.at_block.walk_ast(out.reborrow())?;
@@ -4534,7 +4534,7 @@ impl<'a> FilterQuery<'a> {
                 out.push_sql(PARENT_ID);
                 out.push_sql(" from (");
 
-                let mut current_sql_split = rollup.select_current_sql.split("--FILTERS;");
+                let mut current_sql_split = rollup.select_current_sql.split("/*FILTERS*/");
                 out.push_sql(current_sql_split.next().unwrap());
                 out.push_sql(" and ");
                 window.at_block.walk_ast(out.reborrow())?;

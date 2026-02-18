@@ -238,7 +238,7 @@ pub(crate) struct Rollup {
 
     /// The SQL query that loads the current, partially filled bucket.
     ///
-    /// Contains a `--FILTERS;` comment that can be replaced with additional filters like `and c.block$ <= $1`.
+    /// Contains a `/*FILTERS*/` comment that can be replaced with additional filters like `and c.block$ <= $1`.
     /// The filters are applied to the SQL query that loads the time series entities, not to the aggregated values.
     pub(crate) select_current_sql: String,
 }
@@ -549,7 +549,7 @@ impl<'a> RollupSql<'a> {
 
     /// Generates the SQL query that loads the current, partially filled bucket.
     ///
-    /// The generated SQL query contains a `--FILTERS;` comment that can be replaced
+    /// The generated SQL query contains a `/*FILTERS*/` comment that can be replaced
     /// with additional filters like `and c.block$ <= $1`. The filters are applied to
     /// the SQL query that loads the time series entities, not to the aggregated values.
     fn select_current(&self, w: &mut dyn fmt::Write) -> fmt::Result {
@@ -658,7 +658,7 @@ impl<'a> RollupSql<'a> {
     ///     {dimensions},
     ///     {aggregates}
     ///   from
-    ///     ({select timeseries entities} where timestamp >= {last rollup timestamp} {--FILTERS;})
+    ///     ({select timeseries entities} where timestamp >= {last rollup timestamp} {/*FILTERS*/})
     ///   group by
     ///     {dimensions};
     fn select_current_bucket(&self, w: &mut dyn fmt::Write) -> fmt::Result {
@@ -694,9 +694,11 @@ impl<'a> RollupSql<'a> {
             src_table = self.src_table,
             last_rollup = self.last_rollup(),
         )?;
-        write!(w, " --FILTERS;) c")?;
-        write!(w, " group by timestamp")?;
-        write_dims(self.dimensions, w, true)?;
+        write!(w, " /*FILTERS*/) c")?;
+        if !self.dimensions.is_empty() {
+            write!(w, " group by ")?;
+            write_dims(self.dimensions, w, false)?;
+        }
         Ok(())
     }
 }
@@ -894,8 +896,8 @@ mod tests {
                        "token", "amount", "price" \
                   from "sgd007"."data" as c \
                  where c.timestamp >= coalesce((select max(timestamp) + '3601 s'::interval as last_rollup \
-                       from "sgd007"."stats_hour"), '-infinity'::timestamptz) --FILTERS;) c \
-         group by timestamp, "token""#;
+                       from "sgd007"."stats_hour"), '-infinity'::timestamptz) /*FILTERS*/) c \
+         group by "token""#;
 
         const STATS_DAY_CURRENT_SQL: &str = r#"\
         select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
@@ -904,8 +906,8 @@ mod tests {
                        "token", "amount", "price" \
                   from "sgd007"."data" as c \
                  where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
-                       from "sgd007"."stats_day"), '-infinity'::timestamptz) --FILTERS;) c \
-         group by timestamp, "token""#;
+                       from "sgd007"."stats_day"), '-infinity'::timestamptz) /*FILTERS*/) c \
+         group by "token""#;
 
         const TOTAL_CURRENT_SQL: &str = r#"\
         select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
@@ -914,8 +916,7 @@ mod tests {
                        "amount", "price" \
                   from "sgd007"."data" as c \
                  where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
-                       from "sgd007"."total_stats_day"), '-infinity'::timestamptz) --FILTERS;) c \
-         group by timestamp"#;
+                       from "sgd007"."total_stats_day"), '-infinity'::timestamptz) /*FILTERS*/) c"#;
 
         const OPEN_CLOSE_CURRENT_SQL: &str = r#"\
         select max(id) as id, max(vid) as vid, max(block$) as block$, max(timestamp) as timestamp, \
@@ -926,8 +927,7 @@ mod tests {
                        "amount", "price" \
                   from "sgd007"."data" as c \
                  where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
-                       from "sgd007"."open_close_day"), '-infinity'::timestamptz) --FILTERS;) c \
-         group by timestamp"#;
+                       from "sgd007"."open_close_day"), '-infinity'::timestamptz) /*FILTERS*/) c"#;
 
         const LIFETIME_CURRENT_SQL: &str = r#"
         with bucket as (select max(id) as id, max(vid) as vid, max(block$) as block$,
@@ -940,8 +940,7 @@ mod tests {
                   from "sgd007"."data" as c
                  where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval
                        as last_rollup from "sgd007"."lifetime_day"),
-                       '-infinity'::timestamptz) --FILTERS;) c
-         group by timestamp),
+                       '-infinity'::timestamptz) /*FILTERS*/) c),
              prev as (select bucket.id, bucket.vid, bucket.block$, bucket.timestamp,
                              null::int8 as "count", null::numeric as "sum",
                              prev."total_count", prev."total_sum"
@@ -969,8 +968,7 @@ mod tests {
           from (select id, vid, block$, date_bin('86400s', timestamp, 'epoch'::timestamptz) as timestamp \
                   from "sgd007"."data" as c \
                  where c.timestamp >= coalesce((select max(timestamp) + '86401 s'::interval as last_rollup \
-                       from "sgd007"."count_only_day"), '-infinity'::timestamptz) --FILTERS;) c \
-         group by timestamp"#;
+                       from "sgd007"."count_only_day"), '-infinity'::timestamptz) /*FILTERS*/) c"#;
 
         #[track_caller]
         fn rollup_for<'a>(layout: &'a Layout, table_name: &str) -> &'a Rollup {
