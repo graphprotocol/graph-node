@@ -453,6 +453,20 @@ impl ChainSection {
             chain.validate()?
         }
 
+        // Validate Amp address URIs.
+        for (chain_name, chain) in &self.chains {
+            if let Some(amp_config) = &chain.amp {
+                amp_config.address.parse::<Uri>().map_err(|e| {
+                    anyhow!(
+                        "invalid Amp address URI '{}' for chain '{}': {}",
+                        amp_config.address,
+                        chain_name,
+                        e
+                    )
+                })?;
+            }
+        }
+
         // Validate that effective Amp names are unique and don't collide
         // with other chain names.
         let mut amp_names: BTreeMap<String, String> = BTreeMap::new();
@@ -2245,5 +2259,75 @@ fdw_pool_size = [
             amp.resolve(&"unknown".into()),
             graph::components::network_provider::ChainName::from("unknown")
         );
+    }
+
+    #[test]
+    fn amp_config_validation_rejects_invalid_address() {
+        let mut section = ChainSection {
+            ingestor: "default".to_string(),
+            chains: {
+                let mut chains = std::collections::BTreeMap::new();
+                chains.insert(
+                    "mainnet".to_string(),
+                    Chain {
+                        shard: "primary".to_string(),
+                        protocol: BlockchainKind::Ethereum,
+                        polling_interval: default_polling_interval(),
+                        providers: vec![],
+                        amp: Some(AmpConfig {
+                            address: "not a valid uri!@#".to_string(),
+                            token: None,
+                            context_dataset: "eth".to_string(),
+                            context_table: "blocks".to_string(),
+                            network: None,
+                        }),
+                    },
+                );
+                chains
+            },
+        };
+
+        let err = section.validate();
+        assert!(err.is_err(), "expected validation error for invalid URI");
+        let msg = err.unwrap_err().to_string();
+        assert!(
+            msg.contains("invalid Amp address URI"),
+            "expected 'invalid Amp address URI' in error, got: {msg}"
+        );
+        assert!(
+            msg.contains("mainnet"),
+            "expected chain name 'mainnet' in error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn amp_config_validation_accepts_valid_address() {
+        let mut section = ChainSection {
+            ingestor: "default".to_string(),
+            chains: {
+                let mut chains = std::collections::BTreeMap::new();
+                chains.insert(
+                    "mainnet".to_string(),
+                    Chain {
+                        shard: "primary".to_string(),
+                        protocol: BlockchainKind::Ethereum,
+                        polling_interval: default_polling_interval(),
+                        providers: vec![],
+                        amp: Some(AmpConfig {
+                            address: "http://localhost:50051".to_string(),
+                            token: None,
+                            context_dataset: "eth".to_string(),
+                            context_table: "blocks".to_string(),
+                            network: None,
+                        }),
+                    },
+                );
+                chains
+            },
+        };
+
+        section
+            .validate()
+            .expect("validation should pass for a valid URI");
     }
 }
