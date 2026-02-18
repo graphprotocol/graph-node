@@ -121,8 +121,12 @@ impl Config {
             .chains
             .iter()
             .map(|(chain_name, chain)| {
-                let amp_name: ChainName =
-                    chain.amp.as_deref().unwrap_or(chain_name.as_str()).into();
+                let amp_name: ChainName = chain
+                    .amp
+                    .as_ref()
+                    .and_then(|c| c.network.as_deref())
+                    .unwrap_or(chain_name.as_str())
+                    .into();
                 let internal_name: ChainName = chain_name.as_str().into();
                 (amp_name, internal_name)
             })
@@ -449,29 +453,38 @@ impl ChainSection {
             chain.validate()?
         }
 
-        // Validate that effective AMP names are unique and don't collide
+        // Validate that effective Amp names are unique and don't collide
         // with other chain names.
         let mut amp_names: BTreeMap<String, String> = BTreeMap::new();
         for (chain_name, chain) in &self.chains {
-            let effective = chain.amp.as_deref().unwrap_or(chain_name.as_str());
+            let effective = chain
+                .amp
+                .as_ref()
+                .and_then(|c| c.network.as_deref())
+                .unwrap_or(chain_name.as_str());
             if let Some(prev_chain) = amp_names.get(effective) {
                 return Err(anyhow!(
-                    "duplicate AMP name `{}`: used by chains `{}` and `{}`",
+                    "duplicate Amp name `{}`: used by chains `{}` and `{}`",
                     effective,
                     prev_chain,
                     chain_name
                 ));
             }
-            // Check that an explicit amp alias doesn't collide with
+            // Check that an explicit amp network alias doesn't collide with
             // another chain's own name (which would be ambiguous).
-            if chain.amp.is_some() {
+            if chain
+                .amp
+                .as_ref()
+                .and_then(|c| c.network.as_deref())
+                .is_some()
+            {
                 if let Some(other) = self.chains.get(effective) {
                     // Only a collision if the other chain doesn't also
                     // set the same amp alias (which is covered by the
                     // duplicate check above).
-                    if other.amp.as_deref() != Some(effective) {
+                    if other.amp.as_ref().and_then(|c| c.network.as_deref()) != Some(effective) {
                         return Err(anyhow!(
-                            "AMP alias `{}` on chain `{}` collides with chain `{}`",
+                            "Amp alias `{}` on chain `{}` collides with chain `{}`",
                             effective,
                             chain_name,
                             effective,
@@ -584,6 +597,32 @@ impl ChainSection {
     }
 }
 
+/// Per-chain Amp Flight service configuration.
+///
+/// Parsed from a `[chains.<name>.amp]` TOML table. When the `amp` key is
+/// absent, Amp is disabled for that chain.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct AmpConfig {
+    /// Amp Flight service address (e.g. `http://localhost:50051`).
+    pub address: String,
+    /// Optional authentication token for the Amp Flight service.
+    pub token: Option<String>,
+    /// The dataset in the Amp Flight service that contains the context table.
+    ///
+    /// This identifies the logical grouping (dataset) within the Flight
+    /// service where the block-level context table resides.
+    pub context_dataset: String,
+    /// The table providing block-level context: block hash, block number,
+    /// and timestamp.
+    ///
+    /// This should typically point to the blocks table (not transactions or
+    /// logs), since it reliably contains one row per block with the block hash.
+    pub context_table: String,
+    /// Optional Amp network name, used when the Amp network name differs
+    /// from the graph-node chain name.
+    pub network: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Chain {
     pub shard: String,
@@ -596,10 +635,11 @@ pub struct Chain {
     pub polling_interval: Duration,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
-    /// AMP network name alias. When set, AMP manifests using this name will
-    /// resolve to this chain. Defaults to the chain name.
+    /// Amp configuration table. When present, Amp is enabled for this chain
+    /// using the specified Flight service address, context dataset/table,
+    /// and optional auth token and network name override.
     #[serde(default)]
-    pub amp: Option<String>,
+    pub amp: Option<AmpConfig>,
 }
 
 fn default_blockchain_kind() -> BlockchainKind {
@@ -1289,7 +1329,8 @@ mod tests {
     use crate::config::{default_polling_interval, ChainSection, Web3Rule};
 
     use super::{
-        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Shard, Transport, Web3Provider,
+        AmpConfig, Chain, Config, FirehoseProvider, Provider, ProviderDetails, Shard, Transport,
+        Web3Provider,
     };
     use graph::blockchain::BlockchainKind;
     use graph::firehose::SubgraphLimit;
@@ -1963,17 +2004,116 @@ fdw_pool_size = [
     }
 
     #[test]
+    fn amp_config_toml_parses_full_table() {
+        let actual: Chain = toml::from_str(
+            r#"
+            shard = "primary"
+            provider = []
+            [amp]
+            address = "http://localhost:50051"
+            token = "my-secret-token"
+            context_dataset = "eth"
+            context_table = "blocks"
+            network = "ethereum-mainnet"
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            actual.amp,
+            Some(AmpConfig {
+                address: "http://localhost:50051".to_string(),
+                token: Some("my-secret-token".to_string()),
+                context_dataset: "eth".to_string(),
+                context_table: "blocks".to_string(),
+                network: Some("ethereum-mainnet".to_string()),
+            })
+        );
+    }
+
+    #[test]
+    fn amp_config_toml_parses_minimal_table() {
+        let actual: Chain = toml::from_str(
+            r#"
+            shard = "primary"
+            provider = []
+            [amp]
+            address = "http://localhost:50051"
+            context_dataset = "eth"
+            context_table = "blocks"
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            actual.amp,
+            Some(AmpConfig {
+                address: "http://localhost:50051".to_string(),
+                token: None,
+                context_dataset: "eth".to_string(),
+                context_table: "blocks".to_string(),
+                network: None,
+            })
+        );
+    }
+
+    #[test]
+    fn amp_config_toml_parses_without_amp() {
+        let actual: Chain = toml::from_str(
+            r#"
+            shard = "primary"
+            provider = []
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(actual.amp, None);
+    }
+
+    #[test]
+    fn amp_config_toml_rejects_missing_required_field() {
+        // The `address` field is required; omitting it should cause a deserialization error.
+        let result = toml::from_str::<Chain>(
+            r#"
+            shard = "primary"
+            provider = []
+            [amp]
+            context_dataset = "eth"
+            context_table = "blocks"
+        "#,
+        );
+
+        assert!(
+            result.is_err(),
+            "expected deserialization error when address is missing"
+        );
+    }
+
+    #[test]
     fn amp_chain_names_parsed_from_toml() {
         let actual: Chain = toml::from_str(
             r#"
             shard = "primary"
             provider = []
-            amp = "ethereum-mainnet"
+            [amp]
+            address = "http://localhost:50051"
+            context_dataset = "eth"
+            context_table = "blocks"
+            network = "ethereum-mainnet"
         "#,
         )
         .unwrap();
 
-        assert_eq!(actual.amp, Some("ethereum-mainnet".to_string()));
+        assert_eq!(
+            actual.amp,
+            Some(AmpConfig {
+                address: "http://localhost:50051".to_string(),
+                token: None,
+                context_dataset: "eth".to_string(),
+                context_table: "blocks".to_string(),
+                network: Some("ethereum-mainnet".to_string()),
+            })
+        );
     }
 
     #[test]
@@ -1997,11 +2137,19 @@ fdw_pool_size = [
             [mainnet]
             shard = "primary"
             provider = []
-            amp = "eth"
+            [mainnet.amp]
+            address = "http://localhost:50051"
+            context_dataset = "eth"
+            context_table = "blocks"
+            network = "eth"
             [sepolia]
             shard = "primary"
             provider = []
-            amp = "eth"
+            [sepolia.amp]
+            address = "http://localhost:50052"
+            context_dataset = "eth"
+            context_table = "blocks"
+            network = "eth"
             "#,
         )
         .unwrap();
@@ -2009,8 +2157,8 @@ fdw_pool_size = [
         let err = section.validate();
         assert!(err.is_err());
         assert!(
-            err.unwrap_err().to_string().contains("duplicate AMP name"),
-            "expected duplicate AMP name error"
+            err.unwrap_err().to_string().contains("duplicate Amp name"),
+            "expected duplicate Amp name error"
         );
     }
 
@@ -2025,7 +2173,11 @@ fdw_pool_size = [
             [sepolia]
             shard = "primary"
             provider = []
-            amp = "mainnet"
+            [sepolia.amp]
+            address = "http://localhost:50051"
+            context_dataset = "eth"
+            context_table = "blocks"
+            network = "mainnet"
             "#,
         )
         .unwrap();
@@ -2034,9 +2186,9 @@ fdw_pool_size = [
         assert!(err.is_err());
         let msg = err.unwrap_err().to_string();
         // The alias "mainnet" on sepolia collides with the chain named
-        // "mainnet" whose effective AMP name is also "mainnet".
+        // "mainnet" whose effective Amp name is also "mainnet".
         assert!(
-            msg.contains("duplicate AMP name") || msg.contains("collides with chain"),
+            msg.contains("duplicate Amp name") || msg.contains("collides with chain"),
             "expected collision/duplicate error, got: {msg}"
         );
     }
@@ -2049,7 +2201,11 @@ fdw_pool_size = [
             [mainnet]
             shard = "primary"
             provider = []
-            amp = "ethereum-mainnet"
+            [mainnet.amp]
+            address = "http://localhost:50051"
+            context_dataset = "eth"
+            context_table = "blocks"
+            network = "ethereum-mainnet"
             [sepolia]
             shard = "primary"
             provider = []

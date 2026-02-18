@@ -45,13 +45,19 @@ ingestor = "index_0"
 
 [chains.mainnet]
 shard = "primary"
-amp = "ethereum-mainnet"
 provider = [
   { label = "mainnet-0", url = "http://rpc.mainnet.io", features = ["archive", "traces"] },
   { label = "mainnet-1", details = { type = "web3call", url = "http://rpc.mainnet.io", features = ["archive", "traces"] }},
   { label = "mainnet-2", details = { type = "web3", url = "http://rpc.mainnet.io", features = ["archive", "compression/gzip"] }},
   { label = "firehose", details = { type = "firehose", url = "http://localhost:9000", features = [] }},
 ]
+
+[chains.mainnet.amp]
+address = "http://localhost:50051"
+token = "secret-token"
+context_dataset = "eth"
+context_table = "blocks"
+network = "ethereum-mainnet"
 
 [chains.ropsten]
 shard = "primary"
