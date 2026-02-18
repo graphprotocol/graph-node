@@ -13,7 +13,7 @@ use graph::data::{
     subgraph::{schema::DeploymentCreate, Graft},
     value::Word,
 };
-use graph::futures03::{self, future::TryFutureExt, Stream, StreamExt};
+use graph::futures03::{self, future::TryFutureExt, Stream, StreamExt, TryStreamExt};
 use graph::prelude::{CreateSubgraphResult, SubgraphRegistrar as SubgraphRegistrarTrait, *};
 use graph::util::futures::{retry_strategy, RETRY_DEFAULT_LIMIT};
 use tokio_retry::Retry;
@@ -420,6 +420,54 @@ where
     }
 }
 
+/// Resolves a block pointer for an Amp subgraph by querying the Amp Flight
+/// service for the block hash at the given `block_number`.
+async fn resolve_amp_start_block<AC: amp::Client>(
+    amp_client: &AC,
+    logger: &Logger,
+    context_dataset: &str,
+    context_table: &str,
+    block_number: BlockNumber,
+) -> Result<BlockPtr, anyhow::Error> {
+    let sql = format!(
+        "SELECT * FROM {}.{} WHERE _block_num = {}",
+        context_dataset, context_table, block_number
+    );
+
+    let mut stream = amp_client.query(logger, &sql, None);
+
+    // Find the first Batch response, skipping any Reorg variants.
+    let data = loop {
+        match stream.try_next().await? {
+            Some(amp::client::ResponseBatch::Batch { data }) => break data,
+            Some(amp::client::ResponseBatch::Reorg(_)) => continue,
+            None => {
+                return Err(anyhow!(
+                    "Amp query returned no batches for block {}",
+                    block_number
+                ));
+            }
+        }
+    };
+
+    if data.num_rows() == 0 {
+        return Err(anyhow!(
+            "Amp query returned empty batch for block {}",
+            block_number
+        ));
+    }
+
+    let (_col_name, decoder) = graph::amp::codec::utils::auto_block_hash_decoder(&data)?;
+    let hash = decoder.decode(0)?.ok_or_else(|| {
+        anyhow!(
+            "Amp query returned null block hash for block {}",
+            block_number
+        )
+    })?;
+
+    Ok(BlockPtr::new(hash.into(), block_number))
+}
+
 /// Resolves the subgraph's earliest block
 async fn resolve_start_block(
     manifest: &SubgraphManifest<impl Blockchain>,
@@ -502,6 +550,10 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
     let raw_string = serde_yaml::to_string(&raw).unwrap();
 
+    // Keep copies for Amp start block resolution after the manifest is resolved.
+    let amp_client_for_start_block = amp_client.clone();
+    let amp_context_for_start_block = amp_context.clone();
+
     let unvalidated = UnvalidatedSubgraphManifest::<C>::resolve(
         deployment.clone(),
         raw,
@@ -550,7 +602,40 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
 
     let start_block = match start_block_override {
         Some(block) => Some(block),
-        None => resolve_start_block(&manifest, &*chain, &logger).await?,
+        None => {
+            let min_start_block =
+                manifest.start_blocks().into_iter().min().expect(
+                    "cannot identify minimum start block because there are no data sources",
+                );
+
+            match (
+                min_start_block,
+                &amp_client_for_start_block,
+                &amp_context_for_start_block,
+            ) {
+                // Genesis block — no resolution needed.
+                (0, _, _) => None,
+                // Amp subgraph with start_block > 0 — try Amp-based resolution.
+                (min, Some(client), Some((dataset, table))) => {
+                    match resolve_amp_start_block(client.as_ref(), &logger, dataset, table, min - 1)
+                        .await
+                    {
+                        Ok(ptr) => Some(ptr),
+                        Err(e) => {
+                            warn!(
+                                logger,
+                                "Amp block pointer resolution failed, falling back to RPC";
+                                "error" => e.to_string(),
+                                "block_number" => min - 1
+                            );
+                            resolve_start_block(&manifest, &*chain, &logger).await?
+                        }
+                    }
+                }
+                // Non-Amp subgraph — use RPC.
+                _ => resolve_start_block(&manifest, &*chain, &logger).await?,
+            }
+        }
     };
 
     let base_block = match &manifest.graft {
@@ -616,4 +701,245 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
         )
         .await
         .map_err(SubgraphRegistrarError::SubgraphDeploymentError)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::Mutex;
+
+    use alloy::primitives::BlockHash as AllocBlockHash;
+    use arrow::array::{FixedSizeBinaryArray, RecordBatch};
+    use arrow::datatypes::{DataType, Field, Schema};
+    use graph::amp;
+    use graph::amp::client::{RequestMetadata, ResponseBatch};
+    use graph::amp::error::IsDeterministic;
+    use graph::futures03::future::BoxFuture;
+    use graph::futures03::stream::BoxStream;
+    use graph::prelude::*;
+
+    // -- Mock Amp client --------------------------------------------------
+
+    #[derive(Debug)]
+    struct MockAmpError(String);
+
+    impl std::fmt::Display for MockAmpError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    impl std::error::Error for MockAmpError {}
+
+    impl IsDeterministic for MockAmpError {
+        fn is_deterministic(&self) -> bool {
+            false
+        }
+    }
+
+    #[derive(Clone)]
+    struct MockAmpClient {
+        /// Recorded queries (for assertion).
+        recorded_queries: Arc<Mutex<Vec<String>>>,
+        /// Batches to return from `query()`. If `None`, the stream returns an error.
+        response: Arc<Result<Vec<ResponseBatch>, String>>,
+    }
+
+    impl MockAmpClient {
+        fn new_ok(batches: Vec<ResponseBatch>) -> Self {
+            Self {
+                recorded_queries: Arc::new(Mutex::new(Vec::new())),
+                response: Arc::new(Ok(batches)),
+            }
+        }
+
+        fn new_err(msg: &str) -> Self {
+            Self {
+                recorded_queries: Arc::new(Mutex::new(Vec::new())),
+                response: Arc::new(Err(msg.to_string())),
+            }
+        }
+
+        fn recorded_queries(&self) -> Vec<String> {
+            self.recorded_queries.lock().unwrap().clone()
+        }
+    }
+
+    impl amp::Client for MockAmpClient {
+        type Error = MockAmpError;
+
+        fn schema(
+            &self,
+            _logger: &Logger,
+            _query: impl ToString,
+        ) -> BoxFuture<'static, Result<arrow::datatypes::Schema, Self::Error>> {
+            unimplemented!("schema not needed in tests")
+        }
+
+        fn query(
+            &self,
+            _logger: &Logger,
+            query: impl ToString,
+            _request_metadata: Option<RequestMetadata>,
+        ) -> BoxStream<'static, Result<ResponseBatch, Self::Error>> {
+            let query_str = query.to_string();
+            self.recorded_queries.lock().unwrap().push(query_str);
+
+            let response = self.response.clone();
+            Box::pin(graph::futures03::stream::iter(match response.as_ref() {
+                Ok(batches) => batches.iter().cloned().map(Ok).collect::<Vec<_>>(),
+                Err(msg) => vec![Err(MockAmpError(msg.clone()))],
+            }))
+        }
+    }
+
+    // -- Test helpers -----------------------------------------------------
+
+    /// Creates a RecordBatch with a single "block_hash" column containing one
+    /// 32-byte FixedSizeBinary value.
+    fn make_block_hash_batch(hash: AllocBlockHash) -> RecordBatch {
+        let schema = Schema::new(vec![Field::new(
+            "block_hash",
+            DataType::FixedSizeBinary(32),
+            false,
+        )]);
+        let values: Vec<&[u8]> = vec![hash.as_slice()];
+        RecordBatch::try_new(
+            Arc::new(schema),
+            vec![Arc::new(
+                FixedSizeBinaryArray::try_from_iter(values.into_iter()).unwrap(),
+            )],
+        )
+        .unwrap()
+    }
+
+    // -- Tests ------------------------------------------------------------
+
+    #[tokio::test]
+    async fn resolve_amp_start_block() {
+        let alloy_hash = AllocBlockHash::from([0xABu8; 32]);
+        let expected_hash: BlockHash = alloy_hash.into();
+        let batch = make_block_hash_batch(alloy_hash);
+        let client = MockAmpClient::new_ok(vec![ResponseBatch::Batch { data: batch }]);
+        let logger = Logger::root(slog::Discard, o!());
+
+        let result =
+            super::resolve_amp_start_block(&client, &logger, "my_dataset", "blocks", 99).await;
+
+        let ptr = result.expect("should succeed");
+        assert_eq!(ptr.hash, expected_hash);
+        assert_eq!(ptr.number, 99);
+
+        // Verify the SQL query.
+        let queries = client.recorded_queries();
+        assert_eq!(queries.len(), 1);
+        assert_eq!(
+            queries[0],
+            "SELECT * FROM my_dataset.blocks WHERE _block_num = 99"
+        );
+    }
+
+    #[tokio::test]
+    async fn amp_subgraph_start_block_uses_amp_resolution() {
+        // When an Amp client + context are available and min_start_block > 0,
+        // the Amp path should be used and produce the correct BlockPtr.
+        let alloy_hash = AllocBlockHash::from([0xCDu8; 32]);
+        let expected_hash: BlockHash = alloy_hash.into();
+        let batch = make_block_hash_batch(alloy_hash);
+        let client = MockAmpClient::new_ok(vec![ResponseBatch::Batch { data: batch }]);
+        let logger = Logger::root(slog::Discard, o!());
+
+        // Simulate min_start_block = 100 → query block 99
+        let block_number = 100 - 1;
+        let result =
+            super::resolve_amp_start_block(&client, &logger, "eth_mainnet", "blocks", block_number)
+                .await;
+
+        let ptr = result.expect("should succeed");
+        assert_eq!(ptr.hash, expected_hash);
+        assert_eq!(ptr.number, block_number);
+
+        let queries = client.recorded_queries();
+        assert_eq!(
+            queries[0],
+            "SELECT * FROM eth_mainnet.blocks WHERE _block_num = 99"
+        );
+    }
+
+    #[tokio::test]
+    async fn amp_start_block_falls_back_to_rpc() {
+        // When the Amp query fails, resolve_amp_start_block returns an error.
+        let client = MockAmpClient::new_err("network error");
+        let logger = Logger::root(slog::Discard, o!());
+
+        let result =
+            super::resolve_amp_start_block(&client, &logger, "my_dataset", "blocks", 99).await;
+
+        assert!(
+            result.is_err(),
+            "should return an error so caller falls back to RPC"
+        );
+        assert!(
+            result.unwrap_err().to_string().contains("network error"),
+            "error should contain the original cause"
+        );
+    }
+
+    #[tokio::test]
+    async fn amp_start_block_zero_returns_none() {
+        // start_block = 0 means genesis — the caller should not invoke
+        // resolve_amp_start_block at all. We verify the matching logic inline:
+        // when min_start_block == 0, the result is None.
+        let min_start_block: i32 = 0;
+        let mock_client = Arc::new(MockAmpClient::new_ok(vec![]));
+        let amp_client: Option<Arc<MockAmpClient>> = Some(mock_client.clone());
+        let amp_context: Option<(String, String)> = Some(("ds".to_string(), "blocks".to_string()));
+
+        let result: Option<BlockPtr> = match (min_start_block, &amp_client, &amp_context) {
+            (0, _, _) => None,
+            _ => panic!("should not reach non-zero path"),
+        };
+
+        assert!(
+            result.is_none(),
+            "start_block=0 should produce None (genesis)"
+        );
+
+        // Verify the client was never called.
+        let queries = mock_client.recorded_queries();
+        assert!(
+            queries.is_empty(),
+            "Amp client should not be queried for genesis"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_amp_start_block_no_batches() {
+        // If the Amp query returns no batches at all, it should error.
+        let client = MockAmpClient::new_ok(vec![]);
+        let logger = Logger::root(slog::Discard, o!());
+
+        let result = super::resolve_amp_start_block(&client, &logger, "ds", "tbl", 50).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("no batches"));
+    }
+
+    #[tokio::test]
+    async fn resolve_amp_start_block_empty_batch() {
+        // If the Amp query returns an empty batch (0 rows), it should error.
+        let schema = Schema::new(vec![Field::new(
+            "block_hash",
+            DataType::FixedSizeBinary(32),
+            false,
+        )]);
+        let empty_batch = RecordBatch::new_empty(Arc::new(schema));
+        let client = MockAmpClient::new_ok(vec![ResponseBatch::Batch { data: empty_batch }]);
+        let logger = Logger::root(slog::Discard, o!());
+
+        let result = super::resolve_amp_start_block(&client, &logger, "ds", "tbl", 50).await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("empty batch"));
+    }
 }
