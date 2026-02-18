@@ -991,6 +991,12 @@ impl<C: Blockchain> SubgraphManifest<C> {
         Ok(resolved)
     }
 
+    pub fn is_amp_subgraph(&self) -> bool {
+        self.data_sources
+            .iter()
+            .all(|ds| matches!(ds, DataSource::Amp(_)))
+    }
+
     pub fn network_name(&self) -> String {
         // Assume the manifest has been validated, ensuring network names are homogenous
         self.data_sources

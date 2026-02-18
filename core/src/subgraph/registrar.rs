@@ -430,7 +430,7 @@ async fn resolve_amp_start_block<AC: amp::Client>(
     block_number: BlockNumber,
 ) -> Result<BlockPtr, anyhow::Error> {
     let sql = format!(
-        "SELECT * FROM {}.{} WHERE _block_num = {}",
+        "SELECT * FROM {}.{} WHERE _block_num = {} LIMIT 1",
         context_dataset, context_table, block_number
     );
 
@@ -569,6 +569,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
 
     let network_name: Word = manifest.network_name().into();
     let resolved_name = amp_chain_names.resolve(&network_name);
+    let is_amp_subgraph = manifest.is_amp_subgraph();
 
     let chain = chains
         .get::<C>(resolved_name.clone())
@@ -604,7 +605,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
                 // Genesis block — no resolution needed.
                 (0, _, _) => None,
                 // Amp subgraph with start_block > 0 — try Amp-based resolution.
-                (min, Some(client), Some((dataset, table))) => {
+                (min, Some(client), Some((dataset, table))) if is_amp_subgraph => {
                     match resolve_amp_start_block(client.as_ref(), &logger, dataset, table, min - 1)
                         .await
                     {
@@ -823,7 +824,7 @@ mod tests {
         assert_eq!(queries.len(), 1);
         assert_eq!(
             queries[0],
-            "SELECT * FROM my_dataset.blocks WHERE _block_num = 99"
+            "SELECT * FROM my_dataset.blocks WHERE _block_num = 99 LIMIT 1"
         );
     }
 
@@ -850,7 +851,7 @@ mod tests {
         let queries = client.recorded_queries();
         assert_eq!(
             queries[0],
-            "SELECT * FROM eth_mainnet.blocks WHERE _block_num = 99"
+            "SELECT * FROM eth_mainnet.blocks WHERE _block_num = 99 LIMIT 1"
         );
     }
 
