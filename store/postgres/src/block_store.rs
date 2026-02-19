@@ -10,7 +10,7 @@ use graph::{
     blockchain::ChainIdentifier,
     components::store::{BlockStore as BlockStoreTrait, QueryPermit},
     derive::CheapClone,
-    prelude::{error, info, BlockNumber, BlockPtr, Logger, ENV_VARS},
+    prelude::{error, info, warn, BlockNumber, BlockPtr, Logger, ENV_VARS},
     slog::o,
 };
 use graph::{
@@ -36,14 +36,6 @@ pub const FAKE_NETWORK_SHARED: &str = "fake_network_shared";
 // Highest version of the database that the executable supports.
 // To be incremented on each breaking change to the database.
 const SUPPORTED_DB_VERSION: i64 = 3;
-
-/// The status of a chain: whether we can only read from the chain, or
-/// whether it is ok to ingest from it, too
-#[derive(Copy, Clone)]
-pub enum ChainStatus {
-    ReadOnly,
-    Ingestible,
-}
 
 pub mod primary {
     use std::convert::TryFrom;
@@ -278,39 +270,22 @@ impl BlockStore {
         });
         let block_store = Self { inner };
 
-        /// Check that the configuration for `chain` hasn't changed so that
-        /// it is ok to ingest from it
-        fn chain_ingestible(
-            logger: &Logger,
-            chain: &primary::Chain,
-            shard: &Shard,
-            // ident: &ChainIdentifier,
-        ) -> bool {
-            if &chain.shard != shard {
-                error!(
-                    logger,
-                    "the chain {} is stored in shard {} but is configured for shard {}",
-                    chain.name,
-                    chain.shard,
-                    shard
-                );
-                return false;
-            }
-            true
-        }
-
         // For each configured chain, add a chain store
         for (chain_name, shard) in chains {
             if let Some(chain) = existing_chains
                 .iter()
                 .find(|chain| chain.name == chain_name)
             {
-                let status = if chain_ingestible(&block_store.logger, chain, &shard) {
-                    ChainStatus::Ingestible
-                } else {
-                    ChainStatus::ReadOnly
-                };
-                block_store.add_chain_store(chain, status, false).await?;
+                if chain.shard != shard {
+                    warn!(
+                        &block_store.logger,
+                        "The chain `{0}` is stored in shard `{1}` but is configured for shard `{2}`; ignoring config and using shard `{1}`",
+                        chain.name,
+                        chain.shard,
+                        shard,
+                    );
+                }
+                block_store.add_chain_store(chain, false).await?;
             };
         }
 
@@ -326,9 +301,7 @@ impl BlockStore {
             .iter()
             .filter(|chain| !configured_chains.contains(&chain.name))
         {
-            block_store
-                .add_chain_store(chain, ChainStatus::ReadOnly, false)
-                .await?;
+            block_store.add_chain_store(chain, false).await?;
         }
         Ok(block_store)
     }
@@ -376,7 +349,6 @@ impl BlockStore {
     pub async fn add_chain_store(
         &self,
         chain: &primary::Chain,
-        status: ChainStatus,
         create: bool,
     ) -> Result<Arc<ChainStore>, StoreError> {
         let pool = self
@@ -395,7 +367,6 @@ impl BlockStore {
             logger,
             chain.name.clone(),
             chain.storage.clone(),
-            status,
             sender,
             pool,
             ENV_VARS.store.recent_blocks_cache_capacity,
@@ -457,9 +428,7 @@ impl BlockStore {
                 async {
                     match primary::find_chain(conn, &chain).await? {
                         Some(chain) => {
-                            let chain_store = this
-                                .add_chain_store(&chain, ChainStatus::ReadOnly, false)
-                                .await?;
+                            let chain_store = this.add_chain_store(&chain, false).await?;
                             Ok(Some(chain_store))
                         }
                         None => Ok(None),
@@ -605,7 +574,7 @@ impl BlockStore {
             })
             .ok_or_else(|| anyhow!("unable to find shard for network {}", network))?;
         let chain = primary::add_chain(&mut conn, network, shard, ident).await?;
-        self.add_chain_store(&chain, ChainStatus::Ingestible, true)
+        self.add_chain_store(&chain, true)
             .await
             .map_err(anyhow::Error::from)
     }

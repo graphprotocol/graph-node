@@ -37,9 +37,7 @@ use graph::{ensure, internal_error};
 
 use self::recent_blocks_cache::RecentBlocksCache;
 use crate::AsyncPgConnection;
-use crate::{
-    block_store::ChainStatus, chain_head_listener::ChainHeadUpdateSender, pool::ConnectionPool,
-};
+use crate::{chain_head_listener::ChainHeadUpdateSender, pool::ConnectionPool};
 
 /// Our own internal notion of a block
 #[derive(Clone, Debug)]
@@ -2139,7 +2137,6 @@ pub struct ChainStore {
     pool: ConnectionPool,
     pub chain: String,
     pub(crate) storage: data::Storage,
-    status: ChainStatus,
     chain_head_update_sender: ChainHeadUpdateSender,
     // TODO: We currently only use this cache for
     // [`ChainStore::ancestor_block`], but it could very well be expanded to
@@ -2164,7 +2161,6 @@ impl ChainStore {
         logger: Logger,
         chain: String,
         storage: data::Storage,
-        status: ChainStatus,
         chain_head_update_sender: ChainHeadUpdateSender,
         pool: ConnectionPool,
         recent_blocks_cache_capacity: usize,
@@ -2182,7 +2178,6 @@ impl ChainStore {
             pool,
             chain,
             storage,
-            status,
             chain_head_update_sender,
             recent_blocks_cache,
             blocks_by_hash_cache,
@@ -2191,10 +2186,6 @@ impl ChainStore {
             chain_head_ptr_cache,
             chain_head_ptr_herd,
         }
-    }
-
-    pub fn is_ingestible(&self) -> bool {
-        matches!(self.status, ChainStatus::Ingestible)
     }
 
     /// Execute a cached query, avoiding thundering herd for identical requests.
