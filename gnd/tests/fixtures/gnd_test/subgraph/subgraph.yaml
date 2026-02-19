@@ -7,7 +7,7 @@ dataSources:
     network: arbitrum
     source:
       abi: ERC20
-      address: "0x731a10897d267e19b34503ad902d0a29173ba4b1"
+      address: "0x9623063377AD1B27544C965cCd7342f7EA7e88C7"
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.9
