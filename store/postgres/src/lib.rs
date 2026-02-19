@@ -56,7 +56,6 @@ pub mod layout_for_tests {
 
 pub use self::block_store::primary::{add_chain, find_chain, update_chain_name};
 pub use self::block_store::BlockStore;
-pub use self::block_store::ChainStatus;
 pub use self::chain_head_listener::ChainHeadUpdateListener;
 pub use self::chain_store::{ChainStore, ChainStoreMetrics, Storage};
 pub use self::detail::DeploymentDetail;

@@ -26,7 +26,6 @@ use graph_store_postgres::add_chain;
 use graph_store_postgres::find_chain;
 use graph_store_postgres::update_chain_name;
 use graph_store_postgres::BlockStore;
-use graph_store_postgres::ChainStatus;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::PoolCoordinator;
 use graph_store_postgres::ScopedFutureExt;
@@ -254,7 +253,7 @@ pub async fn change_block_cache_shard(
 
             let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident).await?;
 
-            store.add_chain_store(&chain,ChainStatus::Ingestible, true).await?;
+            store.add_chain_store(&chain, true).await?;
 
             // Drop the foreign key constraint on deployment_schemas
             sql_query(
