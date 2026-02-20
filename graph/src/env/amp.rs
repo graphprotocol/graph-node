@@ -24,11 +24,6 @@ pub struct AmpEnv {
     ///
     /// Defaults to `600` seconds.
     pub query_retry_max_delay: Duration,
-
-    /// Token used to authenticate Amp Flight gRPC service requests.
-    ///
-    /// Defaults to `None`.
-    pub flight_service_token: Option<String>,
 }
 
 impl AmpEnv {
@@ -65,12 +60,31 @@ impl AmpEnv {
                 .amp_query_retry_max_delay_seconds
                 .map(Duration::from_secs)
                 .unwrap_or(Self::DEFAULT_QUERY_RETRY_MAX_DELAY),
-            flight_service_token: raw_env.amp_flight_service_token.as_ref().and_then(|value| {
-                if value.is_empty() {
-                    return None;
-                }
-                Some(value.to_string())
-            }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::ENV_VARS;
+
+    #[test]
+    fn amp_env_constructs_without_flight_fields() {
+        // Verify that AmpEnv constructs correctly with only its remaining fields
+        // (the Flight service token field has been removed). The ENV_VARS static
+        // is constructed at process start; if AmpEnv still had that field, this
+        // access would fail to compile.
+        let amp = &ENV_VARS.amp;
+        assert_eq!(amp.max_buffer_size, AmpEnv::DEFAULT_MAX_BUFFER_SIZE);
+        assert_eq!(amp.max_block_range, AmpEnv::DEFAULT_MAX_BLOCK_RANGE);
+        assert_eq!(
+            amp.query_retry_min_delay,
+            AmpEnv::DEFAULT_QUERY_RETRY_MIN_DELAY
+        );
+        assert_eq!(
+            amp.query_retry_max_delay,
+            AmpEnv::DEFAULT_QUERY_RETRY_MAX_DELAY
+        );
     }
 }

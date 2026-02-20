@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use alloy::primitives::BlockNumber;
@@ -8,9 +9,11 @@ use graph::{
     components::{
         link_resolver::{LinkResolver, LinkResolverContext},
         metrics::MetricsRegistry,
+        network_provider::{AmpChainConfig, AmpClients, ChainName},
         store::{DeploymentLocator, SubgraphStore},
         subgraph::SubgraphInstanceManager,
     },
+    data::subgraph::network_name_from_raw_manifest,
     env::EnvVars,
     log::factory::LoggerFactory,
     prelude::CheapClone,
@@ -31,7 +34,8 @@ pub struct Manager<SS, NC> {
     monitor: Monitor,
     subgraph_store: Arc<SS>,
     link_resolver: Arc<dyn LinkResolver>,
-    amp_client: Arc<NC>,
+    amp_clients: AmpClients<NC>,
+    amp_chain_configs: HashMap<ChainName, AmpChainConfig>,
 }
 
 impl<SS, NC> Manager<SS, NC>
@@ -47,7 +51,8 @@ where
         cancel_token: &CancellationToken,
         subgraph_store: Arc<SS>,
         link_resolver: Arc<dyn LinkResolver>,
-        amp_client: Arc<NC>,
+        amp_clients: AmpClients<NC>,
+        amp_chain_configs: HashMap<ChainName, AmpChainConfig>,
     ) -> Self {
         let logger = logger_factory.component_logger("AmpSubgraphManager", None);
         let logger_factory = logger_factory.with_parent(logger);
@@ -61,7 +66,8 @@ where
             monitor,
             subgraph_store,
             link_resolver,
-            amp_client,
+            amp_clients,
+            amp_chain_configs,
         }
     }
 }
@@ -112,16 +118,48 @@ where
                         .await
                         .context("failed to load subgraph manifest")?;
 
-                    let raw_manifest = serde_yaml::from_slice(&manifest_bytes)
+                    let raw_manifest: serde_yaml::Mapping = serde_yaml::from_slice(&manifest_bytes)
                         .context("failed to parse subgraph manifest")?;
+
+                    // Extract the network name from the raw manifest to look
+                    // up the per-chain Amp client.
+                    let network_name = network_name_from_raw_manifest(&raw_manifest);
+
+                    let amp_client = match &network_name {
+                        Some(network) => match manager.amp_clients.get(network) {
+                            Some(client) => client,
+                            None => {
+                                anyhow::bail!(
+                                    "Amp is not configured for chain '{}'; \
+                                     cannot start Amp subgraph '{}'",
+                                    network,
+                                    deployment.hash
+                                );
+                            }
+                        },
+                        None => {
+                            anyhow::bail!(
+                                "no network name found in manifest for Amp subgraph '{}'",
+                                deployment.hash
+                            );
+                        }
+                    };
+
+                    let amp_context = network_name.as_ref().and_then(|chain| {
+                        manager
+                            .amp_chain_configs
+                            .get(chain)
+                            .map(|cfg| cfg.context())
+                    });
 
                     let mut manifest = amp::Manifest::resolve::<graph_chain_ethereum::Chain, _>(
                         &logger,
                         manager.link_resolver.cheap_clone(),
-                        manager.amp_client.cheap_clone(),
+                        amp_client.cheap_clone(),
                         manager.env_vars.max_spec_version.cheap_clone(),
                         deployment.hash.cheap_clone(),
                         raw_manifest,
+                        amp_context,
                     )
                     .await?;
 
@@ -139,7 +177,7 @@ where
                     let runner_context = runner::Context::new(
                         &logger,
                         &manager.env_vars.amp,
-                        manager.amp_client.cheap_clone(),
+                        amp_client,
                         store,
                         deployment.hash.cheap_clone(),
                         manifest,

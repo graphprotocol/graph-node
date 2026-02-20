@@ -360,6 +360,7 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
         deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         amp_client: Option<Arc<AC>>,
+        amp_context: Option<(String, String)>,
         logger: &Logger,
         manifest_idx: u32,
         spec_version: &semver::Version,
@@ -395,7 +396,13 @@ impl<C: Blockchain> UnresolvedDataSource<C> {
             }
             Self::Amp(raw_data_source) => match amp_client {
                 Some(amp_client) => raw_data_source
-                    .resolve(logger, resolver.as_ref(), amp_client.as_ref(), input_schema)
+                    .resolve(
+                        logger,
+                        resolver.as_ref(),
+                        amp_client.as_ref(),
+                        input_schema,
+                        amp_context,
+                    )
                     .await
                     .map(DataSource::Amp)
                     .map_err(Error::from),

@@ -10,10 +10,11 @@ use git_testament::{git_testament, CommitKind};
 use graph::amp;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::link_resolver::LinkResolverContext;
+use graph::components::network_provider::AmpClients;
 use graph::components::store::{BlockPtrForNumber, BlockStore, QueryPermit, Store};
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::{object, IntoValue, ObjectOrInterface, ValueMap};
-use graph::data::subgraph::{status, DeploymentFeatures};
+use graph::data::subgraph::{network_name_from_raw_manifest, status, DeploymentFeatures};
 use graph::data::value::Object;
 use graph::futures03::TryFutureExt;
 use graph::prelude::*;
@@ -101,7 +102,7 @@ pub struct IndexNodeResolver<S: Store, AC> {
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
     link_resolver: Arc<dyn LinkResolver>,
-    amp_client: Option<Arc<AC>>,
+    amp_clients: AmpClients<AC>,
     bearer_token: Option<String>,
 }
 
@@ -114,7 +115,7 @@ where
         logger: &Logger,
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
-        amp_client: Option<Arc<AC>>,
+        amp_clients: AmpClients<AC>,
         bearer_token: Option<String>,
         blockchain_map: Arc<BlockchainMap>,
     ) -> Self {
@@ -125,7 +126,7 @@ where
             blockchain_map,
             store,
             link_resolver,
-            amp_client,
+            amp_clients,
             bearer_token,
         }
     }
@@ -520,6 +521,12 @@ where
         let kind = BlockchainKind::from_manifest(&raw_yaml)
             .map_err(SubgraphManifestResolveError::ResolveError)?;
 
+        // Extract the network name from the raw yaml to look up the
+        // per-chain Amp client.
+        let amp_client = network_name_from_raw_manifest(&raw_yaml)
+            .as_ref()
+            .and_then(|network| self.amp_clients.get(network));
+
         let max_spec_version = ENV_VARS.max_spec_version.clone();
 
         let result = match kind {
@@ -529,7 +536,8 @@ where
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
-                        self.amp_client.cheap_clone(),
+                        amp_client.cheap_clone(),
+                        None,
                         &self.logger,
                         max_spec_version,
                     )
@@ -547,7 +555,8 @@ where
                         deployment_hash.clone(),
                         raw_yaml,
                         &self.link_resolver,
-                        self.amp_client.cheap_clone(),
+                        amp_client,
+                        None,
                         &self.logger,
                         max_spec_version,
                     )

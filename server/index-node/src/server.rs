@@ -1,8 +1,8 @@
 use graph::{
     amp,
     blockchain::BlockchainMap,
-    cheap_clone::CheapClone,
     components::{
+        network_provider::AmpClients,
         server::server::{start, ServerHandle},
         store::Store,
     },
@@ -17,7 +17,7 @@ pub struct IndexNodeServer<S, AC> {
     blockchain_map: Arc<BlockchainMap>,
     store: Arc<S>,
     link_resolver: Arc<dyn LinkResolver>,
-    amp_client: Option<Arc<AC>>,
+    amp_clients: AmpClients<AC>,
 }
 
 impl<S, AC> IndexNodeServer<S, AC>
@@ -31,7 +31,7 @@ where
         blockchain_map: Arc<BlockchainMap>,
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
-        amp_client: Option<Arc<AC>>,
+        amp_clients: AmpClients<AC>,
     ) -> Self {
         let logger = logger_factory.component_logger(
             "IndexNodeServer",
@@ -47,7 +47,7 @@ where
             blockchain_map,
             store,
             link_resolver,
-            amp_client,
+            amp_clients,
         }
     }
 
@@ -68,7 +68,7 @@ where
             self.blockchain_map.clone(),
             store,
             self.link_resolver.clone(),
-            self.amp_client.cheap_clone(),
+            self.amp_clients.clone(),
         ));
 
         start(logger_for_service.clone(), port, move |req| {

@@ -14,7 +14,11 @@ pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
-use crate::{cheap_clone::CheapClone, components::store::BLOCK_NUMBER_MAX, object};
+use crate::{
+    cheap_clone::CheapClone,
+    components::{network_provider::ChainName, store::BLOCK_NUMBER_MAX},
+    object,
+};
 use anyhow::{anyhow, Context, Error};
 use futures03::future::try_join_all;
 use itertools::Itertools;
@@ -822,6 +826,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
         amp_client: Option<Arc<AC>>,
+        amp_context: Option<(String, String)>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
@@ -831,6 +836,7 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
                 raw,
                 resolver,
                 amp_client,
+                amp_context,
                 logger,
                 max_spec_version,
             )
@@ -971,14 +977,28 @@ impl<C: Blockchain> SubgraphManifest<C> {
         raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
         amp_client: Option<Arc<AC>>,
+        amp_context: Option<(String, String)>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         let unresolved = UnresolvedSubgraphManifest::parse(id.cheap_clone(), raw)?;
         let resolved = unresolved
-            .resolve(&id, resolver, amp_client, logger, max_spec_version)
+            .resolve(
+                &id,
+                resolver,
+                amp_client,
+                amp_context,
+                logger,
+                max_spec_version,
+            )
             .await?;
         Ok(resolved)
+    }
+
+    pub fn is_amp_subgraph(&self) -> bool {
+        self.data_sources
+            .iter()
+            .all(|ds| matches!(ds, DataSource::Amp(_)))
     }
 
     pub fn network_name(&self) -> String {
@@ -1114,6 +1134,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
         amp_client: Option<Arc<AC>>,
+        amp_context: Option<(String, String)>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<SubgraphManifest<C>, SubgraphManifestResolveError> {
@@ -1166,10 +1187,12 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         };
 
         let data_sources = try_join_all(data_sources.into_iter().enumerate().map(|(idx, ds)| {
+            let amp_context = amp_context.clone();
             ds.resolve(
                 deployment_hash,
                 resolver,
                 amp_client.cheap_clone(),
+                amp_context,
                 logger,
                 idx as u32,
                 &spec_version,
@@ -1370,6 +1393,21 @@ fn display_vector(input: &[impl std::fmt::Display]) -> impl std::fmt::Display {
     format!("[{}]", formatted_errors)
 }
 
+/// Extracts the network name from the first data source in a raw manifest YAML mapping.
+///
+/// Navigates `dataSources[0].network` and returns the network name as an owned string,
+/// or `None` if any step in the path is missing.
+pub fn network_name_from_raw_manifest(raw: &serde_yaml::Mapping) -> Option<ChainName> {
+    use serde_yaml::Value;
+    raw.get(Value::String("dataSources".to_owned()))
+        .and_then(|ds| ds.as_sequence())
+        .and_then(|ds| ds.first())
+        .and_then(|ds| ds.as_mapping())
+        .and_then(|ds| ds.get(Value::String("network".to_owned())))
+        .and_then(|n| n.as_str())
+        .map(|s| s.into())
+}
+
 #[test]
 fn test_subgraph_name_validation() {
     assert!(SubgraphName::new("a").is_ok());
@@ -1415,4 +1453,48 @@ fn test_display_vector() {
         expected_display_message,
         format!("{}", manifest_validation_error)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn network_name_from_raw_manifest_extracts_network() {
+        use serde_yaml::{Mapping, Value};
+
+        let mut ds = Mapping::new();
+        ds.insert(
+            Value::String("network".to_owned()),
+            Value::String("mainnet".to_owned()),
+        );
+
+        let mut raw = Mapping::new();
+        raw.insert(
+            Value::String("dataSources".to_owned()),
+            Value::Sequence(vec![Value::Mapping(ds)]),
+        );
+
+        assert_eq!(
+            network_name_from_raw_manifest(&raw),
+            Some(ChainName::from("mainnet"))
+        );
+    }
+
+    #[test]
+    fn network_name_from_raw_manifest_returns_none_when_missing() {
+        use serde_yaml::{Mapping, Value};
+
+        // Empty mapping — no dataSources key at all
+        let empty = Mapping::new();
+        assert_eq!(network_name_from_raw_manifest(&empty), None);
+
+        // dataSources is an empty sequence
+        let mut raw = Mapping::new();
+        raw.insert(
+            Value::String("dataSources".to_owned()),
+            Value::Sequence(vec![]),
+        );
+        assert_eq!(network_name_from_raw_manifest(&raw), None);
+    }
 }

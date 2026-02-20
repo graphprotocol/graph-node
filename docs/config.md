@@ -114,9 +114,8 @@ The configuration for a chain `name` is specified in the section
 - `protocol`: the protocol type being indexed, default `ethereum`
   (alternatively `near`, `cosmos`,`arweave`,`starknet`)
 - `polling_interval`: the polling interval for the block ingestor (default 500ms)
-- `amp`: the network name used by AMP for this chain; defaults to the chain name.
-  Set this when AMP uses a different name than graph-node (e.g., `amp = "ethereum-mainnet"`
-  on a chain named `mainnet`).
+- `amp`: a TOML table configuring Amp Flight service for this chain. See
+  [Amp Configuration](#amp-configuration) below for details.
 - `provider`: a list of providers for that chain
 
 A `provider` is an object with the following characteristics:
@@ -167,11 +166,17 @@ optimisations.
 ingestor = "block_ingestor_node"
 [chains.mainnet]
 shard = "vip"
-amp = "ethereum-mainnet"
 provider = [
   { label = "mainnet1", url = "http://..", features = [], headers = { Authorization = "Bearer foo" } },
   { label = "mainnet2", url = "http://..", features = [ "archive", "traces" ] }
 ]
+[chains.mainnet.amp]
+address = "http://amp-flight.example.com:50051"
+token = "my-secret-token"
+context_dataset = "ethereum"
+context_table = "blocks"
+network = "ethereum-mainnet"
+
 [chains.sepolia]
 shard = "primary"
 provider = [ { label = "sepolia", url = "http://..", features = [] } ]
@@ -181,6 +186,51 @@ shard = "blocks_b"
 protocol = "near"
 provider = [ { label = "near", details = { type = "firehose", url = "https://..", key = "", features = ["compression", "filters"] } } ]
 ```
+
+### Amp Configuration
+
+Amp data sources use a Flight service to query the blockchain data. 
+Amp is configured per-chain using a TOML table under `[chains.<name>.amp]`. 
+When the `amp` section is absent for a chain, Amp is disabled for that chain.
+
+The `[chains.<name>.amp]` table supports the following fields:
+
+- `address` (String, **required**): The Amp Flight service endpoint
+  (e.g., `"http://amp-flight.example.com:50051"`).
+- `token` (String, optional): Authentication token for the Amp Flight service.
+- `context_dataset` (String, **required**): The dataset in the Amp Flight
+  service that contains the context table. This identifies the logical
+  grouping (dataset) within the Flight service where the block-level context
+  table resides.
+- `context_table` (String, **required**): The table within the context dataset
+  that provides block-level context (block hash, block number, and timestamp).
+  This should typically point to the blocks table (not transactions or logs),
+  since it reliably contains one row per block with the block hash.
+- `network` (String, optional): The Amp network name when it differs from
+  the graph-node chain name (e.g., `"ethereum-mainnet"` on a chain named
+  `mainnet`). Defaults to the chain name if omitted.
+
+Example:
+
+```toml
+[chains.mainnet.amp]
+address = "http://amp-flight.example.com:50051"
+token = "my-secret-token"
+context_dataset = "ethereum"
+context_table = "blocks"
+network = "ethereum-mainnet"
+```
+
+#### Removed ENV/CLI flags
+
+The following environment variables and CLI flags have been removed in favor
+of per-chain TOML configuration:
+
+- `GRAPH_AMP_FLIGHT_SERVICE_ADDRESS` environment variable /
+  `--amp-flight-service-address` CLI flag — use `address` in
+  `[chains.<name>.amp]` instead.
+- `GRAPH_AMP_FLIGHT_SERVICE_TOKEN` environment variable — use `token` in
+  `[chains.<name>.amp]` instead.
 
 ### Controlling the number of subgraphs using a provider
 

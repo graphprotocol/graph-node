@@ -16,7 +16,7 @@ use graph::hyper::header::{
 use graph::hyper::{body::Body, Method, Request, Response, StatusCode};
 
 use graph::amp;
-use graph::components::{server::query::ServerError, store::Store};
+use graph::components::{network_provider::AmpClients, server::query::ServerError, store::Store};
 use graph::data::query::{Query, QueryError, QueryResult, QueryResults};
 use graph::prelude::{q, serde_json};
 use graph::slog::{debug, error, Logger};
@@ -46,7 +46,7 @@ pub struct IndexNodeService<S, AC> {
     store: Arc<S>,
     explorer: Arc<Explorer<S>>,
     link_resolver: Arc<dyn LinkResolver>,
-    amp_client: Option<Arc<AC>>,
+    amp_clients: AmpClients<AC>,
 }
 
 impl<S, AC> IndexNodeService<S, AC>
@@ -59,7 +59,7 @@ where
         blockchain_map: Arc<BlockchainMap>,
         store: Arc<S>,
         link_resolver: Arc<dyn LinkResolver>,
-        amp_client: Option<Arc<AC>>,
+        amp_clients: AmpClients<AC>,
     ) -> Self {
         let explorer = Arc::new(Explorer::new(store.clone()));
 
@@ -69,7 +69,7 @@ where
             store,
             explorer,
             link_resolver,
-            amp_client,
+            amp_clients,
         }
     }
 
@@ -143,7 +143,7 @@ where
                 &logger,
                 store,
                 self.link_resolver.clone(),
-                self.amp_client.cheap_clone(),
+                self.amp_clients.clone(),
                 validated.bearer_token,
                 self.blockchain_map.clone(),
             );
