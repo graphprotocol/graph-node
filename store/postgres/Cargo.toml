@@ -38,6 +38,8 @@ pretty_assertions = "1.4.1"
 sqlparser = { workspace = true }
 thiserror = { workspace = true }
 serde_yaml.workspace = true
+arrow = { workspace = true }
+parquet = { workspace = true }
 
 [dev-dependencies]
 clap.workspace = true
