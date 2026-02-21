@@ -1,8 +1,9 @@
 //! Helpers to use diesel dynamic schema to retrieve values from Postgres
 
 use std::num::NonZeroU32;
+use std::ops::Bound;
 
-use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Numeric, Text, Timestamptz};
+use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Numeric, Range, Text, Timestamptz};
 use diesel::{deserialize::FromSql, pg::Pg};
 use diesel_dynamic_schema::dynamic_value::{Any, DynamicRow};
 
@@ -45,6 +46,7 @@ pub enum OidValue {
     BigDecimalArray(Vec<BigDecimal>),
     Timestamp(Timestamp),
     TimestampArray(Vec<Timestamp>),
+    Int4Range(Bound<i32>, Bound<i32>),
     Null,
 }
 
@@ -66,6 +68,7 @@ impl FromSql<Any, Pg> for OidValue {
         const NUMERIC_ARY_OID: NonZeroU32 = NonZeroU32::new(1231).unwrap();
         const TIMESTAMPTZ_OID: NonZeroU32 = NonZeroU32::new(1184).unwrap();
         const TIMESTAMPTZ_ARY_OID: NonZeroU32 = NonZeroU32::new(1185).unwrap();
+        const INT4RANGE_OID: NonZeroU32 = NonZeroU32::new(3904).unwrap();
 
         match value.get_oid() {
             VARCHAR_OID | TEXT_OID => {
@@ -101,6 +104,10 @@ impl FromSql<Any, Pg> for OidValue {
             TIMESTAMPTZ_ARY_OID => {
                 <Vec<Timestamp> as FromSql<Array<Timestamptz>, Pg>>::from_sql(value)
                     .map(OidValue::TimestampArray)
+            }
+            INT4RANGE_OID => {
+                <(Bound<i32>, Bound<i32>) as FromSql<Range<Integer>, Pg>>::from_sql(value)
+                    .map(|(lo, hi)| OidValue::Int4Range(lo, hi))
             }
             e => Err(format!("Unknown type: {e}").into()),
         }
@@ -143,6 +150,11 @@ impl FromOidValue for r::Value {
             O::BigDecimalArray(b) => as_list(b, |b| Self::String(b.to_string())),
             O::Timestamp(t) => Self::Timestamp(t),
             O::TimestampArray(t) => as_list(t, Self::Timestamp),
+            O::Int4Range(..) => {
+                return Err(StoreError::InternalError(
+                    "int4range can not be converted to r::Value".to_string(),
+                ))
+            }
             O::Null => Self::Null,
         };
         Ok(value)
@@ -195,6 +207,11 @@ impl FromOidValue for graph::prelude::Value {
             },
             O::Timestamp(t) => Self::Timestamp(t),
             O::TimestampArray(t) => as_list(t, Self::Timestamp),
+            O::Int4Range(..) => {
+                return Err(StoreError::InternalError(
+                    "int4range can not be converted to Value".to_string(),
+                ))
+            }
             O::Null => Self::Null,
         };
         Ok(value)
