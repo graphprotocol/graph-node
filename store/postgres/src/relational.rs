@@ -76,7 +76,7 @@ use graph::prelude::{
     QueryExecutionError, StoreError, ValueType,
 };
 
-use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
+use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, CAUSALITY_REGION_COLUMN};
 pub use crate::catalog::Catalog;
 use crate::ForeignServer;
 use crate::{catalog, deployment, AsyncPgConnection};
