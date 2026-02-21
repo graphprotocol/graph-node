@@ -15,6 +15,7 @@ mod ddl_tests;
 mod query_tests;
 
 pub(crate) mod dsl;
+pub(crate) mod dump;
 pub(crate) mod index;
 pub(crate) mod prune;
 pub(crate) mod rollup;
