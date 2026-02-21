@@ -16,7 +16,7 @@ use diesel::query_dsl::methods::SelectDsl;
 use diesel::query_source::QuerySource;
 
 use diesel::sql_types::{
-    Array, BigInt, Binary, Bool, Integer, Nullable, Numeric, SingleValue, Text, Timestamptz,
+    Array, BigInt, Binary, Bool, Integer, Nullable, Numeric, Range, SingleValue, Text, Timestamptz,
     Untyped,
 };
 use diesel::{AppearsOnTable, Expression, QueryDsl, QueryResult, SelectableExpression};
@@ -43,8 +43,8 @@ lazy_static! {
     pub static ref TYPENAME_COL: RelColumn = RelColumn::pseudo_column(TYPENAME, ColumnType::String);
     pub static ref VID_COL: RelColumn = RelColumn::pseudo_column("vid", ColumnType::Int8);
     pub static ref BLOCK_COL: RelColumn = RelColumn::pseudo_column(BLOCK_COLUMN, ColumnType::Int8);
-    // The column type is a placeholder, we can't deserialize in4range; but
-    // we also never try to use it when we get data from the database
+    // The column type is a placeholder; block_range is deserialized as
+    // int4range via special handling in select_cols
     pub static ref BLOCK_RANGE_COL: RelColumn =
         RelColumn::pseudo_column(BLOCK_RANGE_COLUMN, ColumnType::Bytes);
     pub static ref PARENT_STRING_COL: RelColumn = RelColumn::pseudo_column(PARENT_ID, ColumnType::String);
@@ -291,7 +291,6 @@ impl<'a> Table<'a> {
             if self.meta.immutable {
                 cols.push(&*BLOCK_COL);
             } else {
-                // TODO: We can't deserialize in4range
                 cols.push(&*BLOCK_RANGE_COL);
             }
         }
@@ -346,6 +345,10 @@ impl<'a> Table<'a> {
                     "'{}' as __typename",
                     self.meta.object.typename()
                 )));
+                continue;
+            }
+            if column.name == BLOCK_RANGE_COL.name {
+                selection.add_field(self.bind::<Range<Integer>>(&column.name).unwrap());
                 continue;
             }
             match column.column_type {
