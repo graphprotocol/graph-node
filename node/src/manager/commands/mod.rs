@@ -7,6 +7,7 @@ pub mod create;
 pub mod database;
 pub mod deploy;
 pub mod deployment;
+pub mod dump;
 pub mod index;
 pub mod listen;
 pub mod provider_checks;
