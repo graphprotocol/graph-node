@@ -24,6 +24,7 @@ mod fork;
 mod functions;
 mod jobs;
 mod notification_listener;
+mod parquet;
 mod pool;
 mod primary;
 pub mod query_store;
