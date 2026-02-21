@@ -88,6 +88,18 @@ test-gnd-commands *EXTRA_FLAGS:
 
     cargo test {{EXTRA_FLAGS}} --package gnd --test cli_commands -- --nocapture
 
+# Run gnd test runner tests (requires asc in PATH, uses pgtemp for PostgreSQL)
+test-gnd-test *EXTRA_FLAGS:
+    #!/usr/bin/env bash
+    set -e # Exit on error
+
+    # Build gnd binary
+    cargo build --bin gnd
+
+    echo "Running gnd test runner tests"
+
+    cargo test {{EXTRA_FLAGS}} --package gnd --test gnd_test -- --nocapture
+
 # Clean workspace (cargo clean)
 clean:
     cargo clean

@@ -1,0 +1,65 @@
+{
+  "name": "Test events and eth_call mocking",
+  "blocks": [
+    {
+      "events": [
+        {
+          "address": "0x731a10897d267e19b34503ad902d0a29173ba4b1",
+          "event": "Transfer(address indexed from, address indexed to, uint256 value)",
+          "params": {
+            "from": "0xaaaa000000000000000000000000000000000000",
+            "to": "0xbbbb000000000000000000000000000000000000",
+            "value": "1000000000000000000"
+          }
+        }
+      ],
+      "ethCalls": [
+        {
+          "address": "0x731a10897d267e19b34503ad902d0a29173ba4b1",
+          "function": "symbol()(string)",
+          "params": [],
+          "returns": ["GRT"]
+        },
+        {
+          "address": "0x731a10897d267e19b34503ad902d0a29173ba4b1",
+          "function": "name()(string)",
+          "params": [],
+          "returns": ["TheGraph"]
+        },
+        {
+          "address": "0x731a10897d267e19b34503ad902d0a29173ba4b1",
+          "function": "decimals()(uint8)",
+          "params": [],
+          "returns": ["18"]
+        },
+        {
+          "address": "0x731a10897d267e19b34503ad902d0a29173ba4b1",
+          "function": "balanceOf(address)(uint256)",
+          "params": ["0xaaaa000000000000000000000000000000000000"],
+          "returns": ["3000000000000000000"]
+        },
+        {
+          "address": "0x731a10897d267e19b34503ad902d0a29173ba4b1",
+          "function": "balanceOf(address)(uint256)",
+          "params": ["0xbbbb000000000000000000000000000000000000"],
+          "returns": ["5000000000000000000"]
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    {
+      "query": "{ tokens { id name symbol decimals } }",
+      "expected": { "tokens": [ { "id": "0x731a10897d267e19b34503ad902d0a29173ba4b1", "name": "TheGraph", "symbol": "GRT", "decimals": 18 } ] }
+    },
+    {
+      "query": "{ accounts { id balances { token { symbol } amount } } }",
+      "expected": {
+        "accounts": [
+          {"id": "0xbbbb000000000000000000000000000000000000", "balances": [{"token": { "symbol": "GRT" }, "amount": "5000000000000000000"}]},
+          {"id": "0xaaaa000000000000000000000000000000000000", "balances": [{"token": { "symbol": "GRT" }, "amount": "3000000000000000000"}]}
+        ]
+      }
+    }
+  ]
+}

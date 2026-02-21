@@ -68,6 +68,10 @@ pub struct DataSource {
     pub source_address: Option<String>,
     /// The ABI name referenced in `source.abi` (Ethereum data sources only).
     pub source_abi: Option<String>,
+    /// The block number at which this data source starts indexing (from source.startBlock).
+    pub start_block: u64,
+    /// The block number at which this data source stops indexing (from source.endBlock).
+    pub end_block: Option<u64>,
     /// Event handlers from the mapping.
     pub event_handlers: Vec<EventHandler>,
     /// Call handlers from the mapping.
@@ -228,6 +232,8 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
                 .collect(),
             source_address: eth.source.address.map(|a| format!("{:?}", a)),
             source_abi: Some(eth.source.abi.clone()),
+            start_block: eth.source.start_block as u64,
+            end_block: eth.source.end_block.map(|b| b as u64),
             event_handlers: eth
                 .mapping
                 .event_handlers
@@ -277,6 +283,8 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
                 .collect(),
             source_address: Some(sub.source.address().to_string()),
             source_abi: None,
+            start_block: sub.source.start_block() as u64,
+            end_block: None, // Subgraph sources don't have end_block
             event_handlers: vec![],
             call_handlers: vec![],
             block_handlers: vec![],
@@ -290,6 +298,8 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
             abis: vec![],
             source_address: None,
             source_abi: None,
+            start_block: 0, // Offchain data sources don't have start_block
+            end_block: None,
             event_handlers: vec![],
             call_handlers: vec![],
             block_handlers: vec![],
@@ -303,6 +313,8 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
             abis: vec![],
             source_address: None,
             source_abi: None,
+            start_block: amp.source.start_block.unwrap_or(0),
+            end_block: amp.source.end_block,
             event_handlers: vec![],
             call_handlers: vec![],
             block_handlers: vec![],

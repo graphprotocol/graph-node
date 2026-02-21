@@ -301,25 +301,47 @@ Keys are stored in `~/.graph-cli.json`.
 
 ### `gnd test`
 
-Run Matchstick tests for the subgraph.
+Run subgraph tests.
 
 ```bash
-gnd test [DATASOURCE]
+gnd test [TEST_FILES...]
 ```
 
 **Arguments:**
-- `DATASOURCE`: Specific data source to test (optional)
+- `PATHS`: Test JSON files or directories to scan. Defaults to `tests/` when nothing is specified.
 
 **Flags:**
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `--coverage` | `-c` | Run with coverage reporting |
-| `--docker` | `-d` | Run in Docker container |
-| `--force` | `-f` | Force redownload of Matchstick binary |
-| `--logs` | `-l` | Show debug logs |
-| `--recompile` | `-r` | Force recompilation before testing |
-| `--version` | `-v` | Matchstick version to use |
+| `--manifest` | `-m` | Path to subgraph manifest (default: `subgraph.yaml`) |
+| `--skip-build` | | Skip building the subgraph before testing |
+| `--postgres-url` | | PostgreSQL connection URL (env: `POSTGRES_URL`) |
+| `--matchstick` | | Use legacy Matchstick runner |
+| `--docker` | `-d` | Run Matchstick in Docker (requires `--matchstick`) |
+| `--coverage` | `-c` | Run with coverage reporting (requires `--matchstick`) |
+| `--recompile` | `-r` | Force recompilation (requires `--matchstick`) |
+| `--force` | `-f` | Force redownload of Matchstick binary (requires `--matchstick`) |
+
+**Examples:**
+
+```bash
+# Run all tests in tests/ directory (default)
+gnd test
+
+# Run specific test files
+gnd test transfer.json approval.json
+gnd test tests/transfer.json
+
+# Scan a custom directory
+gnd test my-tests/
+
+# Use a different manifest
+gnd test -m subgraph.staging.yaml tests/transfer.json
+
+# Skip automatic build
+gnd test --skip-build
+```
 
 ### `gnd clean`
 

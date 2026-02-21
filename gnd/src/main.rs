@@ -177,7 +177,7 @@ async fn main() -> Result<()> {
         Commands::Remove(remove_opt) => run_remove(remove_opt).await,
         Commands::Auth(auth_opt) => run_auth(auth_opt),
         Commands::Publish(publish_opt) => run_publish(publish_opt).await,
-        Commands::Test(test_opt) => run_test(test_opt),
+        Commands::Test(test_opt) => run_test(test_opt).await,
         Commands::Clean(clean_opt) => run_clean(clean_opt),
         Commands::Completions(completions_opt) => generate_completions(completions_opt),
     };

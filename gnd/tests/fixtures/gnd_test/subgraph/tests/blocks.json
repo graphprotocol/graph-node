@@ -1,0 +1,43 @@
+{
+  "name": "Example Block Handler Testing",
+  "blocks": [
+    {"number": 1000},
+    {"number": 1001},
+    {"number": 1002},
+    {"number": 1003},
+    {"number": 1004},
+    {"number": 1005}
+  ],
+  "assertions": [
+    {
+      "query": "{ blocks { number } }",
+      "expected": {
+        "blocks": [
+          {"number": "1000"},
+          {"number": "1001"},
+          {"number": "1002"},
+          {"number": "1003"},
+          {"number": "1004"},
+          {"number": "1005"}
+        ]
+      }
+    },
+    {
+      "query": "{ onceBlocks { msg } }",
+      "expected": {
+        "onceBlocks": [
+          {"msg": "This is a one-time block entity"}
+        ]
+      }
+    },
+    {
+      "query": "{ pollingBlocks { number } }",
+      "expected": {
+        "pollingBlocks": [
+          {"number":"1000"},
+          {"number": "1005"}
+        ]
+      }
+    }
+  ]
+}
