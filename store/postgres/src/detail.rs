@@ -657,6 +657,18 @@ pub async fn deployment_entity(
     StoredDeploymentEntity(detail, manifest).into_subgraph_deployment_entity(schema)
 }
 
+/// Load the entity count for a deployment from `subgraphs.head`.
+pub async fn entity_count(conn: &mut AsyncPgConnection, site: &Site) -> Result<usize, StoreError> {
+    use subgraph_head as h;
+
+    let count: i64 = h::table
+        .find(site.id)
+        .select(h::entity_count)
+        .first(conn)
+        .await?;
+    Ok(count as usize)
+}
+
 #[derive(Queryable, Identifiable, Insertable)]
 #[diesel(table_name = graph_node_versions)]
 pub struct GraphNodeVersion {

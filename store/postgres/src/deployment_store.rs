@@ -30,6 +30,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
 use std::ops::Bound;
 use std::ops::{Deref, Range};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -895,6 +896,18 @@ impl DeploymentStore {
         let layout = self.layout(&mut conn, site.clone()).await?;
 
         Ok(relational::prune::Viewer::new(self.pool.clone(), layout))
+    }
+
+    pub(crate) async fn dump(&self, site: Arc<Site>, dir: PathBuf) -> Result<(), StoreError> {
+        let mut conn = self.pool.get_permitted().await?;
+        let layout = self.layout(&mut conn, site.cheap_clone()).await?;
+        let entity_count = crate::detail::entity_count(&mut conn, &site).await?;
+        // Loading the IndexList should happen inside dump, but the
+        // interface does not allow it; should be changed
+        let index_list = IndexList::load(&mut conn, site.cheap_clone(), self.clone()).await?;
+        layout
+            .dump(&mut conn, index_list, dir, &site.network, entity_count)
+            .await
     }
 }
 

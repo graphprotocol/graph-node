@@ -1435,6 +1435,17 @@ impl Inner {
         let src_store = self.for_site(&site)?;
         src_store.load_indexes(site).await
     }
+
+    pub async fn dump(
+        &self,
+        loc: &DeploymentLocator,
+        directory: std::path::PathBuf,
+    ) -> Result<(), StoreError> {
+        let site = self.find_site(loc.id.into()).await?;
+        let store = self.for_site(&site)?;
+
+        store.dump(site, directory).await
+    }
 }
 
 const STATE_ENS_NOT_CHECKED: u8 = 0;
