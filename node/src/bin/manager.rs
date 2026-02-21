@@ -327,6 +327,21 @@ pub enum Command {
         #[clap(long, short, default_value = "http://localhost:8020")]
         url: String,
     },
+
+    /// Dump a subgraph deployment into a directory
+    ///
+    /// EXPERIMENTAL - NOT FOR PRODUCTION USE
+    ///
+    /// This will create a dump of the subgraph deployment in the specified
+    /// directory. The dump includes the subgraph manifest, the mapping, and
+    /// the data in the database as parquet files. The dump can be used to
+    /// restore the subgraph deployment later with the `restore` command.
+    Dump {
+        /// The deployment (see `help info`)
+        deployment: DeploymentSearch,
+        /// The name of the directory to dump to
+        directory: String,
+    },
 }
 
 impl Command {
@@ -1731,6 +1746,16 @@ async fn main() -> anyhow::Result<()> {
             let subgraph_store = store.subgraph_store();
 
             commands::deploy::run(subgraph_store, deployment, name, url).await
+        }
+
+        Dump {
+            deployment,
+            directory,
+        } => {
+            let (store, primary_pool) = ctx.store_and_primary().await;
+            let subgraph_store = store.subgraph_store();
+
+            commands::dump::run(subgraph_store, primary_pool, deployment, directory).await
         }
     }
 }
