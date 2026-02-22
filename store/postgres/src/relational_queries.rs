@@ -41,6 +41,7 @@ use std::str::FromStr;
 use std::string::ToString;
 
 use crate::block_range::{BoundSide, EntityBlockRange};
+use crate::parquet::convert::RestoreRow;
 use crate::relational::dsl::AtBlock;
 use crate::relational::{
     dsl, rollup::Rollup, Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE,
@@ -2348,6 +2349,74 @@ impl<'a> InsertRow<'a> {
             vid,
         })
     }
+
+    /// Build an `InsertRow` from a `RestoreRow` (Parquet restore path).
+    ///
+    /// Unlike `new()`, this looks up values by SQL column name rather than
+    /// entity field name, since `RestoreRow.values` is keyed by SQL name.
+    /// Fulltext columns are regenerated from their source fields.
+    #[allow(dead_code)]
+    fn from_restore(
+        columns: &[&'a Column],
+        row: &'a RestoreRow,
+        table: &'a Table,
+    ) -> Result<Self, StoreError> {
+        let mut values = Vec::with_capacity(columns.len());
+        for column in columns {
+            let iv = if let Some(fields) = column.fulltext_fields.as_ref() {
+                // Fulltext columns: `fields` contains GraphQL field names,
+                // but `RestoreRow.values` is keyed by SQL column names.
+                // Resolve via the table's columns.
+                let fulltext_field_values: Vec<_> = fields
+                    .iter()
+                    .filter_map(|field_name| {
+                        table
+                            .columns
+                            .iter()
+                            .find(|c| c.field.as_str() == field_name.as_str())
+                            .and_then(|src_col| {
+                                row.values
+                                    .iter()
+                                    .find(|(w, _)| w.as_str() == src_col.name.as_str())
+                                    .map(|(_, v)| v)
+                            })
+                    })
+                    .map(|value| match value {
+                        Value::String(s) => Ok(s),
+                        _ => Err(internal_error!(
+                            "fulltext fields must be strings but got {:?}",
+                            value
+                        )),
+                    })
+                    .collect::<Result<_, _>>()?;
+                if let ColumnType::TSVector(config) = &column.column_type {
+                    InsertValue::Fulltext(fulltext_field_values, config)
+                } else {
+                    return Err(StoreError::FulltextColumnMissingConfig);
+                }
+            } else {
+                let value = row
+                    .values
+                    .iter()
+                    .find(|(w, _)| w.as_str() == column.name.as_str())
+                    .map(|(_, v)| v)
+                    .unwrap_or(&NULL);
+                let qv = QueryValue::new(value, &column.column_type)?;
+                InsertValue::Value(qv)
+            };
+            values.push(iv);
+        }
+        let end = row.block_range_end.flatten();
+        let br_value = BlockRangeValue::new(table, row.block, end);
+        let causality_region = CausalityRegion::from(row.causality_region.unwrap_or(0));
+        let vid = row.vid;
+        Ok(Self {
+            values,
+            br_value,
+            causality_region,
+            vid,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -2377,6 +2446,30 @@ impl<'a> InsertQuery<'a> {
         let rows: Vec<_> = rows
             .iter()
             .map(|row| InsertRow::new(&unique_columns, row, table))
+            .collect::<Result<_, _>>()?;
+
+        Ok(InsertQuery {
+            table,
+            rows,
+            unique_columns,
+        })
+    }
+
+    /// Build an `InsertQuery` from restore rows (Parquet restore path).
+    ///
+    /// All data columns from the dump are present, so `unique_columns`
+    /// includes every column in the table. Fulltext columns are
+    /// regenerated from their source fields.
+    #[allow(dead_code)]
+    pub fn for_restore(
+        table: &'a Table,
+        rows: &'a [RestoreRow],
+    ) -> Result<InsertQuery<'a>, StoreError> {
+        let unique_columns: Vec<&Column> = table.columns.iter().collect();
+
+        let rows: Vec<_> = rows
+            .iter()
+            .map(|row| InsertRow::from_restore(&unique_columns, row, table))
             .collect::<Result<_, _>>()?;
 
         Ok(InsertQuery {
