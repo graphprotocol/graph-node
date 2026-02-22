@@ -30,13 +30,13 @@ use crate::AsyncPgConnection;
 use super::Layout;
 
 #[derive(Serialize, Deserialize)]
-struct Manifest {
-    spec_version: String,
-    description: Option<String>,
-    repository: Option<String>,
-    features: Vec<String>,
-    entities_with_causality_region: Vec<String>,
-    history_blocks: i32,
+pub(crate) struct Manifest {
+    pub spec_version: String,
+    pub description: Option<String>,
+    pub repository: Option<String>,
+    pub features: Vec<String>,
+    pub entities_with_causality_region: Vec<String>,
+    pub history_blocks: i32,
 }
 
 impl Manifest {
@@ -67,9 +67,9 @@ impl Manifest {
 }
 
 #[derive(Serialize, Deserialize)]
-struct BlockPtr {
-    number: i32,
-    hash: String,
+pub(crate) struct BlockPtr {
+    pub number: i32,
+    pub hash: String,
 }
 
 impl BlockPtr {
@@ -81,11 +81,11 @@ impl BlockPtr {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Error {
-    message: String,
-    block_ptr: Option<BlockPtr>,
-    handler: Option<String>,
-    deterministic: bool,
+pub(crate) struct Error {
+    pub message: String,
+    pub block_ptr: Option<BlockPtr>,
+    pub handler: Option<String>,
+    pub deterministic: bool,
 }
 
 impl Error {
@@ -108,11 +108,11 @@ impl Error {
 }
 
 #[derive(Serialize, Deserialize)]
-struct Health {
-    failed: bool,
-    health: String,
-    fatal_error: Option<Error>,
-    non_fatal_errors: Vec<Error>,
+pub(crate) struct Health {
+    pub failed: bool,
+    pub health: String,
+    pub fatal_error: Option<Error>,
+    pub non_fatal_errors: Vec<Error>,
 }
 
 impl Health {
@@ -149,23 +149,41 @@ pub(crate) struct TableInfo {
 /// as entity tables are written to Parquet files.
 #[derive(Serialize, Deserialize)]
 pub(crate) struct Metadata {
-    version: u32,
-    deployment: DeploymentHash,
-    network: String,
-    manifest: Manifest,
-    earliest_block_number: i32,
-    start_block: Option<BlockPtr>,
-    head_block: Option<BlockPtr>,
-    entity_count: usize,
-    graft_base: Option<DeploymentHash>,
-    graft_block: Option<BlockPtr>,
-    debug_fork: Option<DeploymentHash>,
-    health: Health,
-    indexes: HashMap<String, Vec<String>>,
+    pub version: u32,
+    pub deployment: DeploymentHash,
+    pub network: String,
+    pub manifest: Manifest,
+    pub earliest_block_number: i32,
+    pub start_block: Option<BlockPtr>,
+    pub head_block: Option<BlockPtr>,
+    pub entity_count: usize,
+    pub graft_base: Option<DeploymentHash>,
+    pub graft_block: Option<BlockPtr>,
+    pub debug_fork: Option<DeploymentHash>,
+    pub health: Health,
+    pub indexes: HashMap<String, Vec<String>>,
     pub tables: BTreeMap<String, TableInfo>,
 }
 
 impl Metadata {
+    /// Read and validate a dump's `metadata.json`.
+    #[allow(dead_code)]
+    pub fn from_file(path: &Path) -> Result<Self, StoreError> {
+        let content = fs::read_to_string(path).map_err(|e| {
+            StoreError::InternalError(format!("failed to read {}: {e}", path.display()))
+        })?;
+        let metadata: Self = serde_json::from_str(&content).map_err(|e| {
+            StoreError::InternalError(format!("failed to parse {}: {e}", path.display()))
+        })?;
+        if metadata.version != 1 {
+            return Err(StoreError::InternalError(format!(
+                "unsupported dump version {} (expected 1)",
+                metadata.version
+            )));
+        }
+        Ok(metadata)
+    }
+
     fn new(
         deployment: DeploymentHash,
         network: String,
