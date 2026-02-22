@@ -45,6 +45,12 @@ impl ToSql<Integer, Pg> for CausalityRegion {
     }
 }
 
+impl From<i32> for CausalityRegion {
+    fn from(value: i32) -> Self {
+        CausalityRegion(value)
+    }
+}
+
 impl CausalityRegion {
     /// The causality region of all onchain data sources.
     pub const ONCHAIN: CausalityRegion = CausalityRegion(0);
