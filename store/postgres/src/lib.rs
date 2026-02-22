@@ -65,7 +65,7 @@ pub use self::notification_listener::NotificationSender;
 pub use self::pool::{
     AsyncPgConnection, ConnectionPool, ForeignServer, PoolCoordinator, PoolRole, ScopedFutureExt,
 };
-pub use self::primary::{db_version, UnusedDeployment};
+pub use self::primary::{db_version, RestoreMode, UnusedDeployment};
 pub use self::store::Store;
 pub use self::store_events::SubscriptionManager;
 pub use self::subgraph_store::{unused, DeploymentPlacer, Shard, SubgraphStore, PRIMARY_SHARD};

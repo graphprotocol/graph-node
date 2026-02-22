@@ -776,6 +776,29 @@ mod queries {
     }
 }
 
+/// How to handle conflicts when restoring a deployment.
+/// Constructed from CLI flags --replace, --add, --force.
+pub enum RestoreMode {
+    /// No conflict flags given — error if deployment exists anywhere
+    Default,
+    /// --replace: drop and recreate in the target shard
+    Replace,
+    /// --add: create a copy in a shard that doesn't have the deployment
+    Add,
+    /// --force: restore no matter what (replace if in shard, add if not)
+    Force,
+}
+
+/// The action `plan_restore` decided on based on `RestoreMode` and current
+/// state.
+pub enum RestoreAction {
+    /// Create a new site (active=true if fresh, active=false if copy
+    /// exists elsewhere)
+    Create { active: bool },
+    /// Drop existing site in target shard, then recreate
+    Replace { existing: Site },
+}
+
 /// A wrapper for a database connection that provides access to functionality
 /// that works only on the primary database
 pub struct Connection {
@@ -1406,7 +1429,7 @@ impl Connection {
             shard,
             namespace,
             network,
-            active: true,
+            active,
             schema_version,
             _creation_disallowed: (),
         })
@@ -1544,6 +1567,55 @@ impl Connection {
             .scope_boxed()
         })
         .await
+    }
+
+    /// Determine what action to take when restoring `subgraph` into `shard`
+    /// based on the `mode` and the current state of the deployment.
+    pub async fn plan_restore(
+        &mut self,
+        shard: &Shard,
+        subgraph: &DeploymentHash,
+        mode: &RestoreMode,
+    ) -> Result<RestoreAction, StoreError> {
+        let conn = &mut self.conn;
+        let in_shard = queries::find_site_in_shard(conn, subgraph, shard).await?;
+        let active = queries::find_active_site(conn, subgraph).await?;
+
+        match (in_shard, active, mode) {
+            // Deployment exists in target shard
+            (Some(existing), _, RestoreMode::Replace | RestoreMode::Force) => {
+                Ok(RestoreAction::Replace { existing })
+            }
+            (Some(_), _, RestoreMode::Default | RestoreMode::Add) => {
+                Err(StoreError::Input(format!(
+                    "deployment {} already exists in shard {}; use --replace or --force",
+                    subgraph,
+                    shard.as_str()
+                )))
+            }
+            // Deployment does not exist in target shard but exists elsewhere
+            (None, Some(ref active_site), RestoreMode::Add | RestoreMode::Force) => {
+                let _ = active_site;
+                Ok(RestoreAction::Create { active: false })
+            }
+            (None, Some(active_site), RestoreMode::Default) => Err(StoreError::Input(format!(
+                "deployment {} already exists in shard {}; use --add --shard {} or --force",
+                subgraph,
+                active_site.shard.as_str(),
+                shard.as_str()
+            ))),
+            (None, Some(_), RestoreMode::Replace) => Err(StoreError::Input(format!(
+                "deployment {} is not in shard {}; nothing to replace",
+                subgraph,
+                shard.as_str()
+            ))),
+            // Deployment does not exist anywhere
+            (None, None, RestoreMode::Replace) => Err(StoreError::Input(format!(
+                "deployment {} does not exist; nothing to replace",
+                subgraph
+            ))),
+            (None, None, _) => Ok(RestoreAction::Create { active: true }),
+        }
     }
 
     pub async fn locate_site(
