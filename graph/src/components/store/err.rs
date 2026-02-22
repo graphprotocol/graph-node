@@ -74,6 +74,10 @@ pub enum StoreError {
     StatementTimeout,
     #[error("database constraint violated: {0}")]
     ConstraintViolation(String),
+    /// The input to some operation, usually user input, makes it impossible
+    /// to complete the operation. This must be a deterministic error
+    #[error("{0}")]
+    Input(String),
 }
 
 // Convenience to report an internal error
@@ -132,6 +136,7 @@ impl Clone for StoreError {
             }
             Self::StatementTimeout => Self::StatementTimeout,
             Self::ConstraintViolation(arg0) => Self::ConstraintViolation(arg0.clone()),
+            Self::Input(arg0) => Self::Input(arg0.clone()),
         }
     }
 }
@@ -187,7 +192,8 @@ impl StoreError {
             | UnknownAttribute(_, _)
             | InvalidIdentifier(_)
             | UnsupportedFilter(_, _)
-            | ConstraintViolation(_) => true,
+            | ConstraintViolation(_)
+            | Input(_) => true,
 
             // non-deterministic errors
             Unknown(_)
