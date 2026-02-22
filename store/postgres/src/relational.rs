@@ -18,6 +18,7 @@ pub(crate) mod dsl;
 pub(crate) mod dump;
 pub(crate) mod index;
 pub(crate) mod prune;
+pub(crate) mod restore;
 pub(crate) mod rollup;
 pub(crate) mod value;
 
