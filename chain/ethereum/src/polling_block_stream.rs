@@ -370,10 +370,6 @@ impl PollingBlockStreamContext {
                 return Ok(ReconciliationStep::Retry);
             }
 
-            if to > head_ptr.number - reorg_threshold {
-                return Ok(ReconciliationStep::Retry);
-            }
-
             info!(
                 ctx.logger,
                 "Scanned blocks [{}, {}]", from, to;
