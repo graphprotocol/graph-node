@@ -10,6 +10,8 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
+use diesel::dsl::update;
+use diesel::prelude::{ExpressionMethods, QueryDsl};
 use diesel::sql_types::{BigInt, Binary, Integer, Nullable, Text};
 use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
 use graph::blockchain::BlockHash;
@@ -18,6 +20,7 @@ use graph::prelude::{info, BlockPtr as GraphBlockPtr, Logger, StoreError};
 use graph::schema::{EntityType, InputSchema};
 use graph::semver::Version;
 
+use crate::catalog;
 use crate::deployment::create_deployment;
 use crate::dynds::DataSourcesTable;
 use crate::parquet::convert::{
@@ -26,7 +29,7 @@ use crate::parquet::convert::{
 use crate::parquet::reader::read_batches;
 use crate::primary::Site;
 use crate::relational::dump::{Metadata, TableInfo};
-use crate::relational::{Layout, Table};
+use crate::relational::{Layout, Table, VID_COLUMN};
 use crate::relational_queries::InsertQuery;
 use crate::vid_batcher::VidRange;
 use crate::AsyncPgConnection;
@@ -351,6 +354,114 @@ pub async fn import_data(
     if let Some(ds_info) = metadata.tables.get(DATA_SOURCES_TABLE) {
         let namespace = layout.site.namespace.as_str();
         import_data_sources(conn, namespace, ds_info, dir, logger).await?;
+    }
+
+    Ok(())
+}
+
+/// Finalize a restored deployment by resetting vid sequences and setting
+/// the head block pointer.
+///
+/// This must be called after `import_data` has completed successfully.
+/// Setting the head block is the very last operation — it marks the
+/// deployment as "ready".
+#[allow(dead_code)]
+pub async fn finalize(
+    conn: &mut AsyncPgConnection,
+    layout: &Layout,
+    metadata: &Metadata,
+    logger: &Logger,
+) -> Result<(), StoreError> {
+    let nsp = layout.site.namespace.as_str();
+
+    // 1. Reset vid sequences for entity tables that use bigserial.
+    //    Tables where has_vid_seq() is true use plain bigint (no sequence).
+    let mut table_names: Vec<_> = metadata
+        .tables
+        .keys()
+        .filter(|name| name.as_str() != DATA_SOURCES_TABLE)
+        .collect();
+    table_names.sort();
+
+    for table_name in table_names {
+        let table_info = &metadata.tables[table_name];
+        if table_info.max_vid < 0 {
+            continue;
+        }
+
+        let table = layout
+            .tables
+            .values()
+            .find(|t| t.object.as_str() == table_name)
+            .ok_or_else(|| {
+                StoreError::InternalError(format!(
+                    "table '{}' from dump not found in layout",
+                    table_name,
+                ))
+            })?;
+
+        if table.object.has_vid_seq() {
+            continue;
+        }
+
+        let vid_seq = catalog::seq_name(&table.name, VID_COLUMN);
+        let query = format!(
+            "SELECT setval('\"{nsp}\".\"{vid_seq}\"', {})",
+            table_info.max_vid
+        );
+        conn.batch_execute(&query).await.map_err(|e| {
+            StoreError::InternalError(format!("reset vid seq for {table_name}: {e}"))
+        })?;
+    }
+
+    // 2. Reset data_sources$ vid sequence if present
+    if let Some(ds_info) = metadata.tables.get(DATA_SOURCES_TABLE) {
+        if ds_info.max_vid >= 0 {
+            let qualified = format!("\"{nsp}\".\"{DATA_SOURCES_TABLE}\"");
+            let query = format!(
+                "SELECT setval(pg_get_serial_sequence('{qualified}', 'vid'), {})",
+                ds_info.max_vid
+            );
+            conn.batch_execute(&query).await.map_err(|e| {
+                StoreError::InternalError(format!("reset data_sources$ vid seq: {e}"))
+            })?;
+        }
+    }
+
+    // 3. Update earliest_block_number (may differ from start_block after
+    //    pruning) and set the head block pointer. Setting the head block
+    //    is the very last step: it makes the deployment "ready".
+    {
+        use crate::deployment::deployment as d;
+        use crate::deployment::head as h;
+
+        update(d::table.filter(d::id.eq(layout.site.id)))
+            .set(d::earliest_block_number.eq(metadata.earliest_block_number))
+            .execute(conn)
+            .await
+            .map_err(StoreError::from)?;
+
+        if let Some(head) = &metadata.head_block {
+            let head_ptr = to_graph_block_ptr(head)?;
+            update(h::table.filter(h::id.eq(layout.site.id)))
+                .set((
+                    h::block_number.eq(head_ptr.number),
+                    h::block_hash.eq(head_ptr.hash_slice()),
+                    h::entity_count.eq(metadata.entity_count as i64),
+                ))
+                .execute(conn)
+                .await
+                .map_err(StoreError::from)?;
+
+            info!(
+                logger,
+                "Finalized restore: head block #{}, entity count {}",
+                head_ptr.number,
+                metadata.entity_count
+            );
+        } else {
+            info!(logger, "Finalized restore (no head block in dump)");
+        }
     }
 
     Ok(())
