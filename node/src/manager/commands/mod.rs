@@ -14,6 +14,7 @@ pub mod provider_checks;
 pub mod prune;
 pub mod query;
 pub mod remove;
+pub mod restore;
 pub mod rewind;
 pub mod run;
 pub mod stats;
