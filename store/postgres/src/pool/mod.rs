@@ -19,6 +19,7 @@ use graph::slog::warn;
 use graph::util::timed_rw_lock::TimedMutex;
 use tokio::sync::OwnedSemaphorePermit;
 
+use diesel_async::scoped_futures::ScopedBoxFuture;
 use std::collections::HashMap;
 use std::fmt::{self};
 use std::ops::{Deref, DerefMut};
@@ -62,6 +63,99 @@ impl Deref for PermittedConnection {
 impl DerefMut for PermittedConnection {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.conn
+    }
+}
+
+impl PermittedConnection {
+    /// Build a transaction with custom isolation level and read mode.
+    ///
+    /// This is analogous to `diesel_async::pg::TransactionBuilder` but
+    /// works with the pool-wrapped connection type. The closure receives
+    /// `&mut PermittedConnection`, keeping the full wrapper type available
+    /// so callers can pass it to functions that expect `&mut AsyncPgConnection`
+    /// (the pool alias, not the raw diesel type).
+    pub fn build_transaction(&mut self) -> TransactionBuilder<'_> {
+        TransactionBuilder::new(self)
+    }
+}
+
+/// Builder for a PostgreSQL transaction with configurable isolation level
+/// and read mode. Created via [`PermittedConnection::build_transaction`].
+///
+/// We can't use diesel-async's `TransactionBuilder` because it requires
+/// `C: AsyncConnection<TransactionManager = AnsiTransactionManager>`. Our
+/// connection types don't satisfy that: the blanket deref impl in
+/// diesel-async wraps the transaction manager at each deref level, so
+/// `Object<ConnectionManager>` gets `PoolTransactionManager<AnsiTransactionManager>`
+/// and `PermittedConnection` gets
+/// `PoolTransactionManager<PoolTransactionManager<AnsiTransactionManager>>`.
+/// Neither matches `AnsiTransactionManager`.
+#[must_use = "Transaction builder does nothing unless you call `run` on it"]
+pub struct TransactionBuilder<'a> {
+    conn: &'a mut PermittedConnection,
+    isolation_level: Option<&'static str>,
+    read_only: bool,
+}
+
+impl<'a> TransactionBuilder<'a> {
+    fn new(conn: &'a mut PermittedConnection) -> Self {
+        Self {
+            conn,
+            isolation_level: None,
+            read_only: false,
+        }
+    }
+
+    /// Set the transaction isolation level to `REPEATABLE READ`.
+    pub fn repeatable_read(mut self) -> Self {
+        self.isolation_level = Some("REPEATABLE READ");
+        self
+    }
+
+    /// Set the transaction isolation level to `SERIALIZABLE`.
+    pub fn serializable(mut self) -> Self {
+        self.isolation_level = Some("SERIALIZABLE");
+        self
+    }
+
+    /// Make the transaction `READ ONLY`.
+    pub fn read_only(mut self) -> Self {
+        self.read_only = true;
+        self
+    }
+
+    /// Execute `f` inside the configured transaction. Commits on `Ok`,
+    /// rolls back on `Err`.
+    ///
+    /// The closure must return a `ScopedBoxFuture` (use `.scope_boxed()`
+    /// from `ScopedFutureExt`).
+    pub async fn run<'b, T, E, F>(self, f: F) -> Result<T, E>
+    where
+        F: for<'r> FnOnce(&'r mut PermittedConnection) -> ScopedBoxFuture<'b, 'r, Result<T, E>>
+            + Send
+            + 'a,
+        T: 'b,
+        E: From<diesel::result::Error> + 'b,
+    {
+        let mut sql = String::from("BEGIN TRANSACTION");
+        if let Some(level) = self.isolation_level {
+            sql.push_str(" ISOLATION LEVEL ");
+            sql.push_str(level);
+        }
+        if self.read_only {
+            sql.push_str(" READ ONLY");
+        }
+        self.conn.batch_execute(&sql).await?;
+        match f(self.conn).await {
+            Ok(value) => {
+                self.conn.batch_execute("COMMIT").await?;
+                Ok(value)
+            }
+            Err(e) => {
+                self.conn.batch_execute("ROLLBACK").await.ok();
+                Err(e)
+            }
+        }
     }
 }
 
