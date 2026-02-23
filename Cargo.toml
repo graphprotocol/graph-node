@@ -75,7 +75,7 @@ itertools = "0.14.0"
 lazy_static = "1.5.0"
 prost = "0.14"
 prost-types = "0.14"
-redis = { version = "1.0.3", features = [
+redis = { version = "1.0.4", features = [
     "aio",
     "connection-manager",
     "tokio-comp",
