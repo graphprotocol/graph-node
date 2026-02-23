@@ -33,7 +33,7 @@ graph-store-postgres = { path = "../store/postgres" }
 graphman-server = { workspace = true }
 graphman = { workspace = true }
 serde = { workspace = true }
-shellexpand = "3.1.1"
+shellexpand = "3.1.2"
 termcolor = "1.4.1"
 tokio = { workspace = true }
 diesel = { workspace = true }
