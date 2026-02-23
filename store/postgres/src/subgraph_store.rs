@@ -18,8 +18,8 @@ use graph::{
     components::{
         server::index_node::VersionInfo,
         store::{
-            self, BlockPtrForNumber, BlockStore, DeploymentLocator, EnsLookup as EnsLookupTrait,
-            PruneReporter, PruneRequest, SubgraphFork,
+            self, BlockPtrForNumber, BlockStore, DeploymentLocator, DeploymentSchemaVersion,
+            EnsLookup as EnsLookupTrait, PruneReporter, PruneRequest, SubgraphFork,
         },
     },
     data::{
@@ -42,7 +42,9 @@ use graph::{derive::CheapClone, futures03::future::join_all, prelude::alloy::pri
 use crate::{
     catalog::Catalog,
     deployment::{OnSync, SubgraphHealth},
-    primary::{self, DeploymentId, Mirror as PrimaryMirror, Primary, Site},
+    primary::{
+        self, DeploymentId, Mirror as PrimaryMirror, Primary, RestoreAction, RestoreMode, Site,
+    },
     relational::{
         self,
         index::{IndexList, Method},
@@ -732,6 +734,35 @@ impl Inner {
 
                 Ok((shard, node))
             }
+        }
+    }
+
+    /// Determine the target node for a deployment using the configured
+    /// deployment rules, ignoring the shard selection. Returns an error
+    /// if no rule matches.
+    async fn node_for_deployment(
+        &self,
+        name: &SubgraphName,
+        network: &str,
+    ) -> Result<NodeId, StoreError> {
+        let placement = self
+            .placer
+            .place(name.as_str(), network)
+            .map_err(|msg| internal_error!("illegal indexer name in deployment rule: {}", msg))?;
+
+        match placement {
+            Some((_, nodes)) if !nodes.is_empty() => {
+                if nodes.len() == 1 {
+                    Ok(nodes.into_iter().next().unwrap())
+                } else {
+                    let mut pconn = self.primary_conn().await?;
+                    // unwrap: nodes is not empty
+                    Ok(pconn.least_assigned_node(&nodes).await?.unwrap())
+                }
+            }
+            _ => Err(StoreError::InternalError(
+                "no deployment rule matches this deployment".into(),
+            )),
         }
     }
 
@@ -1445,6 +1476,114 @@ impl Inner {
         let store = self.for_site(&site)?;
 
         store.dump(site, directory).await
+    }
+
+    pub async fn restore(
+        &self,
+        dir: &std::path::Path,
+        shard: Shard,
+        name: Option<SubgraphName>,
+        mode: RestoreMode,
+    ) -> Result<(), StoreError> {
+        use crate::relational::dump::Metadata;
+
+        let metadata_path = dir.join("metadata.json");
+        let metadata = Metadata::from_file(&metadata_path)?;
+
+        // Validate that the target shard exists before making any DB changes
+        self.stores
+            .get(&shard)
+            .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
+
+        // Resolve the subgraph name for deployment rule matching. If not
+        // supplied, look up an existing name from the DB; error if none.
+        let name = match name {
+            Some(n) => n,
+            None => {
+                let names = self
+                    .mirror
+                    .subgraphs_by_deployment_hash(metadata.deployment.as_str())
+                    .await?;
+                let (name, _) = names.into_iter().next().ok_or_else(|| {
+                    StoreError::InternalError(
+                        "no subgraph name found for this deployment; use --name to specify one"
+                            .into(),
+                    )
+                })?;
+                SubgraphName::new(name).map_err(|n| {
+                    StoreError::InternalError(format!("invalid subgraph name `{n}` in database"))
+                })?
+            }
+        };
+
+        // Use deployment rules to determine which node should index this
+        // deployment. The rules also return candidate shards, but we ignore
+        // those since the shard is user-specified for restore.
+        let node = self.node_for_deployment(&name, &metadata.network).await?;
+
+        let mut pconn = self.primary_conn().await?;
+        let action = pconn
+            .plan_restore(&shard, &metadata.deployment, &mode)
+            .await?;
+
+        // Determine schema_version the same way allocate_site does
+        let schema_version = match metadata.graft_base.as_ref() {
+            Some(graft_base) => {
+                let base_site = pconn.find_active_site(graft_base).await?.ok_or_else(|| {
+                    StoreError::DeploymentNotFound("graft_base not found".to_string())
+                })?;
+                base_site.schema_version
+            }
+            None => DeploymentSchemaVersion::LATEST,
+        };
+
+        let site = match action {
+            RestoreAction::Create { active } => {
+                pconn
+                    .create_site(
+                        shard,
+                        metadata.deployment.clone(),
+                        metadata.network.clone(),
+                        schema_version,
+                        active,
+                    )
+                    .await?
+            }
+            RestoreAction::Replace { existing } => {
+                let was_active = existing.active;
+                let existing = Arc::new(existing);
+                let store = self.for_site(&existing)?;
+                store.drop_deployment(&existing).await?;
+                pconn.drop_site(&existing).await?;
+                // Drop and re-acquire the primary connection to avoid pool
+                // deadlock: drop_deployment above used a separate connection
+                // from the same pool, and create_site below needs one too.
+                drop(pconn);
+                let mut pconn = self.primary_conn().await?;
+                pconn
+                    .create_site(
+                        shard,
+                        metadata.deployment.clone(),
+                        metadata.network.clone(),
+                        schema_version,
+                        was_active,
+                    )
+                    .await?
+            }
+        };
+
+        let site = Arc::new(site);
+        let store = self.for_site(&site)?;
+        store.restore(site.cheap_clone(), dir, &metadata).await?;
+
+        // Assign the restored deployment to the node determined by
+        // deployment rules
+        let mut pconn = self.primary_conn().await?;
+        let changes = pconn.assign_subgraph(&site, &node).await?;
+        let event = StoreEvent::new(changes);
+        pconn.send_store_event(&self.sender, &event).await?;
+
+        Ok(())
     }
 }
 

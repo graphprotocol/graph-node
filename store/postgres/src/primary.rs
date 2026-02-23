@@ -1391,7 +1391,7 @@ impl Connection {
     /// function only performs the basic operations for creation, and the
     /// caller must check that other conditions (like whether there already
     /// is an active site for the deployment) are met
-    async fn create_site(
+    pub(crate) async fn create_site(
         &mut self,
         shard: Shard,
         deployment: DeploymentHash,
@@ -1465,6 +1465,13 @@ impl Connection {
         self.create_site(shard, subgraph.clone(), network, schema_version, true)
             .await
             .map(|site| (site, site_was_created))
+    }
+
+    pub async fn find_active_site(
+        &mut self,
+        subgraph: &DeploymentHash,
+    ) -> Result<Option<Site>, StoreError> {
+        queries::find_active_site(&mut self.conn, subgraph).await
     }
 
     pub async fn assigned_node(&mut self, site: &Site) -> Result<Option<NodeId>, StoreError> {

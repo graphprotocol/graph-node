@@ -220,7 +220,6 @@ async fn import_data_sources(
 /// - Obtaining the right shard connection
 ///
 /// Entity data import and finalization are handled separately.
-#[allow(dead_code)]
 pub async fn create_schema(
     conn: &mut AsyncPgConnection,
     site: Arc<Site>,
@@ -319,7 +318,6 @@ pub async fn create_schema(
 /// This is resumable: if interrupted, it can be called again and will
 /// skip already-imported rows by checking the current max(vid) in each
 /// table.
-#[allow(dead_code)]
 pub async fn import_data(
     conn: &mut AsyncPgConnection,
     layout: &Layout,
@@ -365,7 +363,6 @@ pub async fn import_data(
 /// This must be called after `import_data` has completed successfully.
 /// Setting the head block is the very last operation — it marks the
 /// deployment as "ready".
-#[allow(dead_code)]
 pub async fn finalize(
     conn: &mut AsyncPgConnection,
     layout: &Layout,
