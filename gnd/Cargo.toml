@@ -64,7 +64,7 @@ sha1 = "0.10"
 wasmparser = { workspace = true }
 
 # Interactive prompts
-inquire = "0.7"
+inquire = "0.9"
 
 # Temp directories for init
 tempfile = "3"
