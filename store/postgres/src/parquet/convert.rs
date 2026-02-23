@@ -238,7 +238,6 @@ impl ColumnBuilder {
 }
 
 /// A row extracted from a Parquet file, ready for insertion into an entity table.
-#[allow(dead_code)]
 pub struct RestoreRow {
     pub vid: i64,
     pub block: BlockNumber,
@@ -253,7 +252,6 @@ pub struct RestoreRow {
 ///
 /// The batch must follow the column layout produced by `schema::arrow_schema`:
 /// `vid`, block tracking columns, optional `causality_region`, then data columns.
-#[allow(dead_code)]
 pub fn record_batch_to_restore_rows(
     batch: &RecordBatch,
     table: &Table,
@@ -337,7 +335,6 @@ pub fn record_batch_to_restore_rows(
 }
 
 /// A row extracted from a `data_sources$` Parquet file.
-#[allow(dead_code)]
 pub struct DataSourceRestoreRow {
     pub vid: i64,
     pub block_range_start: BlockNumber,
@@ -356,7 +353,6 @@ pub struct DataSourceRestoreRow {
 ///
 /// The batch must follow the fixed column layout from
 /// `schema::data_sources_arrow_schema`.
-#[allow(dead_code)]
 pub fn record_batch_to_data_source_rows(
     batch: &RecordBatch,
 ) -> Result<Vec<DataSourceRestoreRow>, StoreError> {

@@ -167,7 +167,6 @@ pub(crate) struct Metadata {
 
 impl Metadata {
     /// Read and validate a dump's `metadata.json`.
-    #[allow(dead_code)]
     pub fn from_file(path: &Path) -> Result<Self, StoreError> {
         let content = fs::read_to_string(path).map_err(|e| {
             StoreError::InternalError(format!("failed to read {}: {e}", path.display()))

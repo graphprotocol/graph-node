@@ -10,7 +10,6 @@ use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 /// Opens the file, reads all row groups, and returns them as a vector
 /// of `RecordBatch`es. The batches retain the schema embedded in the
 /// Parquet file.
-#[allow(dead_code)]
 pub fn read_batches(path: &Path) -> Result<Vec<RecordBatch>, StoreError> {
     let file = fs::File::open(path).map_err(|e| {
         StoreError::InternalError(format!(

@@ -2355,7 +2355,6 @@ impl<'a> InsertRow<'a> {
     /// Unlike `new()`, this looks up values by SQL column name rather than
     /// entity field name, since `RestoreRow.values` is keyed by SQL name.
     /// Fulltext columns are regenerated from their source fields.
-    #[allow(dead_code)]
     fn from_restore(
         columns: &[&'a Column],
         row: &'a RestoreRow,
@@ -2460,7 +2459,6 @@ impl<'a> InsertQuery<'a> {
     /// All data columns from the dump are present, so `unique_columns`
     /// includes every column in the table. Fulltext columns are
     /// regenerated from their source fields.
-    #[allow(dead_code)]
     pub fn for_restore(
         table: &'a Table,
         rows: &'a [RestoreRow],
