@@ -900,13 +900,26 @@ impl DeploymentStore {
 
     pub(crate) async fn dump(&self, site: Arc<Site>, dir: PathBuf) -> Result<(), StoreError> {
         let mut conn = self.pool.get_permitted().await?;
+        // Layout and index list are schema metadata — safe to load outside
+        // the snapshot transaction
         let layout = self.layout(&mut conn, site.cheap_clone()).await?;
-        let entity_count = crate::detail::entity_count(&mut conn, &site).await?;
-        // Loading the IndexList should happen inside dump, but the
-        // interface does not allow it; should be changed
         let index_list = IndexList::load(&mut conn, site.cheap_clone(), self.clone()).await?;
-        layout
-            .dump(&mut conn, index_list, dir, &site.network, entity_count)
+
+        // Use REPEATABLE READ to get a consistent MVCC snapshot for the
+        // entire dump. All queries inside see the same database state,
+        // regardless of concurrent indexing or pruning.
+        conn.build_transaction()
+            .repeatable_read()
+            .read_only()
+            .run(|conn| {
+                async move {
+                    let entity_count = crate::detail::entity_count(conn, &site).await?;
+                    layout
+                        .dump(conn, index_list, dir, &site.network, entity_count)
+                        .await
+                }
+                .scope_boxed()
+            })
             .await
     }
 
