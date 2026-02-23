@@ -9,7 +9,6 @@ use graph::prelude::alloy;
 use graph::prelude::alloy::consensus::TxReceipt;
 use graph::prelude::alloy::network::ReceiptResponse;
 use graph::prelude::alloy::rpc::types::{Log, TransactionReceipt};
-use graph::prelude::alloy::serde::WithOtherFields;
 use graph::{
     prelude::BigInt,
     runtime::{
@@ -587,10 +586,7 @@ where
 
 #[async_trait]
 impl<'a, T, B, Inner> ToAscObj<AscEthereumEvent_0_0_7<T, B>>
-    for (
-        EthereumEventData<'a>,
-        Option<&WithOtherFields<TransactionReceipt<Inner>>>,
-    )
+    for (EthereumEventData<'a>, Option<&TransactionReceipt<Inner>>)
 where
     T: AscType + AscIndexId + Send,
     B: AscType + AscIndexId + Send,
@@ -615,7 +611,7 @@ where
             params,
         } = event_data.to_asc_obj(heap, gas).await?;
         let receipt = if let Some(receipt_data) = optional_receipt {
-            asc_new(heap, &receipt_data.inner(), gas).await?
+            asc_new(heap, receipt_data, gas).await?
         } else {
             AscPtr::null()
         };

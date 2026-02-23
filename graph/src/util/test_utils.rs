@@ -1,41 +1,41 @@
-use alloy::consensus::{TxEnvelope, TxLegacy};
+use alloy::consensus::TxLegacy;
 use alloy::primitives::Address;
 use alloy::rpc::types::Transaction;
 
+use crate::components::ethereum::{AnyBlock, AnyHeader, AnyTransaction, AnyTxEnvelope};
 use crate::prelude::alloy::consensus::Header as ConsensusHeader;
 use crate::prelude::alloy::primitives::B256;
 use crate::prelude::alloy::rpc::types::{Block, Header};
 
 /// Creates a minimal Alloy Block for testing purposes.
-pub fn create_minimal_block_for_test(block_number: u64, block_hash: B256) -> Block {
+pub fn create_minimal_block_for_test(block_number: u64, block_hash: B256) -> AnyBlock {
     // Create consensus header with defaults, but set the specific number
     let consensus_header = ConsensusHeader {
         number: block_number,
         ..Default::default()
     };
 
-    // Create RPC header with the specific hash
+    // Create RPC header with the specific hash and wrap in AnyHeader
     let rpc_header = Header {
         hash: block_hash,
-        inner: consensus_header,
+        inner: AnyHeader::from(consensus_header),
         total_difficulty: None,
         size: None,
     };
 
-    // Create an empty block with this header
     Block::empty(rpc_header)
 }
 
-/// Generic function that creates a mock legacy Transaction from ANY log
+/// Generic function that creates a mock legacy Transaction for testing
 pub fn create_dummy_transaction(
     block_number: u64,
     block_hash: B256,
     transaction_index: Option<u64>,
     transaction_hash: B256,
-) -> Transaction<TxEnvelope> {
+) -> AnyTransaction {
     use alloy::{
         consensus::transaction::Recovered,
-        consensus::Signed,
+        consensus::{Signed, TxEnvelope},
         primitives::{Signature, U256},
     };
 
@@ -46,8 +46,9 @@ pub fn create_dummy_transaction(
 
     let signed_tx = Signed::new_unchecked(tx, signature, transaction_hash);
     let envelope = TxEnvelope::Legacy(signed_tx);
+    let any_envelope = AnyTxEnvelope::Ethereum(envelope);
 
-    let recovered = Recovered::new_unchecked(envelope, Address::ZERO);
+    let recovered = Recovered::new_unchecked(any_envelope, Address::ZERO);
 
     Transaction {
         inner: recovered,

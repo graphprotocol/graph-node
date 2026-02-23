@@ -444,7 +444,6 @@ fn create_dummy_transaction(
     transaction_index: Option<u64>,
     transaction_hash: Option<B256>,
 ) -> Result<AnyTransaction, anyhow::Error> {
-    use alloy::serde::WithOtherFields;
     use graph::components::ethereum::AnyTxEnvelope;
     use graph::prelude::alloy::{
         consensus::transaction::Recovered, consensus::Signed, primitives::Signature,
@@ -465,15 +464,13 @@ fn create_dummy_transaction(
 
     let recovered = Recovered::new_unchecked(any_envelope, Address::ZERO);
 
-    let inner_tx = Transaction {
+    Ok(Transaction {
         inner: recovered,
         block_hash: Some(block_hash),
         block_number: Some(block_number),
         transaction_index,
         effective_gas_price: None,
-    };
-
-    Ok(AnyTransaction::new(WithOtherFields::new(inner_tx)))
+    })
 }
 
 impl DataSource {
@@ -812,7 +809,7 @@ impl DataSource {
                 let logging_extras = Arc::new(o! {
                     "signature" => event_handler.event.to_string(),
                     "address" => format!("{}", &log.address()),
-                    "transaction" => format!("{}", &transaction.inner.tx_hash()),
+                    "transaction" => format!("{}", &transaction.tx_hash()),
                 });
                 let handler = event_handler.handler.clone();
                 let calls = DeclaredCall::from_log_trigger_with_event(
@@ -921,7 +918,7 @@ impl DataSource {
                 let logging_extras = Arc::new(o! {
                     "function" => handler.function.to_string(),
                     "to" => format!("{}", &call.to),
-                    "transaction" => format!("{}", &transaction.inner.tx_hash()),
+                    "transaction" => format!("{}", &transaction.tx_hash()),
                 });
                 Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Call {

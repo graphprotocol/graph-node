@@ -117,7 +117,7 @@ impl FakeBlock {
 
         let rpc_header = Header {
             hash: block_hash,
-            inner: consensus_header,
+            inner: graph::components::ethereum::AnyHeader::from(consensus_header),
             total_difficulty: None,
             size: None,
         };
@@ -125,7 +125,7 @@ impl FakeBlock {
         let block = Block::empty(rpc_header);
 
         EthereumBlock {
-            block: Arc::new(LightEthereumBlock::new(block.into())),
+            block: Arc::new(LightEthereumBlock::new(block)),
             transaction_receipts: Vec::new(),
         }
     }

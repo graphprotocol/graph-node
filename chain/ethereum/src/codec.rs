@@ -8,7 +8,9 @@ use graph::{
     blockchain::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
     },
-    components::ethereum::{AnyBlock, AnyHeader, AnyRpcHeader, AnyRpcTransaction, AnyTxEnvelope},
+    components::ethereum::{
+        AnyBlock, AnyHeader, AnyRpcHeader, AnyTransactionReceiptBare, AnyTxEnvelope,
+    },
     prelude::{
         alloy::{
             self,
@@ -16,7 +18,6 @@ use graph::{
             network::AnyReceiptEnvelope,
             primitives::{aliases::B2048, Address, Bloom, Bytes, LogData, B256, U256},
             rpc::types::{self as alloy_rpc_types, AccessList, AccessListItem, Transaction},
-            serde::WithOtherFields,
         },
         BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
         LightEthereumBlock,
@@ -556,19 +557,12 @@ impl TryInto<AnyBlock> for &Block {
 
         let any_header: AnyRpcHeader = rpc_header.map(AnyHeader::from);
 
-        let any_transactions: Vec<AnyRpcTransaction> = transactions
-            .into_iter()
-            .map(|tx| AnyRpcTransaction::new(WithOtherFields::new(tx)))
-            .collect();
-
-        let any_block = Block {
+        Ok(Block {
             header: any_header,
-            transactions: alloy::rpc::types::BlockTransactions::Full(any_transactions),
+            transactions: alloy::rpc::types::BlockTransactions::Full(transactions),
             uncles,
             withdrawals: None,
-        };
-
-        Ok(AnyBlock::new(WithOtherFields::new(any_block)))
+        })
     }
 }
 
@@ -619,7 +613,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
 fn transaction_trace_to_alloy_txn_reciept(
     t: &TransactionTrace,
     block: &Block,
-) -> Result<Option<alloy::network::AnyTransactionReceipt>, Error> {
+) -> Result<Option<AnyTransactionReceiptBare>, Error> {
     use alloy::consensus::{Eip658Value, Receipt};
     let r = t.receipt.as_ref();
 
@@ -719,7 +713,7 @@ fn transaction_trace_to_alloy_txn_reciept(
         inner: any_envelope,
     };
 
-    Ok(Some(WithOtherFields::new(receipt)))
+    Ok(Some(receipt))
 }
 
 impl BlockHeader {
@@ -1014,7 +1008,7 @@ mod test {
 
         let receipt = receipt_opt.unwrap();
 
-        assert_eq!(receipt.inner.inner.r#type, 126);
+        assert_eq!(receipt.inner.r#type, 126);
         assert_eq!(receipt.gas_used, 21000);
         assert_eq!(receipt.transaction_index, Some(0));
     }
