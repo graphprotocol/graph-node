@@ -10,3 +10,4 @@ the code should go into comments.
 * [SQL Query Generation](./sql-query-generation.md)
 * [Adding support for a new chain](./add-chain.md)
 * [Pruning](./pruning.md)
+* [Dump Format](./dump.md)
