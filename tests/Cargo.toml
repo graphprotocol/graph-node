@@ -25,7 +25,7 @@ tokio = { version = "1.49.0", features = ["rt", "macros", "process"] }
 tokio-util.workspace = true
 
 [dev-dependencies]
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 tokio-stream = "0.1"
 
 [lints]
