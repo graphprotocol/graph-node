@@ -188,10 +188,6 @@ impl Monitor {
         loop {
             tokio::select! {
                 Some(command) = command_rx.recv() => {
-                    debug!(logger, "Processing a new command";
-                        "command" => ?command
-                    );
-
                     match &command {
                         Command::Start { .. } => {
                             Self::process_start_command(

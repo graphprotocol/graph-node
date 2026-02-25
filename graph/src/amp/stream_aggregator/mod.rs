@@ -101,11 +101,6 @@ impl StreamAggregator {
 
         let num_streams = named_streams.len();
 
-        info!(logger, "Initializing stream aggregator";
-            "num_streams" => num_streams,
-            "max_buffer_size" => max_buffer_size
-        );
-
         Self {
             named_streams,
             buffer: Buffer::new(num_streams, max_buffer_size),
