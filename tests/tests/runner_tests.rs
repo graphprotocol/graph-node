@@ -1219,7 +1219,7 @@ async fn aggregation_current_bucket() {
             .with_transactions(transactions);
 
         BlockWithTriggers::<graph_chain_ethereum::Chain> {
-            block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block.into()))),
+            block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block))),
             trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
                 ptr,
                 EthereumBlockTriggerType::End,

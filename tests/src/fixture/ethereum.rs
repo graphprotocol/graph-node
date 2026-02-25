@@ -84,7 +84,7 @@ pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
     let block = create_minimal_block_for_test(ptr.number as u64, ptr.hash.as_b256());
 
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(block.into()))),
+        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(block))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,
@@ -128,7 +128,7 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
         .with_transactions(transactions);
 
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block.into()))),
+        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,

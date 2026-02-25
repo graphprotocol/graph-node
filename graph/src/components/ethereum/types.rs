@@ -1,9 +1,12 @@
 use alloy::{
-    network::{AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, ReceiptResponse, TransactionResponse},
+    network::{
+        AnyHeader, AnyReceiptEnvelope, AnyRpcHeader, AnyTxEnvelope, ReceiptResponse,
+        TransactionResponse,
+    },
     primitives::{Address, Bytes, B256, U256},
     rpc::types::{
         trace::parity::{Action, LocalizedTransactionTrace, TraceOutput},
-        Log,
+        Block, Header, Log, Transaction, TransactionReceipt,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -14,9 +17,11 @@ use crate::{
     prelude::BlockNumber,
 };
 
-// Use Alloy's official types for handling any transaction type
-pub type AnyTransaction = AnyRpcTransaction;
-pub type AnyBlock = AnyRpcBlock;
+pub type AnyTransaction = Transaction<AnyTxEnvelope>;
+pub type AnyBlock = Block<AnyTransaction, Header<AnyHeader>>;
+/// Like alloy's `AnyTransactionReceipt` but without the `WithOtherFields` wrapper,
+/// avoiding `#[serde(flatten)]` overhead during deserialization.
+pub type AnyTransactionReceiptBare = TransactionReceipt<AnyReceiptEnvelope<Log>>;
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize, Serialize)]
@@ -24,16 +29,14 @@ pub struct LightEthereumBlock(AnyBlock);
 
 impl Default for LightEthereumBlock {
     fn default() -> Self {
-        use alloy::rpc::types::{Block, BlockTransactions};
-        use alloy::serde::WithOtherFields;
+        use alloy::rpc::types::BlockTransactions;
 
-        let default_block = Block {
+        Self(Block {
             header: AnyRpcHeader::default(),
             transactions: BlockTransactions::Full(vec![]),
             uncles: vec![],
             withdrawals: None,
-        };
-        Self(AnyBlock::new(WithOtherFields::new(default_block)))
+        })
     }
 }
 
@@ -186,7 +189,7 @@ impl EthereumBlockWithCalls {
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct EthereumBlock {
     pub block: Arc<LightEthereumBlock>,
-    pub transaction_receipts: Vec<Arc<alloy::network::AnyTransactionReceipt>>,
+    pub transaction_receipts: Vec<Arc<AnyTransactionReceiptBare>>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
