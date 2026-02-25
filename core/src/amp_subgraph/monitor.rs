@@ -22,7 +22,11 @@ use graph::{
     cheap_clone::CheapClone, components::store::DeploymentLocator, log::factory::LoggerFactory,
 };
 use slog::{debug, error, info, warn, Logger};
-use tokio::{sync::mpsc, task::JoinHandle, time::timeout};
+use tokio::{
+    sync::mpsc::{self, error::SendError},
+    task::JoinHandle,
+    time::timeout,
+};
 use tokio_util::sync::CancellationToken;
 
 /// Represents the maximum amount of time a subgraph instance is allowed to run
@@ -137,7 +141,7 @@ impl Monitor {
             .new(slog::o!("method" => "start"));
 
         info!(logger, "Starting subgraph");
-        handle_send_result(
+        log_send_error(
             &logger,
             self.command_tx.send(Command::Start {
                 id: self.subgraph_instance_id.fetch_add(1, SeqCst),
@@ -164,7 +168,7 @@ impl Monitor {
             .new(slog::o!("method" => "stop"));
 
         info!(logger, "Stopping subgraph");
-        handle_send_result(&logger, self.command_tx.send(Command::Stop { deployment }));
+        log_send_error(&logger, self.command_tx.send(Command::Stop { deployment }));
     }
 
     /// Processes commands sent through the command channel.
@@ -390,7 +394,7 @@ impl Monitor {
 
         if let Some(pending_start_command) = pending_start_commands.remove(&deployment) {
             debug!(logger, "Resending a pending start command");
-            handle_send_result(&logger, command_tx.send(pending_start_command));
+            log_send_error(&logger, command_tx.send(pending_start_command));
         }
     }
 
@@ -476,7 +480,7 @@ impl Monitor {
                 }
 
                 debug!(logger, "Sending clear command");
-                handle_send_result(&logger, command_tx.send(Command::Clear { id, deployment }));
+                log_send_error(&logger, command_tx.send(Command::Clear { id, deployment }));
             }
         });
 
@@ -546,13 +550,10 @@ impl fmt::Debug for Command {
     }
 }
 
-fn handle_send_result(
-    logger: &Logger,
-    result: Result<(), tokio::sync::mpsc::error::SendError<Command>>,
-) {
+fn log_send_error(logger: &Logger, result: Result<(), SendError<Command>>) {
     match result {
         Ok(()) => {
-            debug!(logger, "Command was sent successfully");
+            // No need to log anything
         }
 
         // This should only happen if the parent cancel token of the subgraph monitor was cancelled
