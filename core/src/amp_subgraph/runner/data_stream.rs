@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::RangeInclusive, sync::Arc};
 use alloy::primitives::BlockNumber;
 use anyhow::anyhow;
 use futures::{
-    stream::{empty, BoxStream},
+    stream::{self, BoxStream},
     StreamExt, TryStreamExt,
 };
 use graph::{
@@ -28,74 +28,67 @@ pub(super) fn new_data_stream<AC>(
     latest_block: BlockNumber,
 ) -> BoxStream<'static, Result<(RecordBatchGroups, Arc<[TablePtr]>), Error>>
 where
-    AC: Client,
+    AC: Client + Send + Sync + 'static,
 {
     let logger = cx.logger.new(slog::o!("process" => "new_data_stream"));
-
-    let mut total_queries_to_execute = 0;
-    let mut data_streams = Vec::new();
-    let mut latest_queried_block = cx.latest_synced_block();
-    let mut max_end_block = BlockNumber::MIN;
+    let client = cx.client.cheap_clone();
+    let manifest = cx.manifest.clone();
+    let max_buffer_size = cx.max_buffer_size;
+    let max_block_range = cx.max_block_range;
+    let stopwatch = cx.metrics.stopwatch.cheap_clone();
 
     debug!(logger, "Creating data stream";
-        "from_block" => latest_queried_block.unwrap_or(BlockNumber::MIN),
+        "from_block" => cx.latest_synced_block().unwrap_or(BlockNumber::MIN),
         "to_block" => latest_block,
-        "min_start_block" => cx.min_start_block(),
-        "max_block_range" => cx.max_block_range,
+        "start_block" => cx.min_start_block(),
+        "max_block_range" => max_block_range,
     );
 
-    loop {
-        let block_ranges = next_block_ranges(
-            &cx.manifest.data_sources,
-            cx.max_block_range,
-            latest_queried_block,
-            latest_block,
-        );
+    // State: (latest_queried_block, max_end_block, is_first)
+    let initial_state = (cx.latest_synced_block(), BlockNumber::MIN, true);
 
-        if block_ranges.is_empty() {
-            if data_streams.is_empty() {
-                warn!(logger, "There are no unprocessed block ranges");
+    stream::unfold(
+        initial_state,
+        move |(latest_queried_block, mut end_block, is_first)| {
+            let block_ranges = next_block_ranges(
+                &manifest.data_sources,
+                max_block_range,
+                latest_queried_block,
+                latest_block,
+            );
+
+            if block_ranges.is_empty() {
+                if is_first {
+                    warn!(logger, "There are no unprocessed block ranges");
+                }
+                return futures::future::ready(None);
             }
-            break;
-        }
 
-        let min_start_block = block_ranges.values().map(|r| *r.start()).min().unwrap();
-        max_end_block =
-            max_end_block.max(block_ranges.values().map(|r| *r.end()).max().unwrap());
+            let start_block = block_ranges.values().map(|r| *r.start()).min().unwrap();
+            end_block = end_block.max(block_ranges.values().map(|r| *r.end()).max().unwrap());
 
-        let (query_streams, table_ptrs) =
-            build_query_streams(&*cx.client, &logger, &cx.manifest.data_sources, &block_ranges);
-        total_queries_to_execute += query_streams.len();
+            let (query_streams, table_ptrs) =
+                build_query_streams(&*client, &logger, &manifest.data_sources, &block_ranges);
 
-        data_streams.push(build_data_stream(
-            &logger,
-            query_streams,
-            table_ptrs,
-            cx.max_buffer_size,
-            &cx.metrics.stopwatch,
-            min_start_block,
-        ));
+            let data_stream = build_data_stream(
+                &logger,
+                query_streams,
+                table_ptrs,
+                max_buffer_size,
+                &stopwatch,
+                start_block,
+            );
 
-        if max_end_block >= latest_block {
-            break;
-        }
-
-        latest_queried_block = Some(max_end_block);
-    }
-
-    debug!(logger, "Created aggregated data streams";
-        "total_data_streams" => data_streams.len(),
-        "total_queries_to_execute" => total_queries_to_execute
-    );
-
-    let mut iter = data_streams.into_iter();
-    let mut merged_data_stream = iter.next().unwrap_or_else(|| empty().boxed());
-
-    for data_stream in iter {
-        merged_data_stream = merged_data_stream.chain(data_stream).boxed();
-    }
-
-    merged_data_stream
+            debug!(logger, "Created a new data stream";
+                "latest_queried_block" => latest_queried_block,
+                "start_block" => start_block,
+                "end_block" => end_block,
+            );
+            futures::future::ready(Some((data_stream, (Some(end_block), end_block, false))))
+        },
+    )
+    .flatten()
+    .boxed()
 }
 
 fn build_query_streams<AC: Client>(

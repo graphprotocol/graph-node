@@ -67,7 +67,7 @@ where
 
 async fn run_indexing<AC>(cx: &mut Context<AC>) -> Result<(), Error>
 where
-    AC: Client,
+    AC: Client + Send + Sync + 'static,
 {
     cx.metrics.deployment_status.starting();
 
@@ -152,7 +152,7 @@ where
 
 async fn run_indexing_with_retries<AC>(cx: &mut Context<AC>) -> Result<()>
 where
-    AC: Client,
+    AC: Client + Send + Sync + 'static,
 {
     loop {
         match run_indexing(cx).await {
