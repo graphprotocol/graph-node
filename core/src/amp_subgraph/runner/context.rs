@@ -77,14 +77,6 @@ impl<AC> Context<AC> {
             .map(|block_ptr| (block_ptr.number.compat(), block_ptr.hash.compat()))
     }
 
-    pub(super) fn total_queries(&self) -> usize {
-        self.manifest
-            .data_sources
-            .iter()
-            .map(|data_source| data_source.transformer.tables.len())
-            .sum()
-    }
-
     pub(super) fn min_start_block(&self) -> BlockNumber {
         self.manifest
             .data_sources

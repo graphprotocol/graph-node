@@ -8,11 +8,14 @@ use futures::{
 };
 use graph::{
     amp::{
+        client::ResponseBatch,
+        error::IsDeterministic,
         manifest::DataSource,
         stream_aggregator::{RecordBatchGroups, StreamAggregator},
         Client,
     },
     cheap_clone::CheapClone,
+    prelude::StopwatchMetrics,
 };
 use slog::{debug, warn};
 
@@ -29,7 +32,6 @@ where
 {
     let logger = cx.logger.new(slog::o!("process" => "new_data_stream"));
 
-    let total_queries = cx.total_queries();
     let mut total_queries_to_execute = 0;
     let mut data_streams = Vec::new();
     let mut latest_queried_block = cx.latest_synced_block();
@@ -43,82 +45,36 @@ where
     );
 
     loop {
-        let next_block_ranges = next_block_ranges(cx, latest_queried_block, latest_block);
+        let block_ranges = next_block_ranges(
+            &cx.manifest.data_sources,
+            cx.max_block_range,
+            latest_queried_block,
+            latest_block,
+        );
 
-        if next_block_ranges.is_empty() {
+        if block_ranges.is_empty() {
             if data_streams.is_empty() {
                 warn!(logger, "There are no unprocessed block ranges");
             }
             break;
         }
 
-        let mut query_streams = Vec::with_capacity(total_queries);
-        let mut query_streams_table_ptr = Vec::with_capacity(total_queries);
-        let mut min_start_block = BlockNumber::MAX;
+        let min_start_block = block_ranges.values().map(|r| *r.start()).min().unwrap();
+        max_end_block =
+            max_end_block.max(block_ranges.values().map(|r| *r.end()).max().unwrap());
 
-        for (i, data_source) in cx.manifest.data_sources.iter().enumerate() {
-            let Some(block_range) = next_block_ranges.get(&i) else {
-                continue;
-            };
-
-            if *block_range.start() < min_start_block {
-                min_start_block = *block_range.start();
-            }
-
-            if *block_range.end() > max_end_block {
-                max_end_block = *block_range.end();
-            }
-
-            for (j, table) in data_source.transformer.tables.iter().enumerate() {
-                let query = table.query.build_with_block_range(block_range);
-                let stream = cx.client.query(&cx.logger, query, None);
-                let stream_name = format!("{}.{}", data_source.name, table.name);
-
-                query_streams.push((stream_name, stream));
-                query_streams_table_ptr.push((i, j));
-            }
-        }
-
-        let query_streams_table_ptr: Arc<[TablePtr]> = query_streams_table_ptr.into();
+        let (query_streams, table_ptrs) =
+            build_query_streams(&*cx.client, &logger, &cx.manifest.data_sources, &block_ranges);
         total_queries_to_execute += query_streams.len();
 
-        let mut min_start_block_checked = false;
-        let mut load_first_record_batch_group_section = Some(
-            cx.metrics
-                .stopwatch
-                .start_section("load_first_record_batch_group"),
-        );
-
-        data_streams.push(
-            StreamAggregator::new(&cx.logger, query_streams, cx.max_buffer_size)
-                .map_ok(move |response| (response, query_streams_table_ptr.cheap_clone()))
-                .map_err(Error::from)
-                .map(move |result| {
-                    if load_first_record_batch_group_section.is_some() {
-                        let _section = load_first_record_batch_group_section.take();
-                    }
-
-                    match result {
-                        Ok(response) => {
-                            if !min_start_block_checked {
-                                if let Some(((first_block, _), _)) = response.0.first_key_value() {
-                                    if *first_block < min_start_block {
-                                        return Err(Error::NonDeterministic(anyhow!(
-                                            "chain reorg"
-                                        )));
-                                    }
-                                }
-
-                                min_start_block_checked = true;
-                            }
-
-                            Ok(response)
-                        }
-                        Err(e) => Err(e),
-                    }
-                })
-                .boxed(),
-        );
+        data_streams.push(build_data_stream(
+            &logger,
+            query_streams,
+            table_ptrs,
+            cx.max_buffer_size,
+            &cx.metrics.stopwatch,
+            min_start_block,
+        ));
 
         if max_end_block >= latest_block {
             break;
@@ -142,19 +98,101 @@ where
     merged_data_stream
 }
 
-fn next_block_ranges<AC>(
-    cx: &Context<AC>,
+fn build_query_streams<AC: Client>(
+    client: &AC,
+    logger: &slog::Logger,
+    data_sources: &[DataSource],
+    block_ranges: &HashMap<usize, RangeInclusive<BlockNumber>>,
+) -> (
+    Vec<(String, BoxStream<'static, Result<ResponseBatch, AC::Error>>)>,
+    Arc<[TablePtr]>,
+) {
+    let total_queries: usize = data_sources
+        .iter()
+        .map(|ds| ds.transformer.tables.len())
+        .sum();
+
+    let mut query_streams = Vec::with_capacity(total_queries);
+    let mut table_ptrs = Vec::with_capacity(total_queries);
+
+    for (i, data_source) in data_sources.iter().enumerate() {
+        let Some(block_range) = block_ranges.get(&i) else {
+            continue;
+        };
+
+        for (j, table) in data_source.transformer.tables.iter().enumerate() {
+            let query = table.query.build_with_block_range(block_range);
+            let stream = client.query(logger, query, None);
+            let stream_name = format!("{}.{}", data_source.name, table.name);
+
+            query_streams.push((stream_name, stream));
+            table_ptrs.push((i, j));
+        }
+    }
+
+    (query_streams, table_ptrs.into())
+}
+
+fn build_data_stream<E>(
+    logger: &slog::Logger,
+    query_streams: Vec<(String, BoxStream<'static, Result<ResponseBatch, E>>)>,
+    table_ptrs: Arc<[TablePtr]>,
+    max_buffer_size: usize,
+    stopwatch: &StopwatchMetrics,
+    min_start_block: BlockNumber,
+) -> BoxStream<'static, Result<(RecordBatchGroups, Arc<[TablePtr]>), Error>>
+where
+    E: std::error::Error + IsDeterministic + Send + Sync + 'static,
+{
+    let mut min_start_block_checked = false;
+    let mut load_first_record_batch_group_section =
+        Some(stopwatch.start_section("load_first_record_batch_group"));
+
+    StreamAggregator::new(logger, query_streams, max_buffer_size)
+        .map_ok(move |response| (response, table_ptrs.cheap_clone()))
+        .map_err(Error::from)
+        .map(move |result| {
+            if load_first_record_batch_group_section.is_some() {
+                let _section = load_first_record_batch_group_section.take();
+            }
+
+            match result {
+                Ok(response) => {
+                    if !min_start_block_checked {
+                        if let Some(((first_block, _), _)) = response.0.first_key_value() {
+                            if *first_block < min_start_block {
+                                return Err(Error::NonDeterministic(anyhow!("chain reorg")));
+                            }
+                        }
+
+                        min_start_block_checked = true;
+                    }
+
+                    Ok(response)
+                }
+                Err(e) => Err(e),
+            }
+        })
+        .boxed()
+}
+
+fn next_block_ranges(
+    data_sources: &[DataSource],
+    max_block_range: usize,
     latest_queried_block: Option<BlockNumber>,
     latest_block: BlockNumber,
 ) -> HashMap<usize, RangeInclusive<BlockNumber>> {
-    let block_ranges = cx
-        .manifest
-        .data_sources
+    let block_ranges = data_sources
         .iter()
         .enumerate()
         .filter_map(|(i, data_source)| {
-            next_block_range(cx, data_source, latest_queried_block, latest_block)
-                .map(|block_range| (i, block_range))
+            next_block_range(
+                max_block_range,
+                data_source,
+                latest_queried_block,
+                latest_block,
+            )
+            .map(|block_range| (i, block_range))
         })
         .collect::<HashMap<_, _>>();
 
@@ -172,8 +210,8 @@ fn next_block_ranges<AC>(
         .collect()
 }
 
-fn next_block_range<AC>(
-    cx: &Context<AC>,
+fn next_block_range(
+    max_block_range: usize,
     data_source: &DataSource,
     latest_queried_block: Option<BlockNumber>,
     latest_block: BlockNumber,
@@ -190,7 +228,7 @@ fn next_block_range<AC>(
     };
 
     let end_block = [
-        start_block.saturating_add(cx.max_block_range as BlockNumber),
+        start_block.saturating_add(max_block_range as BlockNumber),
         data_source.source.end_block,
         latest_block,
     ]
