@@ -115,6 +115,7 @@ impl StreamAggregator {
         cx: &mut task::Context<'_>,
     ) -> Poll<Option<Result<RecordBatchGroups, Error>>> {
         let mut made_progress = false;
+        let mut needs_repoll = false;
 
         for (stream_index, (stream_name, stream)) in self.named_streams.iter_mut().enumerate() {
             let logger = self.logger.new(slog::o!(
@@ -152,6 +153,7 @@ impl StreamAggregator {
                     match buffer_result {
                         Ok(()) => {
                             made_progress = true;
+                            needs_repoll = true;
 
                             debug!(logger, "Buffered record batch";
                                 "buffer_size" => self.buffer.size(stream_index),
@@ -167,6 +169,7 @@ impl StreamAggregator {
                 }
                 Poll::Ready(Some(Ok(_empty_record_batch))) => {
                     debug!(logger, "Received an empty record batch");
+                    needs_repoll = true;
                 }
                 Poll::Ready(Some(Err(e))) => {
                     self.is_failed = true;
@@ -207,6 +210,16 @@ impl StreamAggregator {
         if self.is_finalized {
             info!(self.logger, "All streams completed");
             return Poll::Ready(None);
+        }
+
+        // When any stream returned `Poll::Ready` but we couldn't produce
+        // output (e.g. empty batch, or data buffered but no completed
+        // groups yet), the waker was consumed by that stream's poll call
+        // and won't be re-registered until we poll it again. Schedule an
+        // immediate re-poll so those streams get polled again and their
+        // wakers are properly re-registered.
+        if needs_repoll {
+            cx.waker().wake_by_ref();
         }
 
         Poll::Pending
