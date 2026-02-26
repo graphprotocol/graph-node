@@ -315,9 +315,9 @@ gnd test [TEST_FILES...]
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--manifest` | `-m` | Path to subgraph manifest (default: `subgraph.yaml`) |
-| `--skip-build` | | Skip building the subgraph before testing |
+| `--skip-build` | `-s` | Skip building the subgraph before testing |
 | `--postgres-url` | | PostgreSQL connection URL (env: `POSTGRES_URL`) |
-| `--matchstick` | | Use legacy Matchstick runner |
+| `--matchstick` | | Use legacy Matchstick runner (**deprecated** — migrate to JSON-based tests) |
 | `--docker` | `-d` | Run Matchstick in Docker (requires `--matchstick`) |
 | `--coverage` | `-c` | Run with coverage reporting (requires `--matchstick`) |
 | `--recompile` | `-r` | Force recompilation (requires `--matchstick`) |
@@ -340,7 +340,7 @@ gnd test my-tests/
 gnd test -m subgraph.staging.yaml tests/transfer.json
 
 # Skip automatic build
-gnd test --skip-build
+gnd test -s
 ```
 
 ### `gnd clean`

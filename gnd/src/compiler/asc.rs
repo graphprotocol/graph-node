@@ -181,7 +181,7 @@ pub fn find_graph_ts(source_dir: &Path) -> Result<(Vec<PathBuf>, PathBuf)> {
 
 /// Find the `asc` binary by checking the global PATH first, then the project's
 /// root `node_modules/.bin/asc`.
-fn find_asc_binary(base_dir: &Path) -> Option<PathBuf> {
+pub fn find_asc_binary(base_dir: &Path) -> Option<PathBuf> {
     // Check global PATH first
     if Command::new("asc")
         .arg("--version")

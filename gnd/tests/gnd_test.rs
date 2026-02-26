@@ -14,7 +14,7 @@
 //!
 //! - Build the gnd binary: `cargo build -p gnd`
 //! - AssemblyScript compiler (`asc`) in PATH
-//! - npm available for dependency installation
+//! - pnpm available for dependency installation
 //!
 //! # Running
 //!
@@ -33,7 +33,7 @@ use std::process::Command;
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
-/// Copy the fixture subgraph into a fresh temp directory, install npm
+/// Copy the fixture subgraph into a fresh temp directory, install pnpm
 /// dependencies, and run `gnd codegen`. Returns the temp dir handle (to
 /// keep it alive) and the path to the prepared subgraph directory.
 fn setup_fixture() -> (TempDir, PathBuf) {
@@ -50,16 +50,16 @@ fn setup_fixture() -> (TempDir, PathBuf) {
 
     copy_dir_recursive(&fixture, &subgraph_dir).expect("Failed to copy fixture to temp directory");
 
-    // Install npm dependencies (graph-ts, graph-cli)
-    let npm_output = Command::new("npm")
+    // Install dependencies (graph-ts, graph-cli)
+    let npm_output = Command::new("pnpm")
         .arg("install")
         .current_dir(&subgraph_dir)
         .output()
-        .expect("Failed to run `npm install`. Is npm available?");
+        .expect("Failed to run `pnpm install`. Is pnpm available?");
 
     assert!(
         npm_output.status.success(),
-        "npm install failed in fixture:\nstdout: {}\nstderr: {}",
+        "pnpm install failed in fixture:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&npm_output.stdout),
         String::from_utf8_lossy(&npm_output.stderr),
     );
@@ -116,23 +116,11 @@ fn fixture_path() -> PathBuf {
 
 /// Assert that `asc` (AssemblyScript compiler) is available in PATH or in local node_modules.
 fn verify_asc_available(subgraph_dir: &Path) {
-    // Check global PATH first
-    if Command::new("asc")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        return;
-    }
-
-    // Fall back to local node_modules/.bin/asc
-    let local_asc = subgraph_dir.join("node_modules").join(".bin").join("asc");
     assert!(
-        local_asc.exists(),
-        "asc compiler not found globally or at {}. \
+        gnd::compiler::find_asc_binary(subgraph_dir).is_some(),
+        "asc compiler not found globally or in {}/node_modules/.bin. \
          Install it with: npm install -g assemblyscript@0.19.23",
-        local_asc.display()
+        subgraph_dir.display()
     );
 }
 

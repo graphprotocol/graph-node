@@ -310,17 +310,25 @@ pub async fn run_single_test(
         .await;
 
     // For persistent databases, clean up the deployment after the test so the
-    // database is left in a clean state. Each run generates a unique hash and
-    // subgraph name (via the seed), so pre-test cleanup is not needed — only
-    // post-test cleanup of the current run's deployment.
+    // database is left in a clean state. On failure, skip cleanup so the data
+    // is preserved for inspection.
     if db.needs_cleanup() {
-        cleanup(
-            &ctx.store,
-            &manifest_info.subgraph_name,
-            &manifest_info.hash,
-        )
-        .await
-        .ok();
+        let test_passed = result.as_ref().map(|r| r.is_passed()).unwrap_or(false);
+        if test_passed {
+            cleanup(
+                &ctx.store,
+                &manifest_info.subgraph_name,
+                &manifest_info.hash,
+            )
+            .await
+            .ok();
+        } else {
+            eprintln!(
+                "  {} Test failed — database preserved for inspection: {}",
+                console::style("ℹ").cyan(),
+                db.url()
+            );
+        }
     }
 
     result

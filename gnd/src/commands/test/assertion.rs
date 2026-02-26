@@ -4,7 +4,7 @@ use super::runner::TestContext;
 use super::schema::{Assertion, AssertionFailure, AssertionOutcome, TestResult};
 use anyhow::{anyhow, Result};
 use graph::data::query::{Query, QueryResults, QueryTarget};
-use graph::prelude::{q, r, ApiVersion, GraphQlRunner as GraphQlRunnerTrait};
+use graph::prelude::{q, ApiVersion, GraphQlRunner as GraphQlRunnerTrait};
 
 pub(super) async fn run_assertions(
     ctx: &TestContext,
@@ -62,7 +62,7 @@ async fn run_single_assertion(
         .map_err(|errors| anyhow!("Query errors: {:?}", errors))?;
 
     let actual_json = match result {
-        Some(value) => r_value_to_json(&value),
+        Some(value) => serde_json::to_value(&value)?,
         None => serde_json::Value::Null,
     };
 
@@ -74,32 +74,6 @@ async fn run_single_assertion(
             expected: assertion.expected.clone(),
             actual: actual_json,
         }))
-    }
-}
-
-/// Convert graph-node's internal `r::Value` (GraphQL result) to `serde_json::Value`.
-///
-/// Graph-node uses its own value type for GraphQL results. This converts to
-/// standard JSON for comparison with the expected values in the test file.
-fn r_value_to_json(value: &r::Value) -> serde_json::Value {
-    match value {
-        r::Value::Null => serde_json::Value::Null,
-        r::Value::Boolean(b) => serde_json::Value::Bool(*b),
-        r::Value::Int(n) => serde_json::Value::Number((*n).into()),
-        r::Value::Float(f) => serde_json::json!(*f),
-        r::Value::String(s) => serde_json::Value::String(s.clone()),
-        r::Value::Enum(s) => serde_json::Value::String(s.clone()),
-        r::Value::List(list) => {
-            serde_json::Value::Array(list.iter().map(r_value_to_json).collect())
-        }
-        r::Value::Object(obj) => {
-            let map: serde_json::Map<String, serde_json::Value> = obj
-                .iter()
-                .map(|(k, v)| (k.to_string(), r_value_to_json(v)))
-                .collect();
-            serde_json::Value::Object(map)
-        }
-        r::Value::Timestamp(t) => serde_json::Value::String(t.to_string()),
     }
 }
 

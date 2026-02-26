@@ -59,14 +59,14 @@ pub struct TestOpt {
     pub manifest: PathBuf,
 
     /// Skip building the subgraph before testing
-    #[clap(long)]
+    #[clap(short = 's', long)]
     pub skip_build: bool,
 
     /// PostgreSQL connection URL. If not provided, a temporary database will be created (Unix only).
     #[clap(long, env = "POSTGRES_URL")]
     pub postgres_url: Option<String>,
 
-    /// Use Matchstick runner instead (legacy mode)
+    /// Use Matchstick runner instead (deprecated legacy mode — migrate to JSON-based tests)
     #[clap(long)]
     pub matchstick: bool,
 
@@ -102,6 +102,11 @@ pub struct TestOpt {
 
 pub async fn run_test(opt: TestOpt) -> Result<()> {
     if opt.matchstick {
+        step(
+            Step::Warn,
+            "Matchstick is deprecated and will be removed in a future release. \
+            Migrate to the JSON-based test format (see: gnd/docs/gnd-test.md).",
+        );
         return matchstick::run(&opt).await;
     }
 
