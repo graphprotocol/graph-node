@@ -11,21 +11,21 @@ use super::{Aggregator, RecordBatchGroup, RecordBatchGroups, StreamRecordBatch};
 pub(in super::super) struct Buffer {
     aggregators: Vec<Aggregator>,
     num_streams: usize,
-    max_buffer_size: usize,
+    buffer_size: usize,
 }
 
 impl Buffer {
     /// Creates a new buffer that can handle exactly `num_streams` number of streams.
     ///
     /// Creates a new associated `Aggregator` for each stream.
-    /// The `max_buffer_size` specifies how many record batches for each stream can be buffered at most.
-    pub(in super::super) fn new(num_streams: usize, max_buffer_size: usize) -> Self {
+    /// The `buffer_size` specifies how many record batches for each stream can be buffered at most.
+    pub(in super::super) fn new(num_streams: usize, buffer_size: usize) -> Self {
         let aggregators = (0..num_streams).map(|_| Aggregator::new()).collect();
 
         Self {
             aggregators,
             num_streams,
-            max_buffer_size,
+            buffer_size,
         }
     }
 
@@ -130,7 +130,7 @@ impl Buffer {
     /// Panics if the `stream_index` is greater than the initialized number of streams.
     pub(in super::super) fn has_capacity(&self, stream_index: usize) -> bool {
         assert!(stream_index < self.num_streams);
-        self.aggregators[stream_index].len() < self.max_buffer_size
+        self.aggregators[stream_index].len() < self.buffer_size
     }
 
     /// Returns `true` if the stream `stream_index` is not allowed to make progress and

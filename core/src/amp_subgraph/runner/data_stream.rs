@@ -33,7 +33,7 @@ where
     let logger = cx.logger.new(slog::o!("process" => "new_data_stream"));
     let client = cx.client.cheap_clone();
     let manifest = cx.manifest.clone();
-    let max_buffer_size = cx.max_buffer_size;
+    let buffer_size = cx.buffer_size;
     let max_block_range = cx.max_block_range;
     let stopwatch = cx.metrics.stopwatch.cheap_clone();
 
@@ -74,7 +74,7 @@ where
                 &logger,
                 query_streams,
                 table_ptrs,
-                max_buffer_size,
+                buffer_size,
                 &stopwatch,
                 start_block,
             );
@@ -130,7 +130,7 @@ fn build_data_stream<E>(
     logger: &slog::Logger,
     query_streams: Vec<(String, BoxStream<'static, Result<ResponseBatch, E>>)>,
     table_ptrs: Arc<[TablePtr]>,
-    max_buffer_size: usize,
+    buffer_size: usize,
     stopwatch: &StopwatchMetrics,
     min_start_block: BlockNumber,
 ) -> BoxStream<'static, Result<(RecordBatchGroups, Arc<[TablePtr]>), Error>>
@@ -141,7 +141,7 @@ where
     let mut load_first_record_batch_group_section =
         Some(stopwatch.start_section("load_first_record_batch_group"));
 
-    StreamAggregator::new(logger, query_streams, max_buffer_size)
+    StreamAggregator::new(logger, query_streams, buffer_size)
         .map_ok(move |response| (response, table_ptrs.cheap_clone()))
         .map_err(Error::from)
         .map(move |result| {

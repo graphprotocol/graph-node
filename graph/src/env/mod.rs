@@ -608,8 +608,8 @@ struct Inner {
     )]
     disable_deployment_hash_validation: EnvVarBoolean,
 
-    #[envconfig(from = "GRAPH_AMP_MAX_BUFFER_SIZE")]
-    amp_max_buffer_size: Option<usize>,
+    #[envconfig(from = "GRAPH_AMP_BUFFER_SIZE")]
+    amp_buffer_size: Option<usize>,
     #[envconfig(from = "GRAPH_AMP_MAX_BLOCK_RANGE")]
     amp_max_block_range: Option<usize>,
     #[envconfig(from = "GRAPH_AMP_QUERY_RETRY_MIN_DELAY_SECONDS")]

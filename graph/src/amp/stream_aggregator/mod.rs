@@ -60,7 +60,7 @@ impl StreamAggregator {
     pub fn new<E>(
         logger: &Logger,
         named_streams: impl IntoIterator<Item = (String, BoxStream<'static, Result<ResponseBatch, E>>)>,
-        max_buffer_size: usize,
+        buffer_size: usize,
     ) -> Self
     where
         E: std::error::Error + IsDeterministic + Send + Sync + 'static,
@@ -103,7 +103,7 @@ impl StreamAggregator {
 
         Self {
             named_streams,
-            buffer: Buffer::new(num_streams, max_buffer_size),
+            buffer: Buffer::new(num_streams, buffer_size),
             logger,
             is_finalized: false,
             is_failed: false,
