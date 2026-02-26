@@ -34,14 +34,14 @@ where
     let client = cx.client.cheap_clone();
     let manifest = cx.manifest.clone();
     let buffer_size = cx.buffer_size;
-    let max_block_range = cx.max_block_range;
+    let block_range = cx.block_range;
     let stopwatch = cx.metrics.stopwatch.cheap_clone();
 
     debug!(logger, "Creating data stream";
         "from_block" => cx.latest_synced_block().unwrap_or(BlockNumber::MIN),
         "to_block" => latest_block,
         "start_block" => cx.start_block(),
-        "max_block_range" => max_block_range,
+        "block_range" => block_range,
     );
 
     // State: (latest_queried_block, end_block, is_first)
@@ -52,7 +52,7 @@ where
         move |(latest_queried_block, mut end_block, is_first)| {
             let block_ranges = next_block_ranges(
                 &manifest.data_sources,
-                max_block_range,
+                block_range,
                 latest_queried_block,
                 latest_block,
             );
@@ -171,7 +171,7 @@ where
 
 fn next_block_ranges(
     data_sources: &[DataSource],
-    max_block_range: usize,
+    block_range: usize,
     latest_queried_block: Option<BlockNumber>,
     latest_block: BlockNumber,
 ) -> HashMap<usize, RangeInclusive<BlockNumber>> {
@@ -179,13 +179,8 @@ fn next_block_ranges(
         .iter()
         .enumerate()
         .filter_map(|(i, data_source)| {
-            next_block_range(
-                max_block_range,
-                data_source,
-                latest_queried_block,
-                latest_block,
-            )
-            .map(|block_range| (i, block_range))
+            next_block_range(block_range, data_source, latest_queried_block, latest_block)
+                .map(|block_range| (i, block_range))
         })
         .collect::<HashMap<_, _>>();
 
@@ -204,7 +199,7 @@ fn next_block_ranges(
 }
 
 fn next_block_range(
-    max_block_range: usize,
+    block_range: usize,
     data_source: &DataSource,
     latest_queried_block: Option<BlockNumber>,
     latest_block: BlockNumber,
@@ -221,7 +216,7 @@ fn next_block_range(
     };
 
     let end_block = [
-        start_block.saturating_add(max_block_range as BlockNumber),
+        start_block.saturating_add(block_range as BlockNumber),
         data_source.source.end_block,
         latest_block,
     ]
