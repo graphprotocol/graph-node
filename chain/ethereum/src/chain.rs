@@ -46,7 +46,6 @@ use crate::codec::HeaderOnlyBlock;
 use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::ingestor::PollingBlockIngestor;
-use crate::json_block::EthereumJsonBlock;
 use crate::network::EthereumNetworkAdapters;
 use crate::polling_block_stream::PollingBlockStream;
 use crate::runtime::runtime_adapter::eth_call_gas;
@@ -66,6 +65,7 @@ use graph::blockchain::block_stream::{
     BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamMapper, FirehoseCursor,
     TriggersAdapterWrapper,
 };
+use graph::components::ethereum::EthereumJsonBlock;
 
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
 const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];

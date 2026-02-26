@@ -1,7 +1,7 @@
-use graph::prelude::serde_json::{self as json, Value};
-use graph::prelude::{EthereumBlock, LightEthereumBlock};
+use serde_json::{self as json, Value};
 
-use crate::json_patch;
+use super::json_patch;
+use super::types::{EthereumBlock, LightEthereumBlock};
 
 #[derive(Debug)]
 pub struct EthereumJsonBlock(Value);

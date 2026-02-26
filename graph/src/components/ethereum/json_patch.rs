@@ -7,9 +7,9 @@
 //!
 //! Also used by `PatchingHttp` for chains that don't support EIP-2718 typed transactions.
 
-use graph::prelude::serde_json::Value;
+use serde_json::Value;
 
-pub(crate) fn patch_type_field(obj: &mut Value) -> bool {
+pub fn patch_type_field(obj: &mut Value) -> bool {
     if let Value::Object(map) = obj {
         if !map.contains_key("type") {
             map.insert("type".to_string(), Value::String("0x0".to_string()));
@@ -19,7 +19,7 @@ pub(crate) fn patch_type_field(obj: &mut Value) -> bool {
     false
 }
 
-pub(crate) fn patch_block_transactions(block: &mut Value) -> bool {
+pub fn patch_block_transactions(block: &mut Value) -> bool {
     let Some(txs) = block.get_mut("transactions").and_then(|t| t.as_array_mut()) else {
         return false;
     };
@@ -30,7 +30,7 @@ pub(crate) fn patch_block_transactions(block: &mut Value) -> bool {
     patched
 }
 
-pub(crate) fn patch_receipts(result: &mut Value) -> bool {
+pub fn patch_receipts(result: &mut Value) -> bool {
     match result {
         Value::Object(_) => patch_type_field(result),
         Value::Array(arr) => {
@@ -47,7 +47,7 @@ pub(crate) fn patch_receipts(result: &mut Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use graph::prelude::serde_json::json;
+    use serde_json::json;
 
     #[test]
     fn patch_type_field_adds_missing_type() {

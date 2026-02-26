@@ -66,7 +66,6 @@ use crate::adapter::EthereumRpcError;
 use crate::adapter::ProviderStatus;
 use crate::call_helper::interpret_eth_call_error;
 use crate::chain::BlockFinality;
-use crate::json_block::EthereumJsonBlock;
 use crate::trigger::{LogPosition, LogRef};
 use crate::Chain;
 use crate::NodeCapabilities;
@@ -80,6 +79,7 @@ use crate::{
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
     ENV_VARS,
 };
+use graph::components::ethereum::EthereumJsonBlock;
 
 type AlloyProvider = FillProvider<
     JoinFill<
