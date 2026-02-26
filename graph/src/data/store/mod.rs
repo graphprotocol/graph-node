@@ -1017,16 +1017,20 @@ impl Entity {
     pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<bool, InternError> {
         let mut changed = false;
         for (key, value) in update.0.into_iter() {
+            // A change in VID, which changes on every save, does not count
+            // as a change to the entity's data; this avoids spurious
+            // `Overwrite` modifications.
+            let is_vid = key.as_str() == VID_FIELD;
             match value {
                 Value::Null => {
-                    if self.0.remove(&key).is_some() {
+                    if self.0.remove(&key).is_some() && !is_vid {
                         changed = true;
                     }
                 }
                 _ => {
                     let different = self.0.get(key.as_str()).is_none_or(|old| *old != value);
                     self.0.insert(&key, value)?;
-                    if different {
+                    if different && !is_vid {
                         changed = true;
                     }
                 }
@@ -1387,4 +1391,33 @@ fn entity_hidden_vid() {
     // set again
     _ = entity2.set_vid(7i64);
     assert_eq!(entity2.vid(), 7i64);
+}
+
+#[test]
+fn merge_remove_null_fields_ignores_vid() {
+    use crate::schema::InputSchema;
+    let schema = InputSchema::raw("type Thing @entity {id: ID!, name: String!}", "test");
+
+    let mut current = entity! { schema => id: "1", name: "alice", vid: 3i64 };
+    let update = entity! { schema => id: "1", name: "alice", vid: 99i64 };
+
+    // Merging an identical entity with a different VID must report no change.
+    let changed = current.merge_remove_null_fields(update).unwrap();
+    assert!(!changed, "VID-only difference must not count as a change");
+    // The VID must still be updated to the new value.
+    assert_eq!(current.vid(), 99i64);
+}
+
+#[test]
+fn merge_remove_null_fields_detects_real_change() {
+    use crate::schema::InputSchema;
+    let schema = InputSchema::raw("type Thing @entity {id: ID!, name: String!}", "test");
+
+    let mut current = entity! { schema => id: "1", name: "alice", vid: 3i64 };
+    let update = entity! { schema => id: "1", name: "bob", vid: 99i64 };
+
+    let changed = current.merge_remove_null_fields(update).unwrap();
+    assert!(changed, "data change must be detected");
+    assert_eq!(current.get("name"), Some(&Value::String("bob".to_string())));
+    assert_eq!(current.vid(), 99i64);
 }
