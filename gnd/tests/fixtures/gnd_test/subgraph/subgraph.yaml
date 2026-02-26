@@ -1,0 +1,124 @@
+specVersion: 1.3.0
+schema:
+  file: ./schema.graphql
+dataSources:
+  - name: StandardToken
+    kind: ethereum/contract
+    network: arbitrum
+    source:
+      abi: ERC20
+      address: "0x9623063377AD1B27544C965cCd7342f7EA7e88C7"
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/token.ts
+      entities:
+        - TransferEvent
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      eventHandlers:
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleTransfer
+  - name: EveryBlock
+    kind: ethereum
+    network: arbitrum
+    source:
+      abi: ERC20
+      address: "0x0000000000000000000000000000000000000000"
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/blocks.ts
+      entities:
+        - Block
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      blockHandlers:
+        - handler: handleEveryBlock
+  - name: BlockOnce
+    kind: ethereum
+    network: arbitrum
+    source:
+      abi: ERC20
+      address: "0x0000000000000000000000000000000000000000"
+      startBlock: 1000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/blocks.ts
+      entities:
+        - BlockOnce
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      blockHandlers:
+        - handler: handleOnce
+          filter:
+            kind: once
+  - name: BlockPolling
+    kind: ethereum
+    network: arbitrum
+    source:
+      abi: ERC20
+      address: "0x0000000000000000000000000000000000000000"
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/blocks.ts
+      entities:
+        - PollingBlock
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      blockHandlers:
+        - handler: handlePolling
+          filter:
+            kind: polling
+            every: 5
+  - name: Factory
+    kind: ethereum/contract
+    network: arbitrum
+    source:
+      abi: TokenFactory
+      address: "0x0000000000000000000000000000000000000001"
+      startBlock: 2000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/factory.ts
+      entities:
+        - FactoryToken
+      abis:
+        - name: TokenFactory
+          file: ./abis/TokenFactory.json
+        - name: ERC20
+          file: ./abis/ERC20.json
+      eventHandlers:
+        - event: FactoryTokenCreated(indexed address)
+          handler: handleTokenCreated
+templates:
+  - name: FactoryToken
+    kind: ethereum/contract
+    network: arbitrum
+    source:
+      abi: ERC20
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/token.ts
+      entities:
+        - FactoryTokenTransfer
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      eventHandlers:
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleTransfer

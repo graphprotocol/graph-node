@@ -15,12 +15,22 @@ path = "tests/cli_commands.rs"
 name = "codegen_verification"
 path = "tests/codegen_verification.rs"
 
+[[test]]
+name = "gnd_test"
+path = "tests/gnd_test.rs"
+
 [dependencies]
 # Core graph dependencies
 graph = { path = "../graph" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-core = { path = "../core" }
 graph-node = { path = "../node" }
+graph-graphql = { path = "../graphql" }
+graph-store-postgres = { path = "../store/postgres" }
+
+# Test command dependencies
+hex = "0.4"
+async-trait = { workspace = true }
 
 # Direct dependencies from current dev.rs
 anyhow = { workspace = true }
@@ -49,6 +59,7 @@ thiserror = { workspace = true }
 # Console output
 indicatif = "0.18"
 console = "0.16"
+similar = "2"
 
 # Code generation
 graphql-tools = { workspace = true }
@@ -78,4 +89,3 @@ pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-arg
 [dev-dependencies]
 tempfile = "3"
 walkdir = "2"
-similar = "2"

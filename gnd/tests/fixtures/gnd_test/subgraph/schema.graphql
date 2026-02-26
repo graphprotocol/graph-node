@@ -1,0 +1,33 @@
+type Account  @entity(immutable: false) {
+  id: Bytes! # Address
+  balances: [Balance!]! @derivedFrom(field: "account")
+}
+
+type Token @entity(immutable: true) {
+  id: Bytes! # Address
+  name: String!
+  symbol: String!
+  decimals: Int!
+}
+
+type Balance @entity(immutable: false) {
+  id: Bytes! # Account address + token address
+  token: Token!
+  account: Account!
+  amount: BigInt
+}
+
+type Block @entity(immutable: true) {
+  id: Bytes!
+  number: BigInt!
+}
+
+type OnceBlock @entity(immutable: true) {
+  id: Bytes!
+  msg: String!
+}
+
+type PollingBlock @entity(immutable: true) {
+  id: Bytes!
+  number: BigInt!
+}

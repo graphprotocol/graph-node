@@ -38,17 +38,19 @@ const REQUIRED_ASC_VERSION: &str = "0.19.23";
 ///
 /// Requires asc version 0.19.23 to be installed.
 pub fn compile_mapping(options: &AscCompileOptions) -> Result<()> {
-    // Check that asc is available
-    if !is_asc_available() {
-        return Err(anyhow!(
-            "AssemblyScript compiler (asc) not found. Please install it with:\n  \
-             npm install -g assemblyscript@{REQUIRED_ASC_VERSION}"
-        ));
-    }
+    // Resolve the asc binary, checking global PATH and local node_modules/.bin
+    let asc_bin = find_asc_binary(&options.base_dir).ok_or_else(|| {
+        anyhow!(
+            "AssemblyScript compiler (asc) not found. Install it with:\n  \
+             npm install -g assemblyscript@{REQUIRED_ASC_VERSION}\n  \
+             or locally:\n  \
+             npm install --save-dev assemblyscript@{REQUIRED_ASC_VERSION}"
+        )
+    })?;
 
     // Check version unless explicitly skipped
     if !options.skip_version_check {
-        let version = get_asc_version()?;
+        let version = get_asc_version(&asc_bin)?;
         if version != REQUIRED_ASC_VERSION {
             return Err(anyhow!(
                 "AssemblyScript compiler version mismatch: found {}, required {}.\n  \
@@ -76,7 +78,7 @@ pub fn compile_mapping(options: &AscCompileOptions) -> Result<()> {
         .unwrap_or(&options.output_file);
 
     // Build the asc command
-    let mut cmd = Command::new("asc");
+    let mut cmd = Command::new(&asc_bin);
 
     // Add compiler flags matching graph-cli behavior
     cmd.arg("--explicitStart")
@@ -177,18 +179,31 @@ pub fn find_graph_ts(source_dir: &Path) -> Result<(Vec<PathBuf>, PathBuf)> {
     Ok((lib_dirs, global_file))
 }
 
-/// Check if the asc compiler is available.
-fn is_asc_available() -> bool {
-    Command::new("asc")
+/// Find the `asc` binary by checking the global PATH first, then the project's
+/// root `node_modules/.bin/asc`.
+pub fn find_asc_binary(base_dir: &Path) -> Option<PathBuf> {
+    // Check global PATH first
+    if Command::new("asc")
         .arg("--version")
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false)
+    {
+        return Some(PathBuf::from("asc"));
+    }
+
+    // Backward compatibility with graph-cli: check local node_modules/.bin/asc
+    let local_asc = base_dir.join("node_modules").join(".bin").join("asc");
+    if local_asc.exists() {
+        return Some(local_asc);
+    }
+
+    None
 }
 
 /// Get the asc compiler version.
-fn get_asc_version() -> Result<String> {
-    let output = Command::new("asc")
+fn get_asc_version(asc_bin: &Path) -> Result<String> {
+    let output = Command::new(asc_bin)
         .arg("--version")
         .output()
         .context("Failed to execute asc --version")?;
@@ -244,11 +259,13 @@ mod tests {
     #[test]
     fn test_asc_version_check() {
         // Skip if asc is not installed
-        if !is_asc_available() {
-            return;
-        }
+        let temp_dir = TempDir::new().unwrap();
+        let asc_bin = match find_asc_binary(temp_dir.path()) {
+            Some(bin) => bin,
+            None => return,
+        };
 
-        let version = get_asc_version().unwrap();
+        let version = get_asc_version(&asc_bin).unwrap();
         // Version should be a semver-like string (e.g., "0.19.23")
         assert!(
             version.split('.').count() >= 2,

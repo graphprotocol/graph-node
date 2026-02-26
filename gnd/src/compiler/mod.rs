@@ -5,4 +5,4 @@
 
 mod asc;
 
-pub use asc::{compile_mapping, find_graph_ts, AscCompileOptions};
+pub use asc::{compile_mapping, find_asc_binary, find_graph_ts, AscCompileOptions};
