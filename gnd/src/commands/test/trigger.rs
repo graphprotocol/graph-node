@@ -369,7 +369,8 @@ fn dummy_transaction(
     block_hash: B256,
     transaction_index: u64,
     transaction_hash: B256,
-) -> graph::prelude::alloy::rpc::types::Transaction<graph::prelude::alloy::consensus::TxEnvelope> {
+) -> graph::components::ethereum::AnyTransaction {
+    use graph::components::ethereum::AnyTxEnvelope;
     use graph::prelude::alloy::consensus::transaction::Recovered;
     use graph::prelude::alloy::consensus::{Signed, TxEnvelope, TxLegacy};
     use graph::prelude::alloy::primitives::{Address, Signature, U256};
@@ -381,8 +382,10 @@ fn dummy_transaction(
         transaction_hash,
     );
 
+    let envelope = AnyTxEnvelope::Ethereum(TxEnvelope::Legacy(signed));
+
     Transaction {
-        inner: Recovered::new_unchecked(TxEnvelope::Legacy(signed), Address::ZERO),
+        inner: Recovered::new_unchecked(envelope, Address::ZERO),
         block_hash: Some(block_hash),
         block_number: Some(block_number),
         transaction_index: Some(transaction_index),
@@ -397,6 +400,7 @@ fn create_block_with_triggers(
     timestamp: u64,
     triggers: Vec<EthereumTrigger>,
 ) -> Result<BlockWithTriggers<Chain>> {
+    use graph::components::ethereum::AnyHeader;
     use graph::prelude::alloy::consensus::Header as ConsensusHeader;
     use graph::prelude::alloy::rpc::types::{Block, BlockTransactions, Header};
     use std::collections::HashSet;
@@ -419,18 +423,18 @@ fn create_block_with_triggers(
 
     let alloy_block = Block::empty(Header {
         hash,
-        inner: ConsensusHeader {
+        inner: AnyHeader::from(ConsensusHeader {
             number,
             parent_hash,
             timestamp,
             ..Default::default()
-        },
+        }),
         total_difficulty: None,
         size: None,
     })
     .with_transactions(BlockTransactions::Full(transactions));
 
-    let light_block = LightEthereumBlock::new(alloy_block.into());
+    let light_block = LightEthereumBlock::new(alloy_block);
     let finality_block = BlockFinality::Final(Arc::new(light_block));
 
     Ok(BlockWithTriggers::new(
