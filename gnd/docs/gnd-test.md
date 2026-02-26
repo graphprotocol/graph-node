@@ -383,8 +383,24 @@ GraphQL queries to validate the indexed entity state after processing all blocks
 | Arrays | **Order-insensitive** (set comparison) |
 | String vs Number | Coerced — `"123"` matches `123` |
 | Nulls/Booleans | Strict equality |
+| Hex strings | **Must be lowercase** — graph-node returns all hex values in lowercase |
 
-**Important:** Arrays are compared as sets (order doesn't matter). If you need ordered results, use `orderBy` in your GraphQL query:
+**Important:** Arrays are compared as sets (order doesn't matter).
+
+**Important:** graph-node returns all hex-encoded values (addresses, transaction hashes, byte arrays) in **lowercase**. Expected values in assertions must match exactly — mixed-case hex will not match:
+
+```json
+{
+  "expected": {
+    "transfer": {
+      "from": "0xaaaa000000000000000000000000000000000000",  // ✅ lowercase
+      "to":   "0xBBBB000000000000000000000000000000000000"   // ❌ will not match
+    }
+  }
+}
+```
+
+Note: hex values in event inputs (`params`, `address`) are normalized automatically and can be mixed case. If you need ordered results, use `orderBy` in your GraphQL query:
 
 ```json
 {
@@ -592,22 +608,32 @@ my-subgraph/
 
 ## Tips & Best Practices
 
-### Use Lowercase Addresses
+### Use Lowercase Hex in Assertions
 
-Always use lowercase hex addresses with `0x` prefix:
+graph-node returns **all** hex-encoded values in lowercase — addresses, transaction hashes, and any `Bytes`/`ID` fields. Expected values in assertions must use lowercase hex:
 
 ```json
 {
-  "address": "0x731a10897d267e19b34503ad902d0a29173ba4b1"  // ✅ Correct
+  "expected": {
+    "transfer": {
+      "from": "0xaaaa000000000000000000000000000000000000"  // ✅ lowercase
+    }
+  }
 }
 ```
 
 Not:
 ```json
 {
-  "address": "0x731A10897D267E19B34503Ad902d0A29173Ba4B1"  // ❌ Mixed case
+  "expected": {
+    "transfer": {
+      "from": "0xAAAA000000000000000000000000000000000000"  // ❌ will not match
+    }
+  }
 }
 ```
+
+Event inputs (`address`, `params`) are normalized automatically and can be mixed case.
 
 ### Test One Thing at a Time
 

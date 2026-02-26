@@ -50,7 +50,7 @@
   "assertions": [
     {
       "query": "{ tokens { id name symbol decimals } }",
-      "expected": { "tokens": [ { "id": "0x9623063377AD1B27544C965cCd7342f7EA7e88C7", "name": "TheGraph", "symbol": "GRT", "decimals": 18 } ] }
+      "expected": { "tokens": [ { "id": "0x9623063377ad1b27544c965ccd7342f7ea7e88c7", "name": "TheGraph", "symbol": "GRT", "decimals": 18 } ] }
     },
     {
       "query": "{ accounts { id balances { token { symbol } amount } } }",
