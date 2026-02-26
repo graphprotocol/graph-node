@@ -40,11 +40,11 @@ where
     debug!(logger, "Creating data stream";
         "from_block" => cx.latest_synced_block().unwrap_or(BlockNumber::MIN),
         "to_block" => latest_block,
-        "start_block" => cx.min_start_block(),
+        "start_block" => cx.start_block(),
         "max_block_range" => max_block_range,
     );
 
-    // State: (latest_queried_block, max_end_block, is_first)
+    // State: (latest_queried_block, end_block, is_first)
     let initial_state = (cx.latest_synced_block(), BlockNumber::MIN, true);
 
     stream::unfold(
@@ -132,12 +132,12 @@ fn build_data_stream<E>(
     table_ptrs: Arc<[TablePtr]>,
     buffer_size: usize,
     stopwatch: &StopwatchMetrics,
-    min_start_block: BlockNumber,
+    start_block: BlockNumber,
 ) -> BoxStream<'static, Result<(RecordBatchGroups, Arc<[TablePtr]>), Error>>
 where
     E: std::error::Error + IsDeterministic + Send + Sync + 'static,
 {
-    let mut min_start_block_checked = false;
+    let mut start_block_checked = false;
     let mut load_first_record_batch_group_section =
         Some(stopwatch.start_section("load_first_record_batch_group"));
 
@@ -151,14 +151,14 @@ where
 
             match result {
                 Ok(response) => {
-                    if !min_start_block_checked {
+                    if !start_block_checked {
                         if let Some(((first_block, _), _)) = response.0.first_key_value() {
-                            if *first_block < min_start_block {
+                            if *first_block < start_block {
                                 return Err(Error::NonDeterministic(anyhow!("chain reorg")));
                             }
                         }
 
-                        min_start_block_checked = true;
+                        start_block_checked = true;
                     }
 
                     Ok(response)

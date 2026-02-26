@@ -101,7 +101,7 @@ where
 
         cx.metrics
             .deployment_target
-            .update(latest_block.min(cx.max_end_block()));
+            .update(latest_block.min(cx.end_block()));
 
         let mut deployment_is_failed = cx.store.health().await?.is_failed();
         let mut entity_cache = EntityCache::new(cx.store.cheap_clone());
@@ -131,12 +131,12 @@ where
         // source's endBlock. This handles the case where endBlock has no entity
         // data — the persisted block pointer never advances to endBlock, but the
         // server's latest block confirms all queries have been served.
-        if latest_block >= cx.max_end_block() {
+        if latest_block >= cx.end_block() {
             cx.metrics.deployment_synced.record(true);
 
             debug!(cx.logger, "Indexing completed; endBlock reached via server latest block";
                 "latest_block" => latest_block,
-                "max_end_block" => cx.max_end_block()
+                "end_block" => cx.end_block()
             );
             return Ok(());
         }

@@ -77,7 +77,7 @@ impl<AC> Context<AC> {
             .map(|block_ptr| (block_ptr.number.compat(), block_ptr.hash.compat()))
     }
 
-    pub(super) fn min_start_block(&self) -> BlockNumber {
+    pub(super) fn start_block(&self) -> BlockNumber {
         self.manifest
             .data_sources
             .iter()
@@ -86,7 +86,7 @@ impl<AC> Context<AC> {
             .unwrap()
     }
 
-    pub(super) fn max_end_block(&self) -> BlockNumber {
+    pub(super) fn end_block(&self) -> BlockNumber {
         self.manifest
             .data_sources
             .iter()
