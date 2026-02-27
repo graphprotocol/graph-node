@@ -999,7 +999,7 @@ impl Queue {
                 // add to it again.
                 if queue.batch_writes() && queue.queue.len() <= 1 {
                     loop {
-                        let _section = queue.stopwatch.start_section("queue_wait");
+                        let _section = queue.stopwatch.start_section("queue_idle");
                         let req = queue.queue.peek().await;
 
                         // When this is true, push_write would never add to
@@ -1030,7 +1030,7 @@ impl Queue {
                 // the write transaction commits, causing them to return
                 // incorrect results.
                 let req = {
-                    let _section = queue.stopwatch.start_section("queue_wait");
+                    let _section = queue.stopwatch.start_section("queue_idle");
                     // Mark the request as being processed so push_write
                     // will not modify it again, even after we are done with
                     // it here
