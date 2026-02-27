@@ -686,7 +686,7 @@ where
             entity_lfu_cache: cache,
             evict_stats,
         } = entity_cache
-            .as_modifications(block_ptr.number)
+            .as_modifications(block_ptr.number, &self.metrics.host.stopwatch)
             .await
             .classify()?;
         section.end();
@@ -1571,7 +1571,7 @@ where
             mods.extend(
                 block_state
                     .entity_cache
-                    .as_modifications(block.number())
+                    .as_modifications(block.number(), &self.metrics.subgraph.stopwatch)
                     .await?
                     .modifications,
             );

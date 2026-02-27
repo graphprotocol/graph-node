@@ -20,7 +20,7 @@ use graph_runtime_wasm::{
 use semver::Version;
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
-use test_store::{LOGGER, STORE};
+use test_store::{LOGGER, STOPWATCH, STORE, SUBGRAPH_STORE};
 use wasmtime::{AsContext, AsContextMut};
 
 use crate::common::{mock_context, mock_data_source};
@@ -44,20 +44,20 @@ fn subgraph_id_with_api_version(subgraph_id: &str, api_version: Version) -> Stri
     )
 }
 
-async fn test_valid_module_and_store(
+async fn test_module_and_deployment(
     subgraph_id: &str,
     data_source: DataSource,
     api_version: Version,
-) -> (WasmInstance, Arc<impl SubgraphStore>, DeploymentLocator) {
-    test_valid_module_and_store_with_timeout(subgraph_id, data_source, api_version, None).await
+) -> (WasmInstance, DeploymentLocator) {
+    test_module_and_deployment_with_timeout(subgraph_id, data_source, api_version, None).await
 }
 
-async fn test_valid_module_and_store_with_timeout(
+async fn test_module_and_deployment_with_timeout(
     subgraph_id: &str,
     data_source: DataSource,
     api_version: Version,
     timeout: Option<Duration>,
-) -> (WasmInstance, Arc<impl SubgraphStore>, DeploymentLocator) {
+) -> (WasmInstance, DeploymentLocator) {
     let logger = Logger::root(slog::Discard, o!());
     let subgraph_id_with_api_version =
         subgraph_id_with_api_version(subgraph_id, api_version.clone());
@@ -80,7 +80,7 @@ async fn test_valid_module_and_store_with_timeout(
         }",
     )
     .await;
-    let stopwatch_metrics = StopwatchMetrics::new(
+    let stopwatch = StopwatchMetrics::new(
         logger.clone(),
         deployment_id.clone(),
         "test",
@@ -93,7 +93,7 @@ async fn test_valid_module_and_store_with_timeout(
     let host_metrics = Arc::new(HostMetrics::new(
         metrics_registry,
         deployment_id.as_str(),
-        stopwatch_metrics,
+        stopwatch.cheap_clone(),
         gas_metrics,
     ));
 
@@ -115,7 +115,7 @@ async fn test_valid_module_and_store_with_timeout(
     .await
     .unwrap();
 
-    (module, store.subgraph_store(), deployment)
+    (module, deployment)
 }
 
 pub async fn test_module(
@@ -123,7 +123,7 @@ pub async fn test_module(
     data_source: DataSource,
     api_version: Version,
 ) -> WasmInstance {
-    test_valid_module_and_store(subgraph_id, data_source, api_version)
+    test_module_and_deployment(subgraph_id, data_source, api_version)
         .await
         .0
 }
@@ -135,9 +135,7 @@ pub async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInsta
         &wasm_file_path(wasm_file, API_VERSION_0_0_5),
         version.clone(),
     );
-    test_valid_module_and_store(subgraph_id, ds, version)
-        .await
-        .0
+    test_module_and_deployment(subgraph_id, ds, version).await.0
 }
 
 pub trait SyncWasmTy: wasmtime::WasmTy + Sync {}
@@ -529,7 +527,7 @@ async fn run_ipfs_map(
             .to_owned()
     };
 
-    let (mut instance, _, _) = test_valid_module_and_store(
+    let mut instance = test_module(
         subgraph_id,
         mock_data_source(
             &wasm_file_path("ipfs_map.wasm", api_version.clone()),
@@ -557,7 +555,7 @@ async fn run_ipfs_map(
         .take_ctx()
         .take_state()
         .entity_cache
-        .as_modifications(0)
+        .as_modifications(0, &STOPWATCH)
         .await?
         .modifications;
 
@@ -1008,7 +1006,8 @@ async fn ens_name_by_hash_v0_0_5() {
 }
 
 async fn test_entity_store(api_version: Version) {
-    let (mut instance, store, deployment) = test_valid_module_and_store(
+    let store = SUBGRAPH_STORE.clone();
+    let (mut instance, deployment) = test_module_and_deployment(
         "entityStore",
         mock_data_source(
             &wasm_file_path("store.wasm", api_version.clone()),
@@ -1073,7 +1072,11 @@ async fn test_entity_store(api_version: Version) {
         &mut ctx.ctx.state.entity_cache,
         EntityCache::new(Arc::new(writable.clone())),
     );
-    let mut mods = cache.as_modifications(0).await.unwrap().modifications;
+    let mut mods = cache
+        .as_modifications(0, &STOPWATCH)
+        .await
+        .unwrap()
+        .modifications;
     assert_eq!(1, mods.len());
     match mods.pop().unwrap() {
         EntityModification::Overwrite { data, .. } => {
@@ -1093,7 +1096,7 @@ async fn test_entity_store(api_version: Version) {
         .take_ctx()
         .take_state()
         .entity_cache
-        .as_modifications(0)
+        .as_modifications(0, &STOPWATCH)
         .await
         .unwrap()
         .modifications;
@@ -1626,7 +1629,7 @@ async fn generate_id() {
 
     let entity_cache = host.ctx.state.entity_cache;
     let mods = entity_cache
-        .as_modifications(12)
+        .as_modifications(12, &STOPWATCH)
         .await
         .unwrap()
         .modifications;

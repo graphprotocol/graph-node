@@ -139,7 +139,7 @@ async fn process_record_batch_group<AC>(
         entity_lfu_cache,
         evict_stats: _,
     } = entity_cache
-        .as_modifications(block_number.compat())
+        .as_modifications(block_number.compat(), &cx.metrics.stopwatch)
         .await
         .map_err(Error::from)
         .map_err(|e| e.context("failed to extract entity modifications from the state"))?;

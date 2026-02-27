@@ -68,6 +68,13 @@ lazy_static! {
     pub static ref NODE_ID: NodeId = NodeId::new("test").unwrap();
     pub static ref SUBGRAPH_STORE: Arc<DieselSubgraphStore> = STORE.subgraph_store();
     static ref BLOCK_STORE: DieselBlockStore = STORE.block_store();
+    pub static ref STOPWATCH: StopwatchMetrics = StopwatchMetrics::new(
+        Logger::root(slog::Discard, o!()),
+        DeploymentHash::new("test").unwrap(),
+        "test",
+        METRICS_REGISTRY.clone(),
+        "dummy".to_string(),
+    );
     pub static ref GENESIS_PTR: BlockPtr = (
         B256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
@@ -362,13 +369,6 @@ pub async fn transact_entities_and_dynamic_data_sources(
         Arc::new(manifest_idx_and_name),
     ))?;
 
-    let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
-    entity_cache.append(ops);
-    let mods = entity_cache
-        .as_modifications(block_ptr_to.number)
-        .await
-        .expect("failed to convert to modifications")
-        .modifications;
     let metrics_registry = Arc::new(MetricsRegistry::mock());
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
@@ -377,6 +377,14 @@ pub async fn transact_entities_and_dynamic_data_sources(
         metrics_registry.clone(),
         store.shard().to_string(),
     );
+
+    let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
+    entity_cache.append(ops);
+    let mods = entity_cache
+        .as_modifications(block_ptr_to.number, &stopwatch_metrics)
+        .await
+        .expect("failed to convert to modifications")
+        .modifications;
     let block_time = BlockTime::for_test(&block_ptr_to);
     store
         .transact_block_operations(

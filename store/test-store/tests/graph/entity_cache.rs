@@ -195,7 +195,7 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 async fn empty_cache_modifications() {
     let store = Arc::new(MockStore::new(BTreeMap::new()));
     let cache = EntityCache::new(store);
-    let result = cache.as_modifications(0).await;
+    let result = cache.as_modifications(0, &STOPWATCH).await;
     assert_eq!(result.unwrap().modifications, vec![]);
 }
 
@@ -225,7 +225,7 @@ async fn insert_modifications() {
     mogwai_data.set_vid(100).unwrap();
     sigurros_data.set_vid(101).unwrap();
 
-    let result = cache.as_modifications(0).await;
+    let result = cache.as_modifications(0, &STOPWATCH).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -276,7 +276,7 @@ async fn overwrite_modifications() {
     mogwai_data.set_vid(100).unwrap();
     sigurros_data.set_vid(101).unwrap();
 
-    let result = cache.as_modifications(0).await;
+    let result = cache.as_modifications(0, &STOPWATCH).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -316,7 +316,7 @@ async fn consecutive_modifications() {
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
-    let result = cache.as_modifications(0).await;
+    let result = cache.as_modifications(0, &STOPWATCH).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::overwrite(
@@ -344,7 +344,7 @@ async fn check_vid_sequence() {
             .unwrap();
     }
 
-    let result = cache.as_modifications(0).await;
+    let result = cache.as_modifications(0, &STOPWATCH).await;
     let mods = result.unwrap().modifications;
     for m in mods {
         match m {
@@ -386,7 +386,7 @@ async fn offchain_trigger_vid_collision_without_fix() {
         .set(band1_key.clone(), band1_data, block, None)
         .await
         .unwrap();
-    let result1 = cache1.as_modifications(block).await.unwrap();
+    let result1 = cache1.as_modifications(block, &STOPWATCH).await.unwrap();
 
     // Simulate second offchain trigger: another fresh EntityCache (vid_seq ALSO starts at 100)
     let store2 = Arc::new(MockStore::new(BTreeMap::new()));
@@ -397,7 +397,7 @@ async fn offchain_trigger_vid_collision_without_fix() {
         .set(band2_key.clone(), band2_data, block, None)
         .await
         .unwrap();
-    let result2 = cache2.as_modifications(block).await.unwrap();
+    let result2 = cache2.as_modifications(block, &STOPWATCH).await.unwrap();
 
     // Extract VIDs from both modifications
     let vid1 = match &result1.modifications[0] {
@@ -445,7 +445,7 @@ async fn offchain_trigger_vid_no_collision_with_fix() {
 
     // THE FIX: capture vid_seq BEFORE as_modifications consumes the cache
     let next_vid_seq = cache1.vid_seq;
-    let result1 = cache1.as_modifications(block).await.unwrap();
+    let result1 = cache1.as_modifications(block, &STOPWATCH).await.unwrap();
 
     // Second offchain trigger: set vid_seq to where first trigger left off
     let store2 = Arc::new(MockStore::new(BTreeMap::new()));
@@ -457,7 +457,7 @@ async fn offchain_trigger_vid_no_collision_with_fix() {
         .set(band2_key.clone(), band2_data, block, None)
         .await
         .unwrap();
-    let result2 = cache2.as_modifications(block).await.unwrap();
+    let result2 = cache2.as_modifications(block, &STOPWATCH).await.unwrap();
 
     let vid1 = match &result1.modifications[0] {
         EntityModification::Insert { data, .. } => data.vid(),

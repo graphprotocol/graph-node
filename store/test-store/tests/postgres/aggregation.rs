@@ -26,7 +26,8 @@ use graph::{
 };
 use graph_store_postgres::Store as DieselStore;
 use test_store::{
-    create_test_subgraph, remove_subgraphs, run_test_sequentially, BLOCKS, LOGGER, METRICS_REGISTRY,
+    create_test_subgraph, remove_subgraphs, run_test_sequentially, BLOCKS, LOGGER,
+    METRICS_REGISTRY, STOPWATCH,
 };
 
 const SCHEMA: &str = r#"
@@ -110,7 +111,7 @@ pub async fn insert_entities(
     let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
     entity_cache.append(ops);
     let mods = entity_cache
-        .as_modifications(block_ptr_to.number)
+        .as_modifications(block_ptr_to.number, &STOPWATCH)
         .await
         .expect("failed to convert to modifications")
         .modifications;
