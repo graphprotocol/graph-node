@@ -327,6 +327,48 @@ pub enum Command {
         #[clap(long, short, default_value = "http://localhost:8020")]
         url: String,
     },
+
+    /// Dump a subgraph deployment into a directory
+    ///
+    /// EXPERIMENTAL - NOT FOR PRODUCTION USE
+    ///
+    /// This will create a dump of the subgraph deployment in the specified
+    /// directory. The dump includes the subgraph manifest, the mapping, and
+    /// the data in the database as parquet files. The dump can be used to
+    /// restore the subgraph deployment later with the `restore` command.
+    Dump {
+        /// The deployment (see `help info`)
+        deployment: DeploymentSearch,
+        /// The name of the directory to dump to
+        directory: String,
+    },
+
+    /// Restore a subgraph deployment from a dump directory
+    ///
+    /// EXPERIMENTAL - NOT FOR PRODUCTION USE
+    ///
+    /// Restore a subgraph deployment from a dump created with the `dump`
+    /// command.
+    Restore {
+        /// Path to the dump directory
+        directory: String,
+        /// The database shard to restore into (default: primary)
+        #[clap(long)]
+        shard: Option<String>,
+        /// Subgraph name for deployment rule matching and node assignment.
+        /// If omitted, uses an existing name from the database; errors if none found.
+        #[clap(long)]
+        name: Option<String>,
+        /// Drop and recreate if the deployment already exists in the target shard
+        #[clap(long, conflicts_with_all = ["add", "force"])]
+        replace: bool,
+        /// Create a copy in a shard that doesn't have this deployment (requires --shard)
+        #[clap(long, conflicts_with_all = ["replace", "force"])]
+        add: bool,
+        /// Restore no matter what: replace if exists in target shard, add if not
+        #[clap(long, conflicts_with_all = ["replace", "add"])]
+        force: bool,
+    },
 }
 
 impl Command {
@@ -1731,6 +1773,31 @@ async fn main() -> anyhow::Result<()> {
             let subgraph_store = store.subgraph_store();
 
             commands::deploy::run(subgraph_store, deployment, name, url).await
+        }
+
+        Dump {
+            deployment,
+            directory,
+        } => {
+            let (store, primary_pool) = ctx.store_and_primary().await;
+            let subgraph_store = store.subgraph_store();
+
+            commands::dump::run(subgraph_store, primary_pool, deployment, directory).await
+        }
+
+        Restore {
+            directory,
+            shard,
+            name,
+            replace,
+            add,
+            force,
+        } => {
+            let store = ctx.store().await;
+            let subgraph_store = store.subgraph_store();
+
+            commands::restore::run(subgraph_store, directory, shard, name, replace, add, force)
+                .await
         }
     }
 }

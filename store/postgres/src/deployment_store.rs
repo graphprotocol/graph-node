@@ -30,6 +30,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
 use std::ops::Bound;
 use std::ops::{Deref, Range};
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{atomic::AtomicUsize, Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -895,6 +896,46 @@ impl DeploymentStore {
         let layout = self.layout(&mut conn, site.clone()).await?;
 
         Ok(relational::prune::Viewer::new(self.pool.clone(), layout))
+    }
+
+    pub(crate) async fn dump(&self, site: Arc<Site>, dir: PathBuf) -> Result<(), StoreError> {
+        let mut conn = self.pool.get_permitted().await?;
+        // Layout and index list are schema metadata — safe to load outside
+        // the snapshot transaction
+        let layout = self.layout(&mut conn, site.cheap_clone()).await?;
+        let index_list = IndexList::load(&mut conn, site.cheap_clone(), self.clone()).await?;
+
+        // Use REPEATABLE READ to get a consistent MVCC snapshot for the
+        // entire dump. All queries inside see the same database state,
+        // regardless of concurrent indexing or pruning.
+        conn.build_transaction()
+            .repeatable_read()
+            .read_only()
+            .run(|conn| {
+                async move {
+                    let entity_count = crate::detail::entity_count(conn, &site).await?;
+                    layout
+                        .dump(conn, index_list, dir, &site.network, entity_count)
+                        .await
+                }
+                .scope_boxed()
+            })
+            .await
+    }
+
+    pub(crate) async fn restore(
+        &self,
+        site: Arc<Site>,
+        dir: &Path,
+        metadata: &crate::relational::dump::Metadata,
+    ) -> Result<(), StoreError> {
+        let mut conn = self.pool.get_permitted().await?;
+        let layout =
+            crate::relational::restore::create_schema(&mut conn, site, metadata, dir).await?;
+        crate::relational::restore::import_data(&mut conn, &layout, metadata, dir, &self.logger)
+            .await?;
+        crate::relational::restore::finalize(&mut conn, &layout, metadata, &self.logger).await?;
+        Ok(())
     }
 }
 

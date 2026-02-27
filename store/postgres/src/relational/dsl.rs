@@ -16,7 +16,7 @@ use diesel::query_dsl::methods::SelectDsl;
 use diesel::query_source::QuerySource;
 
 use diesel::sql_types::{
-    Array, BigInt, Binary, Bool, Integer, Nullable, Numeric, SingleValue, Text, Timestamptz,
+    Array, BigInt, Binary, Bool, Integer, Nullable, Numeric, Range, SingleValue, Text, Timestamptz,
     Untyped,
 };
 use diesel::{AppearsOnTable, Expression, QueryDsl, QueryResult, SelectableExpression};
@@ -32,7 +32,7 @@ use crate::relational_queries::PARENT_ID;
 use super::value::FromOidRow;
 use super::Column as RelColumn;
 use super::SqlName;
-use super::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
+use super::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN, CAUSALITY_REGION_COLUMN};
 
 const TYPENAME: &str = "__typename";
 
@@ -43,13 +43,15 @@ lazy_static! {
     pub static ref TYPENAME_COL: RelColumn = RelColumn::pseudo_column(TYPENAME, ColumnType::String);
     pub static ref VID_COL: RelColumn = RelColumn::pseudo_column("vid", ColumnType::Int8);
     pub static ref BLOCK_COL: RelColumn = RelColumn::pseudo_column(BLOCK_COLUMN, ColumnType::Int8);
-    // The column type is a placeholder, we can't deserialize in4range; but
-    // we also never try to use it when we get data from the database
+    // The column type is a placeholder; block_range is deserialized as
+    // int4range via special handling in select_cols
     pub static ref BLOCK_RANGE_COL: RelColumn =
         RelColumn::pseudo_column(BLOCK_RANGE_COLUMN, ColumnType::Bytes);
     pub static ref PARENT_STRING_COL: RelColumn = RelColumn::pseudo_column(PARENT_ID, ColumnType::String);
     pub static ref PARENT_BYTES_COL: RelColumn = RelColumn::pseudo_column(PARENT_ID, ColumnType::Bytes);
     pub static ref PARENT_INT_COL: RelColumn = RelColumn::pseudo_column(PARENT_ID, ColumnType::Int8);
+    pub static ref CAUSALITY_REGION_COL: RelColumn =
+        RelColumn::pseudo_column(CAUSALITY_REGION_COLUMN, ColumnType::Int);
 
     pub static ref META_COLS: [&'static RelColumn; 2] = [&*TYPENAME_COL, &*VID_COL];
 }
@@ -184,10 +186,22 @@ impl<'a> Table<'a> {
     /// is useful if just the name of the column qualified with the table
     /// name/alias is needed
     pub fn column(&self, name: &str) -> Option<Column<'a>> {
+        let block_col: &RelColumn = if self.meta.immutable {
+            &BLOCK_COL
+        } else {
+            &BLOCK_RANGE_COL
+        };
+        let cr_col: Option<&RelColumn> = if self.meta.has_causality_region {
+            Some(&*CAUSALITY_REGION_COL)
+        } else {
+            None
+        };
         self.meta
             .columns
             .iter()
             .chain(*META_COLS)
+            .chain(std::iter::once(block_col))
+            .chain(cr_col)
             .find(|c| &c.name == name)
             .map(|c| Column::new(*self, c))
     }
@@ -291,7 +305,6 @@ impl<'a> Table<'a> {
             if self.meta.immutable {
                 cols.push(&*BLOCK_COL);
             } else {
-                // TODO: We can't deserialize in4range
                 cols.push(&*BLOCK_RANGE_COL);
             }
         }
@@ -346,6 +359,10 @@ impl<'a> Table<'a> {
                     "'{}' as __typename",
                     self.meta.object.typename()
                 )));
+                continue;
+            }
+            if column.name == BLOCK_RANGE_COL.name {
+                selection.add_field(self.bind::<Range<Integer>>(&column.name).unwrap());
                 continue;
             }
             match column.column_type {

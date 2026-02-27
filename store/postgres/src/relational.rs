@@ -15,8 +15,10 @@ mod ddl_tests;
 mod query_tests;
 
 pub(crate) mod dsl;
+pub(crate) mod dump;
 pub(crate) mod index;
 pub(crate) mod prune;
+pub(crate) mod restore;
 pub(crate) mod rollup;
 pub(crate) mod value;
 
@@ -76,7 +78,7 @@ use graph::prelude::{
     QueryExecutionError, StoreError, ValueType,
 };
 
-use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
+use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, CAUSALITY_REGION_COLUMN};
 pub use crate::catalog::Catalog;
 use crate::ForeignServer;
 use crate::{catalog, deployment, AsyncPgConnection};
