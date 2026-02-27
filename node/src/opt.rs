@@ -104,6 +104,12 @@ pub struct Opt {
     pub ethereum_ipc: Vec<String>,
     #[clap(
         long,
+        env = "GRAPH_WEIGHTED_RPC_STEERING",
+        help = "Enable weighted random steering for Ethereum RPCs"
+    )]
+    pub weighted_rpc_steering: bool,
+    #[clap(
+        long,
         value_name = "HOST:PORT",
         env = "IPFS",
         help = "HTTP addresses of IPFS servers (RPC, Gateway)"
@@ -253,6 +259,7 @@ impl From<Opt> for config::Opt {
             ethereum_rpc,
             ethereum_ws,
             ethereum_ipc,
+            weighted_rpc_steering,
             unsafe_config,
             ..
         } = opt;
@@ -268,6 +275,7 @@ impl From<Opt> for config::Opt {
             ethereum_rpc,
             ethereum_ws,
             ethereum_ipc,
+            weighted_rpc_steering,
             unsafe_config,
         }
     }
