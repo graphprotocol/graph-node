@@ -3,6 +3,7 @@ use std::ops::{Deref, Range};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+use graph::components::metrics::stopwatch::Section;
 use graph::parking_lot::RwLock;
 use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
@@ -865,6 +866,13 @@ impl Request {
             Request::RevertTo { .. } | Request::Stop => false,
         }
     }
+
+    fn stopwatch_section(&self, name: &str) -> Option<Section> {
+        match self {
+            Request::Write { stopwatch, .. } => Some(stopwatch.start_section(name)),
+            Request::RevertTo { .. } | Request::Stop => None,
+        }
+    }
 }
 
 /// A queue that asynchronously writes requests queued with `push` to the
@@ -1205,6 +1213,7 @@ impl Queue {
                 self.stopwatch.cheap_clone(),
                 batch,
             );
+            let _section = req.stopwatch_section("queue_push_blocked");
             self.push(req).await?;
         }
         Ok(())
