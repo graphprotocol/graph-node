@@ -3,7 +3,6 @@ use std::ops::{Deref, Range};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use graph::components::metrics::stopwatch::Section;
 use graph::parking_lot::RwLock;
 use std::time::Instant;
 use std::{collections::BTreeMap, sync::Arc};
@@ -866,13 +865,6 @@ impl Request {
             Request::RevertTo { .. } | Request::Stop => false,
         }
     }
-
-    fn stopwatch_section(&self, name: &str) -> Option<Section> {
-        match self {
-            Request::Write { stopwatch, .. } => Some(stopwatch.start_section(name)),
-            Request::RevertTo { .. } | Request::Stop => None,
-        }
-    }
 }
 
 /// A queue that asynchronously writes requests queued with `push` to the
@@ -1140,7 +1132,11 @@ impl Queue {
     /// to fill up before writing them to maximize the chances that we build
     /// a 'full' write batch, i.e., one that is either big enough or old
     /// enough
-    async fn push_write(&self, batch: Batch) -> Result<(), StoreError> {
+    async fn push_write(
+        &self,
+        batch: Batch,
+        stopwatch: &StopwatchMetrics,
+    ) -> Result<(), StoreError> {
         let batch = if ENV_VARS.store.write_batch_size == 0
             || ENV_VARS.store.write_batch_duration.is_zero()
             || !self.batch_writes()
@@ -1213,7 +1209,7 @@ impl Queue {
                 self.stopwatch.cheap_clone(),
                 batch,
             );
-            let _section = req.stopwatch_section("queue_push_blocked");
+            let _section = stopwatch.start_section("queue_push_blocked");
             self.push(req).await?;
         }
         Ok(())
@@ -1498,7 +1494,7 @@ impl Writer {
             Writer::Sync(store) => store.transact_block_operations(&batch, stopwatch).await,
             Writer::Async { queue, .. } => {
                 self.check_queue_running()?;
-                queue.push_write(batch).await
+                queue.push_write(batch, stopwatch).await
             }
         }
     }
