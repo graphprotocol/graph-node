@@ -1,5 +1,5 @@
-use crate::json_patch;
 use alloy::transports::{TransportError, TransportErrorKind, TransportFut};
+use graph::components::ethereum::json_patch;
 use graph::components::network_provider::ProviderName;
 use graph::endpoint::{ConnectionType, EndpointMetrics, RequestLabels};
 use graph::prelude::alloy::rpc::json_rpc::{RequestPacket, ResponsePacket};

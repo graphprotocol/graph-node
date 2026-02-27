@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use super::*;
 use crate::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use crate::blockchain::{BlockTime, ChainIdentifier, ExtendedBlockPtr};
+use crate::components::ethereum::CachedBlock;
 use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::network_provider::ChainName;
 use crate::components::server::index_node::VersionInfo;
@@ -553,8 +554,12 @@ pub trait ChainStore: ChainHeadStore {
         ancestor_count: BlockNumber,
     ) -> Result<Option<B256>, Error>;
 
-    /// Returns the blocks present in the store.
-    async fn blocks(
+    /// Returns the blocks present in the store as typed cached blocks.
+    async fn blocks(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<CachedBlock>, Error>;
+
+    /// Returns blocks as raw JSON. Used by callers that need the original
+    /// JSON representation (e.g., GraphQL block queries, CLI tools).
+    async fn blocks_as_json(
         self: Arc<Self>,
         hashes: Vec<BlockHash>,
     ) -> Result<Vec<serde_json::Value>, Error>;
@@ -584,7 +589,7 @@ pub trait ChainStore: ChainHeadStore {
         block_ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<(serde_json::Value, BlockPtr)>, Error>;
+    ) -> Result<Option<(CachedBlock, BlockPtr)>, Error>;
 
     /// Remove old blocks from the cache we maintain in the database and
     /// return a pair containing the number of the oldest block retained

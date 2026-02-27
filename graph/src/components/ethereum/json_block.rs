@@ -1,7 +1,7 @@
-use graph::prelude::serde_json::{self as json, Value};
-use graph::prelude::{EthereumBlock, LightEthereumBlock};
+use serde_json::{self as json, Value};
 
-use crate::json_patch;
+use super::json_patch;
+use super::types::{CachedBlock, EthereumBlock, LightEthereumBlock};
 
 #[derive(Debug)]
 pub struct EthereumJsonBlock(Value);
@@ -48,5 +48,19 @@ impl EthereumJsonBlock {
             .unwrap_or(self.0);
         json_patch::patch_block_transactions(&mut inner);
         json::from_value(inner)
+    }
+
+    /// Tries to deserialize into a `CachedBlock`. Uses `transaction_receipts`
+    /// presence to decide between full and light block, avoiding a JSON clone.
+    pub fn try_into_cached_block(self) -> Option<CachedBlock> {
+        let has_receipts = self
+            .0
+            .get("transaction_receipts")
+            .is_some_and(|v| !v.is_null());
+        if has_receipts {
+            self.into_full_block().ok().map(CachedBlock::Full)
+        } else {
+            self.into_light_block().ok().map(CachedBlock::Light)
+        }
     }
 }

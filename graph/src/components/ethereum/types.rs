@@ -17,6 +17,8 @@ use crate::{
     prelude::BlockNumber,
 };
 
+use super::json_block::EthereumJsonBlock;
+
 pub type AnyTransaction = Transaction<AnyTxEnvelope>;
 pub type AnyBlock = Block<AnyTransaction, Header<AnyHeader>>;
 /// Like alloy's `AnyTransactionReceipt` but without the `WithOtherFields` wrapper,
@@ -24,7 +26,7 @@ pub type AnyBlock = Block<AnyTransaction, Header<AnyHeader>>;
 pub type AnyTransactionReceiptBare = TransactionReceipt<AnyReceiptEnvelope<Log>>;
 
 #[allow(dead_code)]
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LightEthereumBlock(AnyBlock);
 
 impl Default for LightEthereumBlock {
@@ -257,5 +259,57 @@ impl EthereumCall {
 impl<'a> From<&'a EthereumCall> for BlockPtr {
     fn from(call: &'a EthereumCall) -> BlockPtr {
         BlockPtr::from((call.block_hash, call.block_number))
+    }
+}
+
+/// Typed cached block for Ethereum. Stores the deserialized block so that
+/// repeated reads from the in-memory cache avoid `serde_json::from_value()`.
+#[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum CachedBlock {
+    Full(EthereumBlock),
+    Light(LightEthereumBlock),
+}
+
+impl CachedBlock {
+    pub fn light_block(&self) -> &LightEthereumBlock {
+        match self {
+            CachedBlock::Full(block) => &block.block,
+            CachedBlock::Light(block) => block,
+        }
+    }
+
+    pub fn into_light_block(self) -> LightEthereumBlock {
+        match self {
+            CachedBlock::Full(block) => block.block.as_ref().clone(),
+            CachedBlock::Light(block) => block,
+        }
+    }
+
+    pub fn into_full_block(self) -> Option<EthereumBlock> {
+        match self {
+            CachedBlock::Full(block) => Some(block),
+            CachedBlock::Light(_) => None,
+        }
+    }
+
+    pub fn from_json(value: serde_json::Value) -> Option<Self> {
+        let json_block = EthereumJsonBlock::new(value);
+        if json_block.is_shallow() {
+            return None;
+        }
+        json_block.try_into_cached_block()
+    }
+
+    pub fn timestamp(&self) -> Option<u64> {
+        Some(self.light_block().timestamp_u64())
+    }
+
+    pub fn parent_ptr(&self) -> Option<BlockPtr> {
+        self.light_block().parent_ptr()
+    }
+
+    pub fn ptr(&self) -> BlockPtr {
+        self.light_block().block_ptr()
     }
 }
