@@ -79,7 +79,6 @@ use crate::{
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
     ENV_VARS,
 };
-use graph::components::ethereum::EthereumJsonBlock;
 
 type AlloyProvider = FillProvider<
     JoinFill<
@@ -1641,23 +1640,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|value| {
-                let json_block = EthereumJsonBlock::new(value);
-                if json_block.is_shallow() {
-                    return None;
-                }
-                json_block
-                    .into_light_block()
-                    .map_err(|e| {
-                        warn!(
-                            &logger,
-                            "Failed to deserialize cached block: {}. Block will be re-fetched from RPC.",
-                            e
-                        );
-                    })
-                    .ok()
-            })
-            .map(Arc::new)
+            .map(|cached| Arc::new(cached.into_light_block()))
             .collect();
 
         let missing_blocks = Vec::from_iter(

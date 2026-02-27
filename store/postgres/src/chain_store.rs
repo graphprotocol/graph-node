@@ -29,6 +29,7 @@ use std::{
 
 use graph::blockchain::{Block, BlockHash, ChainIdentifier, ExtendedBlockPtr};
 use graph::cheap_clone::CheapClone;
+use graph::components::ethereum::CachedBlock;
 use graph::prelude::{
     serde_json as json, transaction_receipt::LightTransactionReceipt, BlockNumber, BlockPtr,
     CachedEthereumCall, ChainStore as ChainStoreTrait, Error, EthereumCallCache, StoreError,
@@ -62,6 +63,29 @@ impl JsonBlock {
             .and_then(|data| data.get("timestamp"))
             .and_then(|ts| ts.as_str())
             .and_then(|ts| ts.parse::<u64>().ok())
+    }
+
+    fn into_cache_block(self) -> CacheBlock {
+        let data = self.data.and_then(CachedBlock::from_json);
+        CacheBlock {
+            ptr: self.ptr,
+            parent_hash: self.parent_hash,
+            data,
+        }
+    }
+}
+
+/// Typed version of JsonBlock for the in-memory cache.
+#[derive(Clone, Debug)]
+struct CacheBlock {
+    ptr: BlockPtr,
+    parent_hash: BlockHash,
+    data: Option<CachedBlock>,
+}
+
+impl CacheBlock {
+    fn timestamp(&self) -> Option<u64> {
+        self.data.as_ref().and_then(|d| d.timestamp())
     }
 }
 
@@ -2149,7 +2173,7 @@ pub struct ChainStore {
     blocks_by_hash_cache: HerdCache<Arc<Result<Vec<JsonBlock>, StoreError>>>,
     blocks_by_number_cache:
         HerdCache<Arc<Result<BTreeMap<BlockNumber, Vec<JsonBlock>>, StoreError>>>,
-    ancestor_cache: HerdCache<Arc<Result<Option<(json::Value, BlockPtr)>, StoreError>>>,
+    ancestor_cache: HerdCache<Arc<Result<Option<(CachedBlock, BlockPtr)>, StoreError>>>,
     /// Adaptive cache for chain_head_ptr()
     chain_head_ptr_cache: ChainHeadPtrCache,
     /// Herd cache to prevent thundering herd on chain_head_ptr() lookups
@@ -2519,6 +2543,22 @@ fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<ExtendedBlockPt
     Ok(ptr)
 }
 
+fn cache_block_to_block_ptr_ext(block: &CacheBlock) -> Result<ExtendedBlockPtr, Error> {
+    let hash = block.ptr.hash.clone();
+    let number = block.ptr.number;
+    let parent_hash = block.parent_hash.clone();
+
+    let timestamp = block
+        .timestamp()
+        .ok_or_else(|| anyhow!("Timestamp is missing"))?;
+
+    let ptr =
+        ExtendedBlockPtr::try_from((hash.as_b256(), number, parent_hash.as_b256(), timestamp))
+            .map_err(|e| anyhow!("Failed to convert to ExtendedBlockPtr: {}", e))?;
+
+    Ok(ptr)
+}
+
 #[async_trait]
 impl ChainHeadStore for ChainStore {
     async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
@@ -2645,8 +2685,8 @@ impl ChainStoreTrait for ChainStore {
     async fn upsert_block(&self, block: Arc<dyn Block>) -> Result<(), Error> {
         // We should always have the parent block available to us at this point.
         if let Some(parent_hash) = block.parent_hash() {
-            let block = JsonBlock::new(block.ptr(), parent_hash, block.data().ok());
-            self.recent_blocks_cache.insert_block(block);
+            let json_block = JsonBlock::new(block.ptr(), parent_hash, block.data().ok());
+            self.recent_blocks_cache.insert_json_block(json_block);
         }
 
         let mut conn = self.pool.get_permitted().await?;
@@ -2686,126 +2726,142 @@ impl ChainStoreTrait for ChainStore {
         self: Arc<Self>,
         numbers: Vec<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<ExtendedBlockPtr>>, Error> {
-        let result = if ENV_VARS.store.disable_block_cache_for_lookup {
+        if ENV_VARS.store.disable_block_cache_for_lookup {
             let values = self.blocks_from_store_by_numbers(numbers).await?;
 
-            values
-        } else {
-            let cached = self.recent_blocks_cache.get_block_ptrs_by_numbers(&numbers);
-
-            let stored = if cached.len() < numbers.len() {
-                let missing_numbers = numbers
-                    .iter()
-                    .filter(|num| !cached.iter().any(|(ptr, _)| ptr.block_number() == **num))
-                    .cloned()
-                    .collect::<Vec<_>>();
-
-                let this = self.clone();
-                let missing_clone = missing_numbers.clone();
-                let (res, _) = self
-                    .cached_lookup(&self.blocks_by_number_cache, &missing_numbers, async move {
-                        this.blocks_from_store_by_numbers(missing_clone).await
-                    })
-                    .await;
-
-                match res {
-                    Ok(blocks) => {
-                        for blocks_for_num in blocks.values() {
-                            if blocks.len() == 1 {
-                                self.recent_blocks_cache
-                                    .insert_block(blocks_for_num[0].clone());
-                            }
-                        }
-                        blocks
-                    }
-                    Err(e) => {
-                        return Err(e.into());
-                    }
-                }
-            } else {
-                BTreeMap::new()
-            };
-
-            let cached_map = cached
+            let ptrs = values
                 .into_iter()
-                .map(|(ptr, data)| (ptr.block_number(), vec![data]))
-                .collect::<BTreeMap<_, _>>();
+                .map(|(num, blocks)| {
+                    let ptrs = blocks
+                        .into_iter()
+                        .filter_map(|block| json_block_to_block_ptr_ext(&block).ok())
+                        .collect();
+                    (num, ptrs)
+                })
+                .collect();
 
-            let mut result = cached_map;
-            for (num, blocks) in stored {
-                result.entry(num).or_insert(blocks);
+            return Ok(ptrs);
+        }
+
+        let cached = self.recent_blocks_cache.get_block_ptrs_by_numbers(&numbers);
+
+        let stored = if cached.len() < numbers.len() {
+            let missing_numbers = numbers
+                .iter()
+                .filter(|num| !cached.iter().any(|(ptr, _)| ptr.block_number() == **num))
+                .cloned()
+                .collect::<Vec<_>>();
+
+            let this = self.clone();
+            let missing_clone = missing_numbers.clone();
+            let (res, _) = self
+                .cached_lookup(&self.blocks_by_number_cache, &missing_numbers, async move {
+                    this.blocks_from_store_by_numbers(missing_clone).await
+                })
+                .await;
+
+            match res {
+                Ok(blocks) => {
+                    for blocks_for_num in blocks.values() {
+                        if blocks_for_num.len() == 1 {
+                            self.recent_blocks_cache
+                                .insert_json_block(blocks_for_num[0].clone());
+                        }
+                    }
+                    blocks
+                }
+                Err(e) => {
+                    return Err(e.into());
+                }
             }
-
-            result
+        } else {
+            BTreeMap::new()
         };
 
-        let ptrs = result
+        let cached_map: BTreeMap<BlockNumber, Vec<ExtendedBlockPtr>> = cached
             .into_iter()
-            .map(|(num, blocks)| {
-                let ptrs = blocks
-                    .into_iter()
-                    .filter_map(|block| json_block_to_block_ptr_ext(&block).ok())
-                    .collect();
-                (num, ptrs)
+            .filter_map(|(_, block)| {
+                cache_block_to_block_ptr_ext(&block)
+                    .ok()
+                    .map(|ptr| (block.ptr.number, vec![ptr]))
             })
             .collect();
 
-        Ok(ptrs)
+        let mut result = cached_map;
+        for (num, json_blocks) in stored {
+            let ptrs: Vec<_> = json_blocks
+                .into_iter()
+                .filter_map(|block| json_block_to_block_ptr_ext(&block).ok())
+                .collect();
+            result.entry(num).or_insert(ptrs);
+        }
+
+        Ok(result)
     }
 
-    async fn blocks(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<json::Value>, Error> {
+    async fn blocks(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<CachedBlock>, Error> {
         if ENV_VARS.store.disable_block_cache_for_lookup {
             let values = self
                 .blocks_from_store(hashes)
                 .await?
                 .into_iter()
-                .filter_map(|block| block.data)
+                .filter_map(|block| block.data.and_then(CachedBlock::from_json))
                 .collect();
-            Ok(values)
-        } else {
-            let cached = self.recent_blocks_cache.get_blocks_by_hash(&hashes);
-            let stored = if cached.len() < hashes.len() {
-                let hashes = hashes
-                    .iter()
-                    .filter(|hash| !cached.iter().any(|(ptr, _)| &ptr.hash == *hash))
-                    .cloned()
-                    .collect::<Vec<_>>();
-                // We key this off the entire list of hashes, which means
-                // that concurrent attempts that look up `[h1, h2]` and
-                // `[h1, h3]` will still run two queries and duplicate the
-                // lookup of `h1`. Noticing that the two requests should be
-                // serialized would require a lot more work, and going to
-                // the database for one block hash, `h3`, is not much faster
-                // than looking up `[h1, h3]` though it would require less
-                // IO bandwidth
-                let this = self.clone();
-                let hashes_clone = hashes.clone();
-                let (res, _) = self
-                    .cached_lookup(&self.blocks_by_hash_cache, &hashes, async move {
-                        this.blocks_from_store(hashes_clone).await
-                    })
-                    .await;
-
-                match res {
-                    Ok(blocks) => {
-                        for block in &blocks {
-                            self.recent_blocks_cache.insert_block(block.clone());
-                        }
-                        blocks
-                    }
-                    Err(e) => {
-                        return Err(e.into());
-                    }
-                }
-            } else {
-                Vec::new()
-            };
-
-            let mut result = cached.into_iter().map(|(_, data)| data).collect::<Vec<_>>();
-            let stored = stored.into_iter().filter_map(|block| block.data);
-            result.extend(stored);
-            Ok(result)
+            return Ok(values);
         }
+
+        let cached = self.recent_blocks_cache.get_blocks_by_hash(&hashes);
+        let stored = if cached.len() < hashes.len() {
+            let hashes = hashes
+                .iter()
+                .filter(|hash| !cached.iter().any(|(ptr, _)| &ptr.hash == *hash))
+                .cloned()
+                .collect::<Vec<_>>();
+            // We key this off the entire list of hashes, which means
+            // that concurrent attempts that look up `[h1, h2]` and
+            // `[h1, h3]` will still run two queries and duplicate the
+            // lookup of `h1`. Noticing that the two requests should be
+            // serialized would require a lot more work, and going to
+            // the database for one block hash, `h3`, is not much faster
+            // than looking up `[h1, h3]` though it would require less
+            // IO bandwidth
+            let this = self.clone();
+            let hashes_clone = hashes.clone();
+            let (res, _) = self
+                .cached_lookup(&self.blocks_by_hash_cache, &hashes, async move {
+                    this.blocks_from_store(hashes_clone).await
+                })
+                .await;
+
+            match res {
+                Ok(blocks) => blocks
+                    .into_iter()
+                    .filter_map(|block| self.recent_blocks_cache.insert_json_block(block))
+                    .collect(),
+                Err(e) => {
+                    return Err(e.into());
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+        let mut result: Vec<CachedBlock> = cached.into_iter().map(|(_, data)| data).collect();
+        result.extend(stored);
+        Ok(result)
+    }
+
+    async fn blocks_as_json(
+        self: Arc<Self>,
+        hashes: Vec<BlockHash>,
+    ) -> Result<Vec<json::Value>, Error> {
+        let values = self
+            .blocks_from_store(hashes)
+            .await?
+            .into_iter()
+            .filter_map(|block| block.data)
+            .collect();
+        Ok(values)
     }
 
     async fn ancestor_block(
@@ -2813,7 +2869,7 @@ impl ChainStoreTrait for ChainStore {
         block_ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<(json::Value, BlockPtr)>, Error> {
+    ) -> Result<Option<(CachedBlock, BlockPtr)>, Error> {
         ensure!(
             block_ptr.number >= offset,
             "block offset {} for block `{}` points to before genesis block",
@@ -2842,29 +2898,31 @@ impl ChainStoreTrait for ChainStore {
 
                 // Cache miss, query the database
                 let mut conn = this.pool.get_permitted().await?;
-                let result = this
+                let json_result = this
                     .storage
                     .ancestor_block(&mut conn, block_ptr_clone, offset, root_clone)
                     .await
                     .map_err(StoreError::from)?;
 
-                // Insert into cache if we got a result
-                if let Some((ref data, ref ptr)) = result {
-                    // Extract parent_hash from data["block"]["parentHash"] or
-                    // data["parentHash"]
-                    if let Some(parent_hash) = data
-                        .get("block")
-                        .unwrap_or(data)
-                        .get("parentHash")
-                        .and_then(|h| h.as_str())
-                        .and_then(|h| h.parse().ok())
-                    {
-                        let block = JsonBlock::new(ptr.clone(), parent_hash, Some(data.clone()));
-                        this.recent_blocks_cache.insert_block(block);
+                // Insert into cache and reuse the typed block
+                match json_result {
+                    Some((data, ptr)) => {
+                        let cached = if let Some(parent_hash) = data
+                            .get("block")
+                            .unwrap_or(&data)
+                            .get("parentHash")
+                            .and_then(|h| h.as_str())
+                            .and_then(|h| h.parse().ok())
+                        {
+                            let json_block = JsonBlock::new(ptr.clone(), parent_hash, Some(data));
+                            this.recent_blocks_cache.insert_json_block(json_block)
+                        } else {
+                            CachedBlock::from_json(data)
+                        };
+                        Ok(cached.map(|c| (c, ptr)))
                     }
+                    None => Ok(None),
                 }
-
-                Ok(result)
             })
             .await;
         let result = res?;
@@ -3062,20 +3120,20 @@ mod recent_blocks_cache {
         // entries. If there are multiple writes for the same block number,
         // the last one wins. Note that because of NEAR, the block numbers
         // might have gaps.
-        blocks: BTreeMap<BlockNumber, JsonBlock>,
+        blocks: BTreeMap<BlockNumber, CacheBlock>,
         // We only store these many blocks.
         capacity: usize,
     }
 
     impl Inner {
-        fn get_block_by_hash(&self, hash: &BlockHash) -> Option<(&BlockPtr, &json::Value)> {
+        fn get_block_by_hash(&self, hash: &BlockHash) -> Option<(&BlockPtr, &CachedBlock)> {
             self.blocks
                 .values()
                 .find(|block| &block.ptr.hash == hash)
                 .and_then(|block| block.data.as_ref().map(|data| (&block.ptr, data)))
         }
 
-        fn get_block_by_number(&self, number: BlockNumber) -> Option<&JsonBlock> {
+        fn get_block_by_number(&self, number: BlockNumber) -> Option<&CacheBlock> {
             self.blocks.get(&number)
         }
 
@@ -3083,7 +3141,7 @@ mod recent_blocks_cache {
             &self,
             child_ptr: &BlockPtr,
             offset: BlockNumber,
-        ) -> Option<(&BlockPtr, Option<&json::Value>)> {
+        ) -> Option<(&BlockPtr, Option<&CachedBlock>)> {
             let child = self.blocks.get(&child_ptr.number)?;
             if &child.ptr != child_ptr {
                 return None;
@@ -3104,7 +3162,7 @@ mod recent_blocks_cache {
             self.blocks.last_key_value().map(|b| &b.1.ptr)
         }
 
-        fn earliest_block(&self) -> Option<&JsonBlock> {
+        fn earliest_block(&self) -> Option<&CacheBlock> {
             self.blocks.first_key_value().map(|b| b.1)
         }
 
@@ -3134,7 +3192,7 @@ mod recent_blocks_cache {
                 .set(self.chain_head().map(|b| b.number).unwrap_or(0) as f64);
         }
 
-        fn insert_block(&mut self, block: JsonBlock) {
+        fn insert_block(&mut self, block: CacheBlock) {
             self.blocks.insert(block.ptr.number, block);
             self.evict_if_necessary();
         }
@@ -3174,7 +3232,7 @@ mod recent_blocks_cache {
             &self,
             child: &BlockPtr,
             offset: BlockNumber,
-        ) -> Option<(BlockPtr, Option<json::Value>)> {
+        ) -> Option<(BlockPtr, Option<CachedBlock>)> {
             let block_opt = self
                 .inner
                 .read()
@@ -3191,7 +3249,7 @@ mod recent_blocks_cache {
             block_opt
         }
 
-        pub fn get_blocks_by_hash(&self, hashes: &[BlockHash]) -> Vec<(BlockPtr, json::Value)> {
+        pub fn get_blocks_by_hash(&self, hashes: &[BlockHash]) -> Vec<(BlockPtr, CachedBlock)> {
             let inner = self.inner.read();
             let blocks: Vec<_> = hashes
                 .iter()
@@ -3209,9 +3267,9 @@ mod recent_blocks_cache {
         pub fn get_block_ptrs_by_numbers(
             &self,
             numbers: &[BlockNumber],
-        ) -> Vec<(BlockPtr, JsonBlock)> {
+        ) -> Vec<(BlockPtr, CacheBlock)> {
             let inner = self.inner.read();
-            let mut blocks: Vec<(BlockPtr, JsonBlock)> = Vec::new();
+            let mut blocks: Vec<(BlockPtr, CacheBlock)> = Vec::new();
 
             for &number in numbers {
                 if let Some(block) = inner.get_block_by_number(number) {
@@ -3232,9 +3290,18 @@ mod recent_blocks_cache {
         /// its associated `data`. Note that for this to work, `child` must be
         /// in the cache already. The first block in the cache should be
         /// inserted via [`RecentBlocksCache::set_chain_head`].
-        pub(super) fn insert_block(&self, block: JsonBlock) {
+        pub(super) fn insert_block(&self, block: CacheBlock) {
             self.inner.write().insert_block(block);
             self.inner.read().update_write_metrics();
+        }
+
+        /// Deserialize a JsonBlock into a typed CacheBlock and insert it into the cache.
+        /// Returns the deserialized data so callers can reuse it without re-deserializing.
+        pub(super) fn insert_json_block(&self, block: JsonBlock) -> Option<CachedBlock> {
+            let cache_block = block.into_cache_block();
+            let data = cache_block.data.clone();
+            self.insert_block(cache_block);
+            data
         }
 
         #[cfg(debug_assertions)]
