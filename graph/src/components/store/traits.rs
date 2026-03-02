@@ -104,10 +104,13 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// subgraph
     async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError>;
 
-    /// Remove a subgraph and all its versions; if deployments that were used
-    /// by this subgraph do not need to be indexed anymore, also remove
+    /// Remove a subgraph and all its versions; if deployments that were
+    /// used by this subgraph do not need to be indexed anymore, also remove
     /// their assignment, but keep the deployments themselves around
-    async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError>;
+    ///
+    /// Returns the hashes of all deployments that were associated with the
+    /// removed name
+    async fn remove_subgraph(&self, name: SubgraphName) -> Result<Vec<DeploymentHash>, StoreError>;
 
     /// Assign the subgraph with `id` to the node `node_id`. If there is no
     /// assignment for the given deployment, report an error.

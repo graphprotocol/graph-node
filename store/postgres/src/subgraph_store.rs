@@ -1540,7 +1540,14 @@ impl SubgraphStoreTrait for SubgraphStore {
             .await
     }
 
-    async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError> {
+    async fn remove_subgraph(&self, name: SubgraphName) -> Result<Vec<DeploymentHash>, StoreError> {
+        let deployments = self
+            .status(status::Filter::SubgraphName(name.to_string()))
+            .await?
+            .into_iter()
+            .filter_map(|info| DeploymentHash::new(info.subgraph).ok())
+            .collect::<Vec<_>>();
+
         let mut pconn = self.primary_conn().await?;
         pconn
             .transaction(|pconn| {
@@ -1552,7 +1559,8 @@ impl SubgraphStoreTrait for SubgraphStore {
                 }
                 .scope_boxed()
             })
-            .await
+            .await?;
+        Ok(deployments)
     }
 
     async fn reassign_subgraph(

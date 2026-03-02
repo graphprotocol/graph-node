@@ -355,9 +355,12 @@ where
     }
 
     async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), SubgraphRegistrarError> {
-        self.store.clone().remove_subgraph(name.clone()).await?;
+        use itertools::Itertools;
 
-        debug!(self.logger, "Removed subgraph"; "subgraph_name" => name.to_string());
+        let hashes = self.store.clone().remove_subgraph(name.clone()).await?;
+        let hashes = hashes.into_iter().join(", ");
+
+        debug!(self.logger, "Removed subgraph"; "subgraph_name" => name.to_string(), "deployments" => format!("[{}]", hashes));
 
         Ok(())
     }
