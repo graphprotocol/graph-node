@@ -1,6 +1,7 @@
 use crate::{
     bail,
     components::{
+        ethereum::CachedBlock,
         link_resolver::LinkResolver,
         network_provider::ChainName,
         store::{
@@ -527,7 +528,10 @@ impl ChainStore for MockChainStore {
     ) -> Result<Option<B256>, Error> {
         unimplemented!()
     }
-    async fn blocks(self: Arc<Self>, _hashes: Vec<BlockHash>) -> Result<Vec<Value>, Error> {
+    async fn blocks(self: Arc<Self>, _hashes: Vec<BlockHash>) -> Result<Vec<CachedBlock>, Error> {
+        unimplemented!()
+    }
+    async fn blocks_as_json(self: Arc<Self>, _hashes: Vec<BlockHash>) -> Result<Vec<Value>, Error> {
         unimplemented!()
     }
     async fn ancestor_block(
@@ -535,7 +539,7 @@ impl ChainStore for MockChainStore {
         _block_ptr: BlockPtr,
         _offset: BlockNumber,
         _root: Option<BlockHash>,
-    ) -> Result<Option<(Value, BlockPtr)>, Error> {
+    ) -> Result<Option<(CachedBlock, BlockPtr)>, Error> {
         unimplemented!()
     }
     async fn cleanup_cached_blocks(

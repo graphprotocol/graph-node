@@ -187,7 +187,7 @@ mod steps {
         block_hash: B256,
         chain_store: Arc<ChainStore>,
     ) -> anyhow::Result<Value> {
-        let blocks = chain_store.blocks(vec![block_hash.into()]).await?;
+        let blocks = chain_store.blocks_as_json(vec![block_hash.into()]).await?;
         match blocks.len() {
             0 => bail!("Failed to locate block with hash {} in store", block_hash),
             1 => {}

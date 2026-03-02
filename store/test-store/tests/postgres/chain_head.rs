@@ -12,7 +12,7 @@ use std::future::Future;
 use std::sync::Arc;
 
 use graph::cheap_clone::CheapClone;
-use graph::prelude::{alloy, serde_json as json, EthereumBlock};
+use graph::prelude::alloy;
 use graph::prelude::{anyhow::anyhow, anyhow::Error};
 use graph::prelude::{BlockNumber, QueryStoreManager, QueryTarget};
 use graph::{components::store::BlockStore as _, prelude::DeploymentHash};
@@ -328,8 +328,7 @@ fn check_ancestor(
         return Err(anyhow!("expected ptr `{}` but got `{}`", exp_ptr, act_ptr));
     }
 
-    let act_block = json::from_value::<EthereumBlock>(act.0)?;
-    let act_hash = format!("{:x}", act_block.block.hash());
+    let act_hash = format!("{:x}", act.0.light_block().hash());
     let exp_hash = &exp.hash;
 
     if &act_hash != exp_hash {
