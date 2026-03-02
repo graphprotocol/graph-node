@@ -23,7 +23,7 @@ derive_more = { workspace = true, features = ["debug"] }
 graph_derive = { path = "./derive" }
 diesel = { workspace = true }
 diesel_derives = { workspace = true }
-chrono = "0.4.43"
+chrono = "0.4.44"
 envconfig = { workspace = true }
 Inflector = "0.11.3"
 reqwest = { version = "0.12.23", features = ["json", "stream", "multipart", "gzip", "brotli", "deflate"] }
