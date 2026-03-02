@@ -222,7 +222,9 @@ where
             return Ok(r::Value::Null);
         };
 
-        let blocks_res = chain_store.blocks(vec![block_hash.cheap_clone()]).await;
+        let blocks_res = chain_store
+            .blocks_as_json(vec![block_hash.cheap_clone()])
+            .await;
         Ok(match blocks_res {
             Ok(blocks) if blocks.is_empty() => {
                 error!(
