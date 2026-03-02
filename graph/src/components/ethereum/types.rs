@@ -279,10 +279,10 @@ impl CachedBlock {
         }
     }
 
-    pub fn into_light_block(self) -> LightEthereumBlock {
+    pub fn into_light_block(self) -> Arc<LightEthereumBlock> {
         match self {
-            CachedBlock::Full(block) => block.block.as_ref().clone(),
-            CachedBlock::Light(block) => block,
+            CachedBlock::Full(block) => block.block,
+            CachedBlock::Light(block) => Arc::new(block),
         }
     }
 

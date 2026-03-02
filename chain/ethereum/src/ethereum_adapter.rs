@@ -1640,7 +1640,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
             .map_err(|e| error!(&logger, "Error accessing block cache {}", e))
             .unwrap_or_default()
             .into_iter()
-            .map(|cached| Arc::new(cached.into_light_block()))
+            .map(CachedBlock::into_light_block)
             .collect();
 
         let missing_blocks = Vec::from_iter(

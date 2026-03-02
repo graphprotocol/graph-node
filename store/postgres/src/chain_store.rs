@@ -87,6 +87,22 @@ impl CacheBlock {
     fn timestamp(&self) -> Option<u64> {
         self.data.as_ref().and_then(|d| d.timestamp())
     }
+
+    fn to_extended_block_ptr(&self) -> Result<ExtendedBlockPtr, Error> {
+        let hash = self.ptr.hash.clone();
+        let number = self.ptr.number;
+        let parent_hash = self.parent_hash.clone();
+
+        let timestamp = self
+            .timestamp()
+            .ok_or_else(|| anyhow!("Timestamp is missing"))?;
+
+        let ptr =
+            ExtendedBlockPtr::try_from((hash.as_b256(), number, parent_hash.as_b256(), timestamp))
+                .map_err(|e| anyhow!("Failed to convert to ExtendedBlockPtr: {}", e))?;
+
+        Ok(ptr)
+    }
 }
 
 /// Tables in the 'public' database schema that store chain-specific data
@@ -2543,22 +2559,6 @@ fn json_block_to_block_ptr_ext(json_block: &JsonBlock) -> Result<ExtendedBlockPt
     Ok(ptr)
 }
 
-fn cache_block_to_block_ptr_ext(block: &CacheBlock) -> Result<ExtendedBlockPtr, Error> {
-    let hash = block.ptr.hash.clone();
-    let number = block.ptr.number;
-    let parent_hash = block.parent_hash.clone();
-
-    let timestamp = block
-        .timestamp()
-        .ok_or_else(|| anyhow!("Timestamp is missing"))?;
-
-    let ptr =
-        ExtendedBlockPtr::try_from((hash.as_b256(), number, parent_hash.as_b256(), timestamp))
-            .map_err(|e| anyhow!("Failed to convert to ExtendedBlockPtr: {}", e))?;
-
-    Ok(ptr)
-}
-
 #[async_trait]
 impl ChainHeadStore for ChainStore {
     async fn chain_head_ptr(self: Arc<Self>) -> Result<Option<BlockPtr>, Error> {
@@ -2781,7 +2781,8 @@ impl ChainStoreTrait for ChainStore {
         let cached_map: BTreeMap<BlockNumber, Vec<ExtendedBlockPtr>> = cached
             .into_iter()
             .filter_map(|(_, block)| {
-                cache_block_to_block_ptr_ext(&block)
+                block
+                    .to_extended_block_ptr()
                     .ok()
                     .map(|ptr| (block.ptr.number, vec![ptr]))
             })
