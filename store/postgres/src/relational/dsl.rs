@@ -132,7 +132,7 @@ pub enum Alias {
 }
 
 impl Alias {
-    fn as_str(&self) -> &str {
+    pub(crate) fn as_str(&self) -> &str {
         match self {
             Alias::Main => "c",
             Alias::Child(idx) => idx.as_str(),
@@ -160,7 +160,7 @@ fn alias() {
 pub struct Table<'a> {
     /// The metadata for this table
     pub meta: &'a super::Table,
-    alias: Alias,
+    pub(crate) alias: Alias,
 }
 
 impl<'a> Table<'a> {

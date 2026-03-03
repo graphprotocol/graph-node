@@ -307,9 +307,9 @@ fn dump_select<'a>(
             ColumnType::String => add_typed::<Text>(select, table, name, is_list, is_nullable),
             ColumnType::Enum(_) => {
                 // Cast enum to text for dump
-                let alias = table.meta.name.as_str();
+                let alias = table.alias.as_str();
                 let cast = if is_list { "text[]" } else { "text" };
-                let expr = format!("c.\"{}\"::{}", name, cast);
+                let expr = format!("{alias}.\"{name}\"::{cast}");
                 match (is_list, is_nullable) {
                     (true, true) => select.add_field(sql::<Nullable<Array<Text>>>(&expr)),
                     (true, false) => select.add_field(sql::<Array<Text>>(&expr)),
