@@ -154,6 +154,8 @@ mod test {
     // the actual data seems to have some binary header and footer so these ranges were found
     // by inspecting the data with hexdump.
     #[crate::test]
+    // Ignored because arweave.net is unreliable right now
+    #[ignore]
     async fn fetch_bundler_url() {
         let url = Base64::from("Rtdn3QWEzM88MPC2dpWyV5waO7Vuz3VwPl_usS2WoHM/DriveManifest.json");
         #[derive(Deserialize, Debug, PartialEq)]

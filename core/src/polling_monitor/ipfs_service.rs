@@ -153,7 +153,9 @@ mod test {
         assert_eq!(content.to_vec(), random_bytes);
     }
 
+    // Ignored because arweave.net is unreliable right now
     #[graph::test]
+    #[ignore]
     async fn arweave_get() {
         const ID: &str = "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8";
 
