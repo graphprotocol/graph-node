@@ -3,7 +3,7 @@ use std::sync::Arc;
 use graph::{bail, prelude::anyhow::Result};
 
 use graph::prelude::SubgraphName;
-use graph_store_postgres::{RestoreMode, Shard, SubgraphStore, PRIMARY_SHARD};
+use graph_store_postgres::{RestoreMode, Shard, SubgraphStore};
 
 pub async fn run(
     subgraph_store: Arc<SubgraphStore>,
@@ -28,11 +28,6 @@ pub async fn run(
         );
     }
 
-    let shard = match shard {
-        Some(s) => Shard::new(s)?,
-        None => PRIMARY_SHARD.clone(),
-    };
-
     let name = name
         .map(|n| SubgraphName::new(n.clone()).map_err(|_| anyhow::anyhow!("invalid name `{n}`")))
         .transpose()?;
@@ -46,6 +41,8 @@ pub async fn run(
     } else {
         RestoreMode::Default
     };
+
+    let shard = shard.map(Shard::new).transpose()?;
 
     subgraph_store
         .restore(&directory, shard, name, mode)

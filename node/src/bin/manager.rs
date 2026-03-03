@@ -352,7 +352,10 @@ pub enum Command {
     Restore {
         /// Path to the dump directory
         directory: String,
-        /// The database shard to restore into (default: primary)
+        /// The database shard to restore into. When not given, use the
+        /// deployment rules to determine the shard, or default to the
+        /// primary shard if no rules match. This option is required when
+        /// using `--add`
         #[clap(long)]
         shard: Option<String>,
         /// Subgraph name for deployment rule matching and node assignment.

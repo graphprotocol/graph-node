@@ -33,6 +33,12 @@ pub mod ethereum;
 /// Conversion of values to/from SQL
 pub mod sql;
 
+lazy_static! {
+    /// The name of the default node is `"default"`. This is used when no
+    /// node is specified for a deployment.
+    pub static ref DEFAULT_NODE_ID: NodeId = NodeId::new("default").unwrap();
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(String);
 

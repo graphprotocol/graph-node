@@ -24,6 +24,7 @@ use graph::{
     },
     data::{
         query::QueryTarget,
+        store::DEFAULT_NODE_ID,
         subgraph::{schema::DeploymentCreate, status, DeploymentFeatures},
     },
     internal_error,
@@ -734,35 +735,6 @@ impl Inner {
 
                 Ok((shard, node))
             }
-        }
-    }
-
-    /// Determine the target node for a deployment using the configured
-    /// deployment rules, ignoring the shard selection. Returns an error
-    /// if no rule matches.
-    async fn node_for_deployment(
-        &self,
-        name: &SubgraphName,
-        network: &str,
-    ) -> Result<NodeId, StoreError> {
-        let placement = self
-            .placer
-            .place(name.as_str(), network)
-            .map_err(|msg| internal_error!("illegal indexer name in deployment rule: {}", msg))?;
-
-        match placement {
-            Some((_, nodes)) if !nodes.is_empty() => {
-                if nodes.len() == 1 {
-                    Ok(nodes.into_iter().next().unwrap())
-                } else {
-                    let mut pconn = self.primary_conn().await?;
-                    // unwrap: nodes is not empty
-                    Ok(pconn.least_assigned_node(&nodes).await?.unwrap())
-                }
-            }
-            _ => Err(StoreError::InternalError(
-                "no deployment rule matches this deployment".into(),
-            )),
         }
     }
 
@@ -1481,7 +1453,7 @@ impl Inner {
     pub async fn restore(
         &self,
         dir: &std::path::Path,
-        shard: Shard,
+        shard: Option<Shard>,
         name: Option<SubgraphName>,
         mode: RestoreMode,
     ) -> Result<(), StoreError> {
@@ -1489,11 +1461,6 @@ impl Inner {
 
         let metadata_path = dir.join("metadata.json");
         let metadata = Metadata::from_file(&metadata_path)?;
-
-        // Validate that the target shard exists before making any DB changes
-        self.stores
-            .get(&shard)
-            .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
 
         // Resolve the subgraph name for deployment rule matching. If not
         // supplied, look up an existing name from the DB; error if none.
@@ -1517,9 +1484,16 @@ impl Inner {
         };
 
         // Use deployment rules to determine which node should index this
-        // deployment. The rules also return candidate shards, but we ignore
-        // those since the shard is user-specified for restore.
-        let node = self.node_for_deployment(&name, &metadata.network).await?;
+        // deployment and how to place it.
+        let (placed_shard, node) = self
+            .place(&name, &metadata.network, DEFAULT_NODE_ID.clone())
+            .await?;
+        let shard = shard.unwrap_or(placed_shard);
+
+        // Validate that the target shard exists before making any DB changes
+        self.stores
+            .get(&shard)
+            .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
 
         let mut pconn = self.primary_conn().await?;
         let action = pconn
