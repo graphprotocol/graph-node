@@ -1,7 +1,7 @@
 use std::fs;
 use std::sync::Arc;
 
-use graph::{bail, prelude::anyhow::Result};
+use graph::prelude::anyhow::Result;
 
 use graph_store_postgres::{ConnectionPool, SubgraphStore};
 
@@ -13,15 +13,8 @@ pub async fn run(
     deployment: DeploymentSearch,
     directory: String,
 ) -> Result<()> {
+    fs::create_dir_all(&directory)?;
     let directory = fs::canonicalize(&directory)?;
-    let stat = fs::metadata(&directory)?;
-
-    if !stat.is_dir() {
-        bail!(
-            "The path `{}` is not a directory",
-            directory.to_string_lossy()
-        );
-    }
 
     let loc = deployment.locate_unique(&primary_pool).await?;
 
