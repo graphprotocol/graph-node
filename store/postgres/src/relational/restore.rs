@@ -12,7 +12,6 @@ use std::sync::Arc;
 
 use diesel::dsl::update;
 use diesel::prelude::{ExpressionMethods, QueryDsl};
-use diesel::sql_types::{BigInt, Binary, Integer, Nullable, Text};
 use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
 use graph::blockchain::BlockHash;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphManifestEntity};
@@ -23,9 +22,7 @@ use graph::semver::Version;
 use crate::catalog;
 use crate::deployment::create_deployment;
 use crate::dynds::DataSourcesTable;
-use crate::parquet::convert::{
-    record_batch_to_data_source_rows, record_batch_to_restore_rows, DataSourceRestoreRow,
-};
+use crate::parquet::convert::{record_batch_to_data_source_rows, record_batch_to_restore_rows};
 use crate::parquet::reader::read_batches;
 use crate::primary::Site;
 use crate::relational::dump::{Metadata, TableInfo};
@@ -133,39 +130,10 @@ async fn import_entity_table(
     Ok(total_inserted)
 }
 
-/// Insert a single data_sources$ row via raw SQL.
-async fn insert_data_source_row(
-    conn: &mut AsyncPgConnection,
-    qualified_table: &str,
-    row: &DataSourceRestoreRow,
-) -> Result<(), StoreError> {
-    let query = format!(
-        "INSERT INTO {} (vid, block_range, causality_region, manifest_idx, \
-                parent, id, param, context, done_at) \
-         VALUES ($1, int4range($2, $3), $4, $5, $6, $7, $8, $9::jsonb, $10)",
-        qualified_table,
-    );
-    diesel::sql_query(&query)
-        .bind::<BigInt, _>(row.vid)
-        .bind::<Integer, _>(row.block_range_start)
-        .bind::<Nullable<Integer>, _>(row.block_range_end)
-        .bind::<Integer, _>(row.causality_region)
-        .bind::<Integer, _>(row.manifest_idx)
-        .bind::<Nullable<Integer>, _>(row.parent)
-        .bind::<Nullable<Binary>, _>(row.id.as_deref())
-        .bind::<Nullable<Binary>, _>(row.param.as_deref())
-        .bind::<Nullable<Text>, _>(row.context.as_deref())
-        .bind::<Nullable<Integer>, _>(row.done_at)
-        .execute(conn)
-        .await
-        .map_err(StoreError::from)?;
-    Ok(())
-}
-
 /// Import the `data_sources$` table from Parquet chunks.
 async fn import_data_sources(
     conn: &mut AsyncPgConnection,
-    namespace: &str,
+    ds_table: &DataSourcesTable,
     table_info: &TableInfo,
     dir: &Path,
     logger: &Logger,
@@ -174,8 +142,8 @@ async fn import_data_sources(
         return Ok(0);
     }
 
-    let qualified = format!("\"{}\".\"{DATA_SOURCES_TABLE}\"", namespace);
-    let max_vid_db = current_max_vid(conn, &qualified).await?;
+    let qualified = ds_table.qualified_name();
+    let max_vid_db = current_max_vid(conn, qualified).await?;
     if max_vid_db >= table_info.max_vid {
         info!(logger, "data_sources$ already fully restored, skipping");
         return Ok(0);
@@ -193,15 +161,13 @@ async fn import_data_sources(
 
         for batch in batches {
             let batch = batch?;
-            let rows = record_batch_to_data_source_rows(&batch)?;
+            let mut rows = record_batch_to_data_source_rows(&batch)?;
 
-            for row in &rows {
-                if max_vid_db >= 0 && row.vid <= max_vid_db {
-                    continue;
-                }
-                insert_data_source_row(conn, &qualified, row).await?;
-                total_inserted += 1;
+            if max_vid_db >= 0 {
+                rows.retain(|row| row.vid > max_vid_db);
             }
+
+            total_inserted += ds_table.insert_rows(conn, &rows).await?;
         }
     }
 
@@ -352,8 +318,8 @@ pub async fn import_data(
 
     // Import data_sources$ if present
     if let Some(ds_info) = metadata.tables.get(DATA_SOURCES_TABLE) {
-        let namespace = layout.site.namespace.as_str();
-        import_data_sources(conn, namespace, ds_info, dir, logger).await?;
+        let ds_table = DataSourcesTable::new(layout.site.namespace.clone());
+        import_data_sources(conn, &ds_table, ds_info, dir, logger).await?;
     }
 
     Ok(())

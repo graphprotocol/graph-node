@@ -4,7 +4,7 @@ use diesel::{
     pg::{sql_types, Pg},
     query_builder::{AstPass, QueryFragment, QueryId},
     sql_query,
-    sql_types::{Binary, Bool, Integer, Jsonb, Nullable},
+    sql_types::{BigInt, Binary, Bool, Integer, Jsonb, Nullable, Text},
     ExpressionMethods, OptionalExtension, QueryDsl, QueryResult,
 };
 use diesel_async::RunQueryDsl;
@@ -16,6 +16,8 @@ use graph::{
     internal_error,
     prelude::{serde_json, BlockNumber, StoreError},
 };
+
+use crate::parquet::convert::DataSourceRestoreRow;
 
 use crate::{primary::Namespace, relational_queries::POSTGRES_MAX_PARAMETERS, AsyncPgConnection};
 
@@ -55,6 +57,10 @@ impl DataSourcesTable {
             done_at: table.column("done_at"),
             table,
         }
+    }
+
+    pub(crate) fn qualified_name(&self) -> &str {
+        &self.qname
     }
 
     pub(crate) fn as_ddl(&self) -> String {
@@ -332,6 +338,25 @@ impl DataSourcesTable {
             .await
             .optional()?)
     }
+
+    /// Insert rows from a dump/restore into the `data_sources$` table.
+    /// Rows are batched to stay within PostgreSQL's bind parameter limit.
+    pub(crate) async fn insert_rows(
+        &self,
+        conn: &mut AsyncPgConnection,
+        rows: &[DataSourceRestoreRow],
+    ) -> Result<usize, StoreError> {
+        let chunk_size = POSTGRES_MAX_PARAMETERS / RestoreDsQuery::BIND_PARAMS;
+        let mut count = 0;
+        for chunk in rows.chunks(chunk_size) {
+            let query = RestoreDsQuery {
+                qname: &self.qname,
+                rows: chunk,
+            };
+            count += query.execute(conn).await?;
+        }
+        Ok(count)
+    }
 }
 
 /// Map src manifest indexes to dst manifest indexes. If the
@@ -465,6 +490,61 @@ impl<'a> QueryFragment<Pg> for CopyDsQuery<'a> {
 }
 
 impl<'a> QueryId for CopyDsQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+struct RestoreDsQuery<'a> {
+    qname: &'a str,
+    rows: &'a [DataSourceRestoreRow],
+}
+
+impl<'a> RestoreDsQuery<'a> {
+    const BIND_PARAMS: usize = 10;
+}
+
+impl<'a> QueryFragment<Pg> for RestoreDsQuery<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+        out.push_sql("insert into ");
+        out.push_sql(self.qname);
+        out.push_sql(
+            "(vid, block_range, causality_region, manifest_idx, \
+             parent, id, param, context, done_at) values ",
+        );
+        for (i, row) in self.rows.iter().enumerate() {
+            if i > 0 {
+                out.push_sql(", ");
+            }
+            out.push_sql("(");
+            out.push_bind_param::<BigInt, _>(&row.vid)?;
+            out.push_sql(", int4range(");
+            out.push_bind_param::<Integer, _>(&row.block_range_start)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Nullable<Integer>, _>(&row.block_range_end)?;
+            out.push_sql("), ");
+            out.push_bind_param::<Integer, _>(&row.causality_region)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Integer, _>(&row.manifest_idx)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Nullable<Integer>, _>(&row.parent)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Nullable<Binary>, _>(&row.id)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Nullable<Binary>, _>(&row.param)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Nullable<Text>, _>(&row.context)?;
+            out.push_sql("::jsonb, ");
+            out.push_bind_param::<Nullable<Integer>, _>(&row.done_at)?;
+            out.push_sql(")");
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for RestoreDsQuery<'a> {
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;
