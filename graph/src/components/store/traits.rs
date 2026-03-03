@@ -560,13 +560,6 @@ pub trait ChainStore: ChainHeadStore {
     /// Returns the blocks present in the store as typed cached blocks.
     async fn blocks(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<CachedBlock>, Error>;
 
-    /// Returns blocks as raw JSON. Used by callers that need the original
-    /// JSON representation (e.g., GraphQL block queries, CLI tools).
-    async fn blocks_as_json(
-        self: Arc<Self>,
-        hashes: Vec<BlockHash>,
-    ) -> Result<Vec<serde_json::Value>, Error>;
-
     /// Returns the blocks present in the store for the given block numbers.
     async fn block_ptrs_by_numbers(
         self: Arc<Self>,

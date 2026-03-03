@@ -9,6 +9,7 @@ use graph::schema::EntityType;
 use git_testament::{git_testament, CommitKind};
 use graph::amp;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
+use graph::components::ethereum::CachedBlock;
 use graph::components::link_resolver::LinkResolverContext;
 use graph::components::store::{BlockPtrForNumber, BlockStore, QueryPermit, Store};
 use graph::components::versions::VERSIONS;
@@ -222,9 +223,7 @@ where
             return Ok(r::Value::Null);
         };
 
-        let blocks_res = chain_store
-            .blocks_as_json(vec![block_hash.cheap_clone()])
-            .await;
+        let blocks_res = chain_store.blocks(vec![block_hash.cheap_clone()]).await;
         Ok(match blocks_res {
             Ok(blocks) if blocks.is_empty() => {
                 error!(
@@ -237,7 +236,24 @@ where
             }
             Ok(mut blocks) => {
                 assert!(blocks.len() == 1, "Multiple blocks with the same hash");
-                blocks.pop().unwrap().into()
+                let block = blocks.pop().unwrap();
+                let json = match block {
+                    CachedBlock::Full(ref b) => serde_json::to_value(b),
+                    CachedBlock::Light(ref b) => serde_json::to_value(b),
+                };
+                match json {
+                    Ok(json) => json.into(),
+                    Err(e) => {
+                        error!(
+                            self.logger,
+                            "Failed to serialize cached block";
+                            "network" => network.as_str(),
+                            "block_hash" => format!("{}", block_hash),
+                            "error" => e.to_string(),
+                        );
+                        r::Value::Null
+                    }
+                }
             }
             Err(e) => {
                 error!(
