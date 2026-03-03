@@ -101,8 +101,9 @@ async fn import_entity_table(
         let chunk_path = dir.join(&chunk_info.file);
         let batches = read_batches(&chunk_path)?;
 
-        for batch in &batches {
-            let mut rows = record_batch_to_restore_rows(batch, table)?;
+        for batch in batches {
+            let batch = batch?;
+            let mut rows = record_batch_to_restore_rows(&batch, table)?;
 
             // Filter out already-imported rows (for boundary chunks on resume)
             if max_vid_db >= 0 {
@@ -190,8 +191,9 @@ async fn import_data_sources(
         let chunk_path = dir.join(&chunk_info.file);
         let batches = read_batches(&chunk_path)?;
 
-        for batch in &batches {
-            let rows = record_batch_to_data_source_rows(batch)?;
+        for batch in batches {
+            let batch = batch?;
+            let rows = record_batch_to_data_source_rows(&batch)?;
 
             for row in &rows {
                 if max_vid_db >= 0 && row.vid <= max_vid_db {

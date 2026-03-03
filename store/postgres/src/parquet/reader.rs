@@ -5,45 +5,45 @@ use arrow::array::RecordBatch;
 use graph::components::store::StoreError;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
-/// Read all record batches from a Parquet file.
+/// Open a Parquet file and return a lazy iterator over its record batches.
 ///
-/// Opens the file, reads all row groups, and returns them as a vector
-/// of `RecordBatch`es. The batches retain the schema embedded in the
-/// Parquet file.
-pub fn read_batches(path: &Path) -> Result<Vec<RecordBatch>, StoreError> {
+/// Each call to `next()` on the returned iterator reads one row group
+/// from disk, so only one batch is in memory at a time. The caller is
+/// responsible for iterating and processing batches incrementally.
+pub fn read_batches(
+    path: &Path,
+) -> Result<impl Iterator<Item = Result<RecordBatch, StoreError>>, StoreError> {
+    let display = path.display().to_string();
     let file = fs::File::open(path).map_err(|e| {
-        StoreError::InternalError(format!(
-            "failed to open parquet file {}: {e}",
-            path.display()
-        ))
+        StoreError::InternalError(format!("failed to open parquet file {display}: {e}"))
     })?;
 
     let reader = ParquetRecordBatchReaderBuilder::try_new(file)
         .map_err(|e| {
             StoreError::InternalError(format!(
-                "failed to create parquet reader for {}: {e}",
-                path.display()
+                "failed to create parquet reader for {display}: {e}"
             ))
         })?
         .build()
         .map_err(|e| {
-            StoreError::InternalError(format!(
-                "failed to build parquet reader for {}: {e}",
-                path.display()
-            ))
+            StoreError::InternalError(format!("failed to build parquet reader for {display}: {e}"))
         })?;
 
-    reader
-        .into_iter()
-        .map(|batch| {
-            batch.map_err(|e| {
-                StoreError::InternalError(format!(
-                    "failed to read record batch from {}: {e}",
-                    path.display()
-                ))
-            })
+    Ok(reader.into_iter().map(move |batch| {
+        batch.map_err(|e| {
+            StoreError::InternalError(format!("failed to read record batch from {display}: {e}"))
         })
-        .collect()
+    }))
+}
+
+/// Read all record batches from a Parquet file into memory.
+///
+/// This is a convenience wrapper around `read_batches` that collects
+/// all batches. Prefer `read_batches` for production code to avoid
+/// loading the entire file at once.
+#[cfg(test)]
+pub fn read_all_batches(path: &Path) -> Result<Vec<RecordBatch>, StoreError> {
+    read_batches(path)?.collect()
 }
 
 #[cfg(test)]
@@ -105,7 +105,7 @@ mod tests {
         writer.write_batch(&batch, min_vid, max_vid).unwrap();
         writer.finish().unwrap();
 
-        read_batches(tmp.path()).unwrap()
+        read_all_batches(tmp.path()).unwrap()
     }
 
     #[test]
@@ -301,9 +301,10 @@ mod tests {
 
     #[test]
     fn nonexistent_file_returns_error() {
-        let result = read_batches(Path::new("/tmp/nonexistent_graph_node_test.parquet"));
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
+        let err = read_batches(Path::new("/tmp/nonexistent_graph_node_test.parquet"))
+            .err()
+            .expect("should fail for nonexistent file")
+            .to_string();
         assert!(err.contains("failed to open parquet file"));
     }
 }
