@@ -1465,14 +1465,25 @@ impl Inner {
         // Resolve the subgraph name for deployment rule matching. If not
         // supplied, look up an existing name from the DB; error if none.
         let name = match name {
-            Some(n) => n,
+            Some(name) => {
+                // Validate that the named subgraph exists. Without this
+                // check the deployment would be created but never linked
+                // to a name, leaving it orphaned.
+                if !self.mirror.subgraph_exists(&name).await? {
+                    return Err(StoreError::Input(format!(
+                        "subgraph `{name}` does not exist; \
+                         create it first with `graphman create {name}`"
+                    )));
+                }
+                name
+            }
             None => {
                 let names = self
                     .mirror
                     .subgraphs_by_deployment_hash(metadata.deployment.as_str())
                     .await?;
                 let (name, _) = names.into_iter().next().ok_or_else(|| {
-                    StoreError::InternalError(
+                    StoreError::Input(
                         "no subgraph name found for this deployment; use --name to specify one"
                             .into(),
                     )
