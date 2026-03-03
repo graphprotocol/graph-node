@@ -3901,6 +3901,7 @@ version = "0.41.2"
 dependencies = [
  "anyhow",
  "clap",
+ "console 0.16.2",
  "diesel",
  "diesel-async",
  "env_logger",
@@ -3917,6 +3918,7 @@ dependencies = [
  "graph-store-postgres",
  "graphman",
  "graphman-server",
+ "indicatif",
  "itertools 0.14.0",
  "json-structural-diff",
  "lazy_static",

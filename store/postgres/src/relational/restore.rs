@@ -14,8 +14,9 @@ use diesel::dsl::update;
 use diesel::prelude::{ExpressionMethods, QueryDsl};
 use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
 use graph::blockchain::BlockHash;
+use graph::components::store::RestoreReporter;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphManifestEntity};
-use graph::prelude::{info, BlockPtr as GraphBlockPtr, Logger, StoreError};
+use graph::prelude::{BlockPtr as GraphBlockPtr, StoreError};
 use graph::schema::{EntityType, InputSchema};
 use graph::semver::Version;
 
@@ -70,21 +71,24 @@ async fn import_entity_table(
     table: &Table,
     table_info: &TableInfo,
     dir: &Path,
-    logger: &Logger,
+    reporter: &mut dyn RestoreReporter,
 ) -> Result<usize, StoreError> {
+    let table_name = table.object.as_str();
+    let total_rows: usize = table_info.chunks.iter().map(|c| c.row_count).sum();
+
     if table_info.chunks.is_empty() || table_info.max_vid < 0 {
+        reporter.start_table(table_name, 0);
+        reporter.finish_table(table_name, 0);
         return Ok(0);
     }
 
     let max_vid_db = current_max_vid(conn, table.qualified_name.as_str()).await?;
     if max_vid_db >= table_info.max_vid {
-        info!(
-            logger,
-            "Table {} already fully restored, skipping",
-            table.object.as_str()
-        );
+        reporter.skip_table(table_name);
         return Ok(0);
     }
+
+    reporter.start_table(table_name, total_rows);
 
     let chunk_size = InsertQuery::chunk_size(table);
     let mut total_inserted = 0usize;
@@ -117,16 +121,12 @@ async fn import_entity_table(
                     .execute(conn)
                     .await?;
                 total_inserted += chunk.len();
+                reporter.batch_imported(table_name, chunk.len());
             }
         }
     }
 
-    info!(
-        logger,
-        "Restored {} rows into {}",
-        total_inserted,
-        table.object.as_str()
-    );
+    reporter.finish_table(table_name, total_inserted);
     Ok(total_inserted)
 }
 
@@ -136,18 +136,24 @@ async fn import_data_sources(
     ds_table: &DataSourcesTable,
     table_info: &TableInfo,
     dir: &Path,
-    logger: &Logger,
+    reporter: &mut dyn RestoreReporter,
 ) -> Result<usize, StoreError> {
+    let total_rows: usize = table_info.chunks.iter().map(|c| c.row_count).sum();
+
     if table_info.chunks.is_empty() || table_info.max_vid < 0 {
+        reporter.start_data_sources(0);
+        reporter.finish_data_sources(0);
         return Ok(0);
     }
 
     let qualified = ds_table.qualified_name();
     let max_vid_db = current_max_vid(conn, qualified).await?;
     if max_vid_db >= table_info.max_vid {
-        info!(logger, "data_sources$ already fully restored, skipping");
+        reporter.skip_table(DATA_SOURCES_TABLE);
         return Ok(0);
     }
+
+    reporter.start_data_sources(total_rows);
 
     let mut total_inserted = 0usize;
 
@@ -167,11 +173,13 @@ async fn import_data_sources(
                 rows.retain(|row| row.vid > max_vid_db);
             }
 
-            total_inserted += ds_table.insert_rows(conn, &rows).await?;
+            let inserted = ds_table.insert_rows(conn, &rows).await?;
+            total_inserted += inserted;
+            reporter.batch_imported(DATA_SOURCES_TABLE, inserted);
         }
     }
 
-    info!(logger, "Restored {} data_sources$ rows", total_inserted);
+    reporter.finish_data_sources(total_inserted);
     Ok(total_inserted)
 }
 
@@ -291,7 +299,7 @@ pub async fn import_data(
     layout: &Layout,
     metadata: &Metadata,
     dir: &Path,
-    logger: &Logger,
+    reporter: &mut dyn RestoreReporter,
 ) -> Result<(), StoreError> {
     // Import entity tables (sorted by name for determinism)
     let mut table_names: Vec<_> = metadata
@@ -300,6 +308,9 @@ pub async fn import_data(
         .filter(|name| name.as_str() != DATA_SOURCES_TABLE)
         .collect();
     table_names.sort();
+
+    let table_count = table_names.len();
+    reporter.start(metadata.deployment.as_str(), table_count);
 
     for table_name in table_names {
         let table_info = &metadata.tables[table_name];
@@ -313,13 +324,13 @@ pub async fn import_data(
                     table_name,
                 ))
             })?;
-        import_entity_table(conn, table, table_info, dir, logger).await?;
+        import_entity_table(conn, table, table_info, dir, reporter).await?;
     }
 
     // Import data_sources$ if present
     if let Some(ds_info) = metadata.tables.get(DATA_SOURCES_TABLE) {
         let ds_table = DataSourcesTable::new(layout.site.namespace.clone());
-        import_data_sources(conn, &ds_table, ds_info, dir, logger).await?;
+        import_data_sources(conn, &ds_table, ds_info, dir, reporter).await?;
     }
 
     Ok(())
@@ -335,8 +346,10 @@ pub async fn finalize(
     conn: &mut AsyncPgConnection,
     layout: &Layout,
     metadata: &Metadata,
-    logger: &Logger,
+    reporter: &mut dyn RestoreReporter,
 ) -> Result<(), StoreError> {
+    reporter.start_finalize();
+
     let nsp = layout.site.namespace.as_str();
 
     // 1. Reset vid sequences for entity tables that use bigserial.
@@ -417,17 +430,10 @@ pub async fn finalize(
                 .execute(conn)
                 .await
                 .map_err(StoreError::from)?;
-
-            info!(
-                logger,
-                "Finalized restore: head block #{}, entity count {}",
-                head_ptr.number,
-                metadata.entity_count
-            );
-        } else {
-            info!(logger, "Finalized restore (no head block in dump)");
         }
     }
+
+    reporter.finish_finalize();
 
     Ok(())
 }

@@ -9,8 +9,9 @@ use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
 use graph::components::store::write::RowGroup;
 use graph::components::store::{
-    Batch, DeploymentLocator, DerivedEntityQuery, PrunePhase, PruneReporter, PruneRequest,
-    PruningStrategy, QueryPermit, StoredDynamicDataSource, VersionStats,
+    Batch, DeploymentLocator, DerivedEntityQuery, DumpReporter, PrunePhase, PruneReporter,
+    PruneRequest, PruningStrategy, QueryPermit, RestoreReporter, StoredDynamicDataSource,
+    VersionStats,
 };
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::IntoValue;
@@ -898,7 +899,12 @@ impl DeploymentStore {
         Ok(relational::prune::Viewer::new(self.pool.clone(), layout))
     }
 
-    pub(crate) async fn dump(&self, site: Arc<Site>, dir: PathBuf) -> Result<(), StoreError> {
+    pub(crate) async fn dump(
+        &self,
+        site: Arc<Site>,
+        dir: PathBuf,
+        mut reporter: Box<dyn DumpReporter>,
+    ) -> Result<(), StoreError> {
         let mut conn = self.pool.get_permitted().await?;
         // Layout and index list are schema metadata — safe to load outside
         // the snapshot transaction
@@ -915,7 +921,14 @@ impl DeploymentStore {
                 async move {
                     let entity_count = crate::detail::entity_count(conn, &site).await?;
                     layout
-                        .dump(conn, index_list, dir, &site.network, entity_count)
+                        .dump(
+                            conn,
+                            index_list,
+                            dir,
+                            &site.network,
+                            entity_count,
+                            &mut *reporter,
+                        )
                         .await
                 }
                 .scope_boxed()
@@ -928,13 +941,17 @@ impl DeploymentStore {
         site: Arc<Site>,
         dir: &Path,
         metadata: &crate::relational::dump::Metadata,
+        reporter: &mut dyn RestoreReporter,
     ) -> Result<(), StoreError> {
         let mut conn = self.pool.get_permitted().await?;
+        reporter.start_create_schema(site.namespace.as_str(), site.shard.as_str());
         let layout =
             crate::relational::restore::create_schema(&mut conn, site, metadata, dir).await?;
-        crate::relational::restore::import_data(&mut conn, &layout, metadata, dir, &self.logger)
+        reporter.finish_create_schema();
+        crate::relational::restore::import_data(&mut conn, &layout, metadata, dir, reporter)
             .await?;
-        crate::relational::restore::finalize(&mut conn, &layout, metadata, &self.logger).await?;
+        crate::relational::restore::finalize(&mut conn, &layout, metadata, reporter).await?;
+        reporter.finish();
         Ok(())
     }
 }

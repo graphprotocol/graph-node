@@ -57,9 +57,9 @@ reqwest = { workspace = true }
 thiserror = { workspace = true }
 
 # Console output
-indicatif = "0.18"
-console = "0.16"
 similar = "2"
+indicatif = { workspace = true }
+console = { workspace = true }
 
 # Code generation
 graphql-tools = { workspace = true }

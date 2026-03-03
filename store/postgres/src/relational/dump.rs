@@ -11,6 +11,7 @@ use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
 use diesel_dynamic_schema::DynamicSelectClause;
 
+use graph::components::store::DumpReporter;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphHealth, SubgraphManifestEntity};
 use graph::prelude::{DeploymentHash, StoreError, SubgraphDeploymentEntity};
 use serde::{Deserialize, Serialize};
@@ -368,6 +369,7 @@ async fn dump_entity_table(
     conn: &mut AsyncPgConnection,
     table: &RelTable,
     dir: &Path,
+    reporter: &mut dyn DumpReporter,
 ) -> Result<TableInfo, StoreError> {
     let arrow_schema = arrow_schema(table);
     let table_dir_name = table.object.as_str();
@@ -377,7 +379,15 @@ async fn dump_entity_table(
 
     let range = vid_range(conn, table).await?;
 
+    let rows_approx = if range.is_empty() {
+        0
+    } else {
+        (range.max - range.min + 1) as usize
+    };
+    reporter.start_table(table_dir_name, rows_approx);
+
     if range.is_empty() {
+        reporter.finish_table(table_dir_name, 0);
         return Ok(TableInfo {
             immutable: table.immutable,
             has_causality_region: table.has_causality_region,
@@ -392,9 +402,10 @@ async fn dump_entity_table(
 
     let dsl_table = dsl::Table::new(table);
     let mut batcher = VidBatcher::load(conn, &table.nsp, table, range).await?;
+    let mut total_rows = 0usize;
 
     while !batcher.finished() {
-        batcher
+        let (_, rows_opt) = batcher
             .step(async |start, end| {
                 let query = dump_select(&dsl_table, table)
                     .filter(sql::<Bool>("vid >= ").bind::<BigInt, _>(start))
@@ -403,17 +414,22 @@ async fn dump_entity_table(
 
                 let rows: Vec<OidRow> = query.load(conn).await?;
                 if rows.is_empty() {
-                    return Ok(());
+                    return Ok(0usize);
                 }
 
+                let count = rows.len();
                 let batch = rows_to_record_batch(&arrow_schema, &rows)?;
                 // Extract vid bounds from first/last row
                 let batch_min_vid = start;
                 let batch_max_vid = end;
                 writer.write_batch(&batch, batch_min_vid, batch_max_vid)?;
-                Ok(())
+                Ok(count)
             })
             .await?;
+        if let Some(rows) = rows_opt {
+            total_rows += rows;
+            reporter.batch_dumped(table_dir_name, rows);
+        }
     }
 
     let chunk_info = writer.finish()?;
@@ -429,6 +445,8 @@ async fn dump_entity_table(
     } else {
         vec![]
     };
+
+    reporter.finish_table(table_dir_name, total_rows);
 
     Ok(TableInfo {
         immutable: table.immutable,
@@ -540,11 +558,14 @@ async fn dump_data_sources(
     conn: &mut AsyncPgConnection,
     namespace: &str,
     dir: &Path,
+    reporter: &mut dyn DumpReporter,
 ) -> Result<Option<TableInfo>, StoreError> {
     let table_name = SqlName::verbatim(DATA_SOURCES_TABLE.to_string());
     if !catalog::table_exists(conn, namespace, &table_name).await? {
         return Ok(None);
     }
+
+    reporter.start_data_sources();
 
     let qualified = format!("\"{}\".\"{}\"", namespace, DATA_SOURCES_TABLE);
 
@@ -559,6 +580,7 @@ async fn dump_data_sources(
         .map_err(StoreError::from)?;
 
     if range.is_empty() {
+        reporter.finish_data_sources(0);
         return Ok(Some(TableInfo {
             immutable: false,
             has_causality_region: true,
@@ -576,6 +598,7 @@ async fn dump_data_sources(
     let abs_path = ds_dir.join("chunk_000000.parquet");
     let mut writer = ParquetChunkWriter::new(abs_path, relative_path, &schema)?;
 
+    let mut total_rows = 0usize;
     let mut start = range.min;
     while start <= range.max {
         let end = (start + DATA_SOURCES_BATCH_SIZE - 1).min(range.max);
@@ -603,6 +626,7 @@ async fn dump_data_sources(
             .map_err(StoreError::from)?;
 
         if !rows.is_empty() {
+            total_rows += rows.len();
             let batch = data_source_rows_to_record_batch(&schema, &rows)?;
             writer.write_batch(&batch, start, end)?;
         }
@@ -624,6 +648,8 @@ async fn dump_data_sources(
         vec![]
     };
 
+    reporter.finish_data_sources(total_rows);
+
     Ok(Some(TableInfo {
         immutable: false,
         has_causality_region: true,
@@ -640,6 +666,7 @@ impl Layout {
         dir: PathBuf,
         network: &str,
         entity_count: usize,
+        reporter: &mut dyn DumpReporter,
     ) -> Result<(), StoreError> {
         fn write_file(name: PathBuf, contents: &str) -> Result<(), StoreError> {
             let mut file = fs::File::create(name).map_err(|e| StoreError::Unknown(e.into()))?;
@@ -667,8 +694,10 @@ impl Layout {
         let mut tables: Vec<_> = self.tables.values().collect();
         tables.sort_by_key(|t| t.name.as_str().to_string());
 
+        reporter.start(self.site.deployment.as_str(), tables.len());
+
         for table in tables {
-            let table_info = dump_entity_table(conn, table, &dir).await?;
+            let table_info = dump_entity_table(conn, table, &dir, reporter).await?;
             metadata
                 .tables
                 .insert(table.object.as_str().to_string(), table_info);
@@ -676,7 +705,7 @@ impl Layout {
 
         // Dump data_sources$ if it exists
         let namespace = self.site.namespace.as_str();
-        if let Some(ds_info) = dump_data_sources(conn, namespace, &dir).await? {
+        if let Some(ds_info) = dump_data_sources(conn, namespace, &dir, reporter).await? {
             metadata
                 .tables
                 .insert(DATA_SOURCES_TABLE.to_string(), ds_info);
@@ -688,6 +717,8 @@ impl Layout {
         fs::rename(&tmp_path, dir.join("metadata.json")).map_err(|e| {
             StoreError::InternalError(format!("failed to rename metadata.json.tmp: {e}"))
         })?;
+
+        reporter.finish();
 
         Ok(())
     }

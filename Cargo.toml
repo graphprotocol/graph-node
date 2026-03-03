@@ -46,6 +46,7 @@ chrono = "0.4.44"
 bs58 = "0.5.1"
 clap = { version = "4.5.4", features = ["derive", "env", "wrap_help"] }
 clap_complete = "4"
+console = "0.16"
 derive_more = { version = "2.1.1", default-features = false }
 diesel = { version = "2.2.7", features = [
     "postgres",
@@ -70,6 +71,7 @@ graphman-server = { path = "./server/graphman" }
 graphman = { path = "./core/graphman" }
 graphman-store = { path = "./core/graphman_store" }
 graphql-tools = "0.5.1"
+indicatif = "0.18"
 Inflector = "0.11.3"
 itertools = "0.14.0"
 lazy_static = "1.5.0"

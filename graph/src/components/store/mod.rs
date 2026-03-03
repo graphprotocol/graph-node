@@ -978,6 +978,69 @@ pub trait PruneReporter: Send + 'static {
     fn finish(&mut self) {}
 }
 
+/// Callbacks for `SubgraphStore.dump` so that callers can report progress
+/// of the dump procedure to users
+#[allow(unused_variables)]
+pub trait DumpReporter: Send + 'static {
+    /// Called at the start with deployment hash and total entity table count.
+    fn start(&mut self, deployment: &str, table_count: usize) {}
+
+    /// Called before dumping an entity table. `rows_approx` is estimated
+    /// from the vid range (max_vid - min_vid + 1), 0 if empty.
+    fn start_table(&mut self, table: &str, rows_approx: usize) {}
+
+    /// Called after a batch of rows has been written to Parquet.
+    fn batch_dumped(&mut self, table: &str, rows: usize) {}
+
+    /// Called after an entity table has been fully dumped.
+    fn finish_table(&mut self, table: &str, rows: usize) {}
+
+    /// Called before dumping data_sources$.
+    fn start_data_sources(&mut self) {}
+
+    /// Called after data_sources$ has been dumped.
+    fn finish_data_sources(&mut self, rows: usize) {}
+
+    /// Called when the entire dump has completed.
+    fn finish(&mut self) {}
+}
+
+/// Callbacks for `SubgraphStore.restore` so that callers can report
+/// progress of the restore procedure to users
+#[allow(unused_variables)]
+pub trait RestoreReporter: Send + 'static {
+    /// Called at the start with deployment hash and total entity table count.
+    fn start(&mut self, deployment: &str, table_count: usize) {}
+
+    /// Called when creating the schema.
+    fn start_create_schema(&mut self, namespace: &str, shard: &str) {}
+    fn finish_create_schema(&mut self) {}
+
+    /// Called before importing an entity table. `total_rows` is the sum
+    /// of row counts across all chunks for this table.
+    fn start_table(&mut self, table: &str, total_rows: usize) {}
+
+    /// Called after a batch of rows has been inserted.
+    fn batch_imported(&mut self, table: &str, rows: usize) {}
+
+    /// Called when a table is skipped because it was already restored.
+    fn skip_table(&mut self, table: &str) {}
+
+    /// Called after an entity table has been fully imported.
+    fn finish_table(&mut self, table: &str, rows: usize) {}
+
+    /// Called before/after importing data_sources$.
+    fn start_data_sources(&mut self, total_rows: usize) {}
+    fn finish_data_sources(&mut self, rows: usize) {}
+
+    /// Called during finalization (sequence resets, head block set).
+    fn start_finalize(&mut self) {}
+    fn finish_finalize(&mut self) {}
+
+    /// Called when the entire restore has completed.
+    fn finish(&mut self) {}
+}
+
 /// Select how pruning should be done
 #[derive(Clone, Copy, Debug, Display, PartialEq)]
 pub enum PruningStrategy {

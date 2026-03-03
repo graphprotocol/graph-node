@@ -19,7 +19,8 @@ use graph::{
         server::index_node::VersionInfo,
         store::{
             self, BlockPtrForNumber, BlockStore, DeploymentLocator, DeploymentSchemaVersion,
-            EnsLookup as EnsLookupTrait, PruneReporter, PruneRequest, SubgraphFork,
+            DumpReporter, EnsLookup as EnsLookupTrait, PruneReporter, PruneRequest,
+            RestoreReporter, SubgraphFork,
         },
     },
     data::{
@@ -1443,11 +1444,12 @@ impl Inner {
         &self,
         loc: &DeploymentLocator,
         directory: std::path::PathBuf,
+        reporter: Box<dyn DumpReporter>,
     ) -> Result<(), StoreError> {
         let site = self.find_site(loc.id.into()).await?;
         let store = self.for_site(&site)?;
 
-        store.dump(site, directory).await
+        store.dump(site, directory, reporter).await
     }
 
     pub async fn restore(
@@ -1456,6 +1458,7 @@ impl Inner {
         shard: Option<Shard>,
         name: Option<SubgraphName>,
         mode: RestoreMode,
+        reporter: &mut dyn RestoreReporter,
     ) -> Result<(), StoreError> {
         use crate::relational::dump::Metadata;
 
@@ -1559,7 +1562,9 @@ impl Inner {
 
         let site = Arc::new(site);
         let store = self.for_site(&site)?;
-        store.restore(site.cheap_clone(), dir, &metadata).await?;
+        store
+            .restore(site.cheap_clone(), dir, &metadata, &mut *reporter)
+            .await?;
 
         // Assign the restored deployment to the node determined by
         // deployment rules
