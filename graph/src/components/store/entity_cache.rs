@@ -457,6 +457,9 @@ impl EntityCache {
         for (key, op) in other.updates {
             self.entity_op(key, op);
         }
+        // Carry forward vid_seq to prevent VID collisions when the caller
+        // continues writing entities after merging.
+        self.vid_seq = self.vid_seq.max(other.vid_seq);
     }
 
     /// Generate an id.
