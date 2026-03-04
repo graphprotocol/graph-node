@@ -1075,7 +1075,7 @@ async fn test_entity_store(api_version: Version) {
     let ctx = instance.store.data_mut();
     let cache = std::mem::replace(
         &mut ctx.ctx.state.entity_cache,
-        EntityCache::new(Arc::new(writable.clone())),
+        EntityCache::new(Arc::new(writable.clone()), SeqGenerator::new(12)),
     );
     let mut mods = cache
         .as_modifications(0, &STOPWATCH)
@@ -1366,7 +1366,6 @@ impl Host {
         self.host_exports
             .store_set(
                 &self.ctx.logger,
-                12, // Arbitrary block number
                 &mut self.ctx.state,
                 &self.ctx.proof_of_indexing,
                 entity_type.to_string(),

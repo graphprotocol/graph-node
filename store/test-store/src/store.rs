@@ -2,7 +2,7 @@ use diesel;
 use graph::blockchain::mock::MockDataSource;
 use graph::blockchain::BlockTime;
 use graph::blockchain::ChainIdentifier;
-use graph::components::store::BlockStore;
+use graph::components::store::{BlockStore, SeqGenerator};
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
@@ -378,7 +378,10 @@ pub async fn transact_entities_and_dynamic_data_sources(
         store.shard().to_string(),
     );
 
-    let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
+    let mut entity_cache = EntityCache::new(
+        Arc::new(store.clone()),
+        SeqGenerator::new(block_ptr_to.number),
+    );
     entity_cache.append(ops);
     let mods = entity_cache
         .as_modifications(block_ptr_to.number, &stopwatch_metrics)

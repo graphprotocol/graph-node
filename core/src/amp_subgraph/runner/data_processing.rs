@@ -11,7 +11,7 @@ use graph::{
     },
     blockchain::block_stream::FirehoseCursor,
     cheap_clone::CheapClone,
-    components::store::{EntityCache, ModificationsAndCache},
+    components::store::{EntityCache, ModificationsAndCache, SeqGenerator},
 };
 use slog::{debug, trace};
 
@@ -96,6 +96,8 @@ async fn process_record_batch_group<AC>(
         .stopwatch
         .start_section("process_record_batch_group");
 
+    entity_cache.seq_gen = SeqGenerator::new(block_number.compat());
+
     let RecordBatchGroup { record_batches } = record_batch_group;
 
     if record_batches.is_empty() {
@@ -121,7 +123,6 @@ async fn process_record_batch_group<AC>(
         process_record_batch(
             cx,
             &mut entity_cache,
-            block_number,
             record_batch,
             stream_table_ptr[stream_index],
         )
@@ -134,6 +135,7 @@ async fn process_record_batch_group<AC>(
     }
 
     let section = cx.metrics.stopwatch.start_section("as_modifications");
+    let vid_gen = entity_cache.vid_gen();
     let ModificationsAndCache {
         modifications,
         entity_lfu_cache,
@@ -172,13 +174,13 @@ async fn process_record_batch_group<AC>(
     Ok(EntityCache::with_current(
         cx.store.cheap_clone(),
         entity_lfu_cache,
+        vid_gen,
     ))
 }
 
 async fn process_record_batch<AC>(
     cx: &mut Context<AC>,
     entity_cache: &mut EntityCache,
-    block_number: BlockNumber,
     record_batch: RecordBatch,
     (i, j): TablePtr,
 ) -> Result<(), Error> {
@@ -209,13 +211,11 @@ async fn process_record_batch<AC>(
         let key = match key {
             Some(key) => key,
             None => {
-                let entity_id = entity_cache
-                    .generate_id(id_type, block_number.compat())
-                    .map_err(|e| {
-                        Error::Deterministic(e.context(format!(
-                            "failed to generate a new id for an entity of type '{entity_name}'"
-                        )))
-                    })?;
+                let entity_id = entity_cache.seq_gen.id(id_type).map_err(|e| {
+                    Error::Deterministic(e.context(format!(
+                        "failed to generate a new id for an entity of type '{entity_name}'"
+                    )))
+                })?;
 
                 entity_data.push(("id".into(), entity_id.clone().into()));
                 entity_type.key(entity_id)
@@ -229,14 +229,11 @@ async fn process_record_batch<AC>(
             )))
         })?;
 
-        entity_cache
-            .set(key, entity, block_number.compat(), None)
-            .await
-            .map_err(|e| {
-                Error::Deterministic(e.context(format!(
-                    "failed to store a new entity of type '{entity_name}' with id '{entity_id}'"
-                )))
-            })?;
+        entity_cache.set(key, entity, None).await.map_err(|e| {
+            Error::Deterministic(e.context(format!(
+                "failed to store a new entity of type '{entity_name}' with id '{entity_id}'"
+            )))
+        })?;
     }
 
     Ok(())

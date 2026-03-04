@@ -2,7 +2,7 @@ use crate::{
     blockchain::{Blockchain, DataSourceTemplate as _},
     components::{
         metrics::block_state::BlockStateMetrics,
-        store::{EntityLfuCache, ReadStore, StoredDynamicDataSource},
+        store::{EntityLfuCache, ReadStore, SeqGenerator, StoredDynamicDataSource},
     },
     data::subgraph::schema::SubgraphError,
     data_source::{DataSourceTemplate, DataSourceTemplateInfo},
@@ -87,9 +87,9 @@ pub struct BlockState {
 }
 
 impl BlockState {
-    pub fn new(store: impl ReadStore, lfu_cache: EntityLfuCache) -> Self {
+    pub fn new(store: impl ReadStore, lfu_cache: EntityLfuCache, vid_gen: SeqGenerator) -> Self {
         BlockState {
-            entity_cache: EntityCache::with_current(Arc::new(store), lfu_cache),
+            entity_cache: EntityCache::with_current(Arc::new(store), lfu_cache, vid_gen),
             deterministic_errors: Vec::new(),
             created_data_sources: Vec::new(),
             persisted_data_sources: Vec::new(),
@@ -99,6 +99,10 @@ impl BlockState {
             metrics: BlockStateMetrics::new(),
             write_capacity_remaining: ENV_VARS.block_write_capacity,
         }
+    }
+
+    pub fn seq_gen(&self) -> SeqGenerator {
+        self.entity_cache.seq_gen()
     }
 }
 

@@ -11,7 +11,9 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use futures::StreamExt;
 use graph::{
-    amp::Client, cheap_clone::CheapClone, components::store::EntityCache,
+    amp::Client,
+    cheap_clone::CheapClone,
+    components::store::{EntityCache, SeqGenerator},
     data::subgraph::schema::SubgraphError,
 };
 use slog::{debug, error, warn};
@@ -104,7 +106,10 @@ where
             .update(latest_block.min(cx.end_block()));
 
         let mut deployment_is_failed = cx.store.health().await?.is_failed();
-        let mut entity_cache = EntityCache::new(cx.store.cheap_clone());
+        // The SeqGenerator gets replaced with one for the correct block
+        // number in `process_record_batch_groups`, so the initial value
+        // doesn't matter much.
+        let mut entity_cache = EntityCache::new(cx.store.cheap_clone(), SeqGenerator::new(0));
         let mut stream = new_data_stream(cx, latest_block);
 
         while let Some(result) = stream.next().await {

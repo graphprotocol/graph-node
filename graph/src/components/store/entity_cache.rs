@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::fmt::{self, Debug};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
 use crate::cheap_clone::CheapClone;
@@ -20,6 +21,52 @@ pub type EntityLfuCache = LfuCache<EntityKey, Option<Arc<Entity>>>;
 // Number of VIDs that are reserved outside of the generated ones here.
 // Currently none is used, but lets reserve a few more.
 const RESERVED_VIDS: u32 = 100;
+
+/// Shared generator for VID and entity ID sequences within a block.
+///
+/// Created once per block and shared (via `Arc`) across all `EntityCache`
+/// instances that operate on the same block. This prevents VID collisions
+/// when multiple isolated caches (e.g. ipfs.map callbacks, offchain
+/// triggers) write entities in the same block.
+#[derive(Clone, Debug)]
+pub struct SeqGenerator {
+    block: BlockNumber,
+    vid_seq: Arc<AtomicU32>,
+    id_seq: Arc<AtomicU32>,
+}
+
+impl CheapClone for SeqGenerator {
+    fn cheap_clone(&self) -> Self {
+        self.clone()
+    }
+}
+
+impl SeqGenerator {
+    pub fn new(block: BlockNumber) -> Self {
+        SeqGenerator {
+            block,
+            vid_seq: Arc::new(AtomicU32::new(RESERVED_VIDS)),
+            id_seq: Arc::new(AtomicU32::new(0)),
+        }
+    }
+
+    /// Return the next VID. The VID encodes the block number in the upper
+    /// 32 bits and a monotonically increasing sequence in the lower 32
+    /// bits.
+    pub fn vid(&self) -> i64 {
+        let seq = self.vid_seq.fetch_add(1, Ordering::Relaxed);
+        ((self.block as i64) << 32) + seq as i64
+    }
+
+    /// Generate the next entity ID for the given ID type. The ID encodes
+    /// the block number in the upper 32 bits and a monotonically
+    /// increasing sequence in the lower 32 bits.
+    pub fn id(&self, id_type: IdType) -> anyhow::Result<Id> {
+        let seq = self.id_seq.fetch_add(1, Ordering::Relaxed);
+
+        id_type.generate_id(self.block, seq)
+    }
+}
 
 /// The scope in which the `EntityCache` should perform a `get` operation
 pub enum GetScope {
@@ -103,16 +150,8 @@ pub struct EntityCache {
 
     pub schema: InputSchema,
 
-    /// A sequence number for generating entity IDs. We use one number for
-    /// all id's as the id's are scoped by block and a u32 has plenty of
-    /// room for all changes in one block. To ensure reproducability of
-    /// generated IDs, the `EntityCache` needs to be newly instantiated for
-    /// each block
-    seq: u32,
-
-    // Sequence number of the next VID value for this block. The value written
-    // in the database consist of a block number and this SEQ number.
-    pub vid_seq: u32,
+    /// Shared sequence generator for VIDs and entity IDs within a block.
+    pub seq_gen: SeqGenerator,
 }
 
 impl Debug for EntityCache {
@@ -131,7 +170,7 @@ pub struct ModificationsAndCache {
 }
 
 impl EntityCache {
-    pub fn new(store: Arc<dyn s::ReadStore>) -> Self {
+    pub fn new(store: Arc<dyn s::ReadStore>, seq_gen: SeqGenerator) -> Self {
         Self {
             current: LfuCache::new(),
             updates: HashMap::new(),
@@ -139,8 +178,7 @@ impl EntityCache {
             in_handler: false,
             schema: store.input_schema(),
             store,
-            seq: 0,
-            vid_seq: RESERVED_VIDS,
+            seq_gen,
         }
     }
 
@@ -152,7 +190,11 @@ impl EntityCache {
         self.schema.make_entity(iter)
     }
 
-    pub fn with_current(store: Arc<dyn s::ReadStore>, current: EntityLfuCache) -> EntityCache {
+    pub fn with_current(
+        store: Arc<dyn s::ReadStore>,
+        current: EntityLfuCache,
+        seq_gen: SeqGenerator,
+    ) -> EntityCache {
         EntityCache {
             current,
             updates: HashMap::new(),
@@ -160,9 +202,12 @@ impl EntityCache {
             in_handler: false,
             schema: store.input_schema(),
             store,
-            seq: 0,
-            vid_seq: RESERVED_VIDS,
+            seq_gen,
         }
+    }
+
+    pub fn seq_gen(&self) -> SeqGenerator {
+        self.seq_gen.cheap_clone()
     }
 
     pub(crate) fn enter_handler(&mut self) {
@@ -368,7 +413,6 @@ impl EntityCache {
         &mut self,
         key: EntityKey,
         entity: Entity,
-        block: BlockNumber,
         write_capacity_remaining: Option<&mut usize>,
     ) -> Result<(), anyhow::Error> {
         // check the validate for derived fields
@@ -386,9 +430,7 @@ impl EntityCache {
             *write_capacity_remaining -= weight;
         }
 
-        // The next VID is based on a block number and a sequence within the block
-        let vid = ((block as i64) << 32) + self.vid_seq as i64;
-        self.vid_seq += 1;
+        let vid = self.seq_gen.vid();
         let mut entity = entity;
         let old_vid = entity.set_vid(vid).expect("the vid should be set");
         // Make sure that there was no VID previously set for this entity.
@@ -457,16 +499,6 @@ impl EntityCache {
         for (key, op) in other.updates {
             self.entity_op(key, op);
         }
-        // Carry forward vid_seq to prevent VID collisions when the caller
-        // continues writing entities after merging.
-        self.vid_seq = self.vid_seq.max(other.vid_seq);
-    }
-
-    /// Generate an id.
-    pub fn generate_id(&mut self, id_type: IdType, block: BlockNumber) -> anyhow::Result<Id> {
-        let id = id_type.generate_id(block, self.seq)?;
-        self.seq += 1;
-        Ok(id)
     }
 
     /// Return the changes that have been made via `set` and `remove` as

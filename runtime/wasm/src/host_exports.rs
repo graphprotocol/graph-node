@@ -224,7 +224,6 @@ impl HostExports {
     pub(crate) async fn store_set(
         &self,
         logger: &Logger,
-        block: BlockNumber,
         state: &mut BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         block_time: BlockTime,
@@ -251,7 +250,7 @@ impl HostExports {
                 .into());
             }
             let id_type = entity_type.id_type()?;
-            let id = state.entity_cache.generate_id(id_type, block)?;
+            let id = state.entity_cache.seq_gen.id(id_type)?;
             data.insert(store::ID.clone(), id.clone().into());
             id.to_string()
         } else {
@@ -338,12 +337,7 @@ impl HostExports {
 
         state
             .entity_cache
-            .set(
-                key,
-                entity,
-                block,
-                Some(&mut state.write_capacity_remaining),
-            )
+            .set(key, entity, Some(&mut state.write_capacity_remaining))
             .await?;
 
         Ok(())
@@ -537,7 +531,7 @@ impl HostExports {
 
         let host_metrics = wasm_ctx.host_metrics.clone();
         let valid_module = wasm_ctx.valid_module.clone();
-        let mut ctx = wasm_ctx.ctx.derive_with_empty_block_state();
+        let ctx = wasm_ctx.ctx.derive_with_empty_block_state();
         let callback = callback.to_owned();
         // Create a base error message to avoid borrowing headaches
         let errmsg = format!(
@@ -560,14 +554,9 @@ impl HostExports {
             let mut v = Vec::new();
             while let Some(sv) = stream.next().await {
                 let sv = sv?;
-                let mut derived = ctx.derive_with_empty_block_state();
-                // Continue the vid sequence from the previous callback so
-                // each iteration doesn't reset to RESERVED_VIDS and
-                // produce duplicate VIDs.
-                derived.state.entity_cache.vid_seq = ctx.state.entity_cache.vid_seq;
                 let module = WasmInstance::from_valid_module_with_ctx_boxed(
                     valid_module.clone(),
-                    derived,
+                    ctx.derive_with_empty_block_state(),
                     host_metrics.clone(),
                     wasm_ctx.experimental_features,
                 )
@@ -575,9 +564,6 @@ impl HostExports {
                 let result = module
                     .handle_json_callback(&callback, &sv.value, &user_data)
                     .await?;
-                // Carry forward vid_seq so the next iteration continues
-                // the sequence.
-                ctx.state.entity_cache.vid_seq = result.entity_cache.vid_seq;
                 // Log progress every 15s
                 if last_log.elapsed() > Duration::from_secs(15) {
                     debug!(
@@ -1310,10 +1296,7 @@ pub mod test_support {
 
     use graph::{
         blockchain::BlockTime,
-        components::{
-            store::{BlockNumber, GetScope},
-            subgraph::SharedProofOfIndexing,
-        },
+        components::{store::GetScope, subgraph::SharedProofOfIndexing},
         data::value::Word,
         prelude::{BlockState, Entity, StopwatchMetrics, Value},
         runtime::{gas::GasCounter, HostExportError},
@@ -1338,7 +1321,6 @@ pub mod test_support {
         pub async fn store_set(
             &self,
             logger: &Logger,
-            block: BlockNumber,
             state: &mut BlockState,
             proof_of_indexing: &SharedProofOfIndexing,
             entity_type: String,
@@ -1350,7 +1332,6 @@ pub mod test_support {
             self.host_exports
                 .store_set(
                     logger,
-                    block,
                     state,
                     proof_of_indexing,
                     self.block_time,

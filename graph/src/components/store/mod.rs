@@ -9,7 +9,9 @@ use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Integer;
 use diesel_derives::{AsExpression, FromSqlRow};
-pub use entity_cache::{EntityCache, EntityLfuCache, GetScope, ModificationsAndCache};
+pub use entity_cache::{
+    EntityCache, EntityLfuCache, GetScope, ModificationsAndCache, SeqGenerator,
+};
 use slog::Logger;
 use tokio_stream::wrappers::ReceiverStream;
 

@@ -17,7 +17,9 @@ use graph::blockchain::{
     Block, BlockTime, Blockchain, DataSource as _, SubgraphFilter, Trigger, TriggerFilter as _,
     TriggerFilterWrapper,
 };
-use graph::components::store::{EmptyStore, GetScope, ReadStore, StoredDynamicDataSource};
+use graph::components::store::{
+    EmptyStore, GetScope, ReadStore, SeqGenerator, StoredDynamicDataSource,
+};
 use graph::components::subgraph::InstanceDSTemplate;
 use graph::components::trigger_processor::RunnableTriggers;
 use graph::components::{
@@ -1019,9 +1021,9 @@ where
             .ready_offchain_events()
             .non_deterministic()?;
 
-        let onchain_vid_seq = block_state.entity_cache.vid_seq;
+        let vid_gen = block_state.seq_gen();
         let (offchain_mods, processed_offchain_data_sources, persisted_off_chain_data_sources) =
-            self.handle_offchain_triggers(offchain_events, block, onchain_vid_seq)
+            self.handle_offchain_triggers(offchain_events, block, vid_gen)
                 .await
                 .non_deterministic()?;
 
@@ -1066,9 +1068,11 @@ where
         // Causality region for onchain triggers.
         let causality_region = PoICausalityRegion::from_network(&self.inputs.network);
 
+        let vid_gen = SeqGenerator::new(block_ptr.number);
         let mut block_state = BlockState::new(
             self.inputs.store.clone(),
             std::mem::take(&mut self.state.entity_lfu_cache),
+            vid_gen,
         );
 
         let _section = self
@@ -1471,7 +1475,7 @@ where
         &mut self,
         triggers: Vec<offchain::TriggerData>,
         block: &Arc<C::Block>,
-        mut next_vid_seq: u32,
+        vid_gen: SeqGenerator,
     ) -> Result<
         (
             Vec<EntityModification>,
@@ -1488,12 +1492,11 @@ where
             // Using an `EmptyStore` and clearing the cache for each trigger is a makeshift way to
             // get causality region isolation.
             let schema = ReadStore::input_schema(&self.inputs.store);
-            let mut block_state = BlockState::new(EmptyStore::new(schema), LfuCache::new());
-
-            // Continue the vid sequence from the previous trigger (or from
-            // onchain processing) so that each offchain trigger does not
-            // reset to RESERVED_VIDS and produce duplicate VIDs.
-            block_state.entity_cache.vid_seq = next_vid_seq;
+            let mut block_state = BlockState::new(
+                EmptyStore::new(schema),
+                LfuCache::new(),
+                vid_gen.cheap_clone(),
+            );
 
             // PoI ignores offchain events.
             // See also: poi-ignores-offchain
@@ -1559,10 +1562,6 @@ where
             if let Some(err) = block_state.deterministic_errors.into_iter().next() {
                 return Err(anyhow!("{}", err));
             }
-
-            // Carry forward the vid sequence so the next iteration doesn't
-            // reset to RESERVED_VIDS and produce duplicate VIDs.
-            next_vid_seq = block_state.entity_cache.vid_seq;
 
             mods.extend(
                 block_state
@@ -1685,7 +1684,6 @@ async fn update_proof_of_indexing(
         key: EntityKey,
         digest: Bytes,
         block_time: BlockTime,
-        block: BlockNumber,
     ) -> Result<(), Error> {
         let digest_name = entity_cache.schema.poi_digest();
         let mut data = vec![
@@ -1700,12 +1698,11 @@ async fn update_proof_of_indexing(
             data.push((entity_cache.schema.poi_block_time(), block_time));
         }
         let poi = entity_cache.make_entity(data)?;
-        entity_cache.set(key, poi, block, None).await
+        entity_cache.set(key, poi, None).await
     }
 
     let _section_guard = stopwatch.start_section("update_proof_of_indexing");
 
-    let block_number = proof_of_indexing.get_block();
     let mut proof_of_indexing = proof_of_indexing.take();
 
     for (causality_region, stream) in proof_of_indexing.drain() {
@@ -1742,7 +1739,6 @@ async fn update_proof_of_indexing(
             entity_key,
             updated_proof_of_indexing,
             block_time,
-            block_number,
         )
         .await?;
     }

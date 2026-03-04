@@ -9,7 +9,7 @@ use graph::{
         store::{
             AggregationCurrent, AttributeNames, BlockNumber, ChildMultiplicity, DeploymentLocator,
             EntityCache, EntityCollection, EntityFilter, EntityLink, EntityOperation, EntityQuery,
-            EntityWindow, ReadStore, StoreError, SubgraphStore as _, WindowAttribute,
+            EntityWindow, ReadStore, SeqGenerator, StoreError, SubgraphStore as _, WindowAttribute,
             WritableStore,
         },
     },
@@ -108,7 +108,10 @@ pub async fn insert_entities(
         })
         .collect();
 
-    let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
+    let mut entity_cache = EntityCache::new(
+        Arc::new(store.clone()),
+        SeqGenerator::new(block_ptr_to.number),
+    );
     entity_cache.append(ops);
     let mods = entity_cache
         .as_modifications(block_ptr_to.number, &STOPWATCH)
