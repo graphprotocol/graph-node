@@ -22,34 +22,24 @@ ARG TAG_NAME=unknown
 
 ADD . /graph-node
 
-RUN apt-get update \
-    && apt-get install -y cmake protobuf-compiler && \
-    cd /graph-node && \
-    RUSTFLAGS="-g" cargo build --release --package graph-node \
+RUN apt-get update && apt-get install -y cmake protobuf-compiler
+
+RUN cd /graph-node \
+    && RUSTFLAGS="-g -C force-frame-pointers=yes" cargo build --release --package graph-node \
     && cp target/release/graph-node /usr/local/bin/graph-node \
     && cp target/release/graphman /usr/local/bin/graphman \
-    # Reduce the size of the layer by removing unnecessary files.
     && cargo clean \
-    && objcopy --only-keep-debug /usr/local/bin/graph-node /usr/local/bin/graph-node.debug \
-    && strip -g /usr/local/bin/graph-node \
-    && strip -g /usr/local/bin/graphman \
-    && cd /usr/local/bin \
-    && objcopy --add-gnu-debuglink=graph-node.debug graph-node \
-    && echo "REPO_NAME='$REPO_NAME'" > /etc/image-info \
+    && cp /usr/local/bin/graph-node /usr/local/bin/graph-node-debug \
+    && cp /usr/local/bin/graphman /usr/local/bin/graphman-debug \
+    && strip -g /usr/local/bin/graph-node /usr/local/bin/graphman
+
+RUN echo "REPO_NAME='$REPO_NAME'" > /etc/image-info \
     && echo "TAG_NAME='$TAG_NAME'" >> /etc/image-info \
     && echo "BRANCH_NAME='$BRANCH_NAME'" >> /etc/image-info \
     && echo "COMMIT_SHA='$COMMIT_SHA'" >> /etc/image-info \
     && echo "CARGO_VERSION='$(cargo --version)'" >> /etc/image-info \
     && echo "RUST_VERSION='$(rustc --version)'" >> /etc/image-info \
     && echo "CARGO_DEV_BUILD='$CARGO_DEV_BUILD'" >> /etc/image-info
-
-# Debug image to access core dumps
-FROM graph-node-build AS graph-node-debug
-RUN apt-get update \
-    && apt-get install -y curl gdb postgresql-client
-
-COPY docker/Dockerfile /Dockerfile
-COPY docker/bin/* /usr/local/bin/
 
 # The graph-node runtime image with only the executable
 FROM debian:bookworm-20241111-slim AS graph-node
@@ -97,8 +87,7 @@ EXPOSE 8020
 EXPOSE 8030
 
 RUN apt-get update \
-    && apt-get install -y libpq-dev ca-certificates \
-    netcat-openbsd
+    && apt-get install -y libpq-dev ca-certificates netcat-openbsd
 
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-build /usr/local/bin/graph-node /usr/local/bin/graphman /usr/local/bin/
@@ -107,3 +96,12 @@ COPY --from=envsubst /go/bin/envsubst /usr/local/bin/
 COPY docker/Dockerfile /Dockerfile
 CMD ["start"]
 
+# Debug and profiling image
+# Build with: docker build --target graph-node-debug -f docker/Dockerfile .
+FROM graph-node AS graph-node-debug
+COPY --from=graph-node-build /usr/local/bin/graph-node-debug /usr/local/bin/graph-node
+COPY --from=graph-node-build /usr/local/bin/graphman-debug /usr/local/bin/graphman
+RUN apt-get update \
+    && apt-get install -y curl gdb postgresql-client linux-perf procps binutils
+COPY docker/Dockerfile /Dockerfile
+COPY docker/bin/* /usr/local/bin/
