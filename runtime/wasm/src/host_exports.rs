@@ -537,7 +537,7 @@ impl HostExports {
 
         let host_metrics = wasm_ctx.host_metrics.clone();
         let valid_module = wasm_ctx.valid_module.clone();
-        let ctx = wasm_ctx.ctx.derive_with_empty_block_state();
+        let mut ctx = wasm_ctx.ctx.derive_with_empty_block_state();
         let callback = callback.to_owned();
         // Create a base error message to avoid borrowing headaches
         let errmsg = format!(
@@ -560,9 +560,14 @@ impl HostExports {
             let mut v = Vec::new();
             while let Some(sv) = stream.next().await {
                 let sv = sv?;
+                let mut derived = ctx.derive_with_empty_block_state();
+                // Continue the vid sequence from the previous callback so
+                // each iteration doesn't reset to RESERVED_VIDS and
+                // produce duplicate VIDs.
+                derived.state.entity_cache.vid_seq = ctx.state.entity_cache.vid_seq;
                 let module = WasmInstance::from_valid_module_with_ctx_boxed(
                     valid_module.clone(),
-                    ctx.derive_with_empty_block_state(),
+                    derived,
                     host_metrics.clone(),
                     wasm_ctx.experimental_features,
                 )
@@ -570,6 +575,9 @@ impl HostExports {
                 let result = module
                     .handle_json_callback(&callback, &sv.value, &user_data)
                     .await?;
+                // Carry forward vid_seq so the next iteration continues
+                // the sequence.
+                ctx.state.entity_cache.vid_seq = result.entity_cache.vid_seq;
                 // Log progress every 15s
                 if last_log.elapsed() > Duration::from_secs(15) {
                     debug!(
