@@ -399,8 +399,7 @@ impl EthereumLogFilter {
                 let contract = LogFilterNode::Contract(log.address());
                 let event = LogFilterNode::Event(*sig);
                 self.contracts_and_events_graph
-                    .all_edges()
-                    .any(|(s, t, _)| (s == contract && t == event) || (t == contract && s == event))
+                    .contains_edge(contract, event)
                     || self.wildcard_events.contains_key(sig)
                     || self
                         .events_with_topic_filters
@@ -439,13 +438,12 @@ impl EthereumLogFilter {
             let contract_node = LogFilterNode::Contract(*address);
             let event_node = LogFilterNode::Event(*event_signature);
 
-            // Directly iterate over all edges and return true if a matching edge that requires a receipt is found.
-            for (s, t, &r) in self.contracts_and_events_graph.all_edges() {
-                if r && ((s == contract_node && t == event_node)
-                    || (t == contract_node && s == event_node))
-                {
-                    return true;
-                }
+            if self
+                .contracts_and_events_graph
+                .edge_weight(contract_node, event_node)
+                == Some(&true)
+            {
+                return true;
             }
         }
 
