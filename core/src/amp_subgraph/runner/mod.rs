@@ -11,10 +11,8 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use futures::StreamExt;
 use graph::{
-    amp::Client,
-    cheap_clone::CheapClone,
-    components::store::{EntityCache, SeqGenerator},
-    data::subgraph::schema::SubgraphError,
+    amp::Client, cheap_clone::CheapClone, components::store::EntityLfuCache,
+    data::subgraph::schema::SubgraphError, util::lfu_cache::LfuCache,
 };
 use slog::{debug, error, warn};
 use tokio_util::sync::CancellationToken;
@@ -106,18 +104,15 @@ where
             .update(latest_block.min(cx.end_block()));
 
         let mut deployment_is_failed = cx.store.health().await?.is_failed();
-        // The SeqGenerator gets replaced with one for the correct block
-        // number in `process_record_batch_groups`, so the initial value
-        // doesn't matter much.
-        let mut entity_cache = EntityCache::new(cx.store.cheap_clone(), SeqGenerator::new(0));
+        let mut entity_lfu_cache: EntityLfuCache = LfuCache::new();
         let mut stream = new_data_stream(cx, latest_block);
 
         while let Some(result) = stream.next().await {
             let (record_batch_groups, stream_table_ptr) = result?;
 
-            entity_cache = process_record_batch_groups(
+            entity_lfu_cache = process_record_batch_groups(
                 cx,
-                entity_cache,
+                entity_lfu_cache,
                 record_batch_groups,
                 stream_table_ptr,
                 latest_block,
