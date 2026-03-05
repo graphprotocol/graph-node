@@ -1911,31 +1911,36 @@ pub(crate) fn parse_log_triggers(
         return vec![];
     }
 
-    block
+    let total_logs: usize = block
         .transaction_receipts
         .iter()
-        .flat_map(move |receipt| {
-            receipt.logs().iter().enumerate().map(move |(index, log)| {
-                let requires_transaction_receipt = log
-                    .topics()
-                    .first()
-                    .map(|signature| {
-                        log_filter.requires_transaction_receipt(
-                            signature,
-                            Some(&log.address()),
-                            log.topics(),
-                        )
-                    })
-                    .unwrap_or(false);
+        .map(|r| r.logs().len())
+        .sum();
+    let mut triggers = Vec::with_capacity(total_logs);
 
-                EthereumTrigger::Log(LogRef::LogPosition(LogPosition {
-                    index,
-                    receipt: receipt.cheap_clone(),
-                    requires_transaction_receipt,
-                }))
-            })
-        })
-        .collect()
+    for receipt in &block.transaction_receipts {
+        for (index, log) in receipt.logs().iter().enumerate() {
+            let requires_transaction_receipt = log
+                .topics()
+                .first()
+                .map(|signature| {
+                    log_filter.requires_transaction_receipt(
+                        signature,
+                        Some(&log.address()),
+                        log.topics(),
+                    )
+                })
+                .unwrap_or(false);
+
+            triggers.push(EthereumTrigger::Log(LogRef::LogPosition(LogPosition {
+                index,
+                receipt: receipt.cheap_clone(),
+                requires_transaction_receipt,
+            })));
+        }
+    }
+
+    triggers
 }
 
 pub(crate) fn parse_call_triggers(
