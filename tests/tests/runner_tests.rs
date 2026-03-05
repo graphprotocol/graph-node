@@ -673,11 +673,25 @@ async fn file_data_sources() {
         assert!(datasources.len() == 1);
     }
 
-    // Create a File data source from a same type of file data source handler
+    // Create a File data source from a same type of file data source handler.
+    // Both hash_2 and hash_3 handlers create entities in the same block,
+    // exercising the shared VID generator: colliding VIDs would cause a DB
+    // constraint violation.
     {
         ctx.start_and_sync_to(test_ptr(4)).await;
 
-        let content = "EXAMPLE_3";
+        let query_res = ctx
+            .query(&format!(
+                r#"{{ fileEntity(id: "{}") {{ id, content }} }}"#,
+                hash_2.clone()
+            ))
+            .await
+            .unwrap();
+        assert_json_eq!(
+            query_res,
+            Some(object! { fileEntity: object!{ id: hash_2.clone(), content: "EXAMPLE_2" } })
+        );
+
         let query_res = ctx
             .query(&format!(
                 r#"{{ fileEntity(id: "{}") {{ id, content }} }}"#,
@@ -687,7 +701,7 @@ async fn file_data_sources() {
             .unwrap();
         assert_json_eq!(
             query_res,
-            Some(object! { fileEntity: object!{ id: hash_3.clone(), content: content } })
+            Some(object! { fileEntity: object!{ id: hash_3.clone(), content: "EXAMPLE_3" } })
         );
     }
 
@@ -813,11 +827,22 @@ async fn file_data_sources() {
 
         chain.set_block_stream(blocks);
 
-        let message = "error while executing at wasm backtrace:\t    0:   0x3490 - <unknown>!generated/schema/Foo#save\t    1:   0x3eb2 - <unknown>!src/mapping/handleFile: entity type `Foo` is not on the 'entities' list for data source `File`. Hint: Add `Foo` to the 'entities' list, which currently is: `FileEntity`. in handler `handleFile` at block #5 () at block #5 (0000000000000000000000000000000000000000000000000000000000000005)";
-
         let err = ctx.start_and_sync_to_error(block_5.ptr()).await;
+        let err_msg = err.to_string();
 
-        assert_eq!(err.to_string(), message);
+        // Don't check exact wasm hex offsets since they change with any
+        // modification to the wasm binary.
+        assert!(
+            err_msg
+                .contains("entity type `Foo` is not on the 'entities' list for data source `File`"),
+            "unexpected error: {err_msg}"
+        );
+        assert!(
+            err_msg.contains(
+                "Hint: Add `Foo` to the 'entities' list, which currently is: `FileEntity`"
+            ),
+            "unexpected error: {err_msg}"
+        );
     }
 }
 

@@ -463,6 +463,37 @@ async fn offchain_trigger_vid_no_collision_with_shared_generator() {
     );
 }
 
+// Simulate the ipfs.map() pattern: multiple EntityCache instances each create
+// an entity using a shared SeqGenerator. VIDs must be unique and sequential.
+#[graph::test]
+async fn ipfs_map_pattern_vid_uniqueness() {
+    let block: i32 = 42;
+    let vid_gen = SeqGenerator::new(block);
+
+    let mut all_vids = Vec::new();
+    for i in 0..5u32 {
+        let store = Arc::new(MockStore::new(BTreeMap::new()));
+        let mut cache = EntityCache::new(store, vid_gen.cheap_clone());
+        let data = entity! { SCHEMA => id: format!("band{i}"), name: format!("Band {i}") };
+        let key = make_band_key(&format!("band{i}"));
+        cache.set(key, data, None).await.unwrap();
+        let result = cache.as_modifications(block, &STOPWATCH).await.unwrap();
+        let vid = match &result.modifications[0] {
+            EntityModification::Insert { data, .. } => data.vid(),
+            _ => panic!("expected Insert"),
+        };
+        all_vids.push(vid);
+    }
+
+    for i in 1..all_vids.len() {
+        assert_eq!(
+            all_vids[i],
+            all_vids[i - 1] + 1,
+            "VIDs should be sequential"
+        );
+    }
+}
+
 const ACCOUNT_GQL: &str = "
     type Account @entity {
         id: ID!

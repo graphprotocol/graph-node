@@ -126,6 +126,13 @@ export function handleFile(data: Bytes): void {
   let contextCommand = context.getString('command');
 
   if (contextCommand == SPAWN_FDS_FROM_OFFCHAIN_HANDLER) {
+    // Create an entity for THIS file data source too, so that two offchain
+    // triggers in the same block each write an entity. This exercises the
+    // shared VID generator: if VIDs collide the DB will reject the insert.
+    let entity = new FileEntity(dataSource.stringParam());
+    entity.content = data.toString();
+    entity.save();
+
     let hash = context.getString('hash');
     log.info('Creating file data source from handleFile: {}', [hash]);
     dataSource.createWithContext('File', [hash], new DataSourceContext());
