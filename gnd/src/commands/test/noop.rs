@@ -105,8 +105,8 @@ impl<C: Blockchain> TriggersAdapter<C> for NoopTriggersAdapter<C> {
         Ok(BlockWithTriggers::new(block, Vec::new(), &logger))
     }
 
-    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
-        Ok(true)
+    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<Option<BlockPtr>, Error> {
+        Ok(None)
     }
 
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error> {

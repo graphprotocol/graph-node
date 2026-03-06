@@ -884,29 +884,6 @@ impl EthereumAdapter {
         .map(|b| BlockPtr::from((b.header.hash, b.header.number)))
     }
 
-    /// Check if `block_ptr` refers to a block that is on the main chain, according to the Ethereum
-    /// node.
-    ///
-    /// Careful: don't use this function without considering race conditions.
-    /// Chain reorgs could happen at any time, and could affect the answer received.
-    /// Generally, it is only safe to use this function with blocks that have received enough
-    /// confirmations to guarantee no further reorgs, **and** where the Ethereum node is aware of
-    /// those confirmations.
-    /// If the Ethereum node is far behind in processing blocks, even old blocks can be subject to
-    /// reorgs.
-    pub(crate) async fn is_on_main_chain(
-        &self,
-        logger: &Logger,
-        block_ptr: BlockPtr,
-    ) -> Result<bool, Error> {
-        // TODO: This considers null blocks, but we could instead bail if we encounter one as a
-        // small optimization.
-        let canonical_block = self
-            .next_existing_ptr_to_number(logger, block_ptr.number)
-            .await?;
-        Ok(canonical_block == block_ptr)
-    }
-
     pub(crate) fn logs_in_block_range(
         &self,
         logger: &Logger,

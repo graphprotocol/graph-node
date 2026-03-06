@@ -272,20 +272,14 @@ impl PollingBlockStreamContext {
             // This allows us to ask the node: does subgraph_ptr point to a block that was
             // permanently accepted into the main chain, or does it point to a block that was
             // uncled?
-            let is_on_main_chain = match &subgraph_ptr {
+            let canonical_parent = match &subgraph_ptr {
                 Some(ptr) => ctx.adapter.is_on_main_chain(ptr.clone()).await?,
-                None => true,
+                None => None,
             };
-            if !is_on_main_chain {
+            if let Some(canonical_parent) = canonical_parent {
                 // The subgraph ptr points to a block that was uncled.
-                // We need to revert this block.
-                //
-                // Note: We can safely unwrap the subgraph ptr here, because
-                // if it was `None`, `is_on_main_chain` would be true.
-                let from = subgraph_ptr.unwrap();
-                let parent = self.parent_ptr(&from, "is_on_main_chain").await?;
-
-                return Ok(ReconciliationStep::Revert(parent));
+                // Revert to the canonical parent provided by is_on_main_chain.
+                return Ok(ReconciliationStep::Revert(canonical_parent));
             }
 
             // The subgraph ptr points to a block on the main chain.

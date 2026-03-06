@@ -1080,7 +1080,7 @@ impl<C: Blockchain> TriggersAdapter<C> for MockTriggersAdapter<C> {
         (self.triggers_in_block)(block)
     }
 
-    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
+    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<Option<BlockPtr>, Error> {
         todo!()
     }
 

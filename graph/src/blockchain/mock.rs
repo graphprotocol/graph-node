@@ -307,7 +307,7 @@ impl TriggersAdapter<MockBlockchain> for MockTriggersAdapter {
         todo!()
     }
 
-    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
+    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<Option<BlockPtr>, Error> {
         todo!()
     }
 
