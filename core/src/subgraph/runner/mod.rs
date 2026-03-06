@@ -619,7 +619,7 @@ where
         match action {
             Action::Continue => Ok(RunnerState::AwaitingBlock { block_stream }),
             Action::Restart => Ok(RunnerState::Restarting {
-                reason: RestartReason::DataSourceExpired,
+                reason: RestartReason::StoreError,
             }),
             Action::Stop => Ok(RunnerState::Stopped {
                 reason: StopReason::Canceled,

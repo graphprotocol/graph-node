@@ -74,8 +74,6 @@ pub enum RunnerState<C: Blockchain> {
 pub enum RestartReason {
     /// New dynamic data source was created that requires filter updates.
     DynamicDataSourceCreated,
-    /// A data source reached its end block.
-    DataSourceExpired,
     /// Store error occurred and store needs to be restarted.
     StoreError,
     /// Possible reorg detected, need to restart to detect it.
