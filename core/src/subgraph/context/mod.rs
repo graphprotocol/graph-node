@@ -114,12 +114,12 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
     /// `process_trigger`.
     ///
     /// File data sources that have been marked not done during this process will get re-queued
-    pub fn revert_data_sources(&mut self, reverted_block: BlockNumber) -> Result<(), Error> {
+    pub fn revert_data_sources(&mut self, reverted_block: BlockNumber) {
         let removed = self.instance.revert_data_sources(reverted_block);
 
         removed
             .into_iter()
-            .try_for_each(|source| self.offchain_monitor.add_source(source))
+            .for_each(|source| self.offchain_monitor.add_source(source))
     }
 
     pub fn add_dynamic_data_source(
@@ -136,7 +136,7 @@ impl<C: Blockchain, T: RuntimeHostBuilder<C>> IndexingContext<C, T> {
             if let Some((source, is_processed)) = offchain_fields {
                 // monitor data source only if it has not yet been processed.
                 if !is_processed {
-                    self.offchain_monitor.add_source(source)?;
+                    self.offchain_monitor.add_source(source);
                 }
             }
         }
@@ -212,7 +212,7 @@ impl OffchainMonitor {
         }
     }
 
-    fn add_source(&mut self, source: offchain::Source) -> Result<(), Error> {
+    fn add_source(&mut self, source: offchain::Source) {
         match source {
             offchain::Source::Ipfs(path) => self.ipfs_monitor.monitor(IpfsRequest {
                 ctx: IpfsContext::new(&self.deployment_hash, &self.logger),
@@ -220,7 +220,6 @@ impl OffchainMonitor {
             }),
             offchain::Source::Arweave(base64) => self.arweave_monitor.monitor(base64),
         };
-        Ok(())
     }
 
     pub fn ready_offchain_events(&mut self) -> Result<Vec<offchain::TriggerData>, Error> {
