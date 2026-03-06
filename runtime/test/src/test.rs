@@ -5,6 +5,7 @@ use graph::components::store::*;
 use graph::data::store::{scalar, Id, IdType};
 use graph::data::subgraph::*;
 use graph::data::value::Word;
+use graph::futures03::future::BoxFuture;
 use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
 use graph::prelude::alloy::primitives::U256;
 use graph::runtime::gas::GasCounter;
@@ -52,70 +53,74 @@ async fn test_module_and_deployment(
     test_module_and_deployment_with_timeout(subgraph_id, data_source, api_version, None).await
 }
 
-async fn test_module_and_deployment_with_timeout(
-    subgraph_id: &str,
+fn test_module_and_deployment_with_timeout<'a>(
+    subgraph_id: &'a str,
     data_source: DataSource,
     api_version: Version,
     timeout: Option<Duration>,
-) -> (WasmInstance, DeploymentLocator) {
-    let logger = Logger::root(slog::Discard, o!());
-    let subgraph_id_with_api_version =
-        subgraph_id_with_api_version(subgraph_id, api_version.clone());
+) -> BoxFuture<'a, (WasmInstance, DeploymentLocator)> {
+    Box::pin(async move {
+        let logger = Logger::root(slog::Discard, o!());
+        let subgraph_id_with_api_version =
+            subgraph_id_with_api_version(subgraph_id, api_version.clone());
 
-    let store = STORE.clone();
-    let metrics_registry = Arc::new(MetricsRegistry::mock());
-    let deployment_id = DeploymentHash::new(&subgraph_id_with_api_version).unwrap();
-    let deployment = test_store::create_test_subgraph(
-        &deployment_id,
-        "type User @entity {
-            id: ID!,
-            name: String,
-            count: BigInt,
-        }
+        let store = STORE.clone();
+        let metrics_registry = Arc::new(MetricsRegistry::mock());
+        let deployment_id = DeploymentHash::new(&subgraph_id_with_api_version).unwrap();
+        let deployment = test_store::create_test_subgraph(
+            &deployment_id,
+            "type User @entity {
+                id: ID!,
+                name: String,
+                count: BigInt,
+            }
 
-        type Thing @entity {
-            id: ID!,
-            value: String,
-            extra: String
-        }",
-    )
-    .await;
-    let stopwatch = StopwatchMetrics::new(
-        logger.clone(),
-        deployment_id.clone(),
-        "test",
-        metrics_registry.clone(),
-        "test_shard".to_string(),
-    );
+            type Thing @entity {
+                id: ID!,
+                value: String,
+                extra: String
+            }",
+        )
+        .await;
+        let stopwatch = StopwatchMetrics::new(
+            logger.clone(),
+            deployment_id.clone(),
+            "test",
+            metrics_registry.clone(),
+            "test_shard".to_string(),
+        );
 
-    let gas_metrics = GasMetrics::new(deployment_id.clone(), metrics_registry.clone());
+        let gas_metrics = GasMetrics::new(deployment_id.clone(), metrics_registry.clone());
 
-    let host_metrics = Arc::new(HostMetrics::new(
-        metrics_registry,
-        deployment_id.as_str(),
-        stopwatch.cheap_clone(),
-        gas_metrics,
-    ));
+        let host_metrics = Arc::new(HostMetrics::new(
+            metrics_registry,
+            deployment_id.as_str(),
+            stopwatch.cheap_clone(),
+            gas_metrics,
+        ));
 
-    let experimental_features = ExperimentalFeatures {
-        allow_non_deterministic_ipfs: true,
-    };
+        let experimental_features = ExperimentalFeatures {
+            allow_non_deterministic_ipfs: true,
+        };
 
-    let module = WasmInstance::from_valid_module_with_ctx(
-        Arc::new(ValidModule::new(&logger, data_source.mapping.runtime.as_ref(), timeout).unwrap()),
-        mock_context(
-            deployment.clone(),
-            data_source,
-            store.subgraph_store(),
-            api_version,
-        ),
-        host_metrics,
-        experimental_features,
-    )
-    .await
-    .unwrap();
+        let module = WasmInstance::from_valid_module_with_ctx(
+            Arc::new(
+                ValidModule::new(&logger, data_source.mapping.runtime.as_ref(), timeout).unwrap(),
+            ),
+            mock_context(
+                deployment.clone(),
+                data_source,
+                store.subgraph_store(),
+                api_version,
+            ),
+            host_metrics,
+            experimental_features,
+        )
+        .await
+        .unwrap();
 
-    (module, deployment)
+        (module, deployment)
+    })
 }
 
 pub async fn test_module(
