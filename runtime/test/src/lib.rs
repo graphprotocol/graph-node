@@ -1,4 +1,6 @@
 #![cfg(test)]
+// Deep async nesting in tests exceeds the default limit (128) on newer rustc versions.
+#![recursion_limit = "256"]
 pub mod common;
 mod test;
 
