@@ -2318,7 +2318,7 @@ impl<'a> InsertRow<'a> {
             let iv = if let Some(fields) = column.fulltext_fields.as_ref() {
                 let fulltext_field_values: Vec<_> = fields
                     .iter()
-                    .filter_map(|field| row.entity.get(field))
+                    .filter_map(|field| row.entity.get(field).filter(|v| !v.is_null()))
                     .map(|value| match value {
                         Value::String(s) => Ok(s),
                         _ => Err(internal_error!(
@@ -2378,6 +2378,7 @@ impl<'a> InsertRow<'a> {
                                     .iter()
                                     .find(|(w, _)| w.as_str() == src_col.name.as_str())
                                     .map(|(_, v)| v)
+                                    .filter(|v| !v.is_null())
                             })
                     })
                     .map(|value| match value {
