@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -410,6 +412,31 @@ pub fn record_batch_to_data_source_rows(
     }
 
     Ok(rows)
+}
+
+/// Load clamp files and build a `vid → block_range_end` map.
+///
+/// Each clamp parquet file contains rows with `(vid: i64, block_range_end: i32)`.
+/// Later clamp files overwrite earlier ones for the same vid (only the
+/// latest value matters).
+pub fn load_clamps(
+    dir: &Path,
+    clamps: &[crate::parquet::writer::ChunkInfo],
+) -> Result<HashMap<i64, i32>, StoreError> {
+    let mut map = HashMap::new();
+    for chunk_info in clamps {
+        let path = dir.join(&chunk_info.file);
+        let batches = crate::parquet::reader::read_batches(&path)?;
+        for batch in batches {
+            let batch = batch?;
+            let vid_arr = downcast_i64(batch.column(0), "vid")?;
+            let bre_arr = downcast_i32(batch.column(1), "block_range_end")?;
+            for row in 0..batch.num_rows() {
+                map.insert(vid_arr.value(row), bre_arr.value(row));
+            }
+        }
+    }
+    Ok(map)
 }
 
 // -- Downcasting helpers --
@@ -1133,5 +1160,67 @@ mod tests {
         let batch = rows_to_record_batch(&schema, &[]).unwrap();
         let restore_rows = record_batch_to_restore_rows(&batch, table).unwrap();
         assert!(restore_rows.is_empty());
+    }
+
+    #[test]
+    fn load_clamps_roundtrip() {
+        use crate::parquet::schema::clamp_arrow_schema;
+        use crate::parquet::writer::{ChunkInfo, ParquetChunkWriter};
+
+        let tmp_dir =
+            std::env::temp_dir().join(format!("graph_node_clamp_test_{}", std::process::id()));
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+
+        let schema = clamp_arrow_schema();
+
+        // Write clamp file 1
+        let path1 = tmp_dir.join("clamp_000000.parquet");
+        let mut writer1 =
+            ParquetChunkWriter::new(path1, "clamp_000000.parquet".into(), &schema).unwrap();
+        let batch1 = arrow::array::RecordBatch::try_new(
+            Arc::new(schema.clone()),
+            vec![
+                Arc::new(Int64Array::from(vec![10, 20])),
+                Arc::new(Int32Array::from(vec![500, 600])),
+            ],
+        )
+        .unwrap();
+        writer1.write_batch(&batch1, 10, 20).unwrap();
+        let chunk1 = writer1.finish().unwrap();
+
+        // Write clamp file 2 (overwrites vid 20 with a different end)
+        let path2 = tmp_dir.join("clamp_000001.parquet");
+        let mut writer2 =
+            ParquetChunkWriter::new(path2, "clamp_000001.parquet".into(), &schema).unwrap();
+        let batch2 = arrow::array::RecordBatch::try_new(
+            Arc::new(schema.clone()),
+            vec![
+                Arc::new(Int64Array::from(vec![20, 30])),
+                Arc::new(Int32Array::from(vec![700, 800])),
+            ],
+        )
+        .unwrap();
+        writer2.write_batch(&batch2, 20, 30).unwrap();
+        let chunk2 = writer2.finish().unwrap();
+
+        let clamps = vec![
+            ChunkInfo {
+                file: chunk1.file,
+                ..chunk1
+            },
+            ChunkInfo {
+                file: chunk2.file,
+                ..chunk2
+            },
+        ];
+
+        let map = load_clamps(&tmp_dir, &clamps).unwrap();
+        assert_eq!(map.len(), 3);
+        assert_eq!(map[&10], 500);
+        assert_eq!(map[&20], 700); // overwritten by second clamp file
+        assert_eq!(map[&30], 800);
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&tmp_dir);
     }
 }

@@ -87,6 +87,26 @@ impl DumpReporter for DumpProgress {
         self.spinner.suspend(|| println!("{line}"));
     }
 
+    fn start_clamps(&mut self, table: &str, rows_approx: usize) {
+        self.spinner.set_message(format!(
+            "{:<32} clamps ~{} rows",
+            table,
+            format_count(rows_approx),
+        ));
+    }
+
+    fn finish_clamps(&mut self, table: &str, rows: usize) {
+        if rows > 0 {
+            let line = format!(
+                "  {} {:<32} {:>10} clamps",
+                style("\u{2714}").green(),
+                table,
+                format_count(rows),
+            );
+            self.spinner.suspend(|| println!("{line}"));
+        }
+    }
+
     fn finish(&mut self) {
         let elapsed = self.start.elapsed().as_secs();
         self.spinner.finish_with_message(format!(

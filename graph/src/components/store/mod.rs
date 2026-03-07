@@ -1001,6 +1001,12 @@ pub trait DumpReporter: Send + 'static {
     /// Called after data_sources$ has been dumped.
     fn finish_data_sources(&mut self, rows: usize) {}
 
+    /// Called before dumping clamps for a table.
+    fn start_clamps(&mut self, _table: &str, _rows_approx: usize) {}
+
+    /// Called after clamps have been dumped for a table.
+    fn finish_clamps(&mut self, _table: &str, _rows: usize) {}
+
     /// Called when the entire dump has completed.
     fn finish(&mut self) {}
 }

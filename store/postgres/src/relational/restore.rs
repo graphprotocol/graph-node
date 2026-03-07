@@ -23,7 +23,9 @@ use graph::semver::Version;
 use crate::catalog;
 use crate::deployment::create_deployment;
 use crate::dynds::DataSourcesTable;
-use crate::parquet::convert::{record_batch_to_data_source_rows, record_batch_to_restore_rows};
+use crate::parquet::convert::{
+    load_clamps, record_batch_to_data_source_rows, record_batch_to_restore_rows,
+};
 use crate::parquet::reader::read_batches;
 use crate::primary::Site;
 use crate::relational::dump::{Metadata, TableInfo};
@@ -90,6 +92,13 @@ async fn import_entity_table(
 
     reporter.start_table(table_name, total_rows);
 
+    // Load clamps (if any) so we can patch block_range_end during import
+    let clamp_map = if !table_info.clamps.is_empty() {
+        load_clamps(dir, &table_info.clamps)?
+    } else {
+        std::collections::HashMap::new()
+    };
+
     let chunk_size = InsertQuery::chunk_size(table);
     let mut total_inserted = 0usize;
 
@@ -113,6 +122,16 @@ async fn import_entity_table(
 
             if rows.is_empty() {
                 continue;
+            }
+
+            // Apply clamps: update block_range_end for rows that were
+            // clamped after the chunk was originally written
+            if !clamp_map.is_empty() {
+                for row in &mut rows {
+                    if let Some(&end) = clamp_map.get(&row.vid) {
+                        row.block_range_end = Some(Some(end));
+                    }
+                }
             }
 
             // Split into InsertQuery-sized chunks and execute
@@ -155,6 +174,13 @@ async fn import_data_sources(
 
     reporter.start_data_sources(total_rows);
 
+    // Load clamps for data_sources$ if any
+    let clamp_map = if !table_info.clamps.is_empty() {
+        load_clamps(dir, &table_info.clamps)?
+    } else {
+        std::collections::HashMap::new()
+    };
+
     let mut total_inserted = 0usize;
 
     for chunk_info in &table_info.chunks {
@@ -171,6 +197,15 @@ async fn import_data_sources(
 
             if max_vid_db >= 0 {
                 rows.retain(|row| row.vid > max_vid_db);
+            }
+
+            // Apply clamps
+            if !clamp_map.is_empty() {
+                for row in &mut rows {
+                    if let Some(&end) = clamp_map.get(&row.vid) {
+                        row.block_range_end = Some(end);
+                    }
+                }
             }
 
             let inserted = ds_table.insert_rows(conn, &rows).await?;

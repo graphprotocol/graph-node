@@ -62,6 +62,15 @@ pub fn data_sources_arrow_schema() -> Schema {
     ])
 }
 
+/// Arrow schema for clamp files: records which rows had their
+/// `block_range` upper bound set (clamped) since a previous dump.
+pub fn clamp_arrow_schema() -> Schema {
+    Schema::new(vec![
+        Field::new("vid", DataType::Int64, false),
+        Field::new("block_range_end", DataType::Int32, false),
+    ])
+}
+
 fn column_type_to_arrow(ct: &ColumnType) -> DataType {
     match ct {
         ColumnType::Boolean => DataType::Boolean,
@@ -359,6 +368,31 @@ mod tests {
             schema.field_with_name("param").unwrap().data_type(),
             &DataType::Binary
         );
+    }
+
+    #[test]
+    fn clamp_schema() {
+        let schema = clamp_arrow_schema();
+        let names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
+        assert_eq!(names, &["vid", "block_range_end"]);
+
+        assert_eq!(
+            schema.field_with_name("vid").unwrap().data_type(),
+            &DataType::Int64
+        );
+        assert!(!schema.field_with_name("vid").unwrap().is_nullable());
+
+        assert_eq!(
+            schema
+                .field_with_name("block_range_end")
+                .unwrap()
+                .data_type(),
+            &DataType::Int32
+        );
+        assert!(!schema
+            .field_with_name("block_range_end")
+            .unwrap()
+            .is_nullable());
     }
 
     #[test]
