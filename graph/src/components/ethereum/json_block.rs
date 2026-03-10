@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde_json::{self as json, Value};
 
 use super::json_patch;
@@ -60,7 +62,9 @@ impl EthereumJsonBlock {
         if has_receipts {
             self.into_full_block().ok().map(CachedBlock::Full)
         } else {
-            self.into_light_block().ok().map(CachedBlock::Light)
+            self.into_light_block()
+                .ok()
+                .map(|b| CachedBlock::Light(Arc::new(b)))
         }
     }
 }

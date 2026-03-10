@@ -265,10 +265,9 @@ impl<'a> From<&'a EthereumCall> for BlockPtr {
 /// Typed cached block for Ethereum. Stores the deserialized block so that
 /// repeated reads from the in-memory cache avoid `serde_json::from_value()`.
 #[derive(Clone, Debug)]
-#[allow(clippy::large_enum_variant)]
 pub enum CachedBlock {
     Full(EthereumBlock),
-    Light(LightEthereumBlock),
+    Light(Arc<LightEthereumBlock>),
 }
 
 impl CachedBlock {
@@ -279,10 +278,10 @@ impl CachedBlock {
         }
     }
 
-    pub fn into_light_block(self) -> Arc<LightEthereumBlock> {
+    pub fn into_light_block(&self) -> Arc<LightEthereumBlock> {
         match self {
-            CachedBlock::Full(block) => block.block,
-            CachedBlock::Light(block) => Arc::new(block),
+            CachedBlock::Full(block) => block.block.clone(),
+            CachedBlock::Light(block) => block.clone(),
         }
     }
 
