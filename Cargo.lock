@@ -3812,6 +3812,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "envconfig",
+ "futures 0.3.31",
  "graph",
  "graph-runtime-derive",
  "graph-runtime-wasm",
