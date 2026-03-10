@@ -195,6 +195,33 @@ protocol = "near"
 provider = [ { label = "near", details = { type = "firehose", url = "https://..", key = "", features = ["compression", "filters"] } } ]
 ```
 
+### Block ingestor failover
+
+When the block ingestor's `do_poll()` call fails (after all internal per-request retries are
+exhausted), `graph-node` automatically attempts to switch to a healthier provider. The logic
+is:
+
+1. **Probe the current provider first.** `do_poll()` can fail for reasons unrelated to RPC
+   availability (e.g. a database error or a chain reorg). If the current provider still
+   responds to `eth_blockNumber`, the failure was not caused by the provider — no switch
+   occurs.
+2. **Probe all alternatives in parallel.** If the current provider is unreachable, all other
+   validated providers are probed simultaneously via `eth_blockNumber` to minimise wait time
+   when providers are timing out.
+3. **Switch to the first reachable provider.** The first provider to respond successfully
+   to the probe is selected as the new provider for the ingestor.
+   The remaining probes are cancelled at this point.
+4. **If all providers are unreachable**, the ingestor stays on the current provider and
+   re-probes on the next `do_poll()` failure.
+
+There is no automatic return to the original provider. Once the ingestor switches, it stays on
+the new provider until that provider fails, at which point the same probe-and-switch logic
+applies.
+
+Only validated providers are eligible as failover candidates. A provider in a temporary failure
+state (e.g. unreachable at startup, pending re-validation) is excluded until it passes
+validation again.
+
 ### Controlling the number of subgraphs using a provider
 
 **This feature is experimental and might be removed in a future release**
