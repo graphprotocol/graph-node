@@ -412,7 +412,8 @@ pub fn retry_strategy(
         Some(limit) => {
             // Items are delays *between* attempts,
             // so subtract 1 from limit.
-            Box::new(backoff.take(limit - 1))
+            // Use saturating_sub to avoid underflow if limit is set to 0
+            Box::new(backoff.take(limit.saturating_sub(1)))
         }
         None => Box::new(backoff),
     }
