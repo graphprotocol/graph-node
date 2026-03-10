@@ -223,8 +223,7 @@ impl PollingBlockIngestor {
         current_provider: &mut Option<String>,
     ) {
         // Resolve by name; resets to first provider if the tracked one left the list.
-        let idx = resolve_provider_idx(providers, current_provider, &self.logger);
-        let eth_adapter = providers[idx].clone();
+        let eth_adapter = resolve_provider(providers, current_provider, &self.logger).clone();
         // Pin the name so the next iteration knows which provider is active.
         let provider_name = eth_adapter.provider().to_string();
         let logger = self.logger.new(o!("provider" => provider_name.clone()));
@@ -237,31 +236,28 @@ impl PollingBlockIngestor {
     }
 }
 
-/// Returns the index of the currently-tracked provider in `providers`.
+/// Returns the currently-tracked provider from `providers`.
 ///
 /// If the tracked provider is no longer in the list (it became invalid and was removed by
-/// `ProviderManager`), logs a warning, resets the state to the first available provider,
-/// and returns 0.
-fn resolve_provider_idx<A: crate::EthereumAdapterTrait>(
-    providers: &[Arc<A>],
+/// `ProviderManager`), logs a warning, resets the state, and returns the first available
+/// provider.
+fn resolve_provider<'a, A: crate::EthereumAdapterTrait>(
+    providers: &'a [Arc<A>],
     current_provider: &mut Option<String>,
     logger: &Logger,
-) -> usize {
-    let name = match current_provider.as_ref() {
-        None => return 0,
-        Some(name) => name,
-    };
-    if let Some(idx) = providers.iter().position(|p| p.provider() == name) {
-        idx
-    } else {
+) -> &'a Arc<A> {
+    if let Some(name) = current_provider.as_ref() {
+        if let Some(found) = providers.iter().find(|p| p.provider() == name) {
+            return found;
+        }
         warn!(
             logger,
             "Current RPC provider is no longer available, resetting to first provider";
             "provider" => name,
         );
         *current_provider = None;
-        0
     }
+    &providers[0]
 }
 
 async fn on_poll_failure<A: crate::EthereumAdapterTrait>(
@@ -501,8 +497,8 @@ mod tests {
             MockEthAdapter::new("p2", true),
         ];
         let mut current_provider = Some("p0".to_string());
-        let idx = resolve_provider_idx(&providers, &mut current_provider, &discard_logger());
-        assert_eq!(idx, 0);
+        let resolved = resolve_provider(&providers, &mut current_provider, &discard_logger());
+        assert_eq!(resolved.provider(), "p1");
         assert_eq!(current_provider, None);
     }
 
@@ -568,9 +564,9 @@ mod tests {
             MockEthAdapter::new("p2", true),
         ];
         let mut current_provider = Some("p1".to_string());
-        let idx = resolve_provider_idx(&providers, &mut current_provider, &discard_logger());
+        let resolved = resolve_provider(&providers, &mut current_provider, &discard_logger());
         // p1 is now at index 0 — must not drift to p2
-        assert_eq!(idx, 0);
+        assert_eq!(resolved.provider(), "p1");
         assert_eq!(current_provider, Some("p1".to_string()));
     }
 
@@ -597,8 +593,8 @@ mod tests {
             MockEthAdapter::new("p0", true),
             MockEthAdapter::new("p2", true),
         ];
-        let idx = resolve_provider_idx(&providers_iter2, &mut current_provider, &logger);
-        assert_eq!(idx, 0); // reset to first (p0)
+        let resolved = resolve_provider(&providers_iter2, &mut current_provider, &logger);
+        assert_eq!(resolved.provider(), "p0"); // reset to first
         assert_eq!(current_provider, None);
     }
 
@@ -625,9 +621,9 @@ mod tests {
             MockEthAdapter::new("p0", true),
             MockEthAdapter::new("p1", true),
         ];
-        let idx = resolve_provider_idx(&providers_iter2, &mut current_provider, &logger);
-        // Must resolve to p1 (index 1), not drift back to p0 (index 0).
-        assert_eq!(idx, 1);
+        let resolved = resolve_provider(&providers_iter2, &mut current_provider, &logger);
+        // Must resolve to p1, not drift back to p0.
+        assert_eq!(resolved.provider(), "p1");
         assert_eq!(current_provider, Some("p1".to_string()));
     }
 }
