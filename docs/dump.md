@@ -23,6 +23,62 @@ in the dump. This can lead to very long restore times for large subgraphs.
 The restore process will be optimized in the future to only create indexes
 that are present in the dump's metadata.
 
+### Usage
+
+#### Dumping a deployment
+
+```bash
+graphman dump <deployment> <directory>
+```
+
+`<deployment>` identifies the subgraph deployment to dump. It can be a
+subgraph name, a deployment hash (`Qm...`), or a database namespace
+(`sgdNNN`). `<directory>` is the path where the dump will be written; it
+will be created if it does not exist.
+
+Running `graphman dump` against an existing dump directory performs an
+**incremental dump**: only rows added since the last dump are exported, and
+new chunk files are appended rather than rewriting existing ones.
+
+```bash
+# Full dump
+graphman dump my-subgraph /backups/my-subgraph
+
+# Incremental update of the same dump
+graphman dump my-subgraph /backups/my-subgraph
+```
+
+#### Restoring a deployment
+
+```bash
+graphman restore <directory> [options]
+```
+
+`<directory>` is the path to a dump previously created with `graphman
+dump`.
+
+| Option      | Description                                                                                         |
+| ----------- | --------------------------------------------------------------------------------------------------- |
+| `--shard`   | Target database shard. Uses deployment rules (or primary shard) when omitted. Required with `--add` |
+| `--name`    | Subgraph name for deployment rule matching and node assignment. Falls back to an existing name       |
+| `--replace` | Drop and recreate if the deployment already exists in the target shard                               |
+| `--add`     | Create a copy in a shard that doesn't already have this deployment (requires `--shard`)              |
+| `--force`   | Replace if the deployment exists in the target shard, add if it doesn't                              |
+
+`--replace`, `--add`, and `--force` are mutually exclusive. When none is
+given, restore fails if the deployment already exists in the target shard.
+
+```bash
+# Restore into the default shard
+graphman restore /backups/my-subgraph
+
+# Restore into a specific shard, replacing if it already exists
+graphman restore /backups/my-subgraph --shard shard1 --replace
+
+# Force-restore (replace or add as needed)
+graphman restore /backups/my-subgraph --force
+```
+
 ### Directory layout
 
 A dump directory has the following structure:
