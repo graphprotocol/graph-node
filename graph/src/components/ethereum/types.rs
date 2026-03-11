@@ -278,7 +278,7 @@ impl CachedBlock {
         }
     }
 
-    pub fn into_light_block(&self) -> Arc<LightEthereumBlock> {
+    pub fn to_light_block(&self) -> Arc<LightEthereumBlock> {
         match self {
             CachedBlock::Full(block) => block.block.clone(),
             CachedBlock::Light(block) => block.clone(),
@@ -289,6 +289,15 @@ impl CachedBlock {
         match self {
             CachedBlock::Full(block) => Some(block),
             CachedBlock::Light(_) => None,
+        }
+    }
+
+    /// Serializes the block data directly. Note: the output shape differs
+    /// from the store format (which wraps in a `{"block": ..}` envelope).
+    pub fn to_json(&self) -> serde_json::Result<serde_json::Value> {
+        match self {
+            CachedBlock::Full(b) => serde_json::to_value(b),
+            CachedBlock::Light(b) => serde_json::to_value(b),
         }
     }
 

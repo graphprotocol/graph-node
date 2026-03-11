@@ -9,7 +9,6 @@ use graph::schema::EntityType;
 use git_testament::{git_testament, CommitKind};
 use graph::amp;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
-use graph::components::ethereum::CachedBlock;
 use graph::components::link_resolver::LinkResolverContext;
 use graph::components::store::{BlockPtrForNumber, BlockStore, QueryPermit, Store};
 use graph::components::versions::VERSIONS;
@@ -237,10 +236,7 @@ where
             Ok(mut blocks) => {
                 assert!(blocks.len() == 1, "Multiple blocks with the same hash");
                 let block = blocks.pop().unwrap();
-                let json = match block {
-                    CachedBlock::Full(ref b) => serde_json::to_value(b),
-                    CachedBlock::Light(ref b) => serde_json::to_value(b),
-                };
+                let json = block.to_json();
                 match json {
                     Ok(json) => json.into(),
                     Err(e) => {
