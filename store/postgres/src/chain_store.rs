@@ -2852,19 +2852,6 @@ impl ChainStoreTrait for ChainStore {
         Ok(result)
     }
 
-    async fn blocks_as_json(
-        self: Arc<Self>,
-        hashes: Vec<BlockHash>,
-    ) -> Result<Vec<json::Value>, Error> {
-        let values = self
-            .blocks_from_store(hashes)
-            .await?
-            .into_iter()
-            .filter_map(|block| block.data)
-            .collect();
-        Ok(values)
-    }
-
     async fn ancestor_block(
         self: Arc<Self>,
         block_ptr: BlockPtr,

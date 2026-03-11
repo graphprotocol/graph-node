@@ -17,7 +17,7 @@ use crate::{
     prelude::BlockNumber,
 };
 
-use super::json_block::EthereumJsonBlock;
+use super::json_patch;
 
 pub type AnyTransaction = Transaction<AnyTxEnvelope>;
 pub type AnyBlock = Block<AnyTransaction, Header<AnyHeader>>;
@@ -265,10 +265,9 @@ impl<'a> From<&'a EthereumCall> for BlockPtr {
 /// Typed cached block for Ethereum. Stores the deserialized block so that
 /// repeated reads from the in-memory cache avoid `serde_json::from_value()`.
 #[derive(Clone, Debug)]
-#[allow(clippy::large_enum_variant)]
 pub enum CachedBlock {
     Full(EthereumBlock),
-    Light(LightEthereumBlock),
+    Light(Arc<LightEthereumBlock>),
 }
 
 impl CachedBlock {
@@ -279,10 +278,10 @@ impl CachedBlock {
         }
     }
 
-    pub fn into_light_block(self) -> Arc<LightEthereumBlock> {
+    pub fn to_light_block(&self) -> Arc<LightEthereumBlock> {
         match self {
-            CachedBlock::Full(block) => block.block,
-            CachedBlock::Light(block) => Arc::new(block),
+            CachedBlock::Full(block) => block.block.clone(),
+            CachedBlock::Light(block) => block.clone(),
         }
     }
 
@@ -293,12 +292,51 @@ impl CachedBlock {
         }
     }
 
-    pub fn from_json(value: serde_json::Value) -> Option<Self> {
-        let json_block = EthereumJsonBlock::new(value);
-        if json_block.is_shallow() {
+    /// Serializes the block data directly. Note: the output shape differs
+    /// from the store format (which wraps in a `{"block": ..}` envelope).
+    pub fn to_json(&self) -> serde_json::Result<serde_json::Value> {
+        match self {
+            CachedBlock::Full(b) => serde_json::to_value(b),
+            CachedBlock::Light(b) => serde_json::to_value(b),
+        }
+    }
+
+    /// Deserializes a JSON block from the store into a typed `CachedBlock`.
+    /// Returns `None` for shallow (header-only) blocks.
+    ///
+    /// Patches missing `type` fields in transactions/receipts before
+    /// deserialization for compatibility with blocks cached by older
+    /// graph-node versions.
+    pub fn from_json(mut value: serde_json::Value) -> Option<Self> {
+        // Shallow blocks have no body, only a null `data` field.
+        if value.get("data") == Some(&serde_json::Value::Null) {
             return None;
         }
-        json_block.try_into_cached_block()
+
+        let has_receipts = value
+            .get("transaction_receipts")
+            .is_some_and(|v| !v.is_null());
+
+        if has_receipts {
+            // Full block: patch in place then deserialize the entire value.
+            if let Some(block) = value.get_mut("block") {
+                json_patch::patch_block_transactions(block);
+            }
+            if let Some(receipts) = value.get_mut("transaction_receipts") {
+                json_patch::patch_receipts(receipts);
+            }
+            serde_json::from_value(value).ok().map(CachedBlock::Full)
+        } else {
+            // Light block: extract the inner `block` field, patch, and deserialize.
+            let mut inner = value
+                .as_object_mut()
+                .and_then(|obj| obj.remove("block"))
+                .unwrap_or(value);
+            json_patch::patch_block_transactions(&mut inner);
+            serde_json::from_value(inner)
+                .ok()
+                .map(|b| CachedBlock::Light(Arc::new(b)))
+        }
     }
 
     pub fn timestamp(&self) -> Option<u64> {

@@ -21,7 +21,6 @@ use alloy::primitives::{B256, U256};
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::Value;
 use slog::Logger;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -529,9 +528,6 @@ impl ChainStore for MockChainStore {
         unimplemented!()
     }
     async fn blocks(self: Arc<Self>, _hashes: Vec<BlockHash>) -> Result<Vec<CachedBlock>, Error> {
-        unimplemented!()
-    }
-    async fn blocks_as_json(self: Arc<Self>, _hashes: Vec<BlockHash>) -> Result<Vec<Value>, Error> {
         unimplemented!()
     }
     async fn ancestor_block(
