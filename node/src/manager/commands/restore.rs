@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use console::style;
 use graph::components::store::RestoreReporter;
+use graph::env::ENV_VARS;
 use graph::{bail, prelude::anyhow::Result};
 use indicatif::ProgressBar;
 
@@ -213,9 +214,18 @@ pub async fn run(
 
     let shard = shard.map(Shard::new).transpose()?;
 
+    let version_switching_mode = ENV_VARS.subgraph_version_switching_mode;
+
     let mut reporter = Box::new(RestoreProgress::new());
     subgraph_store
-        .restore(&directory, shard, name, mode, &mut *reporter)
+        .restore(
+            &directory,
+            shard,
+            name,
+            mode,
+            version_switching_mode,
+            &mut *reporter,
+        )
         .await?;
     println!(
         "Restored {} into {} in shard {}",
