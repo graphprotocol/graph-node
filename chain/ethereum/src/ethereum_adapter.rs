@@ -57,7 +57,7 @@ use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tokio::time::timeout;
 
@@ -1246,7 +1246,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let alloy = self.alloy.clone();
         retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
             .redact_log_urls(true)
-            .no_limit()
+            .limit(ENV_VARS.request_retries)
             .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
             .run(move || {
                 let alloy = alloy.cheap_clone();
@@ -1268,6 +1268,14 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 })
             })
             .await
+    }
+
+    async fn is_reachable(&self) -> bool {
+        let alloy = self.alloy.clone();
+        tokio::time::timeout(Duration::from_secs(10), alloy.get_block_number())
+            .await
+            .map(|r| r.is_ok())
+            .unwrap_or(false)
     }
 
     async fn block_by_hash(

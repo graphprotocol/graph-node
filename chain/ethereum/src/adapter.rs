@@ -1174,6 +1174,11 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         address: Address,
         block_ptr: BlockPtr,
     ) -> Result<alloy::primitives::Bytes, EthereumRpcError>;
+
+    /// Returns a boolean indicating whether the adapter can reach
+    /// the RPC provider it is configured to use.
+    /// This is used to determine if a provider should be considered healthy.
+    async fn is_reachable(&self) -> bool;
 }
 
 #[cfg(test)]
