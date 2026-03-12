@@ -474,6 +474,27 @@ impl RowGroup {
         if self.immutable {
             match row {
                 EntityModification::Insert { .. } => {
+                    // Check if this is an attempt to overwrite an immutable
+                    // entity. We allow overwriting immutable entities in
+                    // the same block, but not across blocks; if such an
+                    // attempt happens across two batches, it would result
+                    // in a database constraint violation. This check is
+                    // simply here to provide a friendlier error message and
+                    // to raise the error earlier, before we actually write
+                    // to the database
+                    match self
+                        .last_mod
+                        .get(row.id())
+                        .and_then(|&idx| self.rows.get(idx))
+                    {
+                        Some(prev) if prev.block() != row.block() => {
+                            return Err(StoreError::Input(
+                                format!("entity {} is immutable; inserting it at block {} is not possible as it was already inserted at block {}",
+                                        row.key(), row.block(), prev.block())));
+                        }
+                        _ => { /* nothing to check */ }
+                    }
+
                     self.push_row(row);
                 }
                 EntityModification::Overwrite { .. } | EntityModification::Remove { .. } => {
