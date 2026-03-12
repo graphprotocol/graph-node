@@ -13,10 +13,12 @@
 
 mod entity;
 mod host;
+mod trigger;
 mod types;
 
 pub use entity::{deserialize_entity_data, serialize_entity, EntityData};
 pub use host::{is_rust_module, link_rust_host_functions};
+pub use trigger::{RustLogTrigger, ToRustBytes};
 pub use types::{FromRustWasm, ToRustWasm, ValueTag};
 
 /// Language enum for dispatch.

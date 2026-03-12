@@ -113,7 +113,7 @@ impl WasmInstance {
         trigger: TriggerWithHandler<MappingTrigger<C>>,
     ) -> Result<(BlockState, Gas), MappingError>
     where
-        <C as Blockchain>::MappingTrigger: ToAscPtr,
+        <C as Blockchain>::MappingTrigger: ToAscPtr + crate::rust_abi::ToRustBytes,
     {
         use crate::rust_abi::MappingLanguage;
 
@@ -145,15 +145,21 @@ impl WasmInstance {
     async fn handle_trigger_rust<C: Blockchain>(
         self,
         trigger: TriggerWithHandler<MappingTrigger<C>>,
-    ) -> Result<(BlockState, Gas), MappingError> {
+    ) -> Result<(BlockState, Gas), MappingError>
+    where
+        <C as Blockchain>::MappingTrigger: crate::rust_abi::ToRustBytes,
+    {
         let handler_name = trigger.handler_name().to_owned();
         let logging_extras = trigger.logging_extras().cheap_clone();
         let error_context = trigger.trigger.error_context();
 
-        // TODO: Serialize trigger to TLV bytes
-        // For now, use placeholder empty bytes - full implementation requires
-        // trigger-specific serialization which is complex
-        let trigger_bytes: Vec<u8> = Vec::new();
+        // Serialize the trigger to TLV bytes for Rust handlers
+        use crate::rust_abi::ToRustBytes;
+        let trigger_bytes = match &trigger.trigger {
+            MappingTrigger::Onchain(t) => t.to_rust_bytes(),
+            MappingTrigger::Offchain(_) => Vec::new(), // TODO: Offchain triggers
+            MappingTrigger::Subgraph(_) => Vec::new(), // TODO: Subgraph triggers
+        };
 
         self.invoke_handler_rust(&handler_name, &trigger_bytes, logging_extras, error_context)
             .await

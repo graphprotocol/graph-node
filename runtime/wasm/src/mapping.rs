@@ -29,7 +29,7 @@ pub fn spawn_module<C: Blockchain>(
     experimental_features: ExperimentalFeatures,
 ) -> Result<mpsc::Sender<WasmRequest<C>>, anyhow::Error>
 where
-    <C as Blockchain>::MappingTrigger: ToAscPtr,
+    <C as Blockchain>::MappingTrigger: ToAscPtr + crate::rust_abi::ToRustBytes,
 {
     static THREAD_COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -150,7 +150,7 @@ async fn handle_trigger<C: Blockchain>(
     host_metrics: Arc<HostMetrics>,
 ) -> Result<(BlockState, Gas), MappingError>
 where
-    <C as Blockchain>::MappingTrigger: ToAscPtr,
+    <C as Blockchain>::MappingTrigger: ToAscPtr + crate::rust_abi::ToRustBytes,
 {
     let logger = logger.cheap_clone();
 

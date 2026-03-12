@@ -23,6 +23,7 @@ use graph::runtime::AscPtr;
 use graph::runtime::HostExportError;
 use graph::semver::Version;
 use graph_runtime_wasm::module::ToAscPtr;
+use graph_runtime_wasm::rust_abi::{RustLogTrigger, ToRustBytes};
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::runtime::abi::AscEthereumBlock;
@@ -647,5 +648,50 @@ impl<'a> EthereumCallData<'a> {
 
     pub fn to(&self) -> &Address {
         &self.call.to
+    }
+}
+
+// ============================================================================
+// Rust ABI serialization for Graphite SDK
+// ============================================================================
+
+impl ToRustBytes for MappingTrigger {
+    fn to_rust_bytes(&self) -> Vec<u8> {
+        match self {
+            MappingTrigger::Log {
+                block,
+                transaction,
+                log,
+                params: _,
+                receipt: _,
+                calls: _,
+            } => {
+                // Convert to RustLogTrigger for serialization
+                let rust_trigger = RustLogTrigger {
+                    address: log.inner.address.0 .0,
+                    tx_hash: transaction.tx_hash().0,
+                    log_index: log.log_index.unwrap_or(0),
+                    block_number: block.number_u64(),
+                    block_timestamp: block.inner().header.timestamp,
+                    topics: log
+                        .inner
+                        .data
+                        .topics()
+                        .iter()
+                        .map(|t| t.0)
+                        .collect(),
+                    data: log.inner.data.data.to_vec(),
+                };
+                rust_trigger.to_rust_bytes()
+            }
+            MappingTrigger::Call { .. } => {
+                // TODO: Implement call trigger serialization
+                Vec::new()
+            }
+            MappingTrigger::Block { .. } => {
+                // TODO: Implement block trigger serialization
+                Vec::new()
+            }
+        }
     }
 }

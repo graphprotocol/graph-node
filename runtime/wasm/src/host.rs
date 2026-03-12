@@ -56,7 +56,7 @@ impl<C: Blockchain> RuntimeHostBuilder<C> {
 
 impl<C: Blockchain> RuntimeHostBuilderTrait<C> for RuntimeHostBuilder<C>
 where
-    <C as Blockchain>::MappingTrigger: ToAscPtr,
+    <C as Blockchain>::MappingTrigger: ToAscPtr + crate::rust_abi::ToRustBytes,
 {
     type Host = RuntimeHost<C>;
     type Req = WasmRequest<C>;
