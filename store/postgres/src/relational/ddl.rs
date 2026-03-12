@@ -3,18 +3,18 @@ use std::{
     iter,
 };
 
-use graph::{
-    prelude::{BLOCK_NUMBER_MAX, ENV_VARS},
-    schema::InputSchema,
-};
+use graph::{prelude::ENV_VARS, schema::InputSchema};
 
-use crate::block_range::CAUSALITY_REGION_COLUMN;
 use crate::relational::{
     ColumnType, BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE,
     VID_COLUMN,
 };
+use crate::{block_range::CAUSALITY_REGION_COLUMN, relational::index::Cond};
 
-use super::{index::IndexList, Catalog, Column, Layout, SqlName, Table};
+use super::{
+    index::{CreateIndex, Expr, IndexCreator, Method, PrefixKind},
+    Column, Layout, SqlName, Table,
+};
 
 // In debug builds (for testing etc.) unconditionally create exclusion constraints, in release
 // builds for production, skip them
@@ -29,7 +29,7 @@ impl Layout {
     ///
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
-    pub fn as_ddl(&self, index_def: Option<IndexList>) -> Result<String, fmt::Error> {
+    pub fn as_ddl(&self) -> Result<String, fmt::Error> {
         let mut out = String::new();
 
         // Output enums first so table definitions can reference them
@@ -40,13 +40,9 @@ impl Layout {
         let mut tables = self.tables.values().collect::<Vec<_>>();
         tables.sort_by_key(|table| table.position);
         // Output 'create table' statements for all tables
+        let creat = self.index_creator(false, false);
         for table in tables {
-            table.as_ddl(
-                &self.input_schema,
-                &self.catalog,
-                index_def.as_ref(),
-                &mut out,
-            )?;
+            table.as_ddl(&self.input_schema, &creat, &mut out)?;
         }
 
         Ok(out)
@@ -159,19 +155,28 @@ impl Table {
         }
     }
 
-    fn create_time_travel_indexes(&self, catalog: &Catalog, out: &mut String) -> fmt::Result {
-        let (int4, int8) = catalog.minmax_ops();
+    /// Create a `CreateIndex` for an index on this table with the given
+    /// name over the given columns. The index will be a non-unique BTree
+    /// index
+    fn create_index(&self, name: &str, columns: Vec<Expr>) -> CreateIndex {
+        CreateIndex::create(
+            name,
+            &format!("\"{}\"", self.nsp),
+            &self.name.quoted(),
+            false,
+            Method::BTree,
+            columns,
+            None,
+            None,
+        )
+    }
 
+    fn time_travel_indexes(&self) -> Vec<CreateIndex> {
+        let mut idxs = Vec::new();
         if self.immutable {
             // For immutable entities, a simple BTree on block$ is sufficient
-            write!(
-                out,
-                "create index {table_name}_block\n    \
-                on {qname}({block});\n",
-                table_name = self.name,
-                qname = self.qualified_name,
-                block = BLOCK_COLUMN
-            )
+            let idx = self.create_index(&format!("{}_block", self.name), vec![Expr::Block]);
+            idxs.push(idx);
         } else {
             // Add a BRIN index on the block_range bounds to exploit the fact
             // that block ranges closely correlate with where in a table an
@@ -194,52 +199,26 @@ impl Table {
             //
             // We also index `vid` as that correlates with the order in which
             // entities are stored.
-            write!(out,"create index brin_{table_name}\n    \
-                on {qname}\n \
-                   using brin(lower(block_range) {int4}, coalesce(upper(block_range), {block_max}) {int4}, vid {int8});\n",
-                table_name = self.name,
-                qname = self.qualified_name,
-                block_max = BLOCK_NUMBER_MAX)?;
+
+            let idx = self
+                .create_index(
+                    &format!("brin_{table_name}", table_name = self.name),
+                    vec![Expr::BlockRangeLower, Expr::BlockRangeUpper, Expr::Vid],
+                )
+                .method(Method::Brin);
+            idxs.push(idx);
 
             // Add a BTree index that helps with the `RevertClampQuery` by making
             // it faster to find entity versions that have been modified
-            write!(
-                out,
-                "create index {table_name}_block_range_closed\n    \
-                 on {qname}(coalesce(upper(block_range), {block_max}))\n \
-                 where coalesce(upper(block_range), {block_max}) < {block_max};\n",
-                table_name = self.name,
-                qname = self.qualified_name,
-                block_max = BLOCK_NUMBER_MAX
-            )
+            let idx = self
+                .create_index(
+                    &format!("{table_name}_block_range_closed", table_name = self.name),
+                    vec![Expr::BlockRangeUpper],
+                )
+                .cond(Cond::Closed);
+            idxs.push(idx);
         }
-    }
-
-    /// Calculates the indexing method and expression for a database column.
-    ///
-    /// ### Parameters
-    /// * `immutable`: A boolean flag indicating whether the table is immutable.
-    /// * `column`: A reference to the `Column` struct, representing the database column for which the index method and expression are being calculated.
-    ///
-    /// ### Returns
-    /// A tuple `(String, String)` where:
-    /// - The first element is the indexing method ("btree", "gist", or "gin"),
-    /// - The second element is the index expression as a string.
-    fn calculate_attr_index_method_and_expression(
-        immutable: bool,
-        column: &Column,
-    ) -> (String, String) {
-        if column.is_reference() && !column.is_list() {
-            if immutable {
-                let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_COLUMN);
-                ("btree".to_string(), index_expr)
-            } else {
-                let index_expr = format!("{}, {}", column.name.quoted(), BLOCK_RANGE_COLUMN);
-                ("gist".to_string(), index_expr)
-            }
-        } else {
-            Self::calculate_index_method_and_expression(column)
-        }
+        idxs
     }
 
     pub fn calculate_index_method_and_expression(column: &Column) -> (String, String) {
@@ -269,62 +248,6 @@ impl Table {
         (method, index_expr)
     }
 
-    pub(crate) fn create_postponed_indexes(
-        &self,
-        skip_colums: Vec<String>,
-        concurrently: bool,
-    ) -> Vec<String> {
-        let mut indexing_queries = vec![];
-        let columns = self.columns_to_index();
-
-        for (column_index, column) in columns.enumerate() {
-            let (method, index_expr) =
-                Self::calculate_attr_index_method_and_expression(self.immutable, column);
-            if !column.is_list()
-                && method == "btree"
-                && column.name.as_str() != "id"
-                && !skip_colums.contains(&column.name.to_string())
-            {
-                let conc = if concurrently { "concurrently " } else { "" };
-                let sql = format!(
-                    "create index {conc}if not exists attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
-                    table_index = self.position,
-                    table_name = self.name,
-                    column_name = column.name,
-                    qname = self.qualified_name,
-                );
-                indexing_queries.push(sql);
-            }
-        }
-        indexing_queries
-    }
-
-    fn create_attribute_indexes(&self, out: &mut String) -> fmt::Result {
-        let columns = self.columns_to_index();
-
-        for (column_index, column) in columns.enumerate() {
-            let (method, index_expr) =
-                Self::calculate_attr_index_method_and_expression(self.immutable, column);
-
-            // If `create_gin_indexes` is set to false, we don't create
-            // indexes on array attributes. Experience has shown that these
-            // indexes are very expensive to update and can have a very bad
-            // impact on the write performance of the database, but are
-            // hardly ever used or needed by queries.
-            if !column.is_list() || ENV_VARS.store.create_gin_indexes {
-                write!(
-                    out,
-                    "create index attr_{table_index}_{column_index}_{table_name}_{column_name}\n    on {qname} using {method}({index_expr});\n",
-                    table_index = self.position,
-                    table_name = self.name,
-                    column_name = column.name,
-                    qname = self.qualified_name,
-                )?;
-            }
-        }
-        writeln!(out)
-    }
-
     fn columns_to_index(&self) -> impl Iterator<Item = &Column> {
         // Skip columns whose type is an array of enum, since there is no
         // good way to index them with Postgres 9.6. Once we move to
@@ -352,11 +275,82 @@ impl Table {
         columns
     }
 
-    /// If `self` is an aggregation and has cumulative aggregates, create an
-    /// index on the dimensions. That supports the lookup of previous
-    /// aggregation values we do in the rollup query since that filters by
-    /// all dimensions with an `=` and by timestamp with a `<`
-    fn create_aggregate_indexes(&self, schema: &InputSchema, out: &mut String) -> fmt::Result {
+    /// Return the index method and expressions for an attribute column.
+    fn attr_index_spec(immutable: bool, column: &Column) -> (Method, Vec<Expr>) {
+        if column.is_reference() && !column.is_list() {
+            if immutable {
+                (
+                    Method::BTree,
+                    vec![Expr::Column(column.name.as_str().to_string()), Expr::Block],
+                )
+            } else {
+                (
+                    Method::Gist,
+                    vec![
+                        Expr::Column(column.name.as_str().to_string()),
+                        Expr::BlockRange,
+                    ],
+                )
+            }
+        } else if column.use_prefix_comparison {
+            match column.column_type {
+                ColumnType::String => (
+                    Method::BTree,
+                    vec![Expr::Prefix(
+                        column.name.as_str().to_string(),
+                        PrefixKind::Left,
+                    )],
+                ),
+                ColumnType::Bytes => (
+                    Method::BTree,
+                    vec![Expr::Prefix(
+                        column.name.as_str().to_string(),
+                        PrefixKind::Substring,
+                    )],
+                ),
+                _ => unreachable!("only String and Bytes can have arbitrary size"),
+            }
+        } else if column.is_list() || column.is_fulltext() {
+            (
+                Method::Gin,
+                vec![Expr::Column(column.name.as_str().to_string())],
+            )
+        } else {
+            (
+                Method::BTree,
+                vec![Expr::Column(column.name.as_str().to_string())],
+            )
+        }
+    }
+
+    fn add_attribute_indexes(&self, indexes: &mut Vec<CreateIndex>) {
+        for (column_index, column) in self.columns_to_index().enumerate() {
+            if column.is_list() && !ENV_VARS.store.create_gin_indexes {
+                continue;
+            }
+            let (method, columns) = Self::attr_index_spec(self.immutable, column);
+            let name = format!(
+                "attr_{}_{}_{}_{}",
+                self.position, column_index, self.name, column.name
+            );
+            indexes.push(CreateIndex::create(
+                &name,
+                &format!("\"{}\"", self.nsp),
+                &self.name.quoted(),
+                false,
+                method,
+                columns,
+                None,
+                None,
+            ));
+        }
+    }
+
+    fn add_aggregate_indexes(
+        &self,
+        schema: &InputSchema,
+        indexes: &mut Vec<CreateIndex>,
+    ) -> Result<(), fmt::Error> {
         let agg = schema
             .agg_mappings()
             .find(|mapping| mapping.agg_type(schema) == self.object)
@@ -368,27 +362,37 @@ impl Table {
             return Ok(());
         };
 
-        let dim_cols: Vec<_> = agg
+        let mut columns: Vec<Expr> = agg
             .dimensions()
             .map(|dim| {
                 self.column_for_field(&dim.name)
-                    .map(|col| &col.name)
-                    // We don't have a good way to return an error
-                    // indicating that somehow the table is wrong (which
-                    // should not happen). We can only return a generic
-                    // formatting error
+                    .map(|col| Expr::Column(col.name.as_str().to_string()))
                     .map_err(|_| fmt::Error)
             })
             .collect::<Result<_, _>>()?;
+        columns.push(Expr::Column("timestamp".to_string()));
 
-        write!(
-            out,
-            "create index {table_name}_dims\n    on {qname}({dims}, timestamp);\n",
-            table_name = self.name,
-            qname = self.qualified_name,
-            dims = dim_cols.join(", ")
-        )?;
+        let name = format!("{}_dims", self.name);
+        indexes.push(CreateIndex::create(
+            &name,
+            &format!("\"{}\"", self.nsp),
+            &self.name.quoted(),
+            false,
+            Method::BTree,
+            columns,
+            None,
+            None,
+        ));
         Ok(())
+    }
+
+    /// Return all indexes for this table as `CreateIndex` objects
+    pub(crate) fn indexes(&self, schema: &InputSchema) -> Result<Vec<CreateIndex>, fmt::Error> {
+        let mut indexes = Vec::new();
+        indexes.extend(self.time_travel_indexes());
+        self.add_attribute_indexes(&mut indexes);
+        self.add_aggregate_indexes(schema, &mut indexes)?;
+        Ok(indexes)
     }
 
     /// Generate the DDL for one table, i.e. one `create table` statement
@@ -399,24 +403,14 @@ impl Table {
     pub(crate) fn as_ddl(
         &self,
         schema: &InputSchema,
-        catalog: &Catalog,
-        index_def: Option<&IndexList>,
+        creat: &IndexCreator,
         out: &mut String,
     ) -> fmt::Result {
         self.create_table(out)?;
-        self.create_time_travel_indexes(catalog, out)?;
-        if index_def.is_some() && ENV_VARS.postpone_attribute_index_creation {
-            #[allow(clippy::unnecessary_unwrap)]
-            let arr = index_def
-                .unwrap()
-                .indexes_for_table(&self.nsp, &self.name.to_string(), self, false, false, false)
-                .map_err(|_| fmt::Error)?;
-            for (_, sql) in arr {
-                writeln!(out, "{};", sql).expect("properly formated index statements")
+        for idx in self.indexes(schema)? {
+            if !idx.to_postpone() {
+                writeln!(out, "{};", creat.to_sql(&idx)?)?;
             }
-        } else {
-            self.create_attribute_indexes(out)?;
-            self.create_aggregate_indexes(schema, out)?;
         }
         Ok(())
     }

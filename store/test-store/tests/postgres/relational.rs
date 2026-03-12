@@ -508,7 +508,7 @@ async fn create_schema(conn: &mut AsyncPgConnection) -> Layout {
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&query).await.unwrap();
 
-    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), None)
+    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new())
         .await
         .expect("Failed to create relational schema")
 }

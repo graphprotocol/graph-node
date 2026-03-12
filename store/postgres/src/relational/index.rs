@@ -2,23 +2,18 @@
 use anyhow::{anyhow, Error};
 use std::collections::HashMap;
 use std::fmt::{Display, Write};
-use std::sync::Arc;
 
 use diesel::sql_query;
-use diesel::sql_types::{Bool, Text};
 use diesel_async::RunQueryDsl;
 use graph::components::store::StoreError;
 use graph::itertools::Itertools;
 use graph::prelude::{
     lazy_static,
     regex::{Captures, Regex},
-    BlockNumber,
+    BlockNumber, ENV_VARS,
 };
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
-use crate::command_support::catalog::Site;
-use crate::deployment_store::DeploymentStore;
-use crate::primary::Namespace;
 use crate::relational::{BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE};
 use crate::{catalog, AsyncPgConnection};
 
@@ -135,6 +130,13 @@ impl Display for Expr {
 }
 
 impl Expr {
+    const LBR: &str = "lower(block_range)";
+    const LBR_MULTI: &str = "lower(block_range) int4_minmax_multi_ops";
+    const UBR: &str = "coalesce(upper(block_range), 2147483647)";
+    const UBR_MULTI: &str = "coalesce(upper(block_range), 2147483647) int4_minmax_multi_ops";
+    const VID_MULTI: &str = "vid int8_minmax_multi_ops";
+    const BLOCK_MULTI: &str = "block$ int4_minmax_multi_ops";
+
     fn parse(expr: &str) -> Self {
         use Expr::*;
 
@@ -142,15 +144,19 @@ impl Expr {
 
         let prefix_rx = Regex::new("^(?P<kind>substring|left)\\((?P<name>[a-z0-9$_]+)").unwrap();
 
-        if expr == VID_COLUMN {
+        // We strip out the minmax_multi_ops operator class from the
+        // expression for the columns where we usually use them. They will
+        // be put back when we create an index, but whether they should be
+        // used depends on the database in which the index is created
+        if expr == VID_COLUMN || expr == Self::VID_MULTI {
             Vid
-        } else if expr == "lower(block_range)" {
+        } else if expr == Self::LBR || expr == Self::LBR_MULTI {
             BlockRangeLower
-        } else if expr == "coalesce(upper(block_range), 2147483647)" {
+        } else if expr == Self::UBR || expr == Self::UBR_MULTI {
             BlockRangeUpper
         } else if expr == "block_range" {
             BlockRange
-        } else if expr == "block$" {
+        } else if expr == BLOCK_COLUMN || expr == Self::BLOCK_MULTI {
             Block
         } else if expr
             .chars()
@@ -199,8 +205,8 @@ impl Expr {
             return false;
         }
         for i in 0..orig.len() {
-            let o = orig[i].to_sql();
-            let n = current[i].to_sql();
+            let o = orig[i].to_sql(false);
+            let n = current[i].to_sql(false);
 
             // check that string n starts with o
             if n.len() < o.len() || n[0..o.len()] != o {
@@ -210,16 +216,24 @@ impl Expr {
         true
     }
 
-    fn to_sql(&self) -> String {
-        match self {
-            Expr::Column(name) => format!("\"{}\"", name),
-            Expr::Prefix(name, kind) => kind.to_sql(&format!("\"{}\"", name)),
-            Expr::Vid => VID_COLUMN.to_string(),
-            Expr::Block => BLOCK_COLUMN.to_string(),
-            Expr::BlockRange => BLOCK_RANGE_COLUMN.to_string(),
-            Expr::BlockRangeLower => "lower(block_range)".to_string(),
-            Expr::BlockRangeUpper => "coalesce(upper(block_range), 2147483647)".to_string(),
-            Expr::Unknown(expr) => expr.to_string(),
+    /// Generate a SQL expression for this index expression. The `multi_ops`
+    /// indicates whether we should also print the `minmax_multi_ops`
+    /// operator class used for BRIN indexes. This is needed because it is
+    /// not the default operator class, and only supported in Postgres 14+.
+    fn to_sql(&self, multi_ops: bool) -> String {
+        match (self, multi_ops) {
+            (Expr::Column(name), _) => format!("\"{}\"", name),
+            (Expr::Prefix(name, kind), _) => kind.to_sql(&format!("\"{}\"", name)),
+            (Expr::Vid, true) => Self::VID_MULTI.to_string(),
+            (Expr::Vid, false) => VID_COLUMN.to_string(),
+            (Expr::Block, false) => BLOCK_COLUMN.to_string(),
+            (Expr::Block, true) => Self::BLOCK_MULTI.to_string(),
+            (Expr::BlockRange, _) => BLOCK_RANGE_COLUMN.to_string(),
+            (Expr::BlockRangeLower, false) => Self::LBR.to_string(),
+            (Expr::BlockRangeLower, true) => Self::LBR_MULTI.to_string(),
+            (Expr::BlockRangeUpper, false) => Self::UBR.to_string(),
+            (Expr::BlockRangeUpper, true) => Self::UBR_MULTI.to_string(),
+            (Expr::Unknown(expr), _) => expr.to_string(),
         }
     }
 }
@@ -262,17 +276,26 @@ impl Cond {
                 .map(Cond::Partial)
         }
 
-        if &cond == "coalesce(upper(block_range), 2147483647) < 2147483647" {
+        let cond = cond.trim();
+        let cond = if cond.starts_with("(") && cond.ends_with(")") {
+            &cond[1..cond.len() - 1]
+        } else {
+            cond
+        };
+        let cond = cond.trim();
+        if cond == "coalesce(upper(block_range), 2147483647) < 2147483647" {
             Cond::Closed
         } else {
-            parse_partial(&cond).unwrap_or(Cond::Unknown(cond))
+            parse_partial(cond).unwrap_or(Cond::Unknown(cond.to_string()))
         }
     }
 
     fn to_sql(&self) -> String {
         match self {
-            Cond::Partial(number) => format!("coalesce(upper(block_range), 2147483647) > {number}"),
-            Cond::Closed => "coalesce(upper(block_range), 2147483647) < 2147483647".to_string(),
+            Cond::Partial(number) => {
+                format!("(coalesce(upper(block_range), 2147483647) > {number})")
+            }
+            Cond::Closed => "(coalesce(upper(block_range), 2147483647) < 2147483647)".to_string(),
             Cond::Unknown(cond) => cond.to_string(),
         }
     }
@@ -387,8 +410,8 @@ impl CreateIndex {
                 "create (?P<unique>unique )?index (?P<name>\"?[a-z0-9$_]+\"?) \
             on (?P<nsp>sgd[0-9]+)\\.(?P<table>\"?[a-z0-9$_]+\"?) \
             using (?P<method>[a-z]+) \\((?P<columns>.*?)\\)\
-            ( where \\((?P<cond>.*)\\))?\
-            ( with \\((?P<with>.*)\\))?$",
+            ( with \\((?P<with>.*)\\))?\
+            ( where (?P<cond>.*))?$",
             )
             .unwrap();
 
@@ -616,6 +639,10 @@ impl CreateIndex {
     }
 
     pub fn to_postpone(&self) -> bool {
+        if !ENV_VARS.postpone_attribute_index_creation {
+            return false;
+        }
+
         fn has_prefix(s: &str, prefix: &str) -> bool {
             s.starts_with(prefix)
                 || s.ends_with("\"") && s.starts_with(format!("\"{}", prefix).as_str())
@@ -643,6 +670,19 @@ impl CreateIndex {
         match self {
             CreateIndex::Unknown { .. } => None,
             CreateIndex::Parsed { name, .. } => Some(name.clone()),
+        }
+    }
+
+    /// Return `true` if any of the attribute columns (user-defined columns,
+    /// not infrastructure columns like `vid`, `block$`, etc.) referenced by
+    /// this index are NOT in `columns`.
+    pub fn references_column_not_in(&self, columns: &std::collections::HashSet<&str>) -> bool {
+        match self {
+            CreateIndex::Unknown { .. } => false,
+            CreateIndex::Parsed { columns: exprs, .. } => exprs.iter().any(|expr| match expr {
+                Expr::Column(name) | Expr::Prefix(name, _) => !columns.contains(name.as_str()),
+                _ => false,
+            }),
         }
     }
 
@@ -707,7 +747,7 @@ impl CreateIndex {
     /// Generate a SQL statement that creates this index. If `concurrent` is
     /// `true`, make it a concurrent index creation. If `if_not_exists` is
     /// `true` add a `if not exists` clause to the index creation.
-    pub fn to_sql(&self, concurrent: bool, if_not_exists: bool) -> Result<String, std::fmt::Error> {
+    fn to_sql(&self, creat: &IndexCreator) -> Result<String, std::fmt::Error> {
         match self {
             CreateIndex::Unknown { defn } => Ok(defn.to_string()),
             CreateIndex::Parsed {
@@ -720,21 +760,139 @@ impl CreateIndex {
                 cond,
                 with,
             } => {
+                let IndexCreator {
+                    concurrently,
+                    if_not_exists,
+                    multi_ops,
+                } = creat;
+                // Explicit operator classes are only needed for BRIN indexes
+                let multi_ops = *multi_ops && method == &Method::Brin;
                 let unique = if *unique { "unique " } else { "" };
-                let concurrent = if concurrent { "concurrently " } else { "" };
-                let if_not_exists = if if_not_exists { "if not exists " } else { "" };
-                let columns = columns.iter().map(|c| c.to_sql()).join(", ");
+                let concurrent = if *concurrently { "concurrently " } else { "" };
+                let if_not_exists = if *if_not_exists { "if not exists " } else { "" };
+                let columns = columns.iter().map(|c| c.to_sql(multi_ops)).join(", ");
 
                 let mut sql = format!("create {unique}index {concurrent}{if_not_exists}{name} on {nsp}.{table} using {method} ({columns})");
                 if let Some(with) = with {
                     write!(sql, " with ({with})")?;
                 }
                 if let Some(cond) = cond {
-                    write!(sql, " where ({})", cond.to_sql())?;
+                    write!(sql, " where {}", cond.to_sql())?;
                 }
                 Ok(sql)
             }
         }
+    }
+
+    pub(crate) fn method(self, method: Method) -> CreateIndex {
+        match self {
+            CreateIndex::Unknown { defn } => CreateIndex::Unknown { defn },
+            CreateIndex::Parsed {
+                unique,
+                name,
+                nsp,
+                table,
+                method: _,
+                columns,
+                cond,
+                with,
+            } => CreateIndex::Parsed {
+                unique,
+                name,
+                nsp,
+                table,
+                method,
+                columns,
+                cond,
+                with,
+            },
+        }
+    }
+
+    pub(crate) fn cond(self, cond: Cond) -> CreateIndex {
+        match self {
+            CreateIndex::Unknown { defn } => CreateIndex::Unknown { defn },
+            CreateIndex::Parsed {
+                unique,
+                name,
+                nsp,
+                table,
+                method,
+                columns,
+                cond: _,
+                with,
+            } => CreateIndex::Parsed {
+                unique,
+                name,
+                nsp,
+                table,
+                method,
+                columns,
+                cond: Some(cond),
+                with,
+            },
+        }
+    }
+}
+
+/// A helper to run or write index creation statements with options as to
+/// whether to create them concurrently or only of they do not exist
+pub struct IndexCreator {
+    concurrently: bool,
+    if_not_exists: bool,
+    /// Whether the shard supports the multi_ops operator classes
+    multi_ops: bool,
+}
+
+impl IndexCreator {
+    /// Create an index creator with the given options. The `multi_ops` flag
+    /// indicates whether the database in which we will create indexes
+    /// supports the `minmax_multi_ops` operator classes
+    pub fn new(concurrently: bool, if_not_exists: bool, multi_ops: bool) -> Self {
+        IndexCreator {
+            concurrently,
+            if_not_exists,
+            multi_ops,
+        }
+    }
+
+    /// Create the index `idx` in the transaction that is currently active
+    /// on `conn`, i.e., do not start a new transaction
+    pub async fn execute(
+        &self,
+        conn: &mut AsyncPgConnection,
+        idx: &CreateIndex,
+    ) -> Result<(), StoreError> {
+        let sql = idx.to_sql(self)?;
+        sql_query(sql).execute(conn).await?;
+        Ok(())
+    }
+
+    /// Create all indexes in `idxs`. Each index creation happens in its own
+    /// transaction, and `conn` should therefore not be in a transaction
+    /// when this method is called.
+    pub async fn execute_many(
+        &self,
+        conn: &mut AsyncPgConnection,
+        idxs: &[CreateIndex],
+    ) -> Result<(), StoreError> {
+        for idx in idxs {
+            self.execute(conn, idx).await?;
+        }
+        Ok(())
+    }
+
+    pub fn to_sql(&self, index: &CreateIndex) -> Result<String, std::fmt::Error> {
+        index.to_sql(self)
+    }
+}
+
+impl Layout {
+    /// Create an index creator with the given options for creating indexes
+    /// in this layout
+    pub fn index_creator(&self, concurrently: bool, if_not_exists: bool) -> IndexCreator {
+        let multi_ops = self.catalog.has_minmax_multi_ops;
+        IndexCreator::new(concurrently, if_not_exists, multi_ops)
     }
 }
 
@@ -743,123 +901,50 @@ pub struct IndexList {
     pub(crate) indexes: HashMap<String, Vec<CreateIndex>>,
 }
 
-pub async fn load_indexes_from_table(
-    conn: &mut AsyncPgConnection,
-    table: &Arc<Table>,
-    schema_name: &str,
-) -> Result<Vec<CreateIndex>, StoreError> {
-    let table_name = table.name.as_str();
-    let indexes = catalog::indexes_for_table(conn, schema_name, table_name).await?;
-    Ok(indexes.into_iter().map(CreateIndex::parse).collect())
-}
-
 impl IndexList {
-    pub async fn load(
-        conn: &mut AsyncPgConnection,
-        site: Arc<Site>,
-        store: DeploymentStore,
-    ) -> Result<Self, StoreError> {
-        let mut list = IndexList {
-            indexes: HashMap::new(),
-        };
-        let schema_name = site.namespace.clone();
-        let layout = store.layout(conn, site).await?;
-        for table in layout.tables.values() {
-            let indexes = load_indexes_from_table(conn, table, schema_name.as_str()).await?;
-            list.indexes.insert(table.name.to_string(), indexes);
-        }
-        Ok(list)
+    pub fn new(indexes: HashMap<String, Vec<CreateIndex>>) -> Self {
+        IndexList { indexes }
     }
 
-    pub fn indexes_for_table(
-        &self,
-        namespace: &Namespace,
-        table_name: &String,
-        dest_table: &Table,
-        postponed: bool,
-        concurrent: bool,
-        if_not_exists: bool,
-    ) -> Result<Vec<(Option<String>, String)>, Error> {
-        let mut arr = vec![];
-        if let Some(vec) = self.indexes.get(table_name) {
-            for ci in vec {
-                // First we check if the fields do exist in the destination subgraph.
-                // In case of grafting that is not given.
-                if ci.fields_exist_in_dest(dest_table)
-                    // Then we check if the index is one of the default indexes not based on
-                    // the attributes. Those will be created anyway and we should skip them.
-                    && !ci.is_default_non_attr_index()
-                    // Then ID based indexes in the immutable tables are also created initially
-                    // and should be skipped.
-                    && !(ci.is_id() && dest_table.immutable)
-                    // Finally we filter by the criteria is the index to be postponed. The ones
-                    // that are not to be postponed we want to create during initial creation of
-                    // the copied subgraph
-                    && postponed == ci.to_postpone()
-                {
-                    if let Ok(sql) = ci
-                        .with_nsp(namespace.to_string())?
-                        .to_sql(concurrent, if_not_exists)
-                    {
-                        arr.push((ci.name(), sql))
-                    }
-                }
-            }
+    pub async fn load(conn: &mut AsyncPgConnection, layout: &Layout) -> Result<Self, StoreError> {
+        let mut indexes = HashMap::new();
+        let schema_name = layout.site.namespace.clone();
+        for table in layout.tables.values() {
+            let indexes_from_table =
+                catalog::indexes_for_table(conn, schema_name.as_str(), table.name.as_str())
+                    .await?
+                    .into_iter()
+                    .map(CreateIndex::parse)
+                    .collect();
+            indexes.insert(table.name.to_string(), indexes_from_table);
         }
-        Ok(arr)
+        Ok(Self::new(indexes))
     }
 
-    pub async fn recreate_invalid_indexes(
-        &self,
-        conn: &mut AsyncPgConnection,
-        layout: &Layout,
-    ) -> Result<(), StoreError> {
-        #[derive(QueryableByName, Debug)]
-        struct IndexInfo {
-            #[diesel(sql_type = Bool)]
-            isvalid: bool,
-        }
+    /// Return all indexes for `table` from this list. Only indexes that are
+    /// for columns that actually exist on `table` are returned. In
+    /// addition, indexes that are always created when a deployment is
+    /// created independent of the configuration are also not returned.
+    pub fn indexes_for_table<'a>(
+        &'a self,
+        table: &'a Table,
+    ) -> impl Iterator<Item = &'a CreateIndex> {
+        static EMPTY: Vec<CreateIndex> = vec![];
+        let indexes = self.indexes.get(table.name.as_str()).unwrap_or(&EMPTY);
 
-        let namespace = &layout.catalog.site.namespace;
-        for table in layout.tables.values() {
-            for (ind_name, create_query) in
-                self.indexes_for_table(namespace, &table.name.to_string(), table, true, true, true)?
-            {
-                if let Some(index_name) = ind_name {
-                    let table_name = table.name.clone();
-                    let query = r#"
-                        SELECT  x.indisvalid           AS isvalid
-                        FROM pg_index x
-                                JOIN pg_class c ON c.oid = x.indrelid
-                                JOIN pg_class i ON i.oid = x.indexrelid
-                                LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
-                        WHERE (c.relkind = ANY (ARRAY ['r'::"char", 'm'::"char", 'p'::"char"]))
-                        AND (i.relkind = ANY (ARRAY ['i'::"char", 'I'::"char"]))
-                        AND (n.nspname = $1)
-                        AND (c.relname = $2)
-                        AND (i.relname = $3);"#;
-                    let ii_vec = sql_query(query)
-                        .bind::<Text, _>(namespace.to_string())
-                        .bind::<Text, _>(table_name)
-                        .bind::<Text, _>(index_name.clone())
-                        .get_results::<IndexInfo>(conn)
-                        .await?
-                        .into_iter()
-                        .collect::<Vec<IndexInfo>>();
-                    assert!(ii_vec.len() <= 1);
-                    if ii_vec.is_empty() || !ii_vec[0].isvalid {
-                        // if a bad index exist lets first drop it
-                        if !ii_vec.is_empty() {
-                            let drop_query =
-                                sql_query(format!("DROP INDEX {}.{};", namespace, index_name));
-                            drop_query.execute(conn).await?;
-                        }
-                        sql_query(create_query).execute(conn).await?;
-                    }
-                }
-            }
-        }
-        Ok(())
+        let iter = indexes.iter().filter(move |ci| {
+            // First we check if the fields do exist in the destination subgraph.
+            // In case of grafting that is not given.
+            ci.fields_exist_in_dest(table)
+                // Then we check if the index is one of the default indexes not based on
+                // the attributes. Those will be created anyway and we should skip them.
+                && !ci.is_default_non_attr_index()
+                // Then ID based indexes in the immutable tables are also created initially
+                // and should be skipped.
+                && !(ci.is_id() && table.immutable)
+        });
+
+        iter
     }
 }
 
@@ -920,7 +1005,7 @@ mod tests {
             }
         }
 
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         enum TestCond {
             Partial(BlockNumber),
             Closed,
@@ -937,7 +1022,7 @@ mod tests {
             }
         }
 
-        #[derive(Debug)]
+        #[derive(Debug, Clone)]
         struct Parsed {
             unique: bool,
             name: &'static str,
@@ -975,13 +1060,35 @@ mod tests {
         }
 
         #[track_caller]
-        fn parse_one(defn: &str, exp: Parsed) {
+        fn parses_to(defn: &str, exp: &Parsed) -> CreateIndex {
             let act = CreateIndex::parse(defn.to_string());
-            let exp = CreateIndex::from(exp);
+            let exp = CreateIndex::from(exp.clone());
             assert_eq!(exp, act);
+            act
+        }
+
+        #[track_caller]
+        fn parse_one(defn: &str, exp: Parsed) {
+            let act = parses_to(defn, &exp);
 
             let defn = defn.to_ascii_lowercase();
-            assert_eq!(defn, act.to_sql(false, false).unwrap());
+            let creat = IndexCreator::new(false, false, false);
+            assert_eq!(defn, creat.to_sql(&act).unwrap());
+        }
+
+        // Test that the equivalent index definitions in `defns` are parsed to
+        // the same `CreateIndex` and that turning those index definitions into
+        // a SQL string produces `defns[0]`
+        #[track_caller]
+        fn parse_many(defns: &[&str], exp: Parsed) {
+            let act = parses_to(defns[0], &exp);
+            for defn in &defns[1..] {
+                parses_to(defn, &exp);
+            }
+
+            let defn = defns[0].to_ascii_lowercase();
+            let creat = IndexCreator::new(false, false, false);
+            assert_eq!(defn, creat.to_sql(&act).unwrap());
         }
 
         use TestCond::*;
@@ -1047,6 +1154,16 @@ mod tests {
             cond: None,
         };
         parse_one(sql, exp);
+
+        let sql = "CREATE INDEX brin_nft_transfer ON sgd4.nft_transfer USING brin (lower(block_range) int4_minmax_multi_ops, COALESCE(upper(block_range), 2147483647) int4_minmax_multi_ops, vid int8_minmax_multi_ops)";
+        let act = CreateIndex::parse(sql.to_string());
+        let CreateIndex::Parsed { columns, .. } = act else {
+            panic!("Failed to parse index");
+        };
+        assert_eq!(
+            vec![Expr::BlockRangeLower, Expr::BlockRangeUpper, Expr::Vid],
+            columns
+        );
 
         let sql = "create index token_block_range_closed on sgd44.token using btree (coalesce(upper(block_range), 2147483647)) where (coalesce(upper(block_range), 2147483647) < 2147483647)";
         let exp = Parsed {
@@ -1145,8 +1262,10 @@ mod tests {
         };
         parse_one(sql, exp);
 
-        let sql =
-            "CREATE INDEX brin_scy ON sgd314614.scy USING brin (block$, vid) where (amount > 0)";
+        let sqls = &[
+            "CREATE INDEX brin_scy ON sgd314614.scy USING brin (block$, vid) where amount > 0",
+            "CREATE INDEX brin_scy ON sgd314614.scy USING brin (block$, vid) where (amount > 0)",
+        ];
         let exp = Parsed {
             unique: false,
             name: "brin_scy",
@@ -1156,9 +1275,13 @@ mod tests {
             columns: &[Block, Vid],
             cond: Some(TestCond::Unknown("amount > 0")),
         };
-        parse_one(sql, exp);
+        parse_many(sqls, exp);
 
-        let sql = "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (\"decimals\") WHERE (decimals > (5)::numeric)";
+        let sqls = &[
+        "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (\"decimals\") WHERE decimals > (5)::numeric",
+        "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (decimals) WHERE decimals > (5)::numeric",
+        "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (decimals) WHERE ( decimals > (5)::numeric )",
+        "CREATE INDEX manual_token_random_cond ON sgd44.token USING btree (\"decimals\") WHERE ( decimals > (5)::numeric )"];
         let exp = Parsed {
             unique: false,
             name: "manual_token_random_cond",
@@ -1168,7 +1291,21 @@ mod tests {
             columns: &[Name("decimals")],
             cond: Some(TestCond::Unknown("decimals > (5)::numeric")),
         };
-        parse_one(sql, exp);
+        parse_many(sqls, exp);
+
+        let sqls = &[
+        "CREATE INDEX manual_pool_swap_enabled_total_liquidity ON sgd12.pool USING btree (\"total_liquidity\") WHERE swap_enabled",
+        "CREATE INDEX manual_pool_swap_enabled_total_liquidity ON sgd12.pool USING btree (total_liquidity) WHERE swap_enabled"];
+        let exp = Parsed {
+            unique: false,
+            name: "manual_pool_swap_enabled_total_liquidity",
+            nsp: "sgd12",
+            table: "pool",
+            method: BTree,
+            columns: &[Name("total_liquidity")],
+            cond: Some(TestCond::Unknown("swap_enabled")),
+        };
+        parse_many(sqls, exp);
     }
 
     #[test]

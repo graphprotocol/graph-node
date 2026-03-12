@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Write, sync::Arc};
+use std::{fmt::Write, sync::Arc};
 
 use diesel::{
     sql_query,
@@ -11,7 +11,6 @@ use diesel_async::{
 use graph::{
     components::store::{PrunePhase, PruneReporter, PruneRequest, PruningStrategy, VersionStats},
     prelude::{BlockNumber, CancelableError, CheapClone, StoreError, BLOCK_NUMBER_MAX},
-    schema::InputSchema,
     slog::{warn, Logger},
 };
 use itertools::Itertools;
@@ -25,10 +24,7 @@ use crate::{
     AsyncPgConnection,
 };
 
-use super::{
-    index::{load_indexes_from_table, CreateIndex, IndexList},
-    Catalog, Layout, Namespace,
-};
+use super::{Layout, Namespace};
 
 pub use status::{Phase, PruneState, PruneTableState, Viewer};
 
@@ -51,31 +47,21 @@ impl TablePair {
     /// different namespace so that the names of indexes etc. don't clash
     async fn create(
         conn: &mut AsyncPgConnection,
+        src_layout: &Layout,
         src: Arc<Table>,
-        src_nsp: Namespace,
         dst_nsp: Namespace,
-        schema: &InputSchema,
-        catalog: &Catalog,
     ) -> Result<Self, StoreError> {
+        let src_nsp = src_layout.site.namespace.clone();
         let dst = src.new_like(&dst_nsp, &src.name);
 
         let mut query = String::new();
         if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name).await? {
             writeln!(query, "truncate table {};", dst.qualified_name)?;
         } else {
-            let mut list = IndexList {
-                indexes: HashMap::new(),
-            };
-            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())
-                .await?
-                .into_iter()
-                .map(|index| index.with_nsp(dst_nsp.to_string()))
-                .collect::<Result<Vec<CreateIndex>, _>>()?;
-            list.indexes.insert(src.name.to_string(), indexes);
-
             // In case of pruning we don't do delayed creation of indexes,
             // as the asumption is that there is not that much data inserted.
-            dst.as_ddl(schema, catalog, Some(&list), &mut query)?;
+            let creat = src_layout.index_creator(false, false);
+            dst.as_ddl(&src_layout.input_schema, &creat, &mut query)?;
         }
         conn.batch_execute(&query).await?;
 
@@ -418,6 +404,17 @@ impl Layout {
         tracker.start(conn, req, &prunable_tables).await?;
         let dst_nsp = Namespace::prune(self.site.id);
         let mut recreate_dst_nsp = true;
+
+        // Go table by table; note that the subgraph writer can write in
+        // between the execution of the `with_lock` block below, and might
+        // therefore work with tables where some are pruned and some are not
+        // pruned yet. That does not affect correctness since we make no
+        // assumption about where the subgraph head is. If the subgraph
+        // advances during this loop, we might have an unnecessarily
+        // pessimistic but still safe value for `final_block`. We do assume
+        // that `final_block` is far enough from the subgraph head that it
+        // stays final even if a revert happens during this loop, but that
+        // is the definition of 'final'
         for (table, strat) in &prunable_tables {
             reporter.start_table(table.name.as_str());
             tracker.start_table(conn, table).await?;
@@ -427,15 +424,8 @@ impl Layout {
                         catalog::recreate_schema(conn, dst_nsp.as_str()).await?;
                         recreate_dst_nsp = false;
                     }
-                    let pair = TablePair::create(
-                        conn,
-                        table.cheap_clone(),
-                        self.site.namespace.clone(),
-                        dst_nsp.clone(),
-                        &self.input_schema,
-                        &self.catalog,
-                    )
-                    .await?;
+                    let pair = TablePair::create(conn, &self, table.cheap_clone(), dst_nsp.clone())
+                        .await?;
                     // Copy final entities. This can happen in parallel to indexing as
                     // that part of the table will not change
                     pair.copy_final_entities(

@@ -12,6 +12,7 @@
 //! operation can resume after an interruption, for example, because
 //! `graph-node` was restarted while the copy was running.
 use std::{
+    collections::HashSet,
     convert::TryFrom,
     future::Future,
     pin::Pin,
@@ -23,8 +24,7 @@ use std::{
 };
 
 use diesel::{
-    dsl::sql, insert_into, select, sql_query, update, ExpressionMethods, OptionalExtension,
-    QueryDsl,
+    dsl::sql, insert_into, select, update, ExpressionMethods, OptionalExtension, QueryDsl,
 };
 use diesel_async::{
     scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
@@ -32,6 +32,15 @@ use diesel_async::{
 };
 use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
 
+use crate::{
+    advisory_lock, catalog, deployment,
+    dynds::DataSourcesTable,
+    primary::{DeploymentId, Primary, Site},
+    relational::{index::IndexList, Layout, Table},
+    relational_queries as rq,
+    vid_batcher::{VidBatcher, VidRange},
+    AsyncPgConnection, ConnectionPool,
+};
 use graph::{
     futures03::{
         future::{select_all, BoxFuture},
@@ -43,17 +52,6 @@ use graph::{
     },
     schema::EntityType,
     slog::error,
-};
-use itertools::Itertools;
-
-use crate::{
-    advisory_lock, catalog, deployment,
-    dynds::DataSourcesTable,
-    primary::{DeploymentId, Primary, Site},
-    relational::{index::IndexList, Layout, Table},
-    relational_queries as rq,
-    vid_batcher::{VidBatcher, VidRange},
-    AsyncPgConnection, ConnectionPool,
 };
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
@@ -1004,6 +1002,18 @@ impl Connection {
     /// Run `callback` in a transaction using the connection in `self.conn`.
     /// This will return an error if `self.conn` is `None`, which happens
     /// while a background task is copying a table.
+    fn get_conn(&mut self) -> Result<&mut AsyncPgConnection, StoreError> {
+        let Some(conn) = self.conn.as_mut() else {
+            return Err(internal_error!(
+                "copy connection has been handed to background task but not returned yet (get_conn)"
+            ));
+        };
+        Ok(&mut conn.inner)
+    }
+
+    /// Run `callback` in a transaction using the connection in `self.conn`.
+    /// This will return an error if `self.conn` is `None`, which happens
+    /// while a background task is copying a table.
     fn transaction<'a, 'conn, R, F>(
         &'conn mut self,
         callback: F,
@@ -1017,12 +1027,7 @@ impl Connection {
         R: Send + 'a,
         'a: 'conn,
     {
-        let Some(conn) = self.conn.as_mut() else {
-            return Err(internal_error!(
-                "copy connection has been handed to background task but not returned yet (transaction)"
-            ));
-        };
-        let conn = &mut conn.inner;
+        let conn = self.get_conn()?;
         Ok(conn.transaction(|conn| callback(conn).scope_boxed()))
     }
 
@@ -1232,45 +1237,33 @@ impl Connection {
         // Create indexes for all the attributes that were postponed at the start of
         // the copy/graft operations.
         // First recreate the indexes that existed in the original subgraph.
+        let creat = self.dst.index_creator(false, true);
         for table in state.all_tables() {
-            let arr = index_list.indexes_for_table(
-                &self.dst.site.namespace,
-                &table.src.name.to_string(),
-                &table.dst,
-                true,
-                false,
-                true,
-            )?;
+            let dst_nsp = self.dst.site.namespace.to_string();
+            let idxs = index_list
+                .indexes_for_table(&table.dst)
+                .filter(|idx| idx.to_postpone())
+                .map(|idx| idx.with_nsp(dst_nsp.clone()))
+                .collect::<Result<Vec<_>, _>>()?;
 
-            for (_, sql) in arr {
-                let query = sql_query(format!("{};", sql));
-                self.transaction(|conn| {
-                    async { query.execute(conn).await.map_err(StoreError::from) }.scope_boxed()
-                })?
-                .await?;
-            }
+            let conn = self.get_conn()?;
+            creat.execute_many(conn, &idxs).await?;
         }
 
-        // Second create the indexes for the new fields.
-        // Here we need to skip those created in the first step for the old fields.
+        // Second create the indexes for the new fields that don't exist in
+        // the source.
         for table in state.all_tables() {
-            let orig_colums = table
-                .src
-                .columns
-                .iter()
-                .map(|c| c.name.to_string())
-                .collect_vec();
-            for sql in table
+            let src_columns: HashSet<&str> =
+                table.src.columns.iter().map(|c| c.name.as_str()).collect();
+            let new_idxs: Vec<_> = table
                 .dst
-                .create_postponed_indexes(orig_colums, false)
+                .indexes(&self.dst.input_schema)
+                .map_err(|_| internal_error!("failed to generate indexes for copy"))?
                 .into_iter()
-            {
-                let query = sql_query(sql);
-                self.transaction(|conn| {
-                    async { query.execute(conn).await.map_err(StoreError::from) }.scope_boxed()
-                })?
-                .await?;
-            }
+                .filter(|idx| idx.to_postpone() && idx.references_column_not_in(&src_columns))
+                .collect();
+            let conn = self.get_conn()?;
+            creat.execute_many(conn, &new_idxs).await?;
         }
 
         self.copy_private_data_sources(&state).await?;

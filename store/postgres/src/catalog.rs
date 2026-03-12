@@ -189,7 +189,7 @@ pub struct Catalog {
 
     /// Whether the database supports `int4_minmax_multi_ops` etc.
     /// See the [Postgres docs](https://www.postgresql.org/docs/15/brin-builtin-opclasses.html)
-    has_minmax_multi_ops: bool,
+    pub has_minmax_multi_ops: bool,
 
     /// Whether the column `pg_stats.range_bounds_histogram` introduced in
     /// Postgres 17 exists. See the [Postgres

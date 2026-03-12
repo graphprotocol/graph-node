@@ -5,7 +5,7 @@ use graph::{
     prelude::{anyhow, StoreError},
 };
 use graph_store_postgres::{
-    command_support::index::{CreateIndex, Method},
+    command_support::index::{CreateIndex, IndexCreator, Method},
     ConnectionPool, SubgraphStore,
 };
 use std::io::Write as _;
@@ -183,8 +183,9 @@ pub async fn list(
     let mut term = Terminal::new();
 
     if to_sql {
+        let creat = IndexCreator::new(concurrent, if_not_exists, true);
         for index in indexes {
-            writeln!(term, "{};", index.to_sql(concurrent, if_not_exists)?)?;
+            writeln!(term, "{};", creat.to_sql(&index)?)?;
         }
     } else {
         let mut first = true;
