@@ -258,6 +258,9 @@ pub struct ValidModule {
     /// Cache for asc_type_id results. Maps IndexForAscTypeId to their WASM runtime
     /// type IDs. Populated lazily on first use; deterministic per compiled module.
     asc_type_id_cache: RwLock<HashMap<IndexForAscTypeId, u32>>,
+
+    /// The mapping language (AssemblyScript or Rust) detected from module imports.
+    pub language: crate::rust_abi::MappingLanguage,
 }
 
 impl ValidModule {
@@ -355,7 +358,7 @@ impl ValidModule {
             epoch_counter_abort_handle = Some(graph::spawn(epoch_counter).abort_handle());
         }
 
-        let linker = crate::module::build_linker(engine, &import_name_to_modules)?;
+        let (linker, language) = crate::module::build_linker(engine, &import_name_to_modules)?;
         let instance_pre = linker.instantiate_pre(&module)?;
 
         Ok(ValidModule {
@@ -366,6 +369,7 @@ impl ValidModule {
             timeout,
             epoch_counter_abort_handle,
             asc_type_id_cache: RwLock::new(HashMap::new()),
+            language,
         })
     }
 

@@ -1,4 +1,5 @@
 pub mod asc_abi;
+pub mod rust_abi;
 
 mod host;
 pub mod to_from;

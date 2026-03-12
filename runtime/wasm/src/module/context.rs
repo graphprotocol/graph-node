@@ -1262,3 +1262,174 @@ fn truncate_yaml_bytes_for_logging(bytes: &[u8]) -> String {
 
     format!("0x{}", hex::encode(bytes))
 }
+
+// ============================================================================
+// Rust ABI methods
+//
+// These methods are used by the Rust ABI host functions in rust_abi/host.rs.
+// They take pre-extracted values rather than AscPtr types.
+// ============================================================================
+
+impl WasmInstanceContext<'_> {
+    /// Rust ABI: store.set
+    pub async fn rust_store_set(
+        &mut self,
+        gas: &GasCounter,
+        entity_type: &str,
+        id: &str,
+        data: std::collections::HashMap<String, store::Value>,
+    ) -> Result<(), HostExportError> {
+        let stopwatch = self.as_ref().host_metrics.stopwatch.cheap_clone();
+        let logger = self.as_ref().ctx.logger.cheap_clone();
+
+        if self.as_ref().ctx.instrument {
+            debug!(self.as_ref().ctx.logger, "rust_store_set";
+                    "type" => entity_type,
+                    "id" => id);
+        }
+
+        // Convert HashMap<String, Value> to HashMap<Word, Value>
+        let data: std::collections::HashMap<Word, store::Value> = data
+            .into_iter()
+            .map(|(k, v)| (Word::from(k), v))
+            .collect();
+
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        host_exports
+            .store_set(
+                &logger,
+                &mut ctx.state,
+                &ctx.proof_of_indexing,
+                ctx.timestamp,
+                entity_type.to_string(),
+                id.to_string(),
+                data,
+                &stopwatch,
+                gas,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    /// Rust ABI: store.get - returns serialized entity bytes or None
+    pub async fn rust_store_get(
+        &mut self,
+        gas: &GasCounter,
+        entity_type: &str,
+        id: &str,
+    ) -> Result<Option<Vec<u8>>, HostExportError> {
+        use crate::rust_abi::serialize_entity;
+
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let _timer = self
+            .as_ref()
+            .host_metrics
+            .cheap_clone()
+            .time_host_fn_execution_region("rust_store_get");
+
+        let entity_option = host_exports
+            .store_get(
+                &mut self.as_mut().ctx.state,
+                entity_type.to_string(),
+                id.to_string(),
+                gas,
+                graph::components::store::GetScope::Store,
+            )
+            .await?;
+
+        if self.as_ref().ctx.instrument {
+            debug!(self.as_ref().ctx.logger, "rust_store_get";
+                    "type" => entity_type,
+                    "id" => id,
+                    "found" => entity_option.is_some());
+        }
+
+        match entity_option {
+            Some(entity) => {
+                let bytes = serialize_entity(&entity);
+                Ok(Some(bytes))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Rust ABI: store.remove
+    pub async fn rust_store_remove(
+        &mut self,
+        gas: &GasCounter,
+        entity_type: &str,
+        id: &str,
+    ) -> Result<(), HostExportError> {
+        let logger = self.as_ref().ctx.logger.cheap_clone();
+
+        if self.as_ref().ctx.instrument {
+            debug!(self.as_ref().ctx.logger, "rust_store_remove";
+                    "type" => entity_type,
+                    "id" => id);
+        }
+
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        host_exports.store_remove(
+            &logger,
+            &mut ctx.state,
+            &ctx.proof_of_indexing,
+            entity_type.to_string(),
+            id.to_string(),
+            gas,
+        )
+    }
+
+    /// Rust ABI: log.log
+    pub async fn rust_log(
+        &mut self,
+        gas: &GasCounter,
+        level: u32,
+        message: &str,
+    ) -> Result<(), HostExportError> {
+        // Convert u32 level to slog::Level
+        let slog_level = match level {
+            0 => slog::Level::Debug,
+            1 => slog::Level::Info,
+            2 => slog::Level::Warning,
+            3 => slog::Level::Error,
+            _ => slog::Level::Critical,
+        };
+
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        host_exports
+            .log_log(&ctx.logger, slog_level, message.to_string(), gas, &mut ctx.state)
+            .map_err(|e| HostExportError::Deterministic(e.into()))
+    }
+
+    /// Rust ABI: dataSource.address
+    pub async fn rust_data_source_address(
+        &mut self,
+        gas: &GasCounter,
+    ) -> Result<Vec<u8>, HostExportError> {
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        let address = host_exports.data_source_address(gas, &mut ctx.state)?;
+        Ok(address.to_vec())
+    }
+
+    /// Rust ABI: dataSource.network
+    pub async fn rust_data_source_network(
+        &mut self,
+        gas: &GasCounter,
+    ) -> Result<String, HostExportError> {
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        host_exports
+            .data_source_network(gas, &mut ctx.state)
+            .map_err(|e| HostExportError::Deterministic(e.into()))
+    }
+}

@@ -115,15 +115,192 @@ impl WasmInstance {
     where
         <C as Blockchain>::MappingTrigger: ToAscPtr,
     {
+        use crate::rust_abi::MappingLanguage;
+
+        let language = self.store.data().valid_module.language;
+
+        match language {
+            MappingLanguage::AssemblyScript => {
+                // Existing AS path
+                let handler_name = trigger.handler_name().to_owned();
+                let gas = self.gas.clone();
+                let logging_extras = trigger.logging_extras().cheap_clone();
+                let error_context = trigger.trigger.error_context();
+                let mut ctx = self.instance_ctx();
+                let asc_trigger = trigger.to_asc_ptr(&mut ctx, &gas).await?;
+
+                self.invoke_handler(&handler_name, asc_trigger, logging_extras, error_context)
+                    .await
+            }
+            MappingLanguage::Rust => {
+                // Rust ABI path
+                self.handle_trigger_rust(trigger).await
+            }
+        }
+    }
+
+    /// Handle a trigger for Rust WASM modules.
+    ///
+    /// Rust handlers have signature: `fn(event_ptr: u32, event_len: u32) -> u32`
+    async fn handle_trigger_rust<C: Blockchain>(
+        self,
+        trigger: TriggerWithHandler<MappingTrigger<C>>,
+    ) -> Result<(BlockState, Gas), MappingError> {
         let handler_name = trigger.handler_name().to_owned();
-        let gas = self.gas.clone();
         let logging_extras = trigger.logging_extras().cheap_clone();
         let error_context = trigger.trigger.error_context();
-        let mut ctx = self.instance_ctx();
-        let asc_trigger = trigger.to_asc_ptr(&mut ctx, &gas).await?;
 
-        self.invoke_handler(&handler_name, asc_trigger, logging_extras, error_context)
+        // TODO: Serialize trigger to TLV bytes
+        // For now, use placeholder empty bytes - full implementation requires
+        // trigger-specific serialization which is complex
+        let trigger_bytes: Vec<u8> = Vec::new();
+
+        self.invoke_handler_rust(&handler_name, &trigger_bytes, logging_extras, error_context)
             .await
+    }
+
+    /// Invoke a Rust handler with (ptr, len) calling convention.
+    async fn invoke_handler_rust(
+        mut self,
+        handler: &str,
+        data: &[u8],
+        logging_extras: Arc<dyn SendSyncRefUnwindSafeKV>,
+        error_context: Option<String>,
+    ) -> Result<(BlockState, Gas), MappingError> {
+        // Get the handler function
+        let func = self
+            .instance
+            .get_func(self.store.as_context_mut(), handler)
+            .with_context(|| format!("function {} not found", handler))?;
+
+        // Rust handlers have signature: fn(ptr: u32, len: u32) -> u32
+        let func = func
+            .typed::<(u32, u32), u32>(self.store.as_context_mut())
+            .context("wasm function has incorrect signature for Rust handler")?;
+
+        // Allocate memory in the WASM module and write the trigger data
+        let allocate = self
+            .instance
+            .get_func(self.store.as_context_mut(), "allocate")
+            .with_context(|| "Rust WASM module must export 'allocate' function")?
+            .typed::<u32, u32>(self.store.as_context_mut())
+            .context("'allocate' has wrong signature")?;
+
+        let ptr = allocate
+            .call_async(self.store.as_context_mut(), data.len() as u32)
+            .await
+            .context("allocate call failed")?;
+
+        // Write trigger data to allocated memory
+        let memory = self
+            .instance
+            .get_memory(self.store.as_context_mut(), "memory")
+            .context("failed to get memory export")?;
+
+        memory
+            .write(self.store.as_context_mut(), ptr as usize, data)
+            .context("failed to write trigger data to memory")?;
+
+        // Enter handler context
+        self.instance_ctx().as_mut().ctx.state.enter_handler();
+
+        // Call the handler
+        let deterministic_error: Option<Error> = match func
+            .call_async(self.store.as_context_mut(), (ptr, data.len() as u32))
+            .await
+        {
+            Ok(result_code) => {
+                if result_code != 0 {
+                    // Non-zero return code indicates handler error
+                    Some(anyhow::anyhow!("handler returned error code {}", result_code))
+                } else {
+                    assert!(!self.instance_ctx().as_ref().possible_reorg);
+                    assert!(!self.instance_ctx().as_ref().deterministic_host_trap);
+                    None
+                }
+            }
+            Err(trap) if self.instance_ctx().as_ref().possible_reorg => {
+                self.instance_ctx().as_mut().ctx.state.exit_handler();
+                return Err(MappingError::PossibleReorg(trap));
+            }
+            Err(trap)
+                if trap
+                    .chain()
+                    .any(|e| e.downcast_ref::<Trap>() == Some(&Trap::Interrupt)) =>
+            {
+                self.instance_ctx().as_mut().ctx.state.exit_handler();
+                return Err(MappingError::Unknown(trap.context(format!(
+                    "Handler '{}' hit the timeout of '{}' seconds",
+                    handler,
+                    self.instance_ctx()
+                        .as_ref()
+                        .valid_module
+                        .timeout
+                        .unwrap()
+                        .as_secs()
+                ))));
+            }
+            Err(trap) => {
+                let trap_is_deterministic = is_trap_deterministic(&trap)
+                    || self.instance_ctx().as_ref().deterministic_host_trap;
+                match trap_is_deterministic {
+                    true => Some(trap),
+                    false => {
+                        self.instance_ctx().as_mut().ctx.state.exit_handler();
+                        return Err(MappingError::Unknown(trap));
+                    }
+                }
+            }
+        };
+
+        // Try to call reset_arena if it exists (optional cleanup)
+        if let Some(reset_arena) = self
+            .instance
+            .get_func(self.store.as_context_mut(), "reset_arena")
+        {
+            if let Ok(reset_fn) = reset_arena.typed::<(), ()>(self.store.as_context_mut()) {
+                let _ = reset_fn.call_async(self.store.as_context_mut(), ()).await;
+            }
+        }
+
+        // Handle deterministic errors
+        if let Some(deterministic_error) = deterministic_error {
+            let deterministic_error = match error_context {
+                Some(error_context) => deterministic_error.context(error_context),
+                None => deterministic_error,
+            };
+            let message = format!("{:#}", deterministic_error).replace('\n', "\t");
+
+            error!(&self.instance_ctx().as_ref().ctx.logger,
+                "Handler skipped due to execution failure";
+                "handler" => handler,
+                "error" => &message,
+                logging_extras
+            );
+            let subgraph_error = SubgraphError {
+                subgraph_id: self
+                    .instance_ctx()
+                    .as_ref()
+                    .ctx
+                    .host_exports
+                    .subgraph_id
+                    .clone(),
+                message,
+                block_ptr: Some(self.instance_ctx().as_ref().ctx.block_ptr.cheap_clone()),
+                handler: Some(handler.to_string()),
+                deterministic: true,
+            };
+            self.instance_ctx()
+                .as_mut()
+                .ctx
+                .state
+                .exit_handler_and_discard_changes_due_to_error(subgraph_error);
+        } else {
+            self.instance_ctx().as_mut().ctx.state.exit_handler();
+        }
+
+        let gas = self.gas.get();
+        Ok((self.take_ctx().take_state(), gas))
     }
 
     pub fn take_ctx(self) -> WasmInstanceData {
@@ -332,11 +509,49 @@ fn link_chain_host_fn(
 /// All host functions (builtins + chain-specific) are registered here. Chain-specific host functions
 /// are dispatched generically by looking up the `HostFn` by name from `caller.data().ctx.host_fns`
 /// at call time rather than capturing concrete closures at link time.
+///
+/// Returns the linker and the detected mapping language (AssemblyScript or Rust).
 pub(crate) fn build_linker(
     engine: &wasmtime::Engine,
     import_name_to_modules: &BTreeMap<String, Vec<String>>,
-) -> Result<Linker<WasmInstanceData>, anyhow::Error> {
+) -> Result<(Linker<WasmInstanceData>, crate::rust_abi::MappingLanguage), anyhow::Error> {
+    use crate::rust_abi::{is_rust_module, link_rust_host_functions, MappingLanguage};
+
     let mut linker: Linker<WasmInstanceData> = wasmtime::Linker::new(engine);
+
+    // Detect if this is a Rust module by checking for graphite namespace imports
+    let language = if is_rust_module(import_name_to_modules) {
+        MappingLanguage::Rust
+    } else {
+        MappingLanguage::AssemblyScript
+    };
+
+    // For Rust modules, link the Rust ABI host functions
+    if language == MappingLanguage::Rust {
+        link_rust_host_functions(&mut linker, import_name_to_modules)?;
+
+        // Link gas metering (shared between AS and Rust)
+        linker.func_wrap(
+            "gas",
+            "gas",
+            |mut caller: wasmtime::Caller<'_, WasmInstanceData>, gas_used: u32| -> anyhow::Result<()> {
+                use graph::runtime::gas::SaturatingInto;
+                if let Err(e) = caller
+                    .data()
+                    .gas
+                    .consume_host_fn_with_metrics(gas_used.saturating_into(), "gas")
+                {
+                    caller.data_mut().deterministic_host_trap = true;
+                    return Err(e.into());
+                }
+                Ok(())
+            },
+        )?;
+
+        return Ok((linker, language));
+    }
+
+    // AssemblyScript module - use the existing link! macro
 
     // Helper to turn a parameter name into 'u32' for a tuple type
     // (param1, parma2, ..) : (u32, u32, ..)
@@ -595,7 +810,7 @@ pub(crate) fn build_linker(
         },
     )?;
 
-    Ok(linker)
+    Ok((linker, language))
 }
 
 impl WasmInstance {
