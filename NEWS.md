@@ -1,5 +1,62 @@
 # NEWS
 
+## v0.42.0
+
+### Breaking Changes
+
+- **Substreams support removed.** Substreams have been unsupported on the network for some time. All substreams-related code has been removed, simplifying the codebase significantly. Substreams-based subgraphs will no longer work. ([#6261](https://github.com/graphprotocol/graph-node/pull/6261))
+- **Migrated from rust-web3 to alloy.** The Ethereum RPC layer now uses the alloy crate instead of rust-web3. This should be transparent to most users, but chains that do not return EIP-2718 typed transaction fields may need the `no_eip2718` provider feature flag. ([#6063](https://github.com/graphprotocol/graph-node/pull/6063)) ([#6317](https://github.com/graphprotocol/graph-node/pull/6317))
+
+### What's New
+
+- **Amp-powered subgraphs (experimental).** A new kind of subgraph powered by [Amp](https://github.com/edgeandnode/amp), the blockchain native database. Amp-powered subgraphs index data directly from Amp servers instead of processing blocks individually, reducing indexing time from days/weeks to minutes/hours. See `docs/amp-powered-subgraphs.md` for details. ([#6218](https://github.com/graphprotocol/graph-node/pull/6218)) ([#6293](https://github.com/graphprotocol/graph-node/pull/6293)) ([#6369](https://github.com/graphprotocol/graph-node/pull/6369))
+- **SQL query interface (experimental).** A new experimental SQL query interface allows querying subgraph data using SQL syntax via GraphQL. Documentation in `docs/implementation/sql-interface.md`. ([#6172](https://github.com/graphprotocol/graph-node/pull/6172))
+- **Async store.** All store and database interactions are now fully async using `diesel_async`, eliminating blocking database calls from tokio tasks. This improves throughput and reduces the risk of thread starvation under heavy load. ([#6194](https://github.com/graphprotocol/graph-node/pull/6194)) ([#6185](https://github.com/graphprotocol/graph-node/pull/6185))
+- **RPC request compression.** Configurable compression for outgoing JSON-RPC requests to upstream providers, supporting gzip, brotli, and deflate. Configured via provider `features` in the config file. ([#6084](https://github.com/graphprotocol/graph-node/pull/6084))
+- Query the current (partially filled) aggregation bucket with `current: include` in GraphQL requests. ([#6293](https://github.com/graphprotocol/graph-node/pull/6293))
+- Extended `first` and `last` aggregation support to `String`, `Bytes`, and entity reference types. ([#6225](https://github.com/graphprotocol/graph-node/pull/6225))
+- Automated account-like table optimization — an optional background job that detects and marks tables with high entity update ratios as account-like. Enabled via `GRAPH_STORE_ACCOUNT_LIKE_SCAN_INTERVAL_HOURS`, `GRAPH_STORE_ACCOUNT_LIKE_MIN_VERSIONS_COUNT`, and `GRAPH_STORE_ACCOUNT_LIKE_MAX_UNIQUE_RATIO`. ([#6209](https://github.com/graphprotocol/graph-node/pull/6209))
+- Subgraph table sizes and row counts are now exposed in `SubgraphIndexingStatus` via the index-node API. ([#6201](https://github.com/graphprotocol/graph-node/pull/6201))
+- Configurable database setup timeout via `GRAPH_STORE_SETUP_TIMEOUT`.
+- Option to disable the store call cache via `GRAPH_STORE_DISABLE_CALL_CACHE`, useful for indexers with locally hosted RPC nodes. ([#6214](https://github.com/graphprotocol/graph-node/pull/6214))
+- Docker: added profiling support to the `graph-node-debug` image with frame pointers and `linux-perf`. ([#6418](https://github.com/graphprotocol/graph-node/pull/6418))
+
+### Improvements
+
+- Optimized WASM trigger instantiation by caching linker and compilation artifacts, reducing per-trigger overhead. ([#6364](https://github.com/graphprotocol/graph-node/pull/6364))
+- Optimized log filter matching and trigger allocation, reducing CPU usage during block processing. ([#6419](https://github.com/graphprotocol/graph-node/pull/6419))
+- Reduced unnecessary entity clones during block processing. ([#6362](https://github.com/graphprotocol/graph-node/pull/6362))
+- Replaced `std::sync::RwLock` with `parking_lot::RwLock` across multiple components for better performance under contention.
+- Deadlock prevention under heavy load, especially during index node startup — connection pool and store semaphore improvements. ([#6224](https://github.com/graphprotocol/graph-node/pull/6224))
+- Raw subgraph manifests are now loaded from the store cache during startup, reducing IPFS dependency. ([#6223](https://github.com/graphprotocol/graph-node/pull/6223))
+- Deployment hashes are now logged when removing a subgraph. ([#6405](https://github.com/graphprotocol/graph-node/pull/6405))
+
+### Bug Fixes
+
+- Fixed duplicate VID when multiple offchain triggers (file/IPFS data sources) fire in the same block, causing unique constraint violations. Also fixed in `ipfs.map()` callbacks. ([#6336](https://github.com/graphprotocol/graph-node/pull/6336)) ([#6416](https://github.com/graphprotocol/graph-node/pull/6416))
+- Fixed incorrect `nocase` filter generation for non-String types (e.g., `Bytes`), which caused SQL errors like `operator does not exist: bytea ~~* bytea`. ([#6351](https://github.com/graphprotocol/graph-node/pull/6351))
+- Fixed `can_copy_from` failures not fully rolling back deployment creation, leaving orphaned records. ([#6228](https://github.com/graphprotocol/graph-node/pull/6228))
+- Fixed multi-column index validation bug where column order mismatch caused valid indexes to be silently dropped during subgraph copy/graft. ([#6341](https://github.com/graphprotocol/graph-node/pull/6341))
+- Fixed grafting failure ("Unexpected null for non-null column") when source tables have too few rows for PostgreSQL to generate `histogram_bounds` statistics. ([#6275](https://github.com/graphprotocol/graph-node/pull/6275))
+- Fixed panic when converting a negative number to `U256` in the runtime — now returns an error instead. ([#6219](https://github.com/graphprotocol/graph-node/pull/6219))
+- Fixed `graphman copy` copying pruned `earliest_block_number` from source, which could leave the destination deployment in an invalid state. ([#6384](https://github.com/graphprotocol/graph-node/pull/6384))
+- Fixed calls returning `0x` being incorrectly cached in the call cache, preventing stale empty results from persisting. ([#6187](https://github.com/graphprotocol/graph-node/pull/6187))
+
+### Graphman
+
+- **`graphman dump` and `graphman restore` (experimental).** New commands for exporting and importing subgraph data in Parquet format, enabling backup and migration of deployment data across shards. Supports incremental dumps and progress reporting. See `docs/dump.md` for details. ([#6397](https://github.com/graphprotocol/graph-node/pull/6397))
+- `graphman chain call-cache remove` now supports `--ttl-days` to remove stale call cache entries that haven't been accessed within a specified number of days. ([#6186](https://github.com/graphprotocol/graph-node/pull/6186))
+
+### gnd (Graph Node Dev)
+
+- **[experimental]** Major expansion of `gnd` as a drop-in replacement for `graph-cli`: `init`, `add`, `codegen`, `build`, `publish`, `deploy`, `create`, `remove`, `auth`, `clean`, and `test` commands. ([#6282](https://github.com/graphprotocol/graph-node/pull/6282))
+
+### Contributors
+
+Thanks to all contributors for this release: @DaMandal0rian, @dimitrovmaksim, @fubhy, @hudsonhrh, @incrypto32, @isum, @lutter, @shiyasmohd
+
+**Full Changelog**: https://github.com/graphprotocol/graph-node/compare/v0.41.2...v0.42.0
+
 ## v0.41.2
 
 ### Bug Fixes
