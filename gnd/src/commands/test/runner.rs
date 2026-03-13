@@ -110,6 +110,10 @@ pub(super) struct ManifestInfo {
     pub start_block_override: Option<BlockPtr>,
     pub hash: DeploymentHash,
     pub subgraph_name: SubgraphName,
+    /// Event selectors (topic0) for handlers that declare `receipt: true`.
+    /// Only logs whose topic0 is in this set receive a non-null receipt.
+    pub receipt_required_selectors:
+        std::collections::HashSet<graph::prelude::alloy::primitives::B256>,
 }
 
 /// Compute a `DeploymentHash` from a path and seed.
@@ -185,6 +189,8 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
     let subgraph_name = SubgraphName::new(format!("test/{}-{}", root_dir_name, seed))
         .map_err(|e| anyhow!("{}", e))?;
 
+    let receipt_required_selectors = extract_receipt_required_selectors(&manifest);
+
     Ok(ManifestInfo {
         build_dir,
         manifest_path: built_manifest_path,
@@ -193,7 +199,35 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
         start_block_override,
         hash,
         subgraph_name,
+        receipt_required_selectors,
     })
+}
+
+/// Collect the event selectors (topic0) for all handlers that declare `receipt: true`.
+///
+/// Covers both data sources and templates. Only logs whose topic0 appears in
+/// this set will have a non-null receipt attached to their trigger.
+///
+/// The selector is computed using the same method as graph-node's
+/// `MappingEventHandler::topic0()`: strip `"indexed "` then all spaces, then
+/// keccak256. This handles the manifest format `Transfer(indexed address,...)`
+/// where `indexed` precedes the type rather than following it.
+fn extract_receipt_required_selectors(
+    manifest: &Manifest,
+) -> std::collections::HashSet<graph::prelude::alloy::primitives::B256> {
+    use graph::prelude::alloy::primitives::keccak256;
+
+    manifest
+        .data_sources
+        .iter()
+        .flat_map(|ds| &ds.event_handlers)
+        .chain(manifest.templates.iter().flat_map(|t| &t.event_handlers))
+        .filter(|h| h.receipt)
+        .map(|h| {
+            let normalized = h.event.replace("indexed ", "").replace(' ', "");
+            keccak256(normalized.as_bytes())
+        })
+        .collect()
 }
 
 fn extract_network_from_manifest(manifest: &Manifest) -> Result<String> {
@@ -246,7 +280,11 @@ pub async fn run_single_test(
 
     // Default block numbering starts at the manifest's startBlock so that
     // test blocks without explicit numbers fall in the subgraph's indexed range.
-    let blocks = build_blocks_with_triggers(test_file, manifest_info.min_start_block)?;
+    let blocks = build_blocks_with_triggers(
+        test_file,
+        manifest_info.min_start_block,
+        &manifest_info.receipt_required_selectors,
+    )?;
 
     // Create the database for this test. For pgtemp, the `db` value must
     // stay alive for the duration of the test — dropping it destroys the database.

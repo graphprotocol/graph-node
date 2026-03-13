@@ -9,21 +9,30 @@
 use super::schema::{LogEvent, TestFile};
 use anyhow::{anyhow, ensure, Context, Result};
 use graph::blockchain::block_stream::BlockWithTriggers;
+use graph::components::ethereum::AnyTransactionReceiptBare;
+use graph::prelude::alloy::consensus::{Eip658Value, Receipt, ReceiptWithBloom};
 use graph::prelude::alloy::dyn_abi::{DynSolType, DynSolValue};
 use graph::prelude::alloy::json_abi::Event;
-use graph::prelude::alloy::primitives::{keccak256, Address, Bytes, B256, I256, U256};
-use graph::prelude::alloy::rpc::types::Log;
+use graph::prelude::alloy::network::AnyReceiptEnvelope;
+use graph::prelude::alloy::primitives::{keccak256, Address, Bloom, Bytes, B256, I256, U256};
+use graph::prelude::alloy::rpc::types::{Log, TransactionReceipt};
 use graph::prelude::{BlockPtr, LightEthereumBlock};
 use graph_chain_ethereum::chain::BlockFinality;
 use graph_chain_ethereum::trigger::{EthereumBlockTriggerType, EthereumTrigger, LogRef};
 use graph_chain_ethereum::Chain;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Convert test blocks into `BlockWithTriggers`, chained by parent hash.
 /// Block numbers auto-increment from `start_block` when not explicit.
+///
+/// `receipt_required_selectors` is the set of event selectors (topic0) for
+/// handlers that declare `receipt: true`. Only matching logs get a non-null
+/// receipt; all others receive `None`, mirroring production behaviour.
 pub fn build_blocks_with_triggers(
     test_file: &TestFile,
     start_block: u64,
+    receipt_required_selectors: &std::collections::HashSet<B256>,
 ) -> Result<Vec<BlockWithTriggers<Chain>>> {
     let mut blocks = Vec::new();
     let mut current_number = start_block;
@@ -47,9 +56,31 @@ pub fn build_blocks_with_triggers(
 
         let mut triggers = Vec::new();
 
-        for (log_index, log_event) in test_block.events.iter().enumerate() {
-            let eth_trigger = build_log_trigger(number, hash, log_index as u64, log_event)?;
-            triggers.push(eth_trigger);
+        // Pass 1: parse each event into (tx_hash, Arc<Log>).
+        let event_logs: Vec<(B256, Arc<Log>)> = test_block
+            .events
+            .iter()
+            .enumerate()
+            .map(|(i, e)| prepare_event_log(number, hash, i as u64, e))
+            .collect::<Result<_>>()?;
+
+        // Pass 2: build one mock receipt per tx-hash group.
+        let receipts = build_receipts_by_tx(number, hash, &event_logs);
+
+        // Pass 3: create one log trigger per event.
+        // Only attach a receipt when the log's event selector (topic0) belongs
+        // to a handler that declared `receipt: true` in the manifest — matching
+        // production behaviour where handlers without that flag receive null.
+        for (tx_hash, full_log) in &event_logs {
+            let needs_receipt = full_log
+                .topics()
+                .first()
+                .is_some_and(|t| receipt_required_selectors.contains(t));
+            let receipt = needs_receipt.then(|| receipts[tx_hash].clone());
+            triggers.push(EthereumTrigger::Log(LogRef::FullLog(
+                full_log.clone(),
+                receipt,
+            )));
         }
 
         // Auto-inject block triggers for every block so that block handlers
@@ -81,17 +112,17 @@ pub fn build_blocks_with_triggers(
     Ok(blocks)
 }
 
-/// Build an `EthereumTrigger::Log` from a test JSON event.
-fn build_log_trigger(
+/// Parse a test event into `(tx_hash, Arc<Log>)` without building a trigger.
+///
+/// The tx_hash is either taken from `trigger.tx_hash` or auto-generated as
+/// `keccak256(block_number || log_index)`, which is unique per event.
+fn prepare_event_log(
     block_number: u64,
     block_hash: B256,
     log_index: u64,
     trigger: &LogEvent,
-) -> Result<EthereumTrigger> {
-    let address: Address = trigger
-        .address
-        .parse()
-        .context("Invalid contract address")?;
+) -> Result<(B256, Arc<Log>)> {
+    let address: Address = trigger.address.parse()?;
 
     let (topics, data) = encode_event_log(&trigger.event, &trigger.params)?;
 
@@ -100,8 +131,7 @@ fn build_log_trigger(
         .tx_hash
         .as_ref()
         .map(|h| h.parse::<B256>())
-        .transpose()
-        .context("Invalid tx hash")?
+        .transpose()?
         .unwrap_or_else(|| {
             keccak256([block_number.to_be_bytes(), log_index.to_be_bytes()].concat())
         });
@@ -122,7 +152,70 @@ fn build_log_trigger(
         removed: false,
     });
 
-    Ok(EthereumTrigger::Log(LogRef::FullLog(full_log, None)))
+    Ok((tx_hash, full_log))
+}
+
+/// Build one mock receipt per unique tx_hash from a block's event logs.
+///
+/// Events sharing the same `tx_hash` share a receipt whose `logs` contains
+/// all of their logs in declaration order. Events without an explicit
+/// `tx_hash` each have a unique auto-generated hash, so they each get their
+/// own single-log receipt.
+fn build_receipts_by_tx(
+    block_number: u64,
+    block_hash: B256,
+    event_logs: &[(B256, Arc<Log>)],
+) -> HashMap<B256, Arc<AnyTransactionReceiptBare>> {
+    // Collect logs per tx_hash, preserving insertion order for tx_index.
+    let mut tx_order: Vec<B256> = Vec::new();
+    let mut logs_by_tx: HashMap<B256, Vec<Log>> = HashMap::new();
+
+    for (tx_hash, log) in event_logs {
+        let entry = logs_by_tx.entry(*tx_hash).or_insert_with(|| {
+            tx_order.push(*tx_hash);
+            Vec::new()
+        });
+        entry.push((**log).clone());
+    }
+
+    let mut receipts: HashMap<B256, Arc<AnyTransactionReceiptBare>> =
+        HashMap::with_capacity(tx_order.len());
+
+    for (tx_index, tx_hash) in tx_order.into_iter().enumerate() {
+        let logs = logs_by_tx.remove(&tx_hash).unwrap_or_default();
+
+        let core_receipt = Receipt {
+            status: Eip658Value::Eip658(true),
+            cumulative_gas_used: 21_000,
+            logs,
+        };
+
+        let receipt_with_bloom = ReceiptWithBloom::new(core_receipt, Bloom::default());
+
+        let any_envelope = AnyReceiptEnvelope {
+            inner: receipt_with_bloom,
+            r#type: 2,
+        };
+
+        let receipt = TransactionReceipt {
+            transaction_hash: tx_hash,
+            transaction_index: Some(tx_index as u64),
+            block_hash: Some(block_hash),
+            block_number: Some(block_number),
+            gas_used: 21_000,
+            from: Address::ZERO,
+            to: None,
+            effective_gas_price: 0,
+            blob_gas_used: None,
+            blob_gas_price: None,
+            contract_address: None,
+            inner: any_envelope,
+        };
+
+        receipts.insert(tx_hash, Arc::new(receipt));
+    }
+
+    receipts
 }
 
 /// Encode event parameters into EVM log topics and data using `alloy::json_abi::Event::parse()`.

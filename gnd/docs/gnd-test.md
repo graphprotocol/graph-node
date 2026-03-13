@@ -144,6 +144,56 @@ Event parameters are automatically ABI-encoded based on the signature. Supported
 }
 ```
 
+## Transaction Receipts
+
+Mock receipts are constructed for every log trigger and attached only to handlers that declare `receipt: true` in the manifest, mirroring production behaviour. Handlers without `receipt: true` receive a null receipt — the same as on a real node.
+
+**Limitation:** Only `receipt.logs` reflects your test data. All other receipt fields (`from`, `to`, `gas_used`, `status`, etc.) are hardcoded stubs and do not correspond to real transaction data. If your handler reads those fields, the values will be fixed defaults regardless of what you put in the test JSON.
+
+### How receipts are built
+
+Every event gets a mock receipt attached automatically. The key rule is **`txHash` grouping**:
+
+- Events sharing the same `txHash` share **one receipt** — `event.receipt!.logs` contains all of their logs in declaration order.
+- Events without an explicit `txHash` each get a unique auto-generated hash (`keccak256(block_number || log_index)`), so each gets its own single-log receipt.
+
+### Example: Two events sharing a receipt
+
+```json
+{
+  "events": [
+    {
+      "address": "0x1234...",
+      "event": "Transfer(address indexed from, address indexed to, uint256 value)",
+      "params": { "from": "0xaaaa...", "to": "0xbbbb...", "value": "100" },
+      "txHash": "0xdeadbeef0000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "address": "0x1234...",
+      "event": "Transfer(address indexed from, address indexed to, uint256 value)",
+      "params": { "from": "0xbbbb...", "to": "0xcccc...", "value": "50" },
+      "txHash": "0xdeadbeef0000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}
+```
+
+Both handlers receive a receipt where `receipt.logs` has two entries, in declaration order.
+
+### Mock receipt defaults
+
+| Field | Value |
+|-------|-------|
+| `status` | success |
+| `cumulative_gas_used` | `21000` |
+| `gas_used` | `21000` |
+| transaction type | `2` (EIP-1559) |
+| `from` | `0x000...000` |
+| `to` | `null` |
+| `effective_gas_price` | `0` |
+
+Handlers without `receipt: true` in the manifest are unaffected — they never access `event.receipt`.
+
 ## Block Handlers
 
 Block handlers are **automatically triggered** for every block. You don't need to specify block triggers in the JSON.
@@ -599,7 +649,7 @@ my-subgraph/
 | Block handlers (all filters) | ✅ Supported |
 | eth_call mocking | ✅ Supported |
 | Dynamic/template data sources | ✅ Supported |
-| Transaction receipts (`receipt: true`) | ❌ Not implemented — handlers get `null` |
+| Transaction receipts (`receipt: true`) | ⚠️ Partial — `receipt.logs` is populated and grouped by `txHash`; other fields (gas, from, to, etc.) are hardcoded stubs (see [Transaction Receipts](#transaction-receipts)) |
 | File data sources / IPFS mocking | ❌ Not implemented |
 | Call triggers (traces) | ❌ Not implemented |
 | `--json` CI output | ❌ Not implemented |

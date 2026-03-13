@@ -1,0 +1,39 @@
+{
+  "name": "Test events and eth_call mocking",
+  "blocks": [
+    {
+      "events": [
+        {
+          "address": "0x000000000000000000000000000000000000000a",
+          "event": "Approval(address indexed owner, address indexed spender, uint256 value)",
+          "params": {
+            "owner": "0xaaaa000000000000000000000000000000000000",
+            "spender": "0xbbbb000000000000000000000000000000000000",
+            "value": "1000000000000000000"
+          },
+          "txHash": "0xdeadbeef00000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "address": "0x000000000000000000000000000000000000000a",
+          "event": "Transfer(address indexed from, address indexed to, uint256 value)",
+          "params": {
+            "from": "0xbbbb000000000000000000000000000000000000",
+            "to": "0xcccc000000000000000000000000000000000000",
+            "value": "1000000000000000000"
+          },
+          "txHash": "0xdeadbeef00000000000000000000000000000000000000000000000000000000"
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    {
+      "query": "{ transfers { id from to value } }",
+      "expected": { "transfers": [ { "id": "0xdeadbeef00000000000000000000000000000000000000000000000000000000", "from": "0xbbbb000000000000000000000000000000000000", "to": "0xcccc000000000000000000000000000000000000", "value": "1000000000000000000"} ] }
+    },
+    {
+      "query": "{ approvals {id owner spender value } }",
+      "expected": { "approvals": [ { "id": "0xdeadbeef00000000000000000000000000000000000000000000000000000000", "owner": "0xaaaa000000000000000000000000000000000000", "spender": "0xbbbb000000000000000000000000000000000000", "value": "1000000000000000000" } ] }
+    }
+  ]
+}
