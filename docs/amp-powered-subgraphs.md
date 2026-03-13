@@ -1,7 +1,10 @@
 # Amp-powered subgraphs
 
+> [!WARNING]
+> This feature is experimental and may change in future releases.
+
 > [!NOTE]
-> This features is available starting from spec version `1.5.0`
+> This feature is available starting from spec version `1.5.0`
 
 Amp-powered subgraphs are a new kind of subgraphs with SQL data sources that query and index data from the Amp servers.
 They are significantly more efficient than the standard subgraphs, and the indexing time can be reduced from days and weeks,
