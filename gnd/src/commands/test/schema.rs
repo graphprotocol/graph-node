@@ -98,7 +98,7 @@ pub struct LogEvent {
     pub params: serde_json::Map<String, Value>,
 
     /// Explicit tx hash, or generated as `keccak256(block_number || log_index)`.
-    #[serde(default)]
+    #[serde(default, rename = "txHash")]
     pub tx_hash: Option<String>,
 }
 
