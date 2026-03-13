@@ -550,7 +550,7 @@ impl<C: Blockchain> TriggersAdapterWrapper<C> {
             .await
     }
 
-    pub async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
+    pub async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<Option<BlockPtr>, Error> {
         self.adapter.is_on_main_chain(ptr).await
     }
 
@@ -610,9 +610,10 @@ pub trait TriggersAdapter<C: Blockchain>: Send + Sync {
         filter: &C::TriggerFilter,
     ) -> Result<BlockWithTriggers<C>, Error>;
 
-    /// Return `true` if the block with the given hash and number is on the
-    /// main chain, i.e., the chain going back from the current chain head.
-    async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error>;
+    /// Check whether the block is on the main chain. Returns `None` if it
+    /// is, or `Some(revert_to)` with the canonical parent pointer to revert
+    /// to if the block has been reorged out.
+    async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<Option<BlockPtr>, Error>;
 
     /// Get pointer to parent of `block`. This is called when reverting `block`.
     async fn parent_ptr(&self, block: &BlockPtr) -> Result<Option<BlockPtr>, Error>;

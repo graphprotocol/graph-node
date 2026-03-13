@@ -1023,7 +1023,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         }
     }
 
-    async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
+    async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<Option<BlockPtr>, Error> {
         match &*self.chain_client {
             ChainClient::Firehose(endpoints) => {
                 let endpoint = endpoints.endpoint().await?;
@@ -1034,7 +1034,16 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                         "Failed to fetch block {} from firehose",
                         ptr.number
                     ))?;
-                Ok(block.hash() == ptr.hash)
+                if block.hash() == ptr.hash {
+                    Ok(None)
+                } else {
+                    Ok(Some(block.parent_ptr().ok_or_else(|| {
+                        anyhow!(
+                            "canonical block at {} has no parent; cannot determine revert target",
+                            ptr.number
+                        )
+                    })?))
+                }
             }
             ChainClient::Rpc(adapter) => {
                 let adapter = adapter
@@ -1042,7 +1051,17 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                     .await
                     .ok_or_else(|| anyhow!("unable to get adapter for is_on_main_chain"))?;
 
-                adapter.is_on_main_chain(&self.logger, ptr).await
+                let canonical = adapter
+                    .next_existing_ptr_to_number(&self.logger, ptr.number)
+                    .await?;
+                if canonical == ptr {
+                    Ok(None)
+                } else {
+                    let parent = adapter
+                        .next_existing_ptr_to_number(&self.logger, ptr.number - 1)
+                        .await?;
+                    Ok(Some(parent))
+                }
             }
         }
     }

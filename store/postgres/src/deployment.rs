@@ -626,7 +626,10 @@ pub async fn revert_block_ptr(
     match affected_rows {
         1 => Ok(()),
         0 => Err(StoreError::Unknown(anyhow!(
-            "No rows affected. This could be due to an attempt to revert beyond earliest_block + reorg_threshold",
+            "No rows affected. The revert target (block {}) may be beyond earliest_block + \
+             reorg_threshold, or the revert target may be a stale block from a previous reorg \
+             that no longer exists on the canonical chain",
+            ptr.number,
         ))),
         _ => Err(StoreError::Unknown(anyhow!(
             "Expected to update 1 row, but {} rows were affected",

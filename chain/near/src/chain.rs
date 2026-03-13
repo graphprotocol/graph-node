@@ -326,7 +326,7 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         Ok(BlockWithTriggers::new(block, trigger_data, logger))
     }
 
-    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<bool, Error> {
+    async fn is_on_main_chain(&self, _ptr: BlockPtr) -> Result<Option<BlockPtr>, Error> {
         panic!("Should never be called since not used by FirehoseBlockStream")
     }
 
