@@ -1,0 +1,53 @@
+specVersion: 1.3.0
+schema:
+  file: ./schema.graphql
+dataSources:
+  - name: FileEvents
+    kind: ethereum/contract
+    network: arbitrum
+    source:
+      abi: FileEvents
+      address: "0x0000000000000000000000000000000000000002"
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/files.ts
+      entities:
+        - IpfsFile
+        - ArweaveFile
+      abis:
+        - name: FileEvents
+          file: ./abis/FileEvents.json
+      eventHandlers:
+        - event: IpfsFileCreated(string)
+          handler: handleIpfsFileCreated
+        - event: ArweaveFileCreated(string)
+          handler: handleArweaveFileCreated
+templates:
+  - name: IpfsFile
+    kind: file/ipfs
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/files.ts
+      entities:
+        - IpfsFile
+      abis:
+        - name: FileEvents
+          file: ./abis/FileEvents.json
+      handler: handleIpfsFile
+  - name: ArweaveFile
+    kind: file/arweave
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/files.ts
+      entities:
+        - ArweaveFile
+      abis:
+        - name: FileEvents
+          file: ./abis/FileEvents.json
+      handler: handleArweaveFile

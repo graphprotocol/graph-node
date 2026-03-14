@@ -1,4 +1,4 @@
-import { Transfer as TransferEvent } from '../generated/StandardToken/ERC20'
+import { Transfer as TransferEvent } from '../generated/Receipts/ERC20'
 import { Transfer, Approval } from '../generated/schema'
 import { Bytes, ethereum, log } from "@graphprotocol/graph-ts";
 

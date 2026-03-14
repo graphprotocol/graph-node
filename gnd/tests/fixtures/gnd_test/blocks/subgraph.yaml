@@ -1,0 +1,64 @@
+specVersion: 1.3.0
+schema:
+  file: ./schema.graphql
+dataSources:
+  - name: EveryBlock
+    kind: ethereum
+    network: arbitrum
+    source:
+      abi: ERC20
+      address: "0x0000000000000000000000000000000000000000"
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/blocks.ts
+      entities:
+        - Block
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      blockHandlers:
+        - handler: handleEveryBlock
+  - name: BlockOnce
+    kind: ethereum
+    network: arbitrum
+    source:
+      abi: ERC20
+      address: "0x0000000000000000000000000000000000000000"
+      startBlock: 1000
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/blocks.ts
+      entities:
+        - OnceBlock
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      blockHandlers:
+        - handler: handleOnce
+          filter:
+            kind: once
+  - name: BlockPolling
+    kind: ethereum
+    network: arbitrum
+    source:
+      abi: ERC20
+      address: "0x0000000000000000000000000000000000000000"
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/blocks.ts
+      entities:
+        - PollingBlock
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      blockHandlers:
+        - handler: handlePolling
+          filter:
+            kind: polling
+            every: 5
