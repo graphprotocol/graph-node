@@ -13,6 +13,7 @@
 use super::assertion::run_assertions;
 use super::block_stream::StaticStreamBuilder;
 use super::mock_chain;
+use super::mock_ipfs::MockIpfsClient;
 use super::noop::{NoopAdapterSelector, StaticBlockRefetcher};
 use super::schema::{TestFile, TestResult};
 use super::trigger::build_blocks_with_triggers;
@@ -35,7 +36,7 @@ use graph::data::subgraph::schema::SubgraphError;
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
-use graph::ipfs::{IpfsMetrics, IpfsRpcClient, ServerAddress};
+use graph::ipfs::{ContentPath, IpfsMetrics};
 use graph::prelude::{
     DeploymentHash, LoggerFactory, NodeId, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
     SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
@@ -52,6 +53,7 @@ use graph_node::config::{Config, Opt};
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -256,6 +258,7 @@ pub async fn run_single_test(
     opt: &TestOpt,
     manifest_info: &ManifestInfo,
     test_file: &TestFile,
+    test_file_path: &Path,
 ) -> Result<TestResult> {
     // Warn (and short-circuit) when there are no assertions.
     if test_file.assertions.is_empty() {
@@ -286,6 +289,24 @@ pub async fn run_single_test(
         &manifest_info.receipt_required_selectors,
     )?;
 
+    // Build mock IPFS file map. Fails fast on invalid CIDs or unreadable file paths.
+    let test_file_dir = test_file_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let mut mock_files: HashMap<ContentPath, graph::bytes::Bytes> = HashMap::new();
+    for entry in &test_file.files {
+        let path = ContentPath::new(&entry.cid)
+            .map_err(|e| anyhow!("Invalid CID '{}' in test files: {}", entry.cid, e))?;
+        let content = entry
+            .resolve(&test_file_dir)
+            .with_context(|| format!("Failed to resolve mock file for CID '{}'", entry.cid))?;
+        mock_files.insert(path, content);
+    }
+
+    let (unresolved_tx, mut unresolved_rx) = tokio::sync::mpsc::unbounded_channel::<ContentPath>();
+
     // Create the database for this test. For pgtemp, the `db` value must
     // stay alive for the duration of the test — dropping it destroys the database.
     let db = create_test_database(opt, &manifest_info.build_dir)?;
@@ -296,7 +317,15 @@ pub async fn run_single_test(
 
     let chain = setup_chain(&logger, blocks.clone(), &stores).await?;
 
-    let ctx = setup_context(&logger, &stores, &chain, manifest_info).await?;
+    let ctx = setup_context(
+        &logger,
+        &stores,
+        &chain,
+        manifest_info,
+        mock_files,
+        unresolved_tx,
+    )
+    .await?;
 
     // Populate eth_call cache with mock responses before starting indexer.
     // This ensures handlers can successfully retrieve mocked contract call results.
@@ -330,7 +359,34 @@ pub async fn run_single_test(
     )
     .await
     {
-        Ok(()) => run_assertions(&ctx, &test_file.assertions).await,
+        Ok(()) => {
+            // Drain any CIDs that were requested but not found in the mock.
+            // Deduplicate so each missing CID is listed once.
+            let mut unresolved: Vec<ContentPath> = Vec::new();
+            while let Ok(cid) = unresolved_rx.try_recv() {
+                if !unresolved.contains(&cid) {
+                    unresolved.push(cid);
+                }
+            }
+
+            if !unresolved.is_empty() {
+                let cid_list = unresolved
+                    .iter()
+                    .map(|p| format!("  - {}", p))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                Ok(TestResult {
+                    handler_error: Some(format!(
+                        "File data source requested CID not found in mock 'files':\n{}\n\
+                         Add the missing CID(s) to the \"files\" array in your test JSON.",
+                        cid_list
+                    )),
+                    assertions: vec![],
+                })
+            } else {
+                run_assertions(&ctx, &test_file.assertions).await
+            }
+        }
         Err(subgraph_error) => {
             // The subgraph handler threw a fatal error during indexing.
             // Report it as a test failure without running assertions.
@@ -614,6 +670,8 @@ async fn setup_context(
     stores: &TestStores,
     chain: &Arc<Chain>,
     manifest_info: &ManifestInfo,
+    mock_files: HashMap<ContentPath, graph::bytes::Bytes>,
+    unresolved_tx: tokio::sync::mpsc::UnboundedSender<ContentPath>,
 ) -> Result<TestContext> {
     let build_dir = &manifest_info.build_dir;
     let manifest_path = &manifest_info.manifest_path;
@@ -643,13 +701,14 @@ async fn setup_context(
         FileLinkResolver::new(Some(build_dir.to_path_buf()), aliases),
     );
 
-    // IPFS client is required by the instance manager constructor but not used
-    // for manifest loading (FileLinkResolver handles that).
+    // Replace the real IPFS client with a mock that serves pre-loaded content.
+    // FileLinkResolver handles manifest loading; the mock handles file data sources.
     let ipfs_metrics = IpfsMetrics::new(&mock_registry);
-    let ipfs_client = Arc::new(
-        IpfsRpcClient::new_unchecked(ServerAddress::test_rpc_api(), ipfs_metrics, logger)
-            .context("Failed to create IPFS client")?,
-    );
+    let ipfs_client = Arc::new(MockIpfsClient {
+        files: mock_files,
+        metrics: ipfs_metrics,
+        unresolved_tx,
+    });
 
     let ipfs_service = ipfs_service(
         ipfs_client,

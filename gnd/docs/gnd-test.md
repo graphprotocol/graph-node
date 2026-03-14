@@ -767,7 +767,7 @@ GraphQL queries → Assertions
 - **Real WASM runtime:** Uses `EthereumRuntimeAdapterBuilder` with real `ethereum.call` host function
 - **Pre-populated call cache:** `eth_call` responses are cached before indexing starts
 - **No IPFS for manifest:** Uses `FileLinkResolver` to load manifest/WASM from build directory
-- **Dummy RPC adapter:** Registered at `http://0.0.0.0:0` for capability lookup; never actually called
+- **Dummy RPC adapter:** Registered at `http://0.0.0.0:0` — exists so the runtime can resolve an adapter with the required capabilities. If a mapping makes an `ethereum.call` that has no matching mock in `ethCalls`, the call misses the cache and falls through to this dummy adapter. The connection is refused immediately (port 0 is invalid), which graph-node treats as a possible reorg and restarts the block stream. The indexer then loops until the 60-second test timeout. See [Unmocked eth_call](#unmocked-eth_call-causes-60-second-timeout) in Troubleshooting.
 
 ## Troubleshooting
 
@@ -798,6 +798,28 @@ GraphQL queries → Assertions
 1. Verify `address`, `function`, and `params` exactly match the call from your mapping
 2. Check function signature format: `"functionName(inputTypes)(returnTypes)"`
 3. Ensure parameters are in correct order
+
+### Unmocked eth_call Causes 60-Second Timeout
+
+**Cause:** A mapping handler calls `ethereum.call` (directly or via a generated contract binding) for a call that has no matching entry in `ethCalls`. The call misses the pre-populated cache and is forwarded to the dummy RPC adapter at `http://0.0.0.0:0`. The connection is refused immediately, but graph-node interprets connection errors as a possible chain reorganisation and restarts the block stream instead of failing. The indexer loops indefinitely until the test runner's 60-second timeout expires.
+
+**Symptom:** Test fails with `Sync timeout after 60s` with no indication of which call was missing.
+
+**Fix:**
+1. Add the missing call to `ethCalls` in your test block:
+   ```json
+   "ethCalls": [
+     {
+       "address": "0xContractAddress",
+       "function": "myFunction(uint256):(address)",
+       "params": ["42"],
+       "returns": ["0xSomeAddress"]
+     }
+   ]
+   ```
+2. If the call is not supposed to happen, check the mapping logic — a code path may be executing unexpectedly.
+
+**Known limitation:** There is currently no fail-fast error for unmocked calls. The only signal is the timeout. A future improvement will make the dummy adapter panic immediately on a cache miss with a descriptive message.
 
 ### Block Handler Not Firing
 

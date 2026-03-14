@@ -32,6 +32,7 @@ mod block_stream;
 mod eth_calls;
 mod matchstick;
 mod mock_chain;
+mod mock_ipfs;
 mod noop;
 mod output;
 mod runner;
@@ -170,7 +171,7 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
             }
         };
 
-        match runner::run_single_test(&opt, &manifest_info, &test_file).await {
+        match runner::run_single_test(&opt, &manifest_info, &test_file, &path).await {
             Ok(result) => {
                 output::print_test_result(&test_file.name, &result);
                 if result.is_passed() {

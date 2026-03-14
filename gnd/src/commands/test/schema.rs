@@ -30,6 +30,7 @@
 //! }
 //! ```
 
+use graph::bytes::Bytes;
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -39,6 +40,10 @@ use std::path::{Path, PathBuf};
 pub struct TestFile {
     pub name: String,
 
+    /// Mock IPFS file contents keyed by CID. Used for file data sources.
+    #[serde(default)]
+    pub files: Vec<MockFile>,
+
     /// Ordered sequence of mock blocks to index.
     #[serde(default)]
     pub blocks: Vec<TestBlock>,
@@ -46,6 +51,64 @@ pub struct TestFile {
     /// GraphQL assertions to run after indexing.
     #[serde(default)]
     pub assertions: Vec<Assertion>,
+}
+
+/// A mock IPFS file entry for file data source testing.
+///
+/// Exactly one of `content` or `file` must be set.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MockFile {
+    /// Syntactically valid IPFS CID (v0 `Qm...` or v1 `bafy...`).
+    /// The CID does not need to be the actual hash of the content — the mock
+    /// ignores the hash relationship.
+    pub cid: String,
+
+    /// Inline UTF-8 content. Exactly one of `content` or `file` must be set.
+    #[serde(default)]
+    pub content: Option<String>,
+
+    /// Path to a file whose contents are loaded as UTF-8.
+    /// Resolved relative to the test JSON file. Exactly one of `content` or
+    /// `file` must be set.
+    #[serde(default)]
+    pub file: Option<String>,
+}
+
+impl MockFile {
+    /// Resolve this entry to bytes, given the directory of the test JSON file.
+    ///
+    /// Fails if:
+    /// - neither `content` nor `file` is set
+    /// - both `content` and `file` are set
+    /// - the referenced `file` path cannot be read
+    pub fn resolve(&self, test_dir: &Path) -> anyhow::Result<Bytes> {
+        match (&self.content, &self.file) {
+            (Some(content), None) => Ok(Bytes::from(content.clone().into_bytes())),
+            (None, Some(file)) => {
+                let path = if Path::new(file).is_absolute() {
+                    PathBuf::from(file)
+                } else {
+                    test_dir.join(file)
+                };
+                let data = std::fs::read(&path).map_err(|e| {
+                    anyhow::anyhow!("Failed to read file '{}': {}", path.display(), e)
+                })?;
+                Ok(Bytes::from(data))
+            }
+            (Some(_), Some(_)) => {
+                anyhow::bail!(
+                    "MockFile entry for CID '{}' must have either 'content' or 'file', not both",
+                    self.cid
+                )
+            }
+            (None, None) => {
+                anyhow::bail!(
+                    "MockFile entry for CID '{}' must have either 'content' or 'file'",
+                    self.cid
+                )
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
