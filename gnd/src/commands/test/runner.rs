@@ -76,8 +76,7 @@ fn make_test_logger(verbose: u8) -> Logger {
         0 => graph::log::discard(),
         1 => graph::log::logger_with_levels(false, None),
         2 => graph::log::logger_with_levels(true, None),
-        // "trace" is parsed by slog_envlogger::LogBuilder::parse() as a global
-        // level filter — equivalent to setting GRAPH_LOG=trace.
+        // "trace" sets GRAPH_LOG=trace globally via slog_envlogger.
         _ => graph::log::logger_with_levels(true, Some("trace")),
     }
 }
@@ -106,14 +105,11 @@ pub(super) struct TestContext {
     pub(super) graphql_runner: Arc<GraphQlRunner<Store>>,
 }
 
-/// Pre-computed manifest data shared across all tests in a run.
-///
-/// Loaded once to avoid redundant parsing.
+/// Manifest data shared across all tests in a run.
 pub(super) struct ManifestInfo {
     pub build_dir: PathBuf,
-    /// Canonical path to the built manifest file (e.g., `build/subgraph.yaml`).
-    /// Registered as an alias for `hash` in `FileLinkResolver` so that
-    /// `clone_for_manifest` can resolve the Qm hash to a real filesystem path.
+    /// Built manifest path. Aliased to `hash` in `FileLinkResolver` so the Qm
+    /// hash resolves to a real filesystem path.
     pub manifest_path: PathBuf,
     pub network_name: ChainName,
     pub min_start_block: u64,
@@ -127,10 +123,7 @@ pub(super) struct ManifestInfo {
         std::collections::HashSet<graph::prelude::alloy::primitives::B256>,
 }
 
-/// Compute a `DeploymentHash` from a path and seed.
-///
-/// Produces `"Qm" + hex(sha1(path + '\0' + seed))`. The seed makes each run
-/// produce a distinct hash so sequential runs never collide in the store.
+/// Compute `"Qm" + hex(sha1(path + '\0' + seed))`. Seed ensures per-run uniqueness.
 fn deployment_hash_from_path_and_seed(path: &Path, seed: u128) -> Result<DeploymentHash> {
     use sha1::{Digest, Sha1};
 
@@ -177,8 +170,7 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
         None
     };
 
-    // Use Unix epoch millis as a per-run seed so each invocation gets a unique
-    // deployment hash and subgraph name, avoiding conflicts with previous runs.
+    // Per-run seed for unique deployment hash and subgraph name.
     let seed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -186,8 +178,7 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
 
     let hash = deployment_hash_from_path_and_seed(&built_manifest_path, seed)?;
 
-    // Derive subgraph name from the root directory (e.g., "my-subgraph" → "test/my-subgraph-<seed>").
-    // Sanitize to alphanumeric + hyphens + underscores for SubgraphName compatibility.
+    // Derive subgraph name from the root dir, sanitized for SubgraphName compatibility.
     let root_dir_name = manifest_dir
         .canonicalize()
         .unwrap_or(manifest_dir.clone())
@@ -214,15 +205,10 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
     })
 }
 
-/// Collect the event selectors (topic0) for all handlers that declare `receipt: true`.
+/// Collect topic0 selectors for handlers declaring `receipt: true`.
 ///
-/// Covers both data sources and templates. Only logs whose topic0 appears in
-/// this set will have a non-null receipt attached to their trigger.
-///
-/// The selector is computed using the same method as graph-node's
-/// `MappingEventHandler::topic0()`: strip `"indexed "` then all spaces, then
-/// keccak256. This handles the manifest format `Transfer(indexed address,...)`
-/// where `indexed` precedes the type rather than following it.
+/// Covers data sources and templates. Mirrors `MappingEventHandler::topic0()`:
+/// strip `"indexed "` and spaces, then keccak256.
 fn extract_receipt_required_selectors(
     manifest: &Manifest,
 ) -> std::collections::HashSet<graph::prelude::alloy::primitives::B256> {
@@ -252,8 +238,6 @@ fn extract_network_from_manifest(manifest: &Manifest) -> Result<String> {
 }
 
 /// Extract the minimum `startBlock` across all data sources.
-///
-/// Used to build `start_block_override` for bypassing on-chain validation.
 fn extract_start_block_from_manifest(manifest: &Manifest) -> Result<u64> {
     Ok(manifest
         .data_sources
@@ -290,15 +274,14 @@ pub async fn run_single_test(
         }
     }
 
-    // Default block numbering starts at the manifest's startBlock so that
-    // test blocks without explicit numbers fall in the subgraph's indexed range.
+    // Start numbering at the manifest's startBlock so implicit blocks are in range.
     let blocks = build_blocks_with_triggers(
         test_file,
         manifest_info.min_start_block,
         &manifest_info.receipt_required_selectors,
     )?;
 
-    // Build mock IPFS file map. Fails fast on invalid CIDs or unreadable file paths.
+    // Build mock IPFS file map.
     let test_file_dir = test_file_path
         .parent()
         .map(|p| p.to_path_buf())
@@ -330,8 +313,7 @@ pub async fn run_single_test(
     let (arweave_unresolved_tx, mut arweave_unresolved_rx) =
         tokio::sync::mpsc::unbounded_channel::<String>();
 
-    // Create the database for this test. For pgtemp, the `db` value must
-    // stay alive for the duration of the test — dropping it destroys the database.
+    // `db` must stay alive — dropping it destroys a pgtemp database.
     let db = create_test_database(opt, &manifest_info.build_dir)?;
 
     let logger = make_test_logger(opt.verbose).new(o!("test" => test_file.name.clone()));
@@ -349,8 +331,7 @@ pub async fn run_single_test(
 
     let ctx = setup_context(&logger, &stores, &chain, manifest_info, mock_data).await?;
 
-    // Populate eth_call cache with mock responses before starting indexer.
-    // This ensures handlers can successfully retrieve mocked contract call results.
+    // Populate eth_call cache before starting the indexer.
     super::eth_calls::populate_eth_call_cache(
         &logger,
         stores.chain_store.cheap_clone(),
@@ -382,8 +363,7 @@ pub async fn run_single_test(
     .await
     {
         Ok(()) => {
-            // Drain any CIDs that were requested but not found in the mock.
-            // Deduplicate so each missing CID is listed once.
+            // Drain unresolved CIDs/tx IDs, deduplicating.
             let mut unresolved_ipfs: Vec<ContentPath> = Vec::new();
             while let Ok(cid) = unresolved_rx.try_recv() {
                 if !unresolved_ipfs.contains(&cid) {
@@ -436,8 +416,7 @@ pub async fn run_single_test(
             }
         }
         Err(subgraph_error) => {
-            // The subgraph handler threw a fatal error during indexing.
-            // Report it as a test failure without running assertions.
+            // Fatal handler error — skip assertions.
             Ok(TestResult {
                 handler_error: Some(subgraph_error.message),
                 assertions: vec![],
@@ -445,15 +424,13 @@ pub async fn run_single_test(
         }
     };
 
-    // Always stop the subgraph to ensure cleanup, even when wait_for_sync errors
+    // Stop the subgraph regardless of result.
     ctx.provider
         .clone()
         .stop_subgraph(ctx.deployment.clone())
         .await;
 
-    // For persistent databases, clean up the deployment after the test so the
-    // database is left in a clean state. On failure, skip cleanup so the data
-    // is preserved for inspection.
+    // For persistent DBs: clean up on pass, preserve on failure for inspection.
     if db.needs_cleanup() {
         let test_passed = result.as_ref().map(|r| r.is_passed()).unwrap_or(false);
         if test_passed {
@@ -476,9 +453,7 @@ pub async fn run_single_test(
     result
 }
 
-/// Create the database for this test run.
-///
-/// Returns `Temporary` (pgtemp, auto-dropped) or `Persistent` (--postgres-url).
+/// Create the test database: pgtemp (auto-dropped) or persistent (`--postgres-url`).
 /// On non-Unix systems, `--postgres-url` is required.
 fn create_test_database(opt: &TestOpt, build_dir: &Path) -> Result<TestDatabase> {
     if let Some(url) = &opt.postgres_url {
@@ -494,11 +469,8 @@ fn create_test_database(opt: &TestOpt, build_dir: &Path) -> Result<TestDatabase>
             );
         }
 
-        // pgtemp sets `unix_socket_directories` to the data dir by default.
-        // On macOS the temp dir path can exceed the 104-byte Unix socket limit
-        // (e.g. /private/var/folders/.../build/pgtemp-xxx/pg_data_dir/.s.PGSQL.PORT),
-        // causing postgres to silently fail to start. Override to /tmp so the
-        // socket path stays short. Different port numbers prevent conflicts.
+        // Override unix_socket_directories to /tmp: macOS temp paths can exceed
+        // the 104-byte Unix socket limit, causing postgres to silently fail to start.
         let db = PgTempDBBuilder::new()
             .with_data_dir_prefix(build_dir)
             .persist_data(false)
@@ -541,9 +513,8 @@ impl TestDatabase {
         }
     }
 
-    /// Persistent databases accumulate state across test runs and need
-    /// explicit post-test cleanup to remove each run's deployment.
-    /// Temporary databases are dropped automatically — no cleanup needed.
+    /// Returns true if the deployment must be cleaned up after the test.
+    /// Temporary databases are auto-dropped; persistent ones accumulate state.
     fn needs_cleanup(&self) -> bool {
         match self {
             #[cfg(unix)]
@@ -611,10 +582,7 @@ ingestor = "default"
     })
 }
 
-/// Construct a mock Ethereum `Chain` with pre-built blocks.
-///
-/// Uses `StaticStreamBuilder` for blocks, noops for unused adapters,
-/// and a dummy firehose endpoint (never connected to).
+/// Construct the mock Ethereum `Chain` with pre-built blocks.
 async fn setup_chain(
     logger: &Logger,
     blocks: Vec<BlockWithTriggers<Chain>>,
@@ -641,10 +609,8 @@ async fn setup_chain(
     let block_stream_builder: Arc<dyn graph::blockchain::block_stream::BlockStreamBuilder<Chain>> =
         Arc::new(StaticStreamBuilder { chain: blocks });
 
-    // Create a dummy Ethereum adapter with archive capabilities.
-    // The adapter itself is never used for RPC — ethereum.call results come from
-    // the pre-populated call cache. But the RuntimeAdapter needs to resolve an
-    // adapter with matching capabilities before it can invoke the cache lookup.
+    // Dummy archive adapter — never used for RPC. The RuntimeAdapter needs one
+    // with matching capabilities to reach the eth_call cache.
     let endpoint_metrics = Arc::new(EndpointMetrics::mock());
     let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
     let transport = Transport::new_rpc(
@@ -733,23 +699,20 @@ async fn setup_context(
 
     let subgraph_store = stores.network_store.subgraph_store();
 
-    // Map the network name to our mock chain so graph-node routes triggers correctly.
+    // Route triggers to our mock chain.
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(stores.network_name.clone(), chain.clone());
     let blockchain_map = Arc::new(blockchain_map);
 
-    // FileLinkResolver loads the manifest and WASM from the build directory
-    // instead of fetching from IPFS. The alias maps the Qm deployment hash to the
-    // actual manifest path so that clone_for_manifest can resolve it without
-    // treating the hash as a filesystem path.
+    // FileLinkResolver loads from build dir. Alias maps the Qm hash → manifest path
+    // so clone_for_manifest can resolve it without treating the hash as a path.
     let aliases =
         std::collections::HashMap::from([(hash.to_string(), manifest_path.to_path_buf())]);
     let link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver> = Arc::new(
         FileLinkResolver::new(Some(build_dir.to_path_buf()), aliases),
     );
 
-    // Replace the real IPFS client with a mock that serves pre-loaded content.
-    // FileLinkResolver handles manifest loading; the mock handles file data sources.
+    // Mock IPFS client for file data sources (FileLinkResolver handles the manifest).
     let ipfs_metrics = IpfsMetrics::new(&mock_registry);
     let ipfs_client = Arc::new(MockIpfsClient {
         files: mock_data.ipfs_files,
@@ -821,8 +784,7 @@ async fn setup_context(
         mock_registry.clone(),
     ));
 
-    // The registrar handles subgraph naming and version management.
-    // Uses PanicSubscriptionManager because tests don't need GraphQL subscriptions.
+    // Uses PanicSubscriptionManager — tests don't need GraphQL subscriptions.
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
     let subgraph_registrar = Arc::new(graph_core::subgraph::SubgraphRegistrar::new(
         &logger_factory,
@@ -840,8 +802,7 @@ async fn setup_context(
 
     SubgraphRegistrar::create_subgraph(subgraph_registrar.as_ref(), subgraph_name.clone()).await?;
 
-    // Deploy the subgraph version (loads manifest, compiles WASM, creates schema tables).
-    // start_block_override bypasses on-chain block validation when startBlock > 0.
+    // Deploy the subgraph. start_block_override bypasses on-chain block validation.
     let deployment = SubgraphRegistrar::create_subgraph_version(
         subgraph_registrar.as_ref(),
         subgraph_name.clone(),
@@ -884,17 +845,14 @@ async fn cleanup(
     Ok(())
 }
 
-/// Poll until the subgraph reaches `stop_block` or fails.
-///
-/// Returns `Ok(())` on success or `Err(SubgraphError)` on fatal error or timeout.
+/// Poll until the subgraph reaches `stop_block`, returning `Err` on fatal error or timeout.
 async fn wait_for_sync(
     logger: &Logger,
     store: Arc<SubgraphStore>,
     deployment: &DeploymentLocator,
     stop_block: BlockPtr,
 ) -> Result<(), SubgraphError> {
-    // NOTE: Hardcoded timeout/interval - could be made configurable via env var
-    // or CLI flag for slow subgraphs or faster iteration during development.
+    // Hardcoded; could be made configurable via env var or CLI flag.
     const MAX_WAIT: Duration = Duration::from_secs(60);
     const WAIT_TIME: Duration = Duration::from_millis(500);
 
@@ -923,7 +881,7 @@ async fn wait_for_sync(
 
         info!(logger, "Sync progress"; "current" => block_ptr.number, "target" => stop_block.number);
 
-        // Check if the subgraph hit a fatal error (e.g., handler panic, deterministic error).
+        // Check for fatal errors.
         let status = store.status_for_id(deployment.id).await;
         if let Some(fatal_error) = status.fatal_error {
             return Err(fatal_error);

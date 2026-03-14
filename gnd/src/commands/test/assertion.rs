@@ -77,13 +77,10 @@ async fn run_single_assertion(
     }
 }
 
-/// Reorder `actual` arrays to align with `expected`'s element ordering.
+/// Reorder `actual` arrays to match `expected`'s element order for cleaner diffs.
 ///
-/// When a test fails, the raw diff can be misleading if array elements appear
-/// in a different order — every line shows as changed even if only one field
-/// differs. This function reorders `actual` so that elements are paired with
-/// their closest match in `expected`, producing a diff that highlights only
-/// real value differences.
+/// Without this, out-of-order elements show every field as changed even when
+/// only one field differs.
 pub(super) fn align_for_diff(
     expected: &serde_json::Value,
     actual: &serde_json::Value,
@@ -132,12 +129,8 @@ pub(super) fn align_for_diff(
     }
 }
 
-/// Score how similar two JSON values are for use in [`align_for_diff`].
-///
-/// For objects, counts the number of fields whose values are equal in both.
-/// A matching `"id"` field is weighted heavily (+100) since it is the
-/// strongest signal that two objects represent the same entity.
-/// For all other value types, returns 1 if equal, 0 otherwise.
+/// Score JSON similarity for [`align_for_diff`].
+/// Objects: matching `"id"` = 100, other equal fields = 1. Non-objects: 0 or 1.
 fn json_similarity(a: &serde_json::Value, b: &serde_json::Value) -> usize {
     match (a, b) {
         (serde_json::Value::Object(a_obj), serde_json::Value::Object(b_obj)) => {
@@ -162,13 +155,9 @@ fn json_similarity(a: &serde_json::Value, b: &serde_json::Value) -> usize {
     }
 }
 
-/// Compare two JSON values for equality (ignoring key ordering in objects).
+/// Compare JSON values for equality, ignoring object key ordering.
 ///
-/// Also handles string-vs-number coercion: GraphQL returns `BigInt` and
-/// `BigDecimal` fields as JSON strings (e.g., `"1000000000000000000"`),
-/// but test authors may write them as JSON numbers. This function treats
-/// `String("123")` and `Number(123)` as equal when they represent the
-/// same value.
+/// Coerces string/number: `"123"` == `123` to handle GraphQL `BigInt`/`BigDecimal`.
 fn json_equal(a: &serde_json::Value, b: &serde_json::Value) -> bool {
     match (a, b) {
         (serde_json::Value::Null, serde_json::Value::Null) => true,

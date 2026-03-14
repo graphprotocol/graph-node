@@ -112,8 +112,7 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
         return matchstick::run(&opt).await;
     }
 
-    // Build the subgraph first so the WASM and schema are available in build/.
-    // This mirrors what a user would do manually before running tests.
+    // Build the subgraph first (WASM and schema must be available in build/).
     if !opt.skip_build {
         step(Step::Generate, "Building subgraph");
         let build_opt = crate::commands::BuildOpt {

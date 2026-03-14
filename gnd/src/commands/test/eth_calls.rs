@@ -1,9 +1,7 @@
-//! Pre-populates the eth_call cache with mock responses for `gnd test`.
+//! Populates the eth_call cache with mock responses for `gnd test`.
 //!
-//! Function signatures use graph-node's convention: `name(inputs):(outputs)`
-//! e.g. `"balanceOf(address):(uint256)"`, `"getReserves():(uint112,uint112,uint32)"`.
-//! Call data is encoded using the same path as production graph-node, so cache
-//! IDs match exactly what the runtime generates.
+//! Signatures use graph-node's `name(inputs):(outputs)` convention.
+//! Encoding matches production graph-node so cache IDs align with the runtime.
 
 use super::schema::{MockEthCall, TestFile};
 use super::trigger::json_to_sol_value;
@@ -92,16 +90,8 @@ fn encode_return_value(function_sig: &str, returns: &[serde_json::Value]) -> Res
         .map_err(|e| anyhow!("Failed to encode return value: {}", e))
 }
 
-/// Convert a graph-node style function signature to alloy's expected format.
-///
-/// Graph-node uses `name(inputs):(outputs)` while alloy expects
-/// `name(inputs) returns (outputs)`.
-///
-/// Examples:
-/// - `"balanceOf(address):(uint256)"` → `"balanceOf(address) returns (uint256)"`
-/// - `"name():(string)"` → `"name() returns (string)"`
-/// - `"transfer(address,uint256)"` → `"transfer(address,uint256)"` (no change)
-/// - `"balanceOf(address) returns (uint256)"` → unchanged (already alloy format)
+/// Convert graph-node `name(inputs):(outputs)` to alloy `name(inputs) returns (outputs)`.
+/// Passes through signatures already in alloy format or without outputs.
 fn to_alloy_signature(sig: &str) -> String {
     // If it already contains "returns", assume alloy format.
     if sig.contains(" returns ") {

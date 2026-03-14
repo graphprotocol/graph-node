@@ -1,10 +1,8 @@
-//! Noop/stub trait implementations for the mock `Chain`.
+//! Noop trait implementations for the mock `Chain`.
 //!
-//! These types satisfy the trait bounds required by the `Chain` constructor
-//! but are never called during normal test execution because:
-//! - Triggers are provided directly via `StaticStreamBuilder` (no scanning needed)
-//! - The real `EthereumRuntimeAdapterBuilder` is used for host functions
-//!   (ethereum.call, ethereum.getBalance, ethereum.hasCode), backed by the call cache
+//! Satisfy `Chain` constructor bounds but are never called:
+//! - Triggers come from `StaticStreamBuilder` (no scanning)
+//! - Host functions use `EthereumRuntimeAdapterBuilder` with the eth_call cache
 
 use async_trait::async_trait;
 use graph::blockchain::block_stream::{BlockRefetcher, BlockWithTriggers, FirehoseCursor};

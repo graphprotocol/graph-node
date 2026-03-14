@@ -23,12 +23,9 @@ use graph_chain_ethereum::Chain;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Convert test blocks into `BlockWithTriggers`, chained by parent hash.
-/// Block numbers auto-increment from `start_block` when not explicit.
-///
-/// `receipt_required_selectors` is the set of event selectors (topic0) for
-/// handlers that declare `receipt: true`. Only matching logs get a non-null
-/// receipt; all others receive `None`, mirroring production behaviour.
+/// Build `BlockWithTriggers` from test blocks, chained by parent hash.
+/// Numbers auto-increment from `start_block` when omitted.
+/// Only logs whose topic0 is in `receipt_required_selectors` get a non-null receipt.
 pub fn build_blocks_with_triggers(
     test_file: &TestFile,
     start_block: u64,
@@ -49,9 +46,7 @@ pub fn build_blocks_with_triggers(
             .context("Invalid block hash")?
             .unwrap_or_else(|| keccak256(number.to_be_bytes()));
 
-        // Default: use block number as timestamp (seconds since epoch).
-        // Avoids assuming a chain-specific block time and prevents future timestamps
-        // on chains with high block numbers (e.g. Arbitrum).
+        // Default timestamp = block number — avoids chain-specific block times.
         let timestamp = test_block.timestamp.unwrap_or(number);
 
         let mut triggers = Vec::new();
@@ -67,10 +62,7 @@ pub fn build_blocks_with_triggers(
         // Pass 2: build one mock receipt per tx-hash group.
         let receipts = build_receipts_by_tx(number, hash, &event_logs);
 
-        // Pass 3: create one log trigger per event.
-        // Only attach a receipt when the log's event selector (topic0) belongs
-        // to a handler that declared `receipt: true` in the manifest — matching
-        // production behaviour where handlers without that flag receive null.
+        // Pass 3: one log trigger per event. Receipt only for `receipt: true` handlers.
         for (tx_hash, full_log) in &event_logs {
             let needs_receipt = full_log
                 .topics()
@@ -83,10 +75,7 @@ pub fn build_blocks_with_triggers(
             )));
         }
 
-        // Auto-inject block triggers for every block so that block handlers
-        // with any filter fire correctly:
-        // - Start: matches `once` handlers (at start_block) and initialization handlers
-        // - End: matches unfiltered and `polling` handlers
+        // Inject Start/End block triggers so `once`, `polling`, and unfiltered handlers fire.
         ensure!(
             number <= i32::MAX as u64,
             "block number {} exceeds i32::MAX",
@@ -112,10 +101,8 @@ pub fn build_blocks_with_triggers(
     Ok(blocks)
 }
 
-/// Parse a test event into `(tx_hash, Arc<Log>)` without building a trigger.
-///
-/// The tx_hash is either taken from `trigger.tx_hash` or auto-generated as
-/// `keccak256(block_number || log_index)`, which is unique per event.
+/// Parse a test event into `(tx_hash, Arc<Log>)`.
+/// tx_hash from the event or generated as `keccak256(block_number || log_index)`.
 fn prepare_event_log(
     block_number: u64,
     block_hash: B256,
@@ -126,7 +113,7 @@ fn prepare_event_log(
 
     let (topics, data) = encode_event_log(&trigger.event, &trigger.params)?;
 
-    // Generate deterministic tx hash if not provided: keccak256(block_number || log_index).
+    // Deterministic tx hash: keccak256(block_number || log_index).
     let tx_hash = trigger
         .tx_hash
         .as_ref()
@@ -155,12 +142,8 @@ fn prepare_event_log(
     Ok((tx_hash, full_log))
 }
 
-/// Build one mock receipt per unique tx_hash from a block's event logs.
-///
-/// Events sharing the same `tx_hash` share a receipt whose `logs` contains
-/// all of their logs in declaration order. Events without an explicit
-/// `tx_hash` each have a unique auto-generated hash, so they each get their
-/// own single-log receipt.
+/// Build one receipt per unique tx_hash. Logs sharing a tx_hash are grouped;
+/// events without an explicit tx_hash each get their own receipt.
 fn build_receipts_by_tx(
     block_number: u64,
     block_hash: B256,
@@ -218,28 +201,15 @@ fn build_receipts_by_tx(
     receipts
 }
 
-/// Encode event parameters into EVM log topics and data using `alloy::json_abi::Event::parse()`.
+/// ABI-encode event params into EVM log (topics, data).
 ///
-/// Given a human-readable event signature like:
-///   `"Transfer(address indexed from, address indexed to, uint256 value)"`
-/// and parameter values like:
-///   `{"from": "0xaaaa...", "to": "0xbbbb...", "value": "1000"}`
-///
-/// Produces:
-/// - topics[0] = keccak256("Transfer(address,address,uint256)") (the event selector)
-/// - topics[1] = left-padded `from` address (indexed)
-/// - topics[2] = left-padded `to` address (indexed)
-/// - data = ABI-encoded `value` as uint256 (non-indexed)
-///
-/// Indexed parameters become topics (max 3 after topic0), non-indexed parameters
-/// are ABI-encoded together as the log data.
+/// topic0 = keccak256 of the canonical signature; indexed params → topics;
+/// non-indexed params → ABI-encoded data.
 pub fn encode_event_log(
     event_sig: &str,
     params: &serde_json::Map<String, serde_json::Value>,
 ) -> Result<(Vec<B256>, Bytes)> {
-    // Event::parse expects "event EventName(...)" format.
-    // If the user already wrote "event Transfer(...)" use as-is,
-    // otherwise prepend "event ".
+    // Event::parse requires "event " prefix — add if missing.
     let sig_with_prefix = if event_sig.trim_start().starts_with("event ") {
         event_sig.to_string()
     } else {
@@ -377,8 +347,7 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
                     len
                 ));
             }
-            // DynSolValue::FixedBytes always wraps a B256 (32 bytes) plus the actual
-            // byte count. Right-zero-pad the input to fill the full 32 bytes.
+            // DynSolValue::FixedBytes wraps a full B256 — right-zero-pad.
             let mut padded = [0u8; 32];
             padded[..bytes.len()].copy_from_slice(&bytes);
             Ok(DynSolValue::FixedBytes(B256::from(padded), *len))
@@ -448,7 +417,7 @@ fn sol_value_to_topic(value: &DynSolValue) -> Result<B256> {
             Ok(B256::from(bytes))
         }
         DynSolValue::FixedBytes(b, _) => Ok(*b),
-        // Dynamic types are hashed per Solidity spec — the original value cannot be recovered from the topic.
+        // Dynamic types are hashed per Solidity spec.
         DynSolValue::Bytes(b) => Ok(keccak256(b)),
         DynSolValue::String(s) => Ok(keccak256(s.as_bytes())),
         _ => Err(anyhow!("Cannot convert {:?} to topic", value)),

@@ -1,10 +1,8 @@
-//! JSON schema types for test files and result types.
+//! JSON schema types for test files.
 //!
-//! Test files are JSON documents that describe a sequence of mock blockchain
-//! blocks with triggers (log events) and GraphQL assertions to validate the
-//! resulting entity state after indexing. Block triggers are auto-injected
-//! for every block (both `Start` and `End` types) so block handlers with any
-//! filter (`once`, `polling`, or none) fire correctly without explicit config.
+//! Test files describe mock blockchain blocks with triggers and GraphQL assertions.
+//! Block triggers (Start/End) are auto-injected so block handlers with any filter
+//! (`once`, `polling`, or none) fire without explicit config.
 //!
 //! ```json
 //! {
@@ -62,18 +60,14 @@ pub struct TestFile {
 /// Exactly one of `content` or `file` must be set.
 #[derive(Debug, Clone, Deserialize)]
 pub struct MockFile {
-    /// Syntactically valid IPFS CID (v0 `Qm...` or v1 `bafy...`).
-    /// The CID does not need to be the actual hash of the content — the mock
-    /// ignores the hash relationship.
+    /// IPFS CID (`Qm...` or `bafy...`). The mock ignores hash/content relationship.
     pub cid: String,
 
     /// Inline UTF-8 content. Exactly one of `content` or `file` must be set.
     #[serde(default)]
     pub content: Option<String>,
 
-    /// Path to a file whose contents are loaded as UTF-8.
-    /// Resolved relative to the test JSON file. Exactly one of `content` or
-    /// `file` must be set.
+    /// File path, resolved relative to the test JSON. One of `content` or `file` required.
     #[serde(default)]
     pub file: Option<String>,
 }
@@ -92,19 +86,13 @@ pub struct MockArweaveFile {
     #[serde(default)]
     pub content: Option<String>,
 
-    /// Path to a file. Resolved relative to the test JSON file.
-    /// Exactly one of `content` or `file` must be set.
+    /// File path, resolved relative to the test JSON. One of `content` or `file` required.
     #[serde(default)]
     pub file: Option<String>,
 }
 
 impl MockArweaveFile {
-    /// Resolve this entry to bytes, given the directory of the test JSON file.
-    ///
-    /// Fails if:
-    /// - neither `content` nor `file` is set
-    /// - both `content` and `file` are set
-    /// - the referenced `file` path cannot be read
+    /// Resolve to bytes. Exactly one of `content` or `file` must be set.
     pub fn resolve(&self, test_dir: &Path) -> anyhow::Result<graph::bytes::Bytes> {
         match (&self.content, &self.file) {
             (Some(content), None) => Ok(graph::bytes::Bytes::from(content.clone().into_bytes())),
@@ -132,12 +120,7 @@ impl MockArweaveFile {
 }
 
 impl MockFile {
-    /// Resolve this entry to bytes, given the directory of the test JSON file.
-    ///
-    /// Fails if:
-    /// - neither `content` nor `file` is set
-    /// - both `content` and `file` are set
-    /// - the referenced `file` path cannot be read
+    /// Resolve to bytes. Exactly one of `content` or `file` must be set.
     pub fn resolve(&self, test_dir: &Path) -> anyhow::Result<Bytes> {
         match (&self.content, &self.file) {
             (Some(content), None) => Ok(Bytes::from(content.clone().into_bytes())),
@@ -180,8 +163,7 @@ pub struct TestBlock {
     #[serde(default)]
     pub hash: Option<String>,
 
-    /// Unix timestamp in seconds. If omitted, defaults to the block number
-    /// (monotonically increasing, chain-agnostic).
+    /// Unix timestamp in seconds. Defaults to the block number if omitted.
     #[serde(default)]
     pub timestamp: Option<u64>,
 
@@ -200,20 +182,15 @@ pub struct LogEvent {
     /// Contract address that emitted the event (checksummed or lowercase hex).
     pub address: String,
 
-    /// Full event signature including parameter names and `indexed` keywords.
-    /// Example: `"Transfer(address indexed from, address indexed to, uint256 value)"`
-    ///
-    /// The signature is parsed to determine:
-    /// - topic0 (keccak256 hash of the canonical signature)
-    /// - Which parameters are indexed (become topics) vs non-indexed (become data)
+    /// Full event signature with parameter names and `indexed` keywords.
+    /// e.g. `"Transfer(address indexed from, address indexed to, uint256 value)"`
     pub event: String,
 
-    /// Event parameter values keyed by name. Values are JSON strings/numbers
-    /// that get converted to the appropriate Solidity type:
-    /// - Addresses: hex string `"0x1234..."`
-    /// - Integers: string `"1000000000000000000"` or number `1000`
+    /// Parameter values keyed by name. JSON → Solidity type:
+    /// - Addresses: `"0x1234..."`
+    /// - Integers: `"1000000000000000000"` or `1000`
     /// - Booleans: `true` / `false`
-    /// - Bytes: hex string `"0xdeadbeef"`
+    /// - Bytes: `"0xdeadbeef"`
     #[serde(default)]
     pub params: serde_json::Map<String, Value>,
 
@@ -271,7 +248,7 @@ pub struct AssertionFailure {
     pub actual: Value,
 }
 
-/// Parse a JSON test file. NOTE: Only validates JSON schema, not semantic correctness.
+/// Parse a JSON test file (validates schema only, not semantic correctness).
 pub fn parse_test_file(path: &Path) -> anyhow::Result<TestFile> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Failed to read test file {}: {}", path.display(), e))?;
@@ -279,7 +256,8 @@ pub fn parse_test_file(path: &Path) -> anyhow::Result<TestFile> {
         .map_err(|e| anyhow::anyhow!("Failed to parse test file {}: {}", path.display(), e))
 }
 
-/// Discover `*.json` / `*.test.json` test files in a directory (recursive). Skips entries starting with non-alphanumeric characters.
+/// Recursively discover `*.json` / `*.test.json` files.
+/// Skips entries whose name starts with a non-alphanumeric character.
 pub fn discover_test_files(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
@@ -301,7 +279,6 @@ fn discover_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()
             None => continue,
         };
 
-        // Skip entries whose name starts with a non-alphanumeric character.
         if !name.starts_with(|c: char| c.is_alphanumeric()) {
             continue;
         }
