@@ -12,6 +12,7 @@
 
 use super::assertion::run_assertions;
 use super::block_stream::StaticStreamBuilder;
+use super::mock_arweave::MockArweaveResolver;
 use super::mock_chain;
 use super::mock_ipfs::MockIpfsClient;
 use super::noop::{NoopAdapterSelector, StaticBlockRefetcher};
@@ -24,7 +25,7 @@ use graph::amp::FlightClient;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{BlockPtr, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
-use graph::components::link_resolver::{ArweaveClient, FileLinkResolver};
+use graph::components::link_resolver::FileLinkResolver;
 use graph::components::metrics::MetricsRegistry;
 use graph::components::network_provider::{
     AmpChainNames, ChainName, ProviderCheckStrategy, ProviderManager,
@@ -79,6 +80,14 @@ fn make_test_logger(verbose: u8) -> Logger {
         // level filter — equivalent to setting GRAPH_LOG=trace.
         _ => graph::log::logger_with_levels(true, Some("trace")),
     }
+}
+
+/// Mock file data passed to `setup_context`.
+struct MockData {
+    ipfs_files: HashMap<ContentPath, graph::bytes::Bytes>,
+    ipfs_unresolved_tx: tokio::sync::mpsc::UnboundedSender<ContentPath>,
+    arweave_files: HashMap<String, graph::bytes::Bytes>,
+    arweave_unresolved_tx: tokio::sync::mpsc::UnboundedSender<String>,
 }
 
 struct TestStores {
@@ -307,6 +316,20 @@ pub async fn run_single_test(
 
     let (unresolved_tx, mut unresolved_rx) = tokio::sync::mpsc::unbounded_channel::<ContentPath>();
 
+    let mut mock_arweave_files: HashMap<String, graph::bytes::Bytes> = HashMap::new();
+    for entry in &test_file.arweave_files {
+        let content = entry.resolve(&test_file_dir).with_context(|| {
+            format!(
+                "Failed to resolve mock Arweave file for txId '{}'",
+                entry.tx_id
+            )
+        })?;
+        mock_arweave_files.insert(entry.tx_id.clone(), content);
+    }
+
+    let (arweave_unresolved_tx, mut arweave_unresolved_rx) =
+        tokio::sync::mpsc::unbounded_channel::<String>();
+
     // Create the database for this test. For pgtemp, the `db` value must
     // stay alive for the duration of the test — dropping it destroys the database.
     let db = create_test_database(opt, &manifest_info.build_dir)?;
@@ -317,15 +340,14 @@ pub async fn run_single_test(
 
     let chain = setup_chain(&logger, blocks.clone(), &stores).await?;
 
-    let ctx = setup_context(
-        &logger,
-        &stores,
-        &chain,
-        manifest_info,
-        mock_files,
-        unresolved_tx,
-    )
-    .await?;
+    let mock_data = MockData {
+        ipfs_files: mock_files,
+        ipfs_unresolved_tx: unresolved_tx,
+        arweave_files: mock_arweave_files,
+        arweave_unresolved_tx,
+    };
+
+    let ctx = setup_context(&logger, &stores, &chain, manifest_info, mock_data).await?;
 
     // Populate eth_call cache with mock responses before starting indexer.
     // This ensures handlers can successfully retrieve mocked contract call results.
@@ -362,25 +384,51 @@ pub async fn run_single_test(
         Ok(()) => {
             // Drain any CIDs that were requested but not found in the mock.
             // Deduplicate so each missing CID is listed once.
-            let mut unresolved: Vec<ContentPath> = Vec::new();
+            let mut unresolved_ipfs: Vec<ContentPath> = Vec::new();
             while let Ok(cid) = unresolved_rx.try_recv() {
-                if !unresolved.contains(&cid) {
-                    unresolved.push(cid);
+                if !unresolved_ipfs.contains(&cid) {
+                    unresolved_ipfs.push(cid);
                 }
             }
 
-            if !unresolved.is_empty() {
-                let cid_list = unresolved
+            let mut unresolved_arweave: Vec<String> = Vec::new();
+            while let Ok(tx_id) = arweave_unresolved_rx.try_recv() {
+                if !unresolved_arweave.contains(&tx_id) {
+                    unresolved_arweave.push(tx_id);
+                }
+            }
+
+            let mut missing_parts: Vec<String> = Vec::new();
+
+            if !unresolved_ipfs.is_empty() {
+                let list = unresolved_ipfs
                     .iter()
                     .map(|p| format!("  - {}", p))
                     .collect::<Vec<_>>()
                     .join("\n");
+                missing_parts.push(format!(
+                    "IPFS CIDs not found in mock 'files':\n{}\n\
+                     Add the missing CID(s) to the \"files\" array in your test JSON.",
+                    list
+                ));
+            }
+
+            if !unresolved_arweave.is_empty() {
+                let list = unresolved_arweave
+                    .iter()
+                    .map(|id| format!("  - {}", id))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                missing_parts.push(format!(
+                    "Arweave tx IDs not found in mock 'arweaveFiles':\n{}\n\
+                     Add the missing txId(s) to the \"arweaveFiles\" array in your test JSON.",
+                    list
+                ));
+            }
+
+            if !missing_parts.is_empty() {
                 Ok(TestResult {
-                    handler_error: Some(format!(
-                        "File data source requested CID not found in mock 'files':\n{}\n\
-                         Add the missing CID(s) to the \"files\" array in your test JSON.",
-                        cid_list
-                    )),
+                    handler_error: Some(missing_parts.join("\n\n")),
                     assertions: vec![],
                 })
             } else {
@@ -670,8 +718,7 @@ async fn setup_context(
     stores: &TestStores,
     chain: &Arc<Chain>,
     manifest_info: &ManifestInfo,
-    mock_files: HashMap<ContentPath, graph::bytes::Bytes>,
-    unresolved_tx: tokio::sync::mpsc::UnboundedSender<ContentPath>,
+    mock_data: MockData,
 ) -> Result<TestContext> {
     let build_dir = &manifest_info.build_dir;
     let manifest_path = &manifest_info.manifest_path;
@@ -705,9 +752,9 @@ async fn setup_context(
     // FileLinkResolver handles manifest loading; the mock handles file data sources.
     let ipfs_metrics = IpfsMetrics::new(&mock_registry);
     let ipfs_client = Arc::new(MockIpfsClient {
-        files: mock_files,
+        files: mock_data.ipfs_files,
         metrics: ipfs_metrics,
-        unresolved_tx,
+        unresolved_tx: mock_data.ipfs_unresolved_tx,
     });
 
     let ipfs_service = ipfs_service(
@@ -717,9 +764,13 @@ async fn setup_context(
         env_vars.mappings.ipfs_request_limit,
     );
 
-    let arweave_resolver = Arc::new(ArweaveClient::default());
+    let arweave_resolver: Arc<dyn graph::components::link_resolver::ArweaveResolver> =
+        Arc::new(MockArweaveResolver {
+            files: mock_data.arweave_files,
+            unresolved_tx: mock_data.arweave_unresolved_tx,
+        });
     let arweave_service = arweave_service(
-        arweave_resolver.cheap_clone(),
+        arweave_resolver,
         env_vars.mappings.ipfs_request_limit,
         graph::components::link_resolver::FileSizeLimit::MaxBytes(
             env_vars.mappings.max_ipfs_file_bytes as u64,

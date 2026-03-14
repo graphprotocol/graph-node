@@ -31,6 +31,7 @@ mod assertion;
 mod block_stream;
 mod eth_calls;
 mod matchstick;
+mod mock_arweave;
 mod mock_chain;
 mod mock_ipfs;
 mod noop;

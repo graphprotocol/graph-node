@@ -44,6 +44,10 @@ pub struct TestFile {
     #[serde(default)]
     pub files: Vec<MockFile>,
 
+    /// Mock Arweave file contents keyed by transaction ID. Used for file/arweave data sources.
+    #[serde(default, rename = "arweaveFiles")]
+    pub arweave_files: Vec<MockArweaveFile>,
+
     /// Ordered sequence of mock blocks to index.
     #[serde(default)]
     pub blocks: Vec<TestBlock>,
@@ -72,6 +76,59 @@ pub struct MockFile {
     /// `file` must be set.
     #[serde(default)]
     pub file: Option<String>,
+}
+
+/// A mock Arweave file entry for file/arweave data source testing.
+///
+/// Exactly one of `content` or `file` must be set.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MockArweaveFile {
+    /// Arweave transaction ID or bundle path (e.g. `"txid/filename.json"`).
+    /// No format validation — treated as an opaque string key.
+    #[serde(rename = "txId")]
+    pub tx_id: String,
+
+    /// Inline UTF-8 content. Exactly one of `content` or `file` must be set.
+    #[serde(default)]
+    pub content: Option<String>,
+
+    /// Path to a file. Resolved relative to the test JSON file.
+    /// Exactly one of `content` or `file` must be set.
+    #[serde(default)]
+    pub file: Option<String>,
+}
+
+impl MockArweaveFile {
+    /// Resolve this entry to bytes, given the directory of the test JSON file.
+    ///
+    /// Fails if:
+    /// - neither `content` nor `file` is set
+    /// - both `content` and `file` are set
+    /// - the referenced `file` path cannot be read
+    pub fn resolve(&self, test_dir: &Path) -> anyhow::Result<graph::bytes::Bytes> {
+        match (&self.content, &self.file) {
+            (Some(content), None) => Ok(graph::bytes::Bytes::from(content.clone().into_bytes())),
+            (None, Some(file)) => {
+                let path = if Path::new(file).is_absolute() {
+                    PathBuf::from(file)
+                } else {
+                    test_dir.join(file)
+                };
+                let data = std::fs::read(&path).map_err(|e| {
+                    anyhow::anyhow!("Failed to read file '{}': {}", path.display(), e)
+                })?;
+                Ok(graph::bytes::Bytes::from(data))
+            }
+            (Some(_), Some(_)) => anyhow::bail!(
+                "MockArweaveFile entry for txId '{}' must have either 'content' or 'file', not both",
+                self.tx_id
+            ),
+            (None, None) => anyhow::bail!(
+                "MockArweaveFile entry for txId '{}' must have either 'content' or 'file'",
+                self.tx_id
+            ),
+        }
+    }
 }
 
 impl MockFile {
