@@ -285,12 +285,23 @@ impl BlockStore {
                         shard,
                     );
                 }
+                // If the chain's shard has no pool (e.g. pool_size = 0), treat it as a
+                // misconfiguration and panic with an actionable message.
+                if !block_store.pools.contains_key(&chain.shard) {
+                    panic!(
+                        "chain '{0}' is configured for shard '{1}' which has no connection pool on this node; \
+                        set pool_size > 0 for shard '{1}' or remove the chain from the config",
+                        chain.name, chain.shard,
+                    );
+                }
+
                 block_store.add_chain_store(chain, false).await?;
             };
         }
 
         // There might be chains we have in the database that are not yet/
-        // no longer configured. Add a chain store for each of them, too
+        // no longer configured. Add a chain store for each of them, too.
+        // Ignore chains that are in the database, but have no pools for their shards.
         let configured_chains = block_store
             .stores
             .read()
@@ -301,6 +312,16 @@ impl BlockStore {
             .iter()
             .filter(|chain| !configured_chains.contains(&chain.name))
         {
+            if !block_store.pools.contains_key(&chain.shard) {
+                warn!(
+                    &block_store.logger,
+                    "Chain `{}` is stored in shard `{}` which has no connection pool on this node, skipping",
+                    chain.name,
+                    chain.shard,
+                );
+                continue;
+            }
+
             block_store.add_chain_store(chain, false).await?;
         }
         Ok(block_store)
