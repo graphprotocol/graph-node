@@ -42,9 +42,17 @@ pub enum Transport {
 
 impl Transport {
     /// Creates an IPC transport.
+    ///
+    /// Accepts both a raw file path (`/tmp/geth.ipc`) and an `ipc://` URL
+    /// (`ipc:///tmp/geth.ipc`). When a URL is provided the file path is
+    /// extracted so that the underlying IPC connector receives a plain path.
     #[cfg(unix)]
     pub async fn new_ipc(ipc: &str) -> Self {
-        let transport = IpcConnect::new(ipc.to_string());
+        let path = Url::parse(ipc)
+            .ok()
+            .map(|u| u.path().to_string())
+            .unwrap_or_else(|| ipc.to_string());
+        let transport = IpcConnect::new(path);
 
         Transport::IPC(transport)
     }
