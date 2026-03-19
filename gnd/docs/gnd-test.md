@@ -22,7 +22,7 @@ gnd test --matchstick
 
 Tests are JSON files that define:
 - Mock blockchain blocks with events
-- Mock `eth_call` responses
+- Mock Ethereum RPC responses (`eth_call`, `eth_getBalance`, `eth_getCode`)
 - GraphQL assertions to validate entity state
 
 Place test files in a `tests/` directory with `.json` or `.test.json` extension.
@@ -82,6 +82,8 @@ Place test files in a `tests/` directory with `.json` or `.test.json` extension.
 | `baseFeePerGas` | No | None (pre-EIP-1559) | Base fee in wei |
 | `events` | No | Empty array | Log events in this block |
 | `ethCalls` | No | Empty array | Mock `eth_call` responses |
+| `getBalanceCalls` | No | Empty array | Mock `eth_getBalance` responses for `ethereum.getBalance()` |
+| `hasCodeCalls` | No | Empty array | Mock `eth_getCode` responses for `ethereum.hasCode()` |
 
 ### Empty Blocks
 
@@ -359,7 +361,7 @@ Mock contract calls made from mapping handlers using `contract.call()`:
 | `function` | Yes | Full signature: `"functionName(inputTypes)(returnTypes)"` |
 | `params` | Yes | Array of input parameters (as strings) |
 | `returns` | Yes | Array of return values (as strings, ignored if `reverts: true`) |
-| `reverts` | No | Default `false`. If `true`, the call is cached as `Retval::Null` |
+| `reverts` | No | Default `false`. If `true`, the mock transport returns an RPC error |
 
 ### Function Signature Format
 
@@ -413,6 +415,110 @@ From the ERC20 test:
   ]
 }
 ```
+
+## ethereum.getBalance() Mocking
+
+Mock balance lookups made from mapping handlers using `ethereum.getBalance()`:
+
+```json
+{
+  "getBalanceCalls": [
+    {
+      "address": "0xaaaa000000000000000000000000000000000000",
+      "value": "1000000000000000000"
+    }
+  ]
+}
+```
+
+### getBalanceCalls Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `address` | Yes | Account address (checksummed or lowercase hex) |
+| `value` | Yes | Balance in Wei as a decimal string |
+
+## ethereum.hasCode() Mocking
+
+Mock code existence checks made from mapping handlers using `ethereum.hasCode()`:
+
+```json
+{
+  "hasCodeCalls": [
+    {
+      "address": "0x1234000000000000000000000000000000000000",
+      "hasCode": true
+    }
+  ]
+}
+```
+
+### hasCodeCalls Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `address` | Yes | Contract address (checksummed or lowercase hex) |
+| `hasCode` | Yes | Whether the address has deployed bytecode |
+
+## File Data Sources
+
+Mock IPFS and Arweave file contents for file data source handlers. Files are defined at the top level of the test JSON (not inside blocks).
+
+### IPFS Files
+
+```json
+{
+  "name": "File data source test",
+  "files": [
+    {
+      "cid": "QmExample...",
+      "content": "{\"name\": \"Token\", \"description\": \"A token\"}"
+    },
+    {
+      "cid": "QmAnother...",
+      "file": "fixtures/metadata.json"
+    }
+  ],
+  "blocks": [...],
+  "assertions": [...]
+}
+```
+
+#### files Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `cid` | Yes | IPFS CID (`Qm...` or `bafy...`). The mock ignores hash/content relationship |
+| `content` | One of `content`/`file` | Inline UTF-8 content |
+| `file` | One of `content`/`file` | File path, resolved relative to the test JSON |
+
+### Arweave Files
+
+```json
+{
+  "name": "Arweave data source test",
+  "arweaveFiles": [
+    {
+      "txId": "abc123",
+      "content": "{\"name\": \"Token\"}"
+    },
+    {
+      "txId": "def456/metadata.json",
+      "file": "fixtures/arweave-data.json"
+    }
+  ],
+  "blocks": [...],
+  "assertions": [...]
+}
+```
+
+#### arweaveFiles Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `txId` | Yes | Arweave transaction ID or bundle path (e.g. `"txid/filename.json"`) |
+| `content` | One of `content`/`file` | Inline UTF-8 content |
+| `file` | One of `content`/`file` | File path, resolved relative to the test JSON |
 
 ## Assertions
 
@@ -647,10 +753,12 @@ my-subgraph/
 |---------|--------|
 | Log events | ✅ Supported |
 | Block handlers (all filters) | ✅ Supported |
-| eth_call mocking | ✅ Supported |
+| `eth_call` mocking | ✅ Supported |
+| `ethereum.getBalance()` mocking | ✅ Supported |
+| `ethereum.hasCode()` mocking | ✅ Supported |
 | Dynamic/template data sources | ✅ Supported |
 | Transaction receipts (`receipt: true`) | ⚠️ Partial — `receipt.logs` is populated and grouped by `txHash`; other fields (gas, from, to, etc.) are hardcoded stubs (see [Transaction Receipts](#transaction-receipts)) |
-| File data sources / IPFS mocking | ❌ Not implemented |
+| File data sources (IPFS + Arweave) | ✅ Supported |
 | Call triggers (traces) | ❌ Not implemented |
 | `--json` CI output | ❌ Not implemented |
 | Parallel test execution | ❌ Not implemented |
@@ -764,10 +872,8 @@ GraphQL queries → Assertions
 **Key design principles:**
 
 - **Isolated database per test:** Each test gets a pgtemp database dropped on completion (default), or a shared persistent database with post-test cleanup (`--postgres-url`)
-- **Real WASM runtime:** Uses `EthereumRuntimeAdapterBuilder` with real `ethereum.call` host function
-- **Pre-populated call cache:** `eth_call` responses are cached before indexing starts
+- **Mock transport layer:** A mock Alloy transport serves `eth_call`, `eth_getBalance`, and `eth_getCode` from test JSON data. All three flow through the real production code path — only the transport returns mock responses. Unmocked RPC calls fail immediately with a descriptive error.
 - **No IPFS for manifest:** Uses `FileLinkResolver` to load manifest/WASM from build directory
-- **Dummy RPC adapter:** Registered at `http://0.0.0.0:0` — exists so the runtime can resolve an adapter with the required capabilities. If a mapping makes an `ethereum.call` that has no matching mock in `ethCalls`, the call misses the cache and falls through to this dummy adapter. The connection is refused immediately (port 0 is invalid), which graph-node treats as a possible reorg and restarts the block stream. The indexer then loops until the 60-second test timeout. See [Unmocked eth_call](#unmocked-eth_call-causes-60-second-timeout) in Troubleshooting.
 
 ## Troubleshooting
 
@@ -790,36 +896,19 @@ GraphQL queries → Assertions
 2. Simplify mapping logic
 3. Check for infinite loops in handler code
 
-### eth_call Returns Wrong Value
+### Unmocked RPC Call
 
-**Cause:** Call cache miss — no matching mock in `ethCalls`.
+**Cause:** A mapping handler calls `ethereum.call`, `ethereum.getBalance`, or `ethereum.hasCode` for a call that has no matching mock entry.
 
-**Fix:**
-1. Verify `address`, `function`, and `params` exactly match the call from your mapping
-2. Check function signature format: `"functionName(inputTypes)(returnTypes)"`
-3. Ensure parameters are in correct order
-
-### Unmocked eth_call Causes 60-Second Timeout
-
-**Cause:** A mapping handler calls `ethereum.call` (directly or via a generated contract binding) for a call that has no matching entry in `ethCalls`. The call misses the pre-populated cache and is forwarded to the dummy RPC adapter at `http://0.0.0.0:0`. The connection is refused immediately, but graph-node interprets connection errors as a possible chain reorganisation and restarts the block stream instead of failing. The indexer loops indefinitely until the test runner's 60-second timeout expires.
-
-**Symptom:** Test fails with `Sync timeout after 60s` with no indication of which call was missing.
+**Symptom:** Test fails immediately with a descriptive error like:
+```
+gnd test: unmocked eth_call to 0x1234... at block hash 0xabcd...
+Add a matching 'ethCalls' entry to this block in your test JSON.
+```
 
 **Fix:**
-1. Add the missing call to `ethCalls` in your test block:
-   ```json
-   "ethCalls": [
-     {
-       "address": "0xContractAddress",
-       "function": "myFunction(uint256):(address)",
-       "params": ["42"],
-       "returns": ["0xSomeAddress"]
-     }
-   ]
-   ```
-2. If the call is not supposed to happen, check the mapping logic — a code path may be executing unexpectedly.
-
-**Known limitation:** There is currently no fail-fast error for unmocked calls. The only signal is the timeout. A future improvement will make the dummy adapter panic immediately on a cache miss with a descriptive message.
+1. Add the missing mock to the appropriate field in your test block (`ethCalls`, `getBalanceCalls`, or `hasCodeCalls`)
+2. If the call is not supposed to happen, check the mapping logic — a code path may be executing unexpectedly
 
 ### Block Handler Not Firing
 
