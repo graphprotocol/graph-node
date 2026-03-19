@@ -159,13 +159,24 @@ fn run_gnd_test(args: &[&str], cwd: &Path) -> std::process::Output {
 // ============================================================================
 
 #[test]
-fn test_token_transfer_and_templates() {
+fn test_token_transfer() {
     let (_temp_dir, subgraph_dir) = setup_fixture("token");
 
-    let output = run_gnd_test(
-        &["tests/transfer.json", "tests/templates.json"],
-        &subgraph_dir,
+    let output = run_gnd_test(&["tests/transfer.json"], &subgraph_dir);
+
+    assert!(
+        output.status.success(),
+        "gnd test failed for token fixture\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
     );
+}
+
+#[test]
+fn test_templates() {
+    let (_temp_dir, subgraph_dir) = setup_fixture("token");
+
+    let output = run_gnd_test(&["tests/templates.json"], &subgraph_dir);
 
     assert!(
         output.status.success(),

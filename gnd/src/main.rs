@@ -181,7 +181,7 @@ async fn main() -> Result<()> {
             // Disable RPC retries so unmocked calls fail immediately.
             // SAFETY: single-threaded here, before the Tokio runtime is built.
             unsafe {
-                std::env::set_var("GRAPH_ETHEREUM_REQUEST_RETRIES", "0");
+                std::env::set_var("GRAPH_ETHEREUM_REQUEST_RETRIES", "1");
             }
             run_test(test_opt).await
         }
