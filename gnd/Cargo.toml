@@ -31,6 +31,7 @@ graph-store-postgres = { path = "../store/postgres" }
 # Test command dependencies
 hex = "0.4"
 async-trait = { workspace = true }
+tower = { workspace = true }
 
 # Direct dependencies from current dev.rs
 anyhow = { workspace = true }

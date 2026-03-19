@@ -34,6 +34,8 @@ mod matchstick;
 mod mock_arweave;
 mod mock_chain;
 mod mock_ipfs;
+mod mock_runtime;
+mod mock_transport;
 mod noop;
 mod output;
 mod runner;

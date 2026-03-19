@@ -15,6 +15,8 @@ use super::block_stream::StaticStreamBuilder;
 use super::mock_arweave::MockArweaveResolver;
 use super::mock_chain;
 use super::mock_ipfs::MockIpfsClient;
+use super::mock_runtime::TestRuntimeAdapterBuilder;
+use super::mock_transport::MockTransport;
 use super::noop::{NoopAdapterSelector, StaticBlockRefetcher};
 use super::schema::{TestFile, TestResult};
 use super::trigger::build_blocks_with_triggers;
@@ -43,7 +45,6 @@ use graph::prelude::{
     SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
 };
 use graph::slog::{info, o, Logger};
-use graph_chain_ethereum::chain::EthereumRuntimeAdapterBuilder;
 use graph_chain_ethereum::network::{EthereumNetworkAdapter, EthereumNetworkAdapters};
 use graph_chain_ethereum::{
     Chain, EthereumAdapter, NodeCapabilities, ProviderEthRpcMetrics, Transport,
@@ -320,7 +321,8 @@ pub async fn run_single_test(
 
     let stores = setup_stores(&logger, &db, &manifest_info.network_name).await?;
 
-    let chain = setup_chain(&logger, blocks.clone(), &stores).await?;
+    let mock_transport = MockTransport::new(test_file, &blocks)?;
+    let chain = setup_chain(&logger, blocks.clone(), &stores, mock_transport).await?;
 
     let mock_data = MockData {
         ipfs_files: mock_files,
@@ -331,16 +333,7 @@ pub async fn run_single_test(
 
     let ctx = setup_context(&logger, &stores, &chain, manifest_info, mock_data).await?;
 
-    // Populate eth_call cache before starting the indexer.
-    super::eth_calls::populate_eth_call_cache(
-        &logger,
-        stores.chain_store.cheap_clone(),
-        &blocks,
-        test_file,
-    )
-    .await?;
-
-    // Determine the target block — the indexer will process until it reaches this.
+    // The indexer will process until it reaches this block.
     let stop_block = if blocks.is_empty() {
         mock_chain::genesis_ptr()
     } else {
@@ -418,7 +411,7 @@ pub async fn run_single_test(
         Err(subgraph_error) => {
             // Fatal handler error — skip assertions.
             Ok(TestResult {
-                handler_error: Some(subgraph_error.message),
+                handler_error: Some(format_handler_error(&subgraph_error)),
                 assertions: vec![],
             })
         }
@@ -587,11 +580,12 @@ async fn setup_chain(
     logger: &Logger,
     blocks: Vec<BlockWithTriggers<Chain>>,
     stores: &TestStores,
+    mock_transport: MockTransport,
 ) -> Result<Arc<Chain>> {
     let mock_registry = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
 
-    // Dummy firehose endpoint — required by Chain constructor but never used.
+    // Dummy firehose endpoint — required by Chain constructor, never used.
     let firehose_endpoints = FirehoseEndpoints::for_testing(vec![Arc::new(FirehoseEndpoint::new(
         "",
         "http://0.0.0.0:0",
@@ -606,21 +600,13 @@ async fn setup_chain(
     let client =
         Arc::new(graph::blockchain::client::ChainClient::<Chain>::new_firehose(firehose_endpoints));
 
-    let block_stream_builder: Arc<dyn graph::blockchain::block_stream::BlockStreamBuilder<Chain>> =
-        Arc::new(StaticStreamBuilder { chain: blocks });
-
-    // Dummy archive adapter — never used for RPC. The RuntimeAdapter needs one
-    // with matching capabilities to reach the eth_call cache.
     let endpoint_metrics = Arc::new(EndpointMetrics::mock());
     let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
-    let transport = Transport::new_rpc(
-        graph::url::Url::parse("http://0.0.0.0:0").unwrap(),
-        graph::http::HeaderMap::new(),
-        endpoint_metrics.clone(),
-        "",
-        false, // no_eip2718
-        graph_chain_ethereum::Compression::None,
-    );
+    let rpc_client = graph::prelude::alloy::rpc::client::RpcClient::new(mock_transport, true);
+    let transport = Transport::RPC(rpc_client);
+
+    let block_stream_builder: Arc<dyn graph::blockchain::block_stream::BlockStreamBuilder<Chain>> =
+        Arc::new(StaticStreamBuilder { chain: blocks });
     let dummy_adapter = Arc::new(
         EthereumAdapter::new(
             logger.clone(),
@@ -668,7 +654,7 @@ async fn setup_chain(
         Arc::new(NoopAdapterSelector {
             _phantom: PhantomData,
         }),
-        Arc::new(EthereumRuntimeAdapterBuilder {}),
+        Arc::new(TestRuntimeAdapterBuilder),
         eth_adapters,
         graph::prelude::ENV_VARS.reorg_threshold(),
         graph::prelude::ENV_VARS.ingestor_polling_interval,
@@ -843,6 +829,25 @@ async fn cleanup(
     }
 
     Ok(())
+}
+
+/// Format a `SubgraphError` for user-facing output.
+fn format_handler_error(err: &SubgraphError) -> String {
+    let mut parts = Vec::new();
+
+    if let Some(handler) = &err.handler {
+        parts.push(format!("in {handler}"));
+    }
+    if let Some(block_ptr) = &err.block_ptr {
+        parts.push(format!("at block #{}", block_ptr.number));
+    }
+
+    let location = parts.join(" ");
+    if location.is_empty() {
+        err.message.clone()
+    } else {
+        format!("{location}: {}", err.message)
+    }
 }
 
 /// Poll until the subgraph reaches `stop_block`, returning `Err` on fatal error or timeout.

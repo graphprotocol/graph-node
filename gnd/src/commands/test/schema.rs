@@ -171,9 +171,14 @@ pub struct TestBlock {
     #[serde(default)]
     pub events: Vec<LogEvent>,
 
-    /// Mock contract call responses pre-cached before the test runs.
     #[serde(default, rename = "ethCalls")]
     pub eth_calls: Vec<MockEthCall>,
+
+    #[serde(default, rename = "getBalanceCalls")]
+    pub get_balance_calls: Vec<MockBalance>,
+
+    #[serde(default, rename = "hasCodeCalls")]
+    pub has_code_calls: Vec<MockCode>,
 }
 
 /// A mock Ethereum event log.
@@ -209,6 +214,22 @@ pub struct MockEthCall {
 
     #[serde(default)]
     pub reverts: bool,
+}
+
+/// Mock `ethereum.getBalance()` response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MockBalance {
+    pub address: String,
+    /// Wei as a decimal string.
+    pub value: String,
+}
+
+/// Mock `ethereum.hasCode()` response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MockCode {
+    pub address: String,
+    #[serde(rename = "hasCode")]
+    pub has_code: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
