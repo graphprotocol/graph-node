@@ -2218,6 +2218,14 @@ impl Mirror {
             .await
         }
 
+        // Prevent FDW zombie connections from holding ACCESS EXCLUSIVE locks
+        // indefinitely. lock_timeout prevents TRUNCATE stampede when multiple
+        // nodes mirror simultaneously. statement_timeout kills stuck FDW
+        // queries. SET LOCAL scopes these to this transaction only.
+        conn.batch_execute("SET LOCAL statement_timeout = '60s'; SET LOCAL lock_timeout = '10s';")
+            .await
+            .map_err(StoreError::from)?;
+
         // Truncate all tables at once, otherwise truncation can fail
         // because of foreign key constraints
         let tables = Self::PUBLIC_TABLES
