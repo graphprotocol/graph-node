@@ -48,7 +48,7 @@ use graph_chain_ethereum::{
 };
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_graphql::prelude::GraphQlRunner;
-use graph_node::config::Config;
+use graph_node::config::{Config, Opt};
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
@@ -434,7 +434,7 @@ ingestor = "default"
         db.url()
     );
 
-    let config = Config::from_str(&config_str, "default")
+    let config = Config::from_str(&config_str, &Opt::default())
         .map_err(|e| anyhow!("Failed to parse config: {}", e))?;
 
     let mock_registry = Arc::new(MetricsRegistry::mock());

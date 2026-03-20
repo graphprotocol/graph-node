@@ -551,9 +551,19 @@ pub async fn run(
         )
         .await;
 
-        // see comment on cleanup_ethereum_shallow_blocks
-        if !opt.disable_block_ingestor {
+        if config.is_block_ingestor() {
+            // see comment on cleanup_ethereum_shallow_blocks
             cleanup_ethereum_shallow_blocks(&blockchain_map, &network_store).await;
+        } else if opt.disable_block_ingestor {
+            info!(
+                logger,
+                "Block ingestor disabled by --disable-block-ingestor"
+            );
+        } else {
+            info!(
+                logger,
+                "Not running block ingestion, ingestor is `{}`", config.chains.ingestor
+            );
         }
 
         let graphql_server = build_graphql_server(
@@ -573,7 +583,7 @@ pub async fn run(
             amp_client.cheap_clone(),
         );
 
-        if !opt.disable_block_ingestor {
+        if config.is_block_ingestor() {
             spawn_block_ingestor(
                 &logger,
                 &blockchain_map,

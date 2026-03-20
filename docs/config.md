@@ -5,12 +5,11 @@ CLI. The location of the file is passed with the `--config` command line switch.
 configuration file, it is not possible to use the options `--postgres-url`,
 `--postgres-secondary-hosts`, and `--postgres-host-weights`.
 
-The TOML file consists of four sections:
+The TOML file consists of three sections:
 
-- `[chains]` sets the endpoints to blockchain clients.
-- `[store]` describes the available databases.
-- `[ingestor]` sets the name of the node responsible for block ingestion.
-- `[deployment]` describes how to place newly deployed subgraphs.
+- [`[chains]`](#configuring-chains) lists the available chains and how to access them.
+- [`[store]`](#configuring-multiple-databases) describes the available databases.
+- [`[deployment]`](#controlling-deployment) describes how to place newly deployed subgraphs.
 
 Some of these sections support environment variable expansion out of the box,
 most notably Postgres connection strings. The official `graph-node` Docker image
@@ -104,8 +103,12 @@ names that will use this configuration file.
 
 The `[chains]` section controls the providers that `graph-node`
 connects to, and where blocks and other metadata for each chain are
-stored. The section consists of the name of the node doing block ingestion
-(currently not used), and a list of chains.
+stored. The section consists of the name of the node responsible for block
+ingestion and a list of chains. Block ingestion only runs on the node
+whose `--node-id` matches the `ingestor` value. The
+`--disable-block-ingestor` flag (or `DISABLE_BLOCK_INGESTOR` env var)
+acts as a hard override that always prevents ingestion regardless of
+the config.
 
 The configuration for a chain `name` is specified in the section
 `[chains.<name>]`, with the following:

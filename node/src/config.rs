@@ -72,6 +72,8 @@ impl Default for Opt {
 pub struct Config {
     #[serde(skip, default = "default_node_id")]
     pub node: NodeId,
+    #[serde(skip)]
+    pub disable_block_ingestor: bool,
     pub general: Option<GeneralSection>,
     #[serde(rename = "store")]
     pub stores: BTreeMap<String, Shard>,
@@ -104,6 +106,15 @@ fn validate_name(s: &str) -> Result<()> {
 }
 
 impl Config {
+    /// Returns `true` if this node should run block ingestion.
+    ///
+    /// Block ingestion runs when the `--disable-block-ingestor` kill switch
+    /// is **not** set and this node's id matches the `ingestor` value from
+    /// the `[chains]` config section.
+    pub fn is_block_ingestor(&self) -> bool {
+        !self.disable_block_ingestor && self.chains.ingestor == self.node.to_string()
+    }
+
     pub fn chain_ids(&self) -> Vec<ChainName> {
         self.chains
             .chains
@@ -182,7 +193,7 @@ impl Config {
     /// a config from the command line arguments in `opt`
     pub fn load(logger: &Logger, opt: &Opt) -> Result<Config> {
         if let Some(config) = &opt.config {
-            Self::from_file(logger, config, &opt.node_id)
+            Self::from_file(logger, config, opt)
         } else {
             info!(
                 logger,
@@ -192,14 +203,16 @@ impl Config {
         }
     }
 
-    pub fn from_file(logger: &Logger, path: &str, node: &str) -> Result<Config> {
+    pub fn from_file(logger: &Logger, path: &str, opt: &Opt) -> Result<Config> {
         info!(logger, "Reading configuration file `{}`", path);
-        Self::from_str(&read_to_string(path)?, node)
+        Self::from_str(&read_to_string(path)?, opt)
     }
 
-    pub fn from_str(config: &str, node: &str) -> Result<Config> {
+    pub fn from_str(config: &str, opt: &Opt) -> Result<Config> {
         let mut config: Config = toml::from_str(config)?;
-        config.node = NodeId::new(node).map_err(|node| anyhow!("invalid node id {}", node))?;
+        config.node =
+            NodeId::new(&opt.node_id).map_err(|node| anyhow!("invalid node id {}", node))?;
+        config.disable_block_ingestor = opt.disable_block_ingestor;
         config.validate()?;
         Ok(config)
     }
@@ -213,6 +226,7 @@ impl Config {
         stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(true, opt)?);
         Ok(Config {
             node,
+            disable_block_ingestor: opt.disable_block_ingestor,
             general: None,
             stores,
             chains,
@@ -486,13 +500,7 @@ impl ChainSection {
     }
 
     fn from_opt(opt: &Opt) -> Result<Self> {
-        // If we are not the block ingestor, set the node name
-        // to something that is definitely not our node_id
-        let ingestor = if opt.disable_block_ingestor {
-            format!("{} is not ingesting", opt.node_id)
-        } else {
-            opt.node_id.clone()
-        };
+        let ingestor = opt.node_id.clone();
         let mut chains = BTreeMap::new();
         Self::parse_networks(&mut chains, Transport::Rpc, &opt.ethereum_rpc)?;
         Self::parse_networks(&mut chains, Transport::Ws, &opt.ethereum_ws)?;
@@ -2059,6 +2067,7 @@ fdw_pool_size = [
 
         let config = Config {
             node: NodeId::new("test").unwrap(),
+            disable_block_ingestor: false,
             general: None,
             stores: {
                 let mut s = std::collections::BTreeMap::new();
@@ -2089,5 +2098,43 @@ fdw_pool_size = [
             amp.resolve(&"unknown".into()),
             graph::components::network_provider::ChainName::from("unknown")
         );
+    }
+
+    #[test]
+    fn is_block_ingestor() {
+        let make_config = |node: &str, ingestor: &str, disable: bool| -> Config {
+            let section: ChainSection =
+                toml::from_str(&format!(r#"ingestor = "{}""#, ingestor)).unwrap();
+            Config {
+                node: NodeId::new(node).unwrap(),
+                disable_block_ingestor: disable,
+                general: None,
+                stores: {
+                    let mut s = std::collections::BTreeMap::new();
+                    s.insert(
+                        "primary".to_string(),
+                        toml::from_str::<Shard>(r#"connection = "postgresql://u:p@h/db""#).unwrap(),
+                    );
+                    s
+                },
+                chains: section,
+                deployment: toml::from_str(
+                    "[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]",
+                )
+                .unwrap(),
+            }
+        };
+
+        // Node matches ingestor, not disabled
+        assert!(make_config("index-0", "index-0", false).is_block_ingestor());
+
+        // Node does not match ingestor
+        assert!(!make_config("query-0", "index-0", false).is_block_ingestor());
+
+        // Node matches but kill switch is on
+        assert!(!make_config("index-0", "index-0", true).is_block_ingestor());
+
+        // Node does not match and kill switch is on
+        assert!(!make_config("query-0", "index-0", true).is_block_ingestor());
     }
 }
