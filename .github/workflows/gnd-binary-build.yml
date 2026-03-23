@@ -47,6 +47,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler musl-tools
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
 
       - name: Install dependencies (macOS)
         if: startsWith(matrix.runner, 'macos')
