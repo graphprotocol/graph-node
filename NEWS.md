@@ -1,5 +1,12 @@
 # NEWS
 
+## v0.42.1
+
+### Bug Fixes
+
+- Fixed multi-shard deployments becoming unresponsive due to `mirror_primary_tables` holding locks indefinitely, exhausting the connection pool. Added `statement_timeout` and `lock_timeout` to prevent stuck queries from cascading into a full lockup. ([#6446](https://github.com/graphprotocol/graph-node/pull/6446))
+- Fixed the `ingestor` setting in `[chains.*]` config sections having no effect — block ingestion ran regardless of its value. ([#6447](https://github.com/graphprotocol/graph-node/pull/6447))
+
 ## v0.42.0
 
 ### Breaking Changes
