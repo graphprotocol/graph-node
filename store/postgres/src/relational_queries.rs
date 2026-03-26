@@ -2584,6 +2584,12 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
             out.push_sql(")");
         }
 
+        if self.table.immutable && self.table.skip_duplicates {
+            out.push_sql("\n ON CONFLICT (");
+            out.push_identifier(self.table.primary_key().name.as_str())?;
+            out.push_sql(") DO NOTHING");
+        }
+
         Ok(())
     }
 }
