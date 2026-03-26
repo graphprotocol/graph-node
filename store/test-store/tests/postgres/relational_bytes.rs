@@ -365,7 +365,7 @@ async fn update() {
         let entities = vec![(key, entity.clone())];
         let group = row_group_update(&entity_type, 1, entities);
         layout
-            .update(conn, &group, &MOCK_STOPWATCH)
+            .update(&LOGGER, conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to update");
 
@@ -397,7 +397,7 @@ async fn delete() {
         let mut entity_keys = vec![key.clone()];
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
         let count = layout
-            .delete(conn, &group, &MOCK_STOPWATCH)
+            .delete(&LOGGER, conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to delete");
         assert_eq!(0, count);
@@ -409,7 +409,7 @@ async fn delete() {
             .expect("Failed to update entity types");
         let group = row_group_delete(&entity_type, 1, entity_keys);
         let count = layout
-            .delete(conn, &group, &MOCK_STOPWATCH)
+            .delete(&LOGGER, conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to delete");
         assert_eq!(1, count);

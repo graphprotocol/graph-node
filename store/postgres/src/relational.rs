@@ -944,12 +944,20 @@ impl Layout {
 
     pub async fn update<'a>(
         &'a self,
+        logger: &Logger,
         conn: &mut AsyncPgConnection,
         group: &'a RowGroup,
         stopwatch: &StopwatchMetrics,
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable && group.has_clamps() {
+            if table.skip_duplicates {
+                let ids = group.ids().join(", ");
+                warn!(logger, "Skipping immutable entity update in store layer";
+                    "entity_type" => group.entity_type.to_string(),
+                    "ids" => ids);
+                return Ok(0);
+            }
             let ids = group
                 .ids()
                 .map(|id| id.to_string())
@@ -991,6 +999,7 @@ impl Layout {
 
     pub async fn delete(
         &self,
+        logger: &Logger,
         conn: &mut AsyncPgConnection,
         group: &RowGroup,
         stopwatch: &StopwatchMetrics,
@@ -1015,6 +1024,13 @@ impl Layout {
 
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable {
+            if table.skip_duplicates {
+                let ids = group.ids().join(", ");
+                warn!(logger, "Skipping immutable entity delete in store layer";
+                    "entity_type" => group.entity_type.to_string(),
+                    "ids" => ids);
+                return Ok(0);
+            }
             return Err(internal_error!(
                 "entities of type `{}` can not be deleted since they are immutable. Entity ids are [{}]",
                 table.object, group.ids().join(", ")

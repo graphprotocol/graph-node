@@ -128,6 +128,11 @@ const THINGS_GQL: &str = r#"
         order: Int,
     }
 
+    type SkipDupMink @entity(immutable: true, skipDuplicates: true) {
+        id: ID!,
+        order: Int,
+    }
+
     type User @entity {
         id: ID!,
         name: String!,
@@ -228,6 +233,7 @@ lazy_static! {
     static ref CAT_TYPE: EntityType = THINGS_SCHEMA.entity_type("Cat").unwrap();
     static ref FERRET_TYPE: EntityType = THINGS_SCHEMA.entity_type("Ferret").unwrap();
     static ref MINK_TYPE: EntityType = THINGS_SCHEMA.entity_type("Mink").unwrap();
+    static ref SKIP_DUP_MINK_TYPE: EntityType = THINGS_SCHEMA.entity_type("SkipDupMink").unwrap();
     static ref CHAIR_TYPE: EntityType = THINGS_SCHEMA.entity_type("Chair").unwrap();
     static ref NULLABLE_STRINGS_TYPE: EntityType =
         THINGS_SCHEMA.entity_type("NullableStrings").unwrap();
@@ -315,7 +321,7 @@ async fn update_entity_at(
     );
     let group = row_group_update(entity_type, block, entities_with_keys_owned.clone());
     let updated = layout
-        .update(conn, &group, &MOCK_STOPWATCH)
+        .update(&LOGGER, conn, &group, &MOCK_STOPWATCH)
         .await
         .expect(&errmsg);
     assert_eq!(updated, entities_with_keys_owned.len());
@@ -643,7 +649,7 @@ async fn update() {
         let entities = vec![(key, entity.clone())];
         let group = row_group_update(&entity_type, 0, entities);
         layout
-            .update(conn, &group, &MOCK_STOPWATCH)
+            .update(&LOGGER, conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to update");
 
@@ -708,7 +714,7 @@ async fn update_many() {
         let entities: Vec<_> = keys.into_iter().zip(entities_vec.into_iter()).collect();
         let group = row_group_update(&entity_type, 0, entities);
         layout
-            .update(conn, &group, &MOCK_STOPWATCH)
+            .update(&LOGGER, conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to update");
 
@@ -780,7 +786,7 @@ async fn serialize_bigdecimal() {
             let entities = vec![(key, entity.clone())];
             let group = row_group_update(&entity_type, 0, entities);
             layout
-                .update(conn, &group, &MOCK_STOPWATCH)
+                .update(&LOGGER, conn, &group, &MOCK_STOPWATCH)
                 .await
                 .expect("Failed to update");
 
@@ -870,7 +876,7 @@ async fn delete() {
         let mut entity_keys = vec![key];
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
         let count = layout
-            .delete(conn, &group, &MOCK_STOPWATCH)
+            .delete(&LOGGER, conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to delete");
         assert_eq!(0, count);
@@ -884,7 +890,7 @@ async fn delete() {
 
         let group = row_group_delete(&entity_type, 1, entity_keys);
         let count = layout
-            .delete(conn, &group, &MOCK_STOPWATCH)
+            .delete(&LOGGER, conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to delete");
         assert_eq!(1, count);
@@ -915,7 +921,7 @@ async fn insert_many_and_delete_many() {
             .collect();
         let group = row_group_delete(&SCALAR_TYPE, 1, entity_keys);
         let num_removed = layout
-            .delete(conn, &group, &MOCK_STOPWATCH)
+            .delete(&LOGGER, conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to delete");
         assert_eq!(2, num_removed);
@@ -2128,6 +2134,106 @@ async fn check_filters() {
             .await
             .check(vec![], filter_block_gte(BLOCK_NUMBER_MAX))
             .await;
+    })
+    .await;
+}
+
+/// Create a RowGroup with Overwrite modifications for testing store-layer
+/// immutability enforcement. Uses immutable=false on the RowGroup to bypass
+/// write-batch validation (the store layer checks the Table's immutability).
+fn store_layer_row_group_update(
+    entity_type: &EntityType,
+    block: BlockNumber,
+    data: impl IntoIterator<Item = (EntityKey, Entity)>,
+) -> RowGroup {
+    let mut group = RowGroup::new(
+        entity_type.clone(),
+        false,
+        false,
+        slog::Logger::root(slog::Discard, slog::o!()),
+    );
+    for (key, data) in data {
+        group
+            .push(EntityModification::overwrite(key, data, block), block)
+            .unwrap();
+    }
+    group
+}
+
+/// Create a RowGroup with Remove modifications for testing store-layer
+/// immutability enforcement. Uses immutable=false on the RowGroup to bypass
+/// write-batch validation (the store layer checks the Table's immutability).
+fn store_layer_row_group_delete(
+    entity_type: &EntityType,
+    block: BlockNumber,
+    data: impl IntoIterator<Item = EntityKey>,
+) -> RowGroup {
+    let mut group = RowGroup::new(
+        entity_type.clone(),
+        false,
+        false,
+        slog::Logger::root(slog::Discard, slog::o!()),
+    );
+    for key in data {
+        group
+            .push(EntityModification::remove(key, block), block)
+            .unwrap();
+    }
+    group
+}
+
+#[graph::test]
+async fn skip_duplicates_update_returns_ok() {
+    run_test(async |conn, layout| {
+        let entity = entity! { layout.input_schema =>
+            id: "sd1",
+            order: 1,
+            vid: 0i64
+        };
+        let key = SKIP_DUP_MINK_TYPE.key(entity.id());
+        let entities = vec![(key, entity)];
+        let group = store_layer_row_group_update(&SKIP_DUP_MINK_TYPE, 1, entities);
+        let result = layout.update(&LOGGER, conn, &group, &MOCK_STOPWATCH).await;
+        assert_eq!(result.unwrap(), 0);
+    })
+    .await;
+}
+
+#[graph::test]
+async fn skip_duplicates_delete_returns_ok() {
+    run_test(async |conn, layout| {
+        let key = SKIP_DUP_MINK_TYPE.parse_key("sd1").unwrap();
+        let group = store_layer_row_group_delete(&SKIP_DUP_MINK_TYPE, 1, vec![key]);
+        let result = layout.delete(&LOGGER, conn, &group, &MOCK_STOPWATCH).await;
+        assert_eq!(result.unwrap(), 0);
+    })
+    .await;
+}
+
+#[graph::test]
+async fn default_immutable_update_still_errors() {
+    run_test(async |conn, layout| {
+        let entity = entity! { layout.input_schema =>
+            id: "m1",
+            order: 1,
+            vid: 0i64
+        };
+        let key = MINK_TYPE.key(entity.id());
+        let entities = vec![(key, entity)];
+        let group = store_layer_row_group_update(&MINK_TYPE, 1, entities);
+        let result = layout.update(&LOGGER, conn, &group, &MOCK_STOPWATCH).await;
+        assert!(result.is_err());
+    })
+    .await;
+}
+
+#[graph::test]
+async fn default_immutable_delete_still_errors() {
+    run_test(async |conn, layout| {
+        let key = MINK_TYPE.parse_key("m1").unwrap();
+        let group = store_layer_row_group_delete(&MINK_TYPE, 1, vec![key]);
+        let result = layout.delete(&LOGGER, conn, &group, &MOCK_STOPWATCH).await;
+        assert!(result.is_err());
     })
     .await;
 }
