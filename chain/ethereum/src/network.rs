@@ -335,7 +335,8 @@ mod tests {
     use std::sync::Arc;
 
     use crate::{
-        Compression, EthereumAdapter, EthereumAdapterTrait, ProviderEthRpcMetrics, Transport,
+        chain::ChainSettings, Compression, EthereumAdapter, EthereumAdapterTrait,
+        ProviderEthRpcMetrics, Transport,
     };
 
     use super::{EthereumNetworkAdapter, EthereumNetworkAdapters, NodeCapabilities};
@@ -419,6 +420,7 @@ mod tests {
                 provider_metrics.clone(),
                 true,
                 true,
+                Arc::new(ChainSettings::from_env_defaults()),
             )
             .await,
         );
@@ -431,6 +433,7 @@ mod tests {
                 provider_metrics.clone(),
                 true,
                 false,
+                Arc::new(ChainSettings::from_env_defaults()),
             )
             .await,
         );
@@ -524,6 +527,7 @@ mod tests {
                 provider_metrics.clone(),
                 true,
                 true,
+                Arc::new(ChainSettings::from_env_defaults()),
             )
             .await,
         );
@@ -536,6 +540,7 @@ mod tests {
                 provider_metrics.clone(),
                 true,
                 false,
+                Arc::new(ChainSettings::from_env_defaults()),
             )
             .await,
         );
@@ -597,6 +602,7 @@ mod tests {
                 provider_metrics.clone(),
                 true,
                 true,
+                Arc::new(ChainSettings::from_env_defaults()),
             )
             .await,
         );
@@ -609,6 +615,7 @@ mod tests {
                 provider_metrics.clone(),
                 true,
                 false,
+                Arc::new(ChainSettings::from_env_defaults()),
             )
             .await,
         );
@@ -663,6 +670,7 @@ mod tests {
                 provider_metrics.clone(),
                 true,
                 false,
+                Arc::new(ChainSettings::from_env_defaults()),
             )
             .await,
         );
@@ -951,6 +959,7 @@ mod tests {
                 provider_metrics.clone(),
                 true,
                 call_only,
+                Arc::new(ChainSettings::from_env_defaults()),
             )
             .await,
         )

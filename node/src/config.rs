@@ -623,10 +623,10 @@ impl ChainSection {
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
                     protocol: BlockchainKind::Ethereum,
-                    polling_interval: default_polling_interval(),
                     providers: vec![],
                     amp: None,
                     cache_size: 0,
+                    settings: ChainSettings::default(),
                 });
                 entry.providers.push(provider);
             }
@@ -635,16 +635,77 @@ impl ChainSection {
     }
 }
 
+/// Per-chain settings. Flattened into `Chain` so all fields appear as top-level keys in
+/// `[chains.X]` TOML sections. Absent fields fall back to the corresponding `GRAPH_ETHEREUM_*` /
+/// `ETHEREUM_*` environment variable defaults via serde default functions — the same pattern as
+/// `polling_interval`.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
-pub struct Chain {
-    pub shard: String,
-    #[serde(default = "default_blockchain_kind")]
-    pub protocol: BlockchainKind,
+pub struct ChainSettings {
+    /// Set by `polling_interval` (milliseconds). Defaults to `GRAPH_ETHEREUM_POLLING_INTERVAL`.
     #[serde(
         default = "default_polling_interval",
         deserialize_with = "deserialize_duration_millis"
     )]
     pub polling_interval: Duration,
+    /// Set by `json_rpc_timeout` (seconds). Defaults to `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`.
+    #[serde(
+        default = "default_json_rpc_timeout",
+        deserialize_with = "deserialize_duration_secs"
+    )]
+    pub json_rpc_timeout: Duration,
+    /// Defaults to `GRAPH_ETHEREUM_REQUEST_RETRIES`.
+    #[serde(default = "default_request_retries")]
+    pub request_retries: usize,
+    /// Defaults to `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`.
+    #[serde(default = "default_max_block_range_size")]
+    pub max_block_range_size: i32,
+    /// Defaults to `ETHEREUM_BLOCK_BATCH_SIZE`.
+    #[serde(default = "default_block_batch_size")]
+    pub block_batch_size: usize,
+    /// Defaults to `ETHEREUM_BLOCK_PTR_BATCH_SIZE`.
+    #[serde(default = "default_block_ptr_batch_size")]
+    pub block_ptr_batch_size: usize,
+    /// Defaults to `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`.
+    #[serde(default = "default_max_event_only_range")]
+    pub max_event_only_range: i32,
+    /// Defaults to `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`.
+    #[serde(default = "default_target_triggers_per_block_range")]
+    pub target_triggers_per_block_range: u64,
+    /// Defaults to `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`.
+    #[serde(default = "default_get_logs_max_contracts")]
+    pub get_logs_max_contracts: usize,
+    /// Defaults to `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`.
+    #[serde(default = "default_block_ingestor_max_concurrent_json_rpc_calls")]
+    pub block_ingestor_max_concurrent_json_rpc_calls: usize,
+    /// Defaults to `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER`.
+    #[serde(default = "default_genesis_block_number")]
+    pub genesis_block_number: u64,
+}
+
+impl Default for ChainSettings {
+    fn default() -> Self {
+        ChainSettings {
+            polling_interval: default_polling_interval(),
+            json_rpc_timeout: default_json_rpc_timeout(),
+            request_retries: default_request_retries(),
+            max_block_range_size: default_max_block_range_size(),
+            block_batch_size: default_block_batch_size(),
+            block_ptr_batch_size: default_block_ptr_batch_size(),
+            max_event_only_range: default_max_event_only_range(),
+            target_triggers_per_block_range: default_target_triggers_per_block_range(),
+            get_logs_max_contracts: default_get_logs_max_contracts(),
+            block_ingestor_max_concurrent_json_rpc_calls:
+                default_block_ingestor_max_concurrent_json_rpc_calls(),
+            genesis_block_number: default_genesis_block_number(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct Chain {
+    pub shard: String,
+    #[serde(default = "default_blockchain_kind")]
+    pub protocol: BlockchainKind,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
     /// AMP network name alias. When set, AMP manifests using this name will
@@ -656,6 +717,9 @@ pub struct Chain {
     /// older than this are treated as if they have no data.
     #[serde(default)]
     pub cache_size: i32,
+    /// Per-chain settings (flat fields). Absent fields fall back to ENV_VAR defaults.
+    #[serde(flatten)]
+    pub settings: ChainSettings,
 }
 
 fn default_cache_size() -> i32 {
@@ -1303,12 +1367,60 @@ fn default_polling_interval() -> Duration {
     ENV_VARS.ingestor_polling_interval
 }
 
+fn default_json_rpc_timeout() -> Duration {
+    ethereum::ENV_VARS.json_rpc_timeout
+}
+
+fn default_request_retries() -> usize {
+    ethereum::ENV_VARS.request_retries
+}
+
+fn default_max_block_range_size() -> i32 {
+    ethereum::ENV_VARS.max_block_range_size
+}
+
+fn default_block_batch_size() -> usize {
+    ethereum::ENV_VARS.block_batch_size
+}
+
+fn default_block_ptr_batch_size() -> usize {
+    ethereum::ENV_VARS.block_ptr_batch_size
+}
+
+fn default_max_event_only_range() -> i32 {
+    ethereum::ENV_VARS.max_event_only_range
+}
+
+fn default_target_triggers_per_block_range() -> u64 {
+    ethereum::ENV_VARS.target_triggers_per_block_range
+}
+
+fn default_get_logs_max_contracts() -> usize {
+    ethereum::ENV_VARS.get_logs_max_contracts
+}
+
+fn default_block_ingestor_max_concurrent_json_rpc_calls() -> usize {
+    ethereum::ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls
+}
+
+fn default_genesis_block_number() -> u64 {
+    ethereum::ENV_VARS.genesis_block_number
+}
+
 fn deserialize_duration_millis<'de, D>(data: D) -> Result<Duration, D::Error>
 where
     D: Deserializer<'de>,
 {
     let millis = u64::deserialize(data)?;
     Ok(Duration::from_millis(millis))
+}
+
+fn deserialize_duration_secs<'de, D>(data: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let secs = u64::deserialize(data)?;
+    Ok(Duration::from_secs(secs))
 }
 
 // From https://github.com/serde-rs/serde/issues/889#issuecomment-295988865
@@ -1349,7 +1461,8 @@ mod tests {
     use crate::config::{default_polling_interval, ChainSection, Web3Rule};
 
     use super::{
-        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Shard, Transport, Web3Provider,
+        Chain, ChainSettings, Config, FirehoseProvider, Provider, ProviderDetails, Shard,
+        Transport, Web3Provider,
     };
     use graph::blockchain::BlockchainKind;
     use graph::firehose::SubgraphLimit;
@@ -1391,10 +1504,10 @@ mod tests {
             Chain {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Ethereum,
-                polling_interval: default_polling_interval(),
                 providers: vec![],
                 amp: None,
                 cache_size: 0,
+                settings: ChainSettings::default(),
             },
             actual
         );
@@ -1415,10 +1528,10 @@ mod tests {
             Chain {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Near,
-                polling_interval: default_polling_interval(),
                 providers: vec![],
                 amp: None,
                 cache_size: 0,
+                settings: ChainSettings::default(),
             },
             actual
         );
@@ -1978,7 +2091,12 @@ mod tests {
 
         assert_eq!(
             default,
-            actual.chains.get("mainnet").unwrap().polling_interval
+            actual
+                .chains
+                .get("mainnet")
+                .unwrap()
+                .settings
+                .polling_interval
         );
 
         // Polling interval set explicitly, use that
@@ -1998,7 +2116,12 @@ mod tests {
 
         assert_eq!(
             different,
-            actual.chains.get("mainnet").unwrap().polling_interval
+            actual
+                .chains
+                .get("mainnet")
+                .unwrap()
+                .settings
+                .polling_interval
         );
     }
 

@@ -1,4 +1,5 @@
 use ethereum::{
+    chain::ChainSettings,
     network::{EthereumNetworkAdapter, EthereumNetworkAdapters},
     BlockIngestor,
 };
@@ -27,7 +28,7 @@ use graph::{
 use graph_chain_ethereum as ethereum;
 use graph_store_postgres::{BlockStore, ChainHeadUpdateListener};
 
-use std::{any::Any, cmp::Ordering, sync::Arc, time::Duration};
+use std::{any::Any, cmp::Ordering, sync::Arc};
 
 use crate::chain::{
     create_ethereum_networks, create_firehose_networks, networks_as_chains, AnyChainFilter,
@@ -39,9 +40,7 @@ pub struct EthAdapterConfig {
     pub chain_id: ChainName,
     pub adapters: Vec<EthereumNetworkAdapter>,
     pub call_only: Vec<EthereumNetworkAdapter>,
-    // polling interval is set per chain so if set all adapter configuration will have
-    // the same value.
-    pub polling_interval: Option<Duration>,
+    pub settings: Arc<ChainSettings>,
 }
 
 #[derive(Debug, Clone)]
@@ -236,7 +235,7 @@ impl Networks {
                  chain_id,
                  mut adapters,
                  call_only: _,
-                 polling_interval: _,
+                 settings: _,
              }| {
                 adapters.sort_by(|a, b| {
                     a.capabilities

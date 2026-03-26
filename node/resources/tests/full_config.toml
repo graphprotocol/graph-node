@@ -55,6 +55,16 @@ provider = [
 
 [chains.ropsten]
 shard = "primary"
+json_rpc_timeout = 60
+request_retries = 5
+max_block_range_size = 500
+block_batch_size = 5
+block_ptr_batch_size = 10
+max_event_only_range = 200
+target_triggers_per_block_range = 50
+get_logs_max_contracts = 1000
+block_ingestor_max_concurrent_json_rpc_calls = 500
+genesis_block_number = 0
 provider = [
   { label = "ropsten-0", url = "http://rpc.ropsten.io", transport = "rpc", features = ["archive", "traces"] }
 ]

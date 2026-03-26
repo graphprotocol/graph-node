@@ -47,7 +47,8 @@ use graph::prelude::{
 use graph::slog::{info, o, Logger};
 use graph_chain_ethereum::network::{EthereumNetworkAdapter, EthereumNetworkAdapters};
 use graph_chain_ethereum::{
-    Chain, EthereumAdapter, NodeCapabilities, ProviderEthRpcMetrics, Transport,
+    chain::ChainSettings, Chain, EthereumAdapter, NodeCapabilities, ProviderEthRpcMetrics,
+    Transport,
 };
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_graphql::prelude::GraphQlRunner;
@@ -615,6 +616,7 @@ async fn setup_chain(
             provider_metrics,
             true,
             false,
+            Arc::new(ChainSettings::from_env_defaults()),
         )
         .await,
     );
@@ -639,6 +641,7 @@ async fn setup_chain(
         None,
     ));
 
+    let chain_settings = Arc::new(ChainSettings::from_env_defaults());
     let chain = Chain::new(
         logger_factory,
         stores.network_name.clone(),
@@ -657,8 +660,8 @@ async fn setup_chain(
         Arc::new(TestRuntimeAdapterBuilder),
         eth_adapters,
         graph::prelude::ENV_VARS.reorg_threshold(),
-        graph::prelude::ENV_VARS.ingestor_polling_interval,
         true,
+        chain_settings,
     );
 
     Ok(Arc::new(chain))
