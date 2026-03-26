@@ -258,6 +258,15 @@ importers:
         specifier: 0.31.0
         version: 0.31.0
 
+  tests/runner-tests/skip-duplicates:
+    devDependencies:
+      '@graphprotocol/graph-cli':
+        specifier: 0.60.0
+        version: 0.60.0(@types/node@24.3.0)(bufferutil@4.0.9)(encoding@0.1.13)(node-fetch@2.7.0(encoding@0.1.13))(typescript@5.9.2)(utf-8-validate@5.0.10)
+      '@graphprotocol/graph-ts':
+        specifier: 0.31.0
+        version: 0.31.0
+
   tests/runner-tests/typename:
     devDependencies:
       '@graphprotocol/graph-cli':
@@ -2678,11 +2687,6 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  semver@7.6.3:
-    resolution: {integrity: sha512-oVekP1cKtI+CTDvHWYFUcMtsK/00wmAEfyqKfNdARm8u1wNVhSgaX7A8d4UuIlUI5e84iEwOhs7ZPYRmzU9U6A==}
-    engines: {node: '>=10'}
-    hasBin: true
-
   semver@7.7.3:
     resolution: {integrity: sha512-SdsKMrI9TdgjdweUSR9MweHA4EJ8YxHn8DFaDisvhVlUOe4BF1tLD7GAj0lIqWVl+dPb/rExr0Btby5loQm20Q==}
     engines: {node: '>=10'}
@@ -3739,7 +3743,7 @@ snapshots:
       chalk: 4.1.2
       clean-stack: 3.0.1
       cli-progress: 3.12.0
-      debug: 4.4.1(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@8.1.1)
       ejs: 3.1.10
       get-package-type: 0.1.0
       globby: 11.1.0
@@ -3812,7 +3816,7 @@ snapshots:
       chalk: 4.1.2
       clean-stack: 3.0.1
       cli-progress: 3.12.0
-      debug: 4.4.1(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@8.1.1)
       ejs: 3.1.10
       fs-extra: 9.1.0
       get-package-type: 0.1.0
@@ -3824,7 +3828,7 @@ snapshots:
       natural-orderby: 2.0.3
       object-treeify: 1.1.33
       password-prompt: 1.1.3
-      semver: 7.6.3
+      semver: 7.7.4
       string-width: 4.2.3
       strip-ansi: 6.0.1
       supports-color: 8.1.1
@@ -3886,7 +3890,7 @@ snapshots:
     dependencies:
       '@oclif/core': 2.16.0(@types/node@24.3.0)(typescript@5.9.2)
       chalk: 4.1.2
-      debug: 4.4.1(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - '@swc/core'
       - '@swc/wasm'
@@ -4583,11 +4587,9 @@ snapshots:
     optionalDependencies:
       supports-color: 8.1.1
 
-  debug@4.4.1(supports-color@8.1.1):
+  debug@4.4.1:
     dependencies:
       ms: 2.1.3
-    optionalDependencies:
-      supports-color: 8.1.1
 
   debug@4.4.3(supports-color@8.1.1):
     dependencies:
@@ -4664,7 +4666,7 @@ snapshots:
 
   dns-over-http-resolver@1.2.3(node-fetch@2.7.0(encoding@0.1.13)):
     dependencies:
-      debug: 4.4.1(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@8.1.1)
       native-fetch: 3.0.0(node-fetch@2.7.0(encoding@0.1.13))
       receptacle: 1.3.2
     transitivePeerDependencies:
@@ -5272,7 +5274,7 @@ snapshots:
       any-signal: 2.1.2
       blob-to-it: 1.0.4
       browser-readablestream-to-it: 1.0.3
-      debug: 4.4.1(supports-color@8.1.1)
+      debug: 4.4.3(supports-color@8.1.1)
       err-code: 3.0.1
       ipfs-core-types: 0.9.0(node-fetch@2.7.0(encoding@0.1.13))
       ipfs-unixfs: 6.0.9
@@ -5301,7 +5303,7 @@ snapshots:
       '@ipld/dag-pb': 2.1.18
       abort-controller: 3.0.0
       any-signal: 2.1.2
-      debug: 4.4.1(supports-color@8.1.1)
+      debug: 4.4.1
       err-code: 3.0.1
       ipfs-core-types: 0.9.0(node-fetch@2.7.0(encoding@0.1.13))
       ipfs-core-utils: 0.13.0(encoding@0.1.13)(node-fetch@2.7.0(encoding@0.1.13))
@@ -6169,8 +6171,6 @@ snapshots:
   semver@7.4.0:
     dependencies:
       lru-cache: 6.0.0
-
-  semver@7.6.3: {}
 
   semver@7.7.3: {}
 

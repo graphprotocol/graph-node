@@ -1381,3 +1381,40 @@ async fn aggregation_current_bucket() {
         })
     );
 }
+
+#[graph::test]
+async fn skip_duplicates() {
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("skip_duplicates", "skip-duplicates").await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        push_test_polling_trigger(&mut block_1);
+        let mut block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        push_test_polling_trigger(&mut block_2);
+        let mut block_3 = empty_block(block_2.ptr(), test_ptr(3));
+        push_test_polling_trigger(&mut block_3);
+        let mut block_4 = empty_block(block_3.ptr(), test_ptr(4));
+        push_test_polling_trigger(&mut block_4);
+        vec![block_0, block_1, block_2, block_3, block_4]
+    };
+
+    let stop_block = blocks.last().unwrap().block.ptr();
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
+
+    ctx.start_and_sync_to(stop_block).await;
+
+    let query_res = ctx
+        .query(r#"{ ping(id: "duplicate-entity") { id, value } }"#)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! {
+            ping: object! { id: "duplicate-entity", value: "ping" }
+        })
+    );
+}
