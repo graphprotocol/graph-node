@@ -489,7 +489,7 @@ impl ChainSection {
         }
 
         for (name, chain) in self.chains.iter_mut() {
-            chain.validate()?;
+            chain.validate(name)?;
             if chain.cache_size <= reorg_threshold {
                 return Err(anyhow!(
                     "chain '{}': cache_size ({}) must be greater than reorg_threshold ({})",
@@ -701,6 +701,33 @@ impl Default for ChainSettings {
     }
 }
 
+impl ChainSettings {
+    fn validate(&self) -> Result<()> {
+        anyhow::ensure!(
+            self.max_block_range_size > 0,
+            "max_block_range_size must be > 0"
+        );
+        anyhow::ensure!(
+            self.max_event_only_range > 0,
+            "max_event_only_range must be > 0"
+        );
+        anyhow::ensure!(self.block_batch_size > 0, "block_batch_size must be > 0");
+        anyhow::ensure!(
+            self.block_ptr_batch_size > 0,
+            "block_ptr_batch_size must be > 0"
+        );
+        anyhow::ensure!(
+            self.block_ingestor_max_concurrent_json_rpc_calls > 0,
+            "block_ingestor_max_concurrent_json_rpc_calls must be > 0"
+        );
+        anyhow::ensure!(
+            self.get_logs_max_contracts > 0,
+            "get_logs_max_contracts must be > 0"
+        );
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Chain {
     pub shard: String,
@@ -731,18 +758,22 @@ fn default_blockchain_kind() -> BlockchainKind {
 }
 
 impl Chain {
-    fn validate(&mut self) -> Result<()> {
+    fn validate(&mut self, name: &str) -> Result<()> {
         let mut labels = self.providers.iter().map(|p| &p.label).collect_vec();
         labels.sort();
         labels.dedup();
         if labels.len() != self.providers.len() {
-            return Err(anyhow!("Provider labels must be unique"));
+            return Err(anyhow!("chain {}: provider labels must be unique", name));
         }
 
         // `Config` validates that `self.shard` references a configured shard
         for provider in self.providers.iter_mut() {
             provider.validate()?
         }
+
+        self.settings
+            .validate()
+            .map_err(|e| anyhow!("chain {}: {}", name, e))?;
 
         Ok(())
     }
@@ -1458,7 +1489,15 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::config::{default_polling_interval, ChainSection, Web3Rule};
+    use std::time::Duration;
+
+    use crate::config::{
+        default_block_batch_size, default_block_ingestor_max_concurrent_json_rpc_calls,
+        default_block_ptr_batch_size, default_genesis_block_number, default_get_logs_max_contracts,
+        default_json_rpc_timeout, default_max_block_range_size, default_max_event_only_range,
+        default_polling_interval, default_request_retries, default_target_triggers_per_block_range,
+        ChainSection, Web3Rule,
+    };
 
     use super::{
         Chain, ChainSettings, Config, FirehoseProvider, Provider, ProviderDetails, Shard,
@@ -2340,5 +2379,238 @@ fdw_pool_size = [
 
         // Node does not match and kill switch is on
         assert!(!make_config("query-0", "index-0", true).is_block_ingestor());
+    }
+
+    #[test]
+    fn chain_settings_valid_overrides() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            json_rpc_timeout = 300
+            request_retries = 15
+            max_block_range_size = 2000
+            block_batch_size = 20
+            block_ptr_batch_size = 50
+            max_event_only_range = 1000
+            target_triggers_per_block_range = 200
+            get_logs_max_contracts = 5000
+            block_ingestor_max_concurrent_json_rpc_calls = 500
+            genesis_block_number = 1
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        assert!(section.validate().is_ok());
+        let settings = &section.chains.get("mainnet").unwrap().settings;
+        assert_eq!(settings.json_rpc_timeout, Duration::from_secs(300));
+        assert_eq!(settings.request_retries, 15);
+        assert_eq!(settings.max_block_range_size, 2000);
+        assert_eq!(settings.block_batch_size, 20);
+        assert_eq!(settings.block_ptr_batch_size, 50);
+        assert_eq!(settings.max_event_only_range, 1000);
+        assert_eq!(settings.target_triggers_per_block_range, 200);
+        assert_eq!(settings.get_logs_max_contracts, 5000);
+        assert_eq!(settings.block_ingestor_max_concurrent_json_rpc_calls, 500);
+        assert_eq!(settings.genesis_block_number, 1);
+    }
+
+    #[test]
+    fn chain_settings_defaults_match_env_vars() {
+        let settings = ChainSettings::default();
+        assert_eq!(settings.polling_interval, default_polling_interval());
+        assert_eq!(settings.json_rpc_timeout, default_json_rpc_timeout());
+        assert_eq!(settings.request_retries, default_request_retries());
+        assert_eq!(
+            settings.max_block_range_size,
+            default_max_block_range_size()
+        );
+        assert_eq!(settings.block_batch_size, default_block_batch_size());
+        assert_eq!(
+            settings.block_ptr_batch_size,
+            default_block_ptr_batch_size()
+        );
+        assert_eq!(
+            settings.max_event_only_range,
+            default_max_event_only_range()
+        );
+        assert_eq!(
+            settings.target_triggers_per_block_range,
+            default_target_triggers_per_block_range()
+        );
+        assert_eq!(
+            settings.get_logs_max_contracts,
+            default_get_logs_max_contracts()
+        );
+        assert_eq!(
+            settings.block_ingestor_max_concurrent_json_rpc_calls,
+            default_block_ingestor_max_concurrent_json_rpc_calls()
+        );
+        assert_eq!(
+            settings.genesis_block_number,
+            default_genesis_block_number()
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_max_block_range_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            max_block_range_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("max_block_range_size must be > 0"),
+            "expected max_block_range_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_negative_max_block_range_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            max_block_range_size = -1
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("max_block_range_size must be > 0"),
+            "expected max_block_range_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_max_event_only_range() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            max_event_only_range = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("max_event_only_range must be > 0"),
+            "expected max_event_only_range error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_block_batch_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            block_batch_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("block_batch_size must be > 0"),
+            "expected block_batch_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_block_ptr_batch_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            block_ptr_batch_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("block_ptr_batch_size must be > 0"),
+            "expected block_ptr_batch_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_concurrent_json_rpc_calls() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            block_ingestor_max_concurrent_json_rpc_calls = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("block_ingestor_max_concurrent_json_rpc_calls must be > 0"),
+            "expected block_ingestor_max_concurrent_json_rpc_calls error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_get_logs_max_contracts() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            get_logs_max_contracts = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("get_logs_max_contracts must be > 0"),
+            "expected get_logs_max_contracts error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_validation_error_includes_chain_name() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [my_chain]
+            shard = "primary"
+            block_batch_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("my_chain"),
+            "expected chain name in error, got: {err}"
+        );
     }
 }
