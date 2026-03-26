@@ -373,6 +373,7 @@ impl Layout {
             position: position as u32,
             is_account_like: false,
             immutable: false,
+            skip_duplicates: false,
             has_causality_region: false,
         }
     }
@@ -1662,6 +1663,8 @@ pub struct Table {
     /// deleted
     pub(crate) immutable: bool,
 
+    pub(crate) skip_duplicates: bool,
+
     /// Whether this table has an explicit `causality_region` column. If `false`, then the column is
     /// not present and the causality region for all rows is implicitly `0` (equivalent to CasualityRegion::ONCHAIN).
     pub(crate) has_causality_region: bool,
@@ -1692,6 +1695,7 @@ impl Table {
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
         let immutable = defn.is_immutable();
+        let skip_duplicates = defn.skip_duplicates();
         let nsp = catalog.site.namespace.clone();
         let table = Table {
             object: defn.cheap_clone(),
@@ -1705,6 +1709,7 @@ impl Table {
             columns,
             position,
             immutable,
+            skip_duplicates,
             has_causality_region,
         };
         Ok(table)
@@ -1722,6 +1727,7 @@ impl Table {
             is_account_like: self.is_account_like,
             position: self.position,
             immutable: self.immutable,
+            skip_duplicates: self.skip_duplicates,
             has_causality_region: self.has_causality_region,
         };
 
