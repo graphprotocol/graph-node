@@ -104,7 +104,12 @@ pub fn main() -> anyhow::Result<()> {
             };
             mods.push(md);
         }
-        let mut group = RowGroup::new(THING_TYPE.clone(), false, false);
+        let mut group = RowGroup::new(
+            THING_TYPE.clone(),
+            false,
+            false,
+            slog::Logger::root(slog::Discard, slog::o!()),
+        );
 
         let start = Instant::now();
         for md in mods {

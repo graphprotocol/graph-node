@@ -4,6 +4,8 @@ use std::{
     sync::Arc,
 };
 
+use slog::{warn, Logger};
+
 use crate::{
     blockchain::{block_stream::FirehoseCursor, BlockPtr, BlockTime},
     cheap_clone::CheapClone,
@@ -345,6 +347,7 @@ pub struct RowGroup {
 
     immutable: bool,
     skip_duplicates: bool,
+    logger: Logger,
 
     /// Map the `key.entity_id` of all entries in `rows` to the index with
     /// the most recent entry for that id to speed up lookups.
@@ -352,12 +355,18 @@ pub struct RowGroup {
 }
 
 impl RowGroup {
-    pub fn new(entity_type: EntityType, immutable: bool, skip_duplicates: bool) -> Self {
+    pub fn new(
+        entity_type: EntityType,
+        immutable: bool,
+        skip_duplicates: bool,
+        logger: Logger,
+    ) -> Self {
         Self {
             entity_type,
             rows: Vec::new(),
             immutable,
             skip_duplicates,
+            logger,
             last_mod: LastMod::new(),
         }
     }
@@ -490,6 +499,13 @@ impl RowGroup {
                         .and_then(|&idx| self.rows.get(idx))
                     {
                         Some(prev) if prev.block() != row.block() => {
+                            if self.skip_duplicates {
+                                warn!(self.logger, "Skipping duplicate insert for immutable entity";
+                                    "entity" => row.key().to_string(),
+                                    "block" => row.block(),
+                                    "previous_block" => prev.block());
+                                return Ok(());
+                            }
                             return Err(StoreError::Input(
                                 format!("entity {} is immutable; inserting it at block {} is not possible as it was already inserted at block {}",
                                         row.key(), row.block(), prev.block())));
@@ -500,6 +516,12 @@ impl RowGroup {
                     self.push_row(row);
                 }
                 EntityModification::Overwrite { .. } | EntityModification::Remove { .. } => {
+                    if self.skip_duplicates {
+                        warn!(self.logger, "Skipping unsupported operation for immutable entity";
+                            "entity_type" => self.entity_type.to_string(),
+                            "operation" => format!("{:?}", row));
+                        return Ok(());
+                    }
                     return Err(internal_error!(
                         "immutable entity type {} only allows inserts, not {:?}",
                         self.entity_type,
@@ -606,8 +628,18 @@ impl RowGroup {
 pub struct RowGroupForPerfTest(RowGroup);
 
 impl RowGroupForPerfTest {
-    pub fn new(entity_type: EntityType, immutable: bool, skip_duplicates: bool) -> Self {
-        Self(RowGroup::new(entity_type, immutable, skip_duplicates))
+    pub fn new(
+        entity_type: EntityType,
+        immutable: bool,
+        skip_duplicates: bool,
+        logger: Logger,
+    ) -> Self {
+        Self(RowGroup::new(
+            entity_type,
+            immutable,
+            skip_duplicates,
+            logger,
+        ))
     }
 
     pub fn push(&mut self, emod: EntityModification, block: BlockNumber) -> Result<(), StoreError> {
@@ -663,11 +695,15 @@ impl<'a> Iterator for ClampsByBlockIterator<'a> {
 #[derive(Debug, CacheWeight)]
 pub struct RowGroups {
     pub groups: Vec<RowGroup>,
+    logger: Logger,
 }
 
 impl RowGroups {
-    fn new() -> Self {
-        Self { groups: Vec::new() }
+    fn new(logger: Logger) -> Self {
+        Self {
+            groups: Vec::new(),
+            logger,
+        }
     }
 
     fn group(&self, entity_type: &EntityType) -> Option<&RowGroup> {
@@ -692,6 +728,7 @@ impl RowGroups {
                     entity_type.clone(),
                     immutable,
                     skip_duplicates,
+                    self.logger.clone(),
                 ));
                 // unwrap: we just pushed an entry
                 self.groups.last_mut().unwrap()
@@ -790,6 +827,7 @@ impl Batch {
         deterministic_errors: Vec<SubgraphError>,
         offchain_to_remove: Vec<StoredDynamicDataSource>,
         is_non_fatal_errors_active: bool,
+        logger: Logger,
     ) -> Result<Self, StoreError> {
         let block = block_ptr.number;
 
@@ -803,7 +841,7 @@ impl Batch {
             EntityModification::Remove { .. } => 0,
         });
 
-        let mut mods = RowGroups::new();
+        let mut mods = RowGroups::new(logger);
 
         for m in raw_mods {
             mods.group_entry(&m.key().entity_type).push(m, block)?;
@@ -1054,6 +1092,8 @@ mod test {
     };
     use lazy_static::lazy_static;
 
+    use slog::Logger;
+
     use super::{LastMod, RowGroup};
 
     #[track_caller]
@@ -1087,6 +1127,7 @@ mod test {
             rows,
             immutable: false,
             skip_duplicates: false,
+            logger: Logger::root(slog::Discard, slog::o!()),
             last_mod,
         };
         let act = group
@@ -1127,6 +1168,8 @@ mod test {
       type Thing @entity { id: ID!, count: Int! }
       type RowGroup @entity { id: ID! }
       type Entry @entity { id: ID! }
+      type ImmThing @entity(immutable: true) { id: ID!, count: Int! }
+      type SkipDupThing @entity(immutable: true, skipDuplicates: true) { id: ID!, count: Int! }
     "#;
     lazy_static! {
         static ref DEPLOYMENT: DeploymentHash = DeploymentHash::new("batchAppend").unwrap();
@@ -1135,6 +1178,8 @@ mod test {
         static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
         static ref ROW_GROUP_TYPE: EntityType = SCHEMA.entity_type("RowGroup").unwrap();
         static ref ENTRY_TYPE: EntityType = SCHEMA.entity_type("Entry").unwrap();
+        static ref IMM_THING_TYPE: EntityType = SCHEMA.entity_type("ImmThing").unwrap();
+        static ref SKIP_DUP_THING_TYPE: EntityType = SCHEMA.entity_type("SkipDupThing").unwrap();
     }
 
     /// Convenient notation for changes to a fixed entity
@@ -1194,7 +1239,12 @@ mod test {
     impl Group {
         fn new() -> Self {
             Self {
-                group: RowGroup::new(THING_TYPE.clone(), false, false),
+                group: RowGroup::new(
+                    THING_TYPE.clone(),
+                    false,
+                    false,
+                    Logger::root(slog::Discard, slog::o!()),
+                ),
             }
         }
 
@@ -1298,5 +1348,81 @@ mod test {
 
         let op = group.last_op(&key, 0);
         assert_eq!(None, op);
+    }
+
+    fn make_insert(entity_type: &EntityType, id: &str, block: BlockNumber) -> EntityModification {
+        EntityModification::Insert {
+            key: entity_type.parse_key(id).unwrap(),
+            data: Arc::new(entity! { SCHEMA => id: id, count: block }),
+            block,
+            end: None,
+        }
+    }
+
+    fn make_overwrite(
+        entity_type: &EntityType,
+        id: &str,
+        block: BlockNumber,
+    ) -> EntityModification {
+        EntityModification::Overwrite {
+            key: entity_type.parse_key(id).unwrap(),
+            data: Arc::new(entity! { SCHEMA => id: id, count: block }),
+            block,
+            end: None,
+        }
+    }
+
+    fn make_remove(entity_type: &EntityType, id: &str, block: BlockNumber) -> EntityModification {
+        EntityModification::Remove {
+            key: entity_type.parse_key(id).unwrap(),
+            block,
+        }
+    }
+
+    fn discard_logger() -> Logger {
+        Logger::root(slog::Discard, slog::o!())
+    }
+
+    #[test]
+    fn append_row_immutable_default_rejects_cross_block_duplicate() {
+        let mut group = RowGroup::new(IMM_THING_TYPE.clone(), true, false, discard_logger());
+        let res = group.push(make_insert(&IMM_THING_TYPE, "one", 1), 1);
+        assert!(res.is_ok());
+        let res = group.push(make_insert(&IMM_THING_TYPE, "one", 2), 2);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn append_row_skip_duplicates_allows_cross_block_duplicate() {
+        let mut group = RowGroup::new(SKIP_DUP_THING_TYPE.clone(), true, true, discard_logger());
+        let res = group.push(make_insert(&SKIP_DUP_THING_TYPE, "one", 1), 1);
+        assert!(res.is_ok());
+        let res = group.push(make_insert(&SKIP_DUP_THING_TYPE, "one", 2), 2);
+        assert!(res.is_ok());
+        assert_eq!(group.row_count(), 1);
+    }
+
+    #[test]
+    fn append_row_skip_duplicates_allows_overwrite() {
+        let mut group = RowGroup::new(SKIP_DUP_THING_TYPE.clone(), true, true, discard_logger());
+        let res = group.append_row(make_overwrite(&SKIP_DUP_THING_TYPE, "one", 1));
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn append_row_skip_duplicates_allows_remove() {
+        let mut group = RowGroup::new(SKIP_DUP_THING_TYPE.clone(), true, true, discard_logger());
+        let res = group.append_row(make_remove(&SKIP_DUP_THING_TYPE, "one", 1));
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn append_row_skip_duplicates_same_block_still_pushes() {
+        let mut group = RowGroup::new(SKIP_DUP_THING_TYPE.clone(), true, true, discard_logger());
+        let res = group.push(make_insert(&SKIP_DUP_THING_TYPE, "one", 1), 1);
+        assert!(res.is_ok());
+        let res = group.push(make_insert(&SKIP_DUP_THING_TYPE, "one", 1), 1);
+        assert!(res.is_ok());
+        assert_eq!(group.row_count(), 2);
     }
 }

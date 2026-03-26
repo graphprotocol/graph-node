@@ -1839,6 +1839,7 @@ impl WritableStoreTrait for WritableStore {
             deterministic_errors,
             processed_data_sources,
             is_non_fatal_errors_active,
+            self.store.logger.clone(),
         )?;
         self.writer.write(batch, stopwatch).await?;
 

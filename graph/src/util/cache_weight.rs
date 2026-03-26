@@ -188,6 +188,12 @@ impl CacheWeight for EntityType {
     }
 }
 
+impl CacheWeight for slog::Logger {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
 impl CacheWeight for [u8; 32] {
     fn indirect_weight(&self) -> usize {
         0
