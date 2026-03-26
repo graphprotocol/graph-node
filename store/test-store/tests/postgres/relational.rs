@@ -996,7 +996,7 @@ async fn conflicting_entity() {
             let fred = entity! { layout.input_schema => id: id.clone(), name: id.clone() };
             let fred = Arc::new(fred);
             let types: Vec<_> = types.into_iter().cloned().collect();
-            let mut group = RowGroup::new(entity_type.clone(), false);
+            let mut group = RowGroup::new(entity_type.clone(), false, false);
             group
                 .push(
                     EntityModification::Insert {

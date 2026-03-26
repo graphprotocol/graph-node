@@ -344,6 +344,7 @@ pub struct RowGroup {
     rows: Vec<EntityModification>,
 
     immutable: bool,
+    skip_duplicates: bool,
 
     /// Map the `key.entity_id` of all entries in `rows` to the index with
     /// the most recent entry for that id to speed up lookups.
@@ -351,11 +352,12 @@ pub struct RowGroup {
 }
 
 impl RowGroup {
-    pub fn new(entity_type: EntityType, immutable: bool) -> Self {
+    pub fn new(entity_type: EntityType, immutable: bool, skip_duplicates: bool) -> Self {
         Self {
             entity_type,
             rows: Vec::new(),
             immutable,
+            skip_duplicates,
             last_mod: LastMod::new(),
         }
     }
@@ -604,8 +606,8 @@ impl RowGroup {
 pub struct RowGroupForPerfTest(RowGroup);
 
 impl RowGroupForPerfTest {
-    pub fn new(entity_type: EntityType, immutable: bool) -> Self {
-        Self(RowGroup::new(entity_type, immutable))
+    pub fn new(entity_type: EntityType, immutable: bool, skip_duplicates: bool) -> Self {
+        Self(RowGroup::new(entity_type, immutable, skip_duplicates))
     }
 
     pub fn push(&mut self, emod: EntityModification, block: BlockNumber) -> Result<(), StoreError> {
@@ -685,8 +687,12 @@ impl RowGroups {
             Some(pos) => &mut self.groups[pos],
             None => {
                 let immutable = entity_type.is_immutable();
-                self.groups
-                    .push(RowGroup::new(entity_type.clone(), immutable));
+                let skip_duplicates = entity_type.skip_duplicates();
+                self.groups.push(RowGroup::new(
+                    entity_type.clone(),
+                    immutable,
+                    skip_duplicates,
+                ));
                 // unwrap: we just pushed an entry
                 self.groups.last_mut().unwrap()
             }
@@ -1080,6 +1086,7 @@ mod test {
             entity_type: ENTRY_TYPE.clone(),
             rows,
             immutable: false,
+            skip_duplicates: false,
             last_mod,
         };
         let act = group
@@ -1187,7 +1194,7 @@ mod test {
     impl Group {
         fn new() -> Self {
             Self {
-                group: RowGroup::new(THING_TYPE.clone(), false),
+                group: RowGroup::new(THING_TYPE.clone(), false, false),
             }
         }
 
