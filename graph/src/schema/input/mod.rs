@@ -132,6 +132,14 @@ impl TypeInfo {
         }
     }
 
+    fn skip_duplicates(&self) -> bool {
+        match self {
+            TypeInfo::Object(obj_type) => obj_type.immutable && obj_type.skip_duplicates,
+            TypeInfo::Interface(_) => false,
+            TypeInfo::Aggregation(_) => false,
+        }
+    }
+
     fn kind(&self) -> TypeKind {
         match self {
             TypeInfo::Object(_) => TypeKind::Object,
@@ -1209,6 +1217,13 @@ impl InputSchema {
         self.type_info(entity_type)
             .ok()
             .map(|ti| ti.is_immutable())
+            .unwrap_or(false)
+    }
+
+    pub(in crate::schema) fn skip_duplicates(&self, entity_type: Atom) -> bool {
+        self.type_info(entity_type)
+            .ok()
+            .map(|ti| ti.skip_duplicates())
             .unwrap_or(false)
     }
 
