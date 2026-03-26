@@ -770,43 +770,59 @@ impl Layout {
         // We insert the entities in chunks to make sure each operation does
         // not exceed the maximum number of bindings allowed in queries
         let chunk_size = InsertQuery::chunk_size(table);
+        let mut affected_rows: usize = 0;
+        let mut expected_rows: usize = 0;
         for chunk in group.write_chunks(chunk_size) {
             // Empty chunks would lead to invalid SQL
             if !chunk.is_empty() {
-                if let Err(e) = InsertQuery::new(table, &chunk)?.execute(conn).await {
-                    // We occasionally get these errors but it's entirely
-                    // unclear what causes them. We work around that by
-                    // switching to row-by-row inserts until we can figure
-                    // out what the underlying cause is
-                    let err_msg = e.to_string();
-                    if !err_msg.contains("value too large to transmit") {
-                        let (block, msg) = chunk_details(&chunk);
-                        return Err(StoreError::write_failure(
-                            e,
-                            table.object.as_str(),
-                            block,
-                            msg,
-                        ));
+                expected_rows += chunk.len();
+                match InsertQuery::new(table, &chunk)?.execute(conn).await {
+                    Ok(count) => {
+                        affected_rows += count;
                     }
-                    let (block, msg) = chunk_details(&chunk);
-                    warn!(logger, "Insert of entire chunk failed. Trying row by row insert.";
-                        "table" => table.object.as_str(),
-                        "block" => block,
-                        "error" => err_msg,
-                        "details" => msg
-                    );
-                    for single_chunk in chunk.as_single_writes() {
-                        InsertQuery::new(table, &single_chunk)?
-                            .execute(conn)
-                            .await
-                            .map_err(|e| {
-                                let (block, msg) = chunk_details(&single_chunk);
-                                let msg = format!("{}: offending row {:?}", msg, single_chunk);
-                                StoreError::write_failure(e, table.object.as_str(), block, msg)
-                            })?;
+                    Err(e) => {
+                        // We occasionally get these errors but it's entirely
+                        // unclear what causes them. We work around that by
+                        // switching to row-by-row inserts until we can figure
+                        // out what the underlying cause is
+                        let err_msg = e.to_string();
+                        if !err_msg.contains("value too large to transmit") {
+                            let (block, msg) = chunk_details(&chunk);
+                            return Err(StoreError::write_failure(
+                                e,
+                                table.object.as_str(),
+                                block,
+                                msg,
+                            ));
+                        }
+                        let (block, msg) = chunk_details(&chunk);
+                        warn!(logger, "Insert of entire chunk failed. Trying row by row insert.";
+                            "table" => table.object.as_str(),
+                            "block" => block,
+                            "error" => err_msg,
+                            "details" => msg
+                        );
+                        for single_chunk in chunk.as_single_writes() {
+                            let count = InsertQuery::new(table, &single_chunk)?
+                                .execute(conn)
+                                .await
+                                .map_err(|e| {
+                                    let (block, msg) = chunk_details(&single_chunk);
+                                    let msg = format!("{}: offending row {:?}", msg, single_chunk);
+                                    StoreError::write_failure(e, table.object.as_str(), block, msg)
+                                })?;
+                            affected_rows += count;
+                        }
                     }
                 }
             }
+        }
+        if affected_rows < expected_rows && table.immutable && table.skip_duplicates {
+            warn!(logger, "Cross-batch duplicate inserts skipped by ON CONFLICT DO NOTHING";
+                "entity_type" => table.object.as_str(),
+                "expected_rows" => expected_rows,
+                "affected_rows" => affected_rows,
+                "skipped" => expected_rows - affected_rows);
         }
         Ok(())
     }
