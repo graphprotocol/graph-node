@@ -2059,6 +2059,15 @@ mod validations {
                         Ok(b) => b.unwrap_or(timeseries),
                         Err(e) => return Some(e),
                     };
+                    let skip_duplicates = match bool_arg(dir, kw::SKIP_DUPLICATES) {
+                        Ok(b) => b.unwrap_or(false),
+                        Err(e) => return Some(e),
+                    };
+                    if skip_duplicates && !immutable {
+                        return Some(SchemaValidationError::SkipDuplicatesRequiresImmutable(
+                            object_type.name.clone(),
+                        ));
+                    }
                     if timeseries {
                         if !immutable {
                             Some(SchemaValidationError::MutableTimeseries(
@@ -3162,6 +3171,43 @@ type Gravatar @entity {
                     }
                 }
             }
+        }
+
+        #[test]
+        fn validate_entity_directives_skip_duplicates_non_boolean() {
+            let schema =
+                parse("type Foo @entity(immutable: true, skipDuplicates: \"yes\") { id: ID! }");
+            let errors = validate(&schema).unwrap_err();
+            assert!(
+                errors.contains(&SchemaValidationError::EntityDirectiveNonBooleanArgValue(
+                    "skipDuplicates".to_string()
+                )),
+                "expected EntityDirectiveNonBooleanArgValue for non-boolean skipDuplicates, got: {errors:?}"
+            );
+        }
+
+        #[test]
+        fn validate_entity_directives_skip_duplicates_requires_immutable() {
+            let schema = parse("type Foo @entity(skipDuplicates: true) { id: ID! }");
+            let errors = validate(&schema).unwrap_err();
+            assert!(
+                errors.contains(&SchemaValidationError::SkipDuplicatesRequiresImmutable(
+                    "Foo".to_string()
+                )),
+                "expected SkipDuplicatesRequiresImmutable for mutable entity, got: {errors:?}"
+            );
+        }
+
+        #[test]
+        fn validate_entity_directives_timeseries_skip_duplicates_valid() {
+            let schema = parse(
+                "type Foo @entity(timeseries: true, skipDuplicates: true) { id: Int8! timestamp: Timestamp! }",
+            );
+            let result = validate(&schema);
+            assert!(
+                result.is_ok(),
+                "expected timeseries + skipDuplicates to pass validation, got: {result:?}"
+            );
         }
     }
 }

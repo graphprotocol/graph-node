@@ -148,6 +148,8 @@ pub enum SchemaValidationError {
     AggregationDerivedField(String, String),
     #[error("Timeseries {0} is marked as mutable, it must be immutable")]
     MutableTimeseries(String),
+    #[error("Entity type `{0}` has skipDuplicates: true but is not immutable; skipDuplicates requires immutable: true")]
+    SkipDuplicatesRequiresImmutable(String),
     #[error("Timeseries {0} is missing a `timestamp` field")]
     TimeseriesMissingTimestamp(String),
     #[error("Type {0} has a `timestamp` field of type {1}, but it must be of type Timestamp")]
