@@ -42,6 +42,7 @@ pub mod kw {
     pub const ENTITY: &str = "entity";
     pub const IMMUTABLE: &str = "immutable";
     pub const TIMESERIES: &str = "timeseries";
+    pub const SKIP_DUPLICATES: &str = "skipDuplicates";
     pub const TIMESTAMP: &str = "timestamp";
     pub const AGGREGATE: &str = "aggregate";
     pub const AGGREGATION: &str = "aggregation";
@@ -414,6 +415,7 @@ pub struct ObjectType {
     /// is part of an aggregation
     aggregation: Option<Atom>,
     pub timeseries: bool,
+    pub skip_duplicates: bool,
     interfaces: Box<[Word]>,
     shared_interfaces: Box<[Atom]>,
 }
@@ -453,6 +455,10 @@ impl ObjectType {
             None => timeseries,
             _ => unreachable!("validations ensure we don't get here"),
         };
+        let skip_duplicates = match dir.argument(kw::SKIP_DUPLICATES) {
+            Some(Value::Boolean(sd)) => *sd,
+            _ => false,
+        };
         Self {
             name,
             fields,
@@ -460,6 +466,7 @@ impl ObjectType {
             immutable,
             aggregation: None,
             timeseries,
+            skip_duplicates,
             interfaces,
             shared_interfaces,
         }
@@ -491,6 +498,7 @@ impl ObjectType {
             immutable: false,
             aggregation: None,
             timeseries: false,
+            skip_duplicates: false,
             fields,
             shared_interfaces: Box::new([]),
         }
@@ -889,6 +897,7 @@ impl Aggregation {
                     immutable: true,
                     aggregation: Some(name),
                     timeseries: false,
+                    skip_duplicates: false,
                     interfaces: Box::new([]),
                     shared_interfaces: Box::new([]),
                 }
