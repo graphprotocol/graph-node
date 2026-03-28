@@ -1,5 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
+use async_trait::async_trait;
+
 use crate::adapter::EthereumRpcError;
 use crate::{
     capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, ContractCallError,
@@ -9,7 +11,7 @@ use anyhow::{anyhow, Context, Error};
 use blockchain::HostFn;
 use graph::abi;
 use graph::abi::DynSolValueExt;
-use graph::blockchain::ChainIdentifier;
+use graph::blockchain::{ChainIdentifier, RawEthCall};
 use graph::components::subgraph::HostMetrics;
 use graph::data::store::ethereum::call;
 use graph::data::store::scalar::BigInt;
@@ -18,7 +20,7 @@ use graph::data_source;
 use graph::data_source::common::{ContractCall, MappingABI};
 use graph::runtime::gas::Gas;
 use graph::runtime::{AscIndexId, IndexForAscTypeId};
-use graph::slog::debug;
+use graph::slog::{debug, o, Discard};
 use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
@@ -184,6 +186,101 @@ impl blockchain::RuntimeAdapter<Chain> for RuntimeAdapter {
         };
 
         Ok(host_fns)
+    }
+
+    fn raw_eth_call(&self) -> Option<Arc<dyn RawEthCall>> {
+        Some(Arc::new(EthereumRawEthCall {
+            eth_adapters: self.eth_adapters.cheap_clone(),
+            call_cache: self.call_cache.cheap_clone(),
+            eth_call_gas: eth_call_gas(&self.chain_identifier),
+        }))
+    }
+}
+
+/// Implementation of RawEthCall for Ethereum chains.
+/// Used by Rust ABI subgraphs for making raw eth_call without ABI encoding.
+pub struct EthereumRawEthCall {
+    eth_adapters: Arc<EthereumNetworkAdapters>,
+    call_cache: Arc<dyn EthereumCallCache>,
+    eth_call_gas: Option<u32>,
+}
+
+#[async_trait]
+impl RawEthCall for EthereumRawEthCall {
+    async fn call(
+        &self,
+        address: [u8; 20],
+        calldata: &[u8],
+        block_ptr: &BlockPtr,
+        gas: Option<u32>,
+    ) -> Result<Option<Vec<u8>>, HostExportError> {
+        // Get an adapter suitable for calls (non-archive is fine)
+        let eth_adapter = self
+            .eth_adapters
+            .call_or_cheapest(Some(&NodeCapabilities {
+                archive: false,
+                traces: false,
+            }))
+            .map_err(|e| HostExportError::Unknown(e.into()))?;
+
+        // Create a raw call request
+        let req = call::Request::new(Address::from(address), calldata.to_vec(), 0);
+
+        // Check cache first
+        let (cached, _missing) = self
+            .call_cache
+            .get_calls(&[req.cheap_clone()], block_ptr.cheap_clone())
+            .await
+            .unwrap_or_else(|_| (Vec::new(), vec![req.cheap_clone()]));
+
+        if let Some(resp) = cached.into_iter().next() {
+            return match resp.retval {
+                call::Retval::Value(bytes) => Ok(Some(bytes.to_vec())),
+                call::Retval::Null => Ok(None),
+            };
+        }
+
+        // Make the actual call
+        let result = eth_adapter
+            .raw_call(
+                req.cheap_clone(),
+                block_ptr.cheap_clone(),
+                gas.or(self.eth_call_gas),
+            )
+            .await;
+
+        match result {
+            Ok(retval) => {
+                // Cache the result
+                let cache = self.call_cache.cheap_clone();
+                let _ = cache
+                    .set_call(
+                        &Logger::root(Discard, o!()),
+                        req,
+                        block_ptr.cheap_clone(),
+                        retval.clone(),
+                    )
+                    .await;
+
+                match retval {
+                    call::Retval::Value(bytes) => Ok(Some(bytes.to_vec())),
+                    call::Retval::Null => Ok(None),
+                }
+            }
+            Err(ContractCallError::AlloyError(e)) => {
+                Err(HostExportError::PossibleReorg(anyhow::anyhow!(
+                    "eth_call RPC error: {}",
+                    e
+                )))
+            }
+            Err(ContractCallError::Timeout) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
+                "eth_call timed out"
+            ))),
+            Err(e) => Err(HostExportError::Unknown(anyhow::anyhow!(
+                "eth_call failed: {}",
+                e
+            ))),
+        }
     }
 }
 

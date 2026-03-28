@@ -9,6 +9,7 @@ use graph::prelude::BlockNumber;
 use graph::runtime::HostExportError;
 use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr};
 use graph_runtime_wasm::module::ToAscPtr;
+use graph_runtime_wasm::rust_abi::ToRustBytes;
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::codec;
@@ -140,6 +141,14 @@ impl TriggerData for NearTrigger {
 impl MappingTriggerTrait for NearTrigger {
     fn error_context(&self) -> String {
         self.error_context()
+    }
+}
+
+impl ToRustBytes for NearTrigger {
+    fn to_rust_bytes(&self) -> Vec<u8> {
+        // NEAR triggers are not yet supported by Graphite SDK.
+        // This stub satisfies the trait bound so Ethereum Rust subgraphs can compile.
+        unimplemented!("Rust ABI serialization is not yet supported for NEAR triggers")
     }
 }
 

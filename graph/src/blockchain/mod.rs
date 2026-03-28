@@ -546,6 +546,27 @@ pub struct HostFn {
 #[async_trait]
 pub trait RuntimeAdapter<C: Blockchain>: Send + Sync {
     fn host_fns(&self, ds: &data_source::DataSource<C>) -> Result<Vec<HostFn>, Error>;
+
+    /// Get a raw eth_call capability for Rust ABI subgraphs.
+    /// Returns None if the chain doesn't support raw eth_call (e.g., non-EVM chains).
+    fn raw_eth_call(&self) -> Option<Arc<dyn RawEthCall>> {
+        None
+    }
+}
+
+/// Trait for making raw eth_call requests without ABI encoding.
+/// Used by Rust ABI subgraphs where the SDK handles encoding/decoding.
+#[async_trait]
+pub trait RawEthCall: Send + Sync {
+    /// Make a raw eth_call to the given address with the provided calldata.
+    /// Returns Ok(Some(bytes)) on success, Ok(None) on revert, Err on RPC error.
+    async fn call(
+        &self,
+        address: [u8; 20],
+        calldata: &[u8],
+        block_ptr: &BlockPtr,
+        gas: Option<u32>,
+    ) -> Result<Option<Vec<u8>>, HostExportError>;
 }
 
 pub trait NodeCapabilities<C: Blockchain> {

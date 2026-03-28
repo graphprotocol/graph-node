@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use graph::futures01::sync::mpsc::Sender;
 use graph::futures03::channel::oneshot::channel;
 
-use graph::blockchain::{Blockchain, HostFn, RuntimeAdapter};
+use graph::blockchain::{Blockchain, HostFn, RawEthCall, RuntimeAdapter};
 use graph::components::store::{EnsLookup, SubgraphFork};
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{
@@ -106,6 +106,7 @@ where
 
 pub struct RuntimeHost<C: Blockchain> {
     host_fns: Arc<Vec<HostFn>>,
+    raw_eth_call: Option<Arc<dyn RawEthCall>>,
     data_source: DataSource<C>,
     mapping_request_sender: Sender<WasmRequest<C>>,
     host_exports: Arc<HostExports>,
@@ -143,9 +144,11 @@ where
         ));
 
         let host_fns = runtime_adapter.host_fns(&data_source).unwrap_or_default();
+        let raw_eth_call = runtime_adapter.raw_eth_call();
 
         Ok(RuntimeHost {
             host_fns: Arc::new(host_fns),
+            raw_eth_call,
             data_source,
             mapping_request_sender,
             host_exports,
@@ -189,6 +192,7 @@ where
                     timestamp: trigger.timestamp(),
                     proof_of_indexing,
                     host_fns: self.host_fns.cheap_clone(),
+                    raw_eth_call: self.raw_eth_call.cheap_clone(),
                     debug_fork: debug_fork.cheap_clone(),
                     mapping_logger: Logger::new(logger, o!("component" => "UserMapping")),
                     instrument,

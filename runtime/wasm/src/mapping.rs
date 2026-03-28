@@ -1,6 +1,6 @@
 use crate::gas_rules::GasRules;
 use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance, WasmInstanceData};
-use graph::blockchain::{BlockTime, Blockchain, HostFn};
+use graph::blockchain::{BlockTime, Blockchain, HostFn, RawEthCall};
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
 use graph::data_source::{MappingTrigger, TriggerWithHandler};
@@ -193,6 +193,8 @@ pub struct MappingContext {
     pub state: BlockState,
     pub proof_of_indexing: SharedProofOfIndexing,
     pub host_fns: Arc<Vec<HostFn>>,
+    /// Raw eth_call capability for Rust ABI subgraphs.
+    pub raw_eth_call: Option<Arc<dyn RawEthCall>>,
     pub debug_fork: Option<Arc<dyn SubgraphFork>>,
     /// Logger for messages coming from mappings
     pub mapping_logger: Logger,
@@ -214,6 +216,7 @@ impl MappingContext {
             ),
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
             host_fns: self.host_fns.cheap_clone(),
+            raw_eth_call: self.raw_eth_call.cheap_clone(),
             debug_fork: self.debug_fork.cheap_clone(),
             mapping_logger: Logger::new(&self.logger, o!("component" => "UserMapping")),
             instrument: self.instrument,
@@ -270,44 +273,54 @@ impl ValidModule {
         raw_module: &[u8],
         timeout: Option<Duration>,
     ) -> Result<Self, anyhow::Error> {
-        // Add the gas calls here. Module name "gas" must match. See also
-        // e3f03e62-40e4-4f8c-b4a1-d0375cca0b76. We do this by round-tripping the module through
-        // parity - injecting gas then serializing again.
-        let parity_module = parity_wasm::elements::Module::from_bytes(raw_module)?;
-        let mut parity_module = match parity_module.parse_names() {
-            Ok(module) => module,
-            Err((errs, module)) => {
-                for (index, err) in errs {
-                    warn!(
-                        logger,
-                        "unable to parse function name for index {}: {}",
-                        index,
-                        err.to_string()
-                    );
+        // Detect Rust modules by scanning for the "graphite" import namespace.
+        // Rust modules use modern WASM features (bulk-memory, reference-types, etc.)
+        // that parity_wasm cannot parse, so we skip parity_wasm gas injection for them.
+        let is_rust_module = raw_module.windows(8).any(|w| w == b"graphite");
+
+        let (raw_module, start_function) = if is_rust_module {
+            info!(logger, "Detected Rust WASM module, skipping parity_wasm gas injection");
+            (raw_module.to_vec(), None)
+        } else {
+            // Add the gas calls here. Module name "gas" must match. See also
+            // e3f03e62-40e4-4f8c-b4a1-d0375cca0b76. We do this by round-tripping the module through
+            // parity - injecting gas then serializing again.
+            let parity_module = parity_wasm::elements::Module::from_bytes(raw_module)?;
+            let mut parity_module = match parity_module.parse_names() {
+                Ok(module) => module,
+                Err((errs, module)) => {
+                    for (index, err) in errs {
+                        warn!(
+                            logger,
+                            "unable to parse function name for index {}: {}",
+                            index,
+                            err.to_string()
+                        );
+                    }
+
+                    module
                 }
+            };
 
-                module
-            }
+            let start_function = parity_module.start_section().map(|index| {
+                let name = GN_START_FUNCTION_NAME.to_string();
+
+                parity_module.clear_start_section();
+                parity_module
+                    .export_section_mut()
+                    .unwrap()
+                    .entries_mut()
+                    .push(ExportEntry::new(
+                        name.clone(),
+                        parity_wasm::elements::Internal::Function(index),
+                    ));
+
+                name
+            });
+            let parity_module = wasm_instrument::gas_metering::inject(parity_module, &GasRules, "gas")
+                .map_err(|_| anyhow!("Failed to inject gas counter"))?;
+            (parity_module.into_bytes()?, start_function)
         };
-
-        let start_function = parity_module.start_section().map(|index| {
-            let name = GN_START_FUNCTION_NAME.to_string();
-
-            parity_module.clear_start_section();
-            parity_module
-                .export_section_mut()
-                .unwrap()
-                .entries_mut()
-                .push(ExportEntry::new(
-                    name.clone(),
-                    parity_wasm::elements::Internal::Function(index),
-                ));
-
-            name
-        });
-        let parity_module = wasm_instrument::gas_metering::inject(parity_module, &GasRules, "gas")
-            .map_err(|_| anyhow!("Failed to inject gas counter"))?;
-        let raw_module = parity_module.into_bytes()?;
 
         // We use Cranelift as a compilation engine. Cranelift is an optimizing compiler, but that
         // should not cause determinism issues since it adheres to the Wasm spec and NaN

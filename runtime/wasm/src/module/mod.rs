@@ -186,7 +186,10 @@ impl AscHeapCtx {
         instance: &wasmtime::Instance,
         ctx: &mut WasmInstanceContext<'_>,
         api_version: Version,
+        language: crate::rust_abi::MappingLanguage,
     ) -> anyhow::Result<Arc<AscHeapCtx>> {
+        let is_rust = language == crate::rust_abi::MappingLanguage::Rust;
+
         // Provide access to the WASM runtime linear memory
         let memory = instance
             .get_memory(ctx.as_context_mut(), "memory")
@@ -203,15 +206,20 @@ impl AscHeapCtx {
         .typed(ctx.as_context())?
         .clone();
 
-        let id_of_type = match &api_version {
-            version if *version <= Version::new(0, 0, 4) => None,
-            _ => Some(
-                instance
-                    .get_func(ctx.as_context_mut(), "id_of_type")
-                    .context("`id_of_type` function not found")?
-                    .typed(ctx)?
-                    .clone(),
-            ),
+        // id_of_type is an AssemblyScript-specific export; Rust modules don't have it.
+        let id_of_type = if is_rust {
+            None
+        } else {
+            match &api_version {
+                version if *version <= Version::new(0, 0, 4) => None,
+                _ => Some(
+                    instance
+                        .get_func(ctx.as_context_mut(), "id_of_type")
+                        .context("`id_of_type` function not found")?
+                        .typed(ctx)?
+                        .clone(),
+                ),
+            }
         };
 
         Ok(Arc::new(AscHeapCtx {

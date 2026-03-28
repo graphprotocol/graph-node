@@ -856,12 +856,16 @@ impl WasmInstance {
             .instantiate_async(store.as_context_mut())
             .await?;
 
+        let language = valid_module.language;
         let asc_heap = AscHeapCtx::new(
             &instance,
             &mut WasmInstanceContext::new(&mut store),
             api_version.clone(),
+            language,
         )?;
         store.data_mut().set_asc_heap(asc_heap);
+
+        let is_rust = language == crate::rust_abi::MappingLanguage::Rust;
 
         // See start_function comment for more information
         // TL;DR; we need the wasmtime::Instance to create the heap, therefore
@@ -875,15 +879,18 @@ impl WasmInstance {
                 .await?;
         }
 
-        match api_version {
-            version if version <= Version::new(0, 0, 4) => {}
-            _ => {
-                instance
-                    .get_func(store.as_context_mut(), "_start")
-                    .context("`_start` function not found")?
-                    .typed::<(), ()>(store.as_context_mut())?
-                    .call_async(store.as_context_mut(), ())
-                    .await?;
+        // _start is an AssemblyScript-specific entry point; Rust modules don't export it.
+        if !is_rust {
+            match api_version {
+                version if version <= Version::new(0, 0, 4) => {}
+                _ => {
+                    instance
+                        .get_func(store.as_context_mut(), "_start")
+                        .context("`_start` function not found")?
+                        .typed::<(), ()>(store.as_context_mut())?
+                        .call_async(store.as_context_mut(), ())
+                        .await?;
+                }
             }
         }
 

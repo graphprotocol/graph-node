@@ -93,6 +93,37 @@ fn get_memory(caller: &mut Caller<'_, WasmInstanceData>) -> Result<Memory, anyho
         .ok_or_else(|| anyhow::anyhow!("failed to get WASM memory export"))
 }
 
+/// Deserialize a Vec<String> from TLV format.
+///
+/// Format: [count: u32] [str_len: u32, str_bytes]...
+fn deserialize_string_vec(bytes: &[u8]) -> Result<Vec<String>, anyhow::Error> {
+    if bytes.len() < 4 {
+        return Ok(Vec::new());
+    }
+
+    let count = u32::from_le_bytes(bytes[0..4].try_into()?) as usize;
+    let mut result = Vec::with_capacity(count);
+    let mut pos = 4;
+
+    for _ in 0..count {
+        if pos + 4 > bytes.len() {
+            anyhow::bail!("truncated string vec data");
+        }
+        let str_len = u32::from_le_bytes(bytes[pos..pos + 4].try_into()?) as usize;
+        pos += 4;
+
+        if pos + str_len > bytes.len() {
+            anyhow::bail!("truncated string data");
+        }
+        let s = String::from_utf8(bytes[pos..pos + str_len].to_vec())?;
+        pos += str_len;
+
+        result.push(s);
+    }
+
+    Ok(result)
+}
+
 /// Link Rust ABI host functions to a wasmtime Linker.
 ///
 /// This registers all host functions in the `graphite` namespace
@@ -302,6 +333,155 @@ pub fn link_rust_host_functions(
                     let memory = get_memory(&mut caller)?;
                     write_bytes_with_gas(&memory, &mut caller, out_ptr, bytes, &gas)?;
                     Ok(bytes.len() as u32)
+                })
+            },
+        )?;
+    }
+
+    // ========== Dynamic Data Sources ==========
+
+    if is_graphite_import("data_source_create") {
+        linker.func_wrap_async(
+            "graphite",
+            "data_source_create",
+            |mut caller: Caller<'_, WasmInstanceData>,
+             (name_ptr, name_len, params_ptr, params_len): (u32, u32, u32, u32)| {
+                Box::new(async move {
+                    let memory = get_memory(&mut caller)?;
+                    let gas = caller.data().gas.cheap_clone();
+
+                    let name = read_string_with_gas(&memory, &caller, name_ptr, name_len, &gas)?;
+                    let params_bytes =
+                        read_bytes_with_gas(&memory, &caller, params_ptr, params_len, &gas)?;
+
+                    // Deserialize params (Vec<String> in TLV format)
+                    let params = deserialize_string_vec(&params_bytes)?;
+
+                    let mut ctx = std::pin::pin!(WasmInstanceContext::new(&mut caller));
+                    ctx.rust_data_source_create(&gas, &name, params).await?;
+
+                    Ok(())
+                })
+            },
+        )?;
+    }
+
+    // ========== IPFS Operations ==========
+
+    if is_graphite_import("ipfs_cat") {
+        linker.func_wrap_async(
+            "graphite",
+            "ipfs_cat",
+            |mut caller: Caller<'_, WasmInstanceData>,
+             (hash_ptr, hash_len, out_ptr, out_cap): (u32, u32, u32, u32)| {
+                Box::new(async move {
+                    let memory = get_memory(&mut caller)?;
+                    let gas = caller.data().gas.cheap_clone();
+
+                    let hash = read_string_with_gas(&memory, &caller, hash_ptr, hash_len, &gas)?;
+
+                    let mut ctx = std::pin::pin!(WasmInstanceContext::new(&mut caller));
+                    let result = ctx.rust_ipfs_cat(&gas, &hash).await;
+
+                    match result {
+                        Ok(bytes) => {
+                            if bytes.len() > out_cap as usize {
+                                Ok(u32::MAX) // Buffer too small
+                            } else {
+                                let memory = get_memory(&mut caller)?;
+                                write_bytes_with_gas(&memory, &mut caller, out_ptr, &bytes, &gas)?;
+                                Ok(bytes.len() as u32)
+                            }
+                        }
+                        Err(_) => Ok(u32::MAX), // Error indicator
+                    }
+                })
+            },
+        )?;
+    }
+
+    // ========== Ethereum Call ==========
+
+    // Gas cost for ethereum_call - matches the AS implementation
+    const ETHEREUM_CALL_GAS: Gas = Gas::new(5_000_000_000);
+
+    if is_graphite_import("ethereum_call") {
+        linker.func_wrap_async(
+            "graphite",
+            "ethereum_call",
+            |mut caller: Caller<'_, WasmInstanceData>,
+             (addr_ptr, addr_len, data_ptr, data_len, out_ptr, out_cap): (
+                u32,
+                u32,
+                u32,
+                u32,
+                u32,
+                u32,
+            )| {
+                Box::new(async move {
+                    let memory = get_memory(&mut caller)?;
+                    let gas = caller.data().gas.cheap_clone();
+
+                    // Consume gas for ethereum_call
+                    gas.consume_host_fn_with_metrics(ETHEREUM_CALL_GAS, "ethereum_call")?;
+
+                    // Read address (should be 20 bytes)
+                    let addr_bytes =
+                        read_bytes_with_gas(&memory, &caller, addr_ptr, addr_len, &gas)?;
+                    if addr_bytes.len() != 20 {
+                        anyhow::bail!(
+                            "ethereum_call: address must be 20 bytes, got {}",
+                            addr_bytes.len()
+                        );
+                    }
+                    let mut address = [0u8; 20];
+                    address.copy_from_slice(&addr_bytes);
+
+                    // Read calldata
+                    let calldata =
+                        read_bytes_with_gas(&memory, &caller, data_ptr, data_len, &gas)?;
+
+                    // Get the raw_eth_call capability from ctx
+                    let raw_eth_call = caller
+                        .data()
+                        .ctx
+                        .raw_eth_call
+                        .as_ref()
+                        .ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "ethereum_call is not available for this chain/data source"
+                            )
+                        })?
+                        .cheap_clone();
+
+                    let block_ptr = caller.data().ctx.block_ptr.cheap_clone();
+
+                    // Make the call
+                    let result = raw_eth_call.call(address, &calldata, &block_ptr, None).await;
+
+                    match result {
+                        Ok(Some(bytes)) => {
+                            if bytes.len() > out_cap as usize {
+                                // Buffer too small
+                                Ok(u32::MAX)
+                            } else {
+                                let memory = get_memory(&mut caller)?;
+                                write_bytes_with_gas(&memory, &mut caller, out_ptr, &bytes, &gas)?;
+                                Ok(bytes.len() as u32)
+                            }
+                        }
+                        Ok(None) => {
+                            // Call reverted - return 0 to indicate null/revert
+                            Ok(0)
+                        }
+                        Err(e) => {
+                            // Mark as possible reorg if appropriate
+                            if let graph::runtime::HostExportError::PossibleReorg(_) = &e {
+                                caller.data_mut().possible_reorg = true;
+                            }
+                            Err(anyhow::anyhow!("ethereum_call failed: {}", e))
+                        }
+                    }
                 })
             },
         )?;

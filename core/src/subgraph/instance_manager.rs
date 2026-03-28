@@ -24,6 +24,7 @@ use graph::env::EnvVars;
 use graph::prelude::{SubgraphInstanceManager as SubgraphInstanceManagerTrait, *};
 use graph::{blockchain::BlockchainMap, components::store::DeploymentLocator};
 use graph_runtime_wasm::module::ToAscPtr;
+use graph_runtime_wasm::rust_abi::ToRustBytes;
 use graph_runtime_wasm::RuntimeHostBuilder;
 use tokio::task;
 
@@ -234,7 +235,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
     ) -> anyhow::Result<SubgraphRunner<C, RuntimeHostBuilder<C>>>
     where
         C: Blockchain,
-        <C as Blockchain>::MappingTrigger: ToAscPtr,
+        <C as Blockchain>::MappingTrigger: ToAscPtr + ToRustBytes,
     {
         self.build_subgraph_runner_inner(
             logger,
@@ -262,7 +263,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
     ) -> anyhow::Result<SubgraphRunner<C, RuntimeHostBuilder<C>>>
     where
         C: Blockchain,
-        <C as Blockchain>::MappingTrigger: ToAscPtr,
+        <C as Blockchain>::MappingTrigger: ToAscPtr + ToRustBytes,
     {
         let subgraph_store = self.subgraph_store.cheap_clone();
         let registry = self.metrics_registry.cheap_clone();
@@ -560,7 +561,7 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
         runner: SubgraphRunner<C, RuntimeHostBuilder<C>>,
     ) -> Result<(), Error>
     where
-        <C as Blockchain>::MappingTrigger: ToAscPtr,
+        <C as Blockchain>::MappingTrigger: ToAscPtr + ToRustBytes,
     {
         let registry = self.metrics_registry.cheap_clone();
         let subgraph_metrics = runner.metrics.subgraph.cheap_clone();

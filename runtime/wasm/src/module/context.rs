@@ -1432,4 +1432,54 @@ impl WasmInstanceContext<'_> {
             .data_source_network(gas, &mut ctx.state)
             .map_err(|e| HostExportError::Deterministic(e.into()))
     }
+
+    /// Rust ABI: dataSource.create
+    pub async fn rust_data_source_create(
+        &mut self,
+        gas: &GasCounter,
+        name: &str,
+        params: Vec<String>,
+    ) -> Result<(), HostExportError> {
+        let logger = self.as_ref().ctx.logger.cheap_clone();
+
+        if self.as_ref().ctx.instrument {
+            debug!(self.as_ref().ctx.logger, "rust_data_source_create";
+                    "name" => name,
+                    "params" => format!("{:?}", params));
+        }
+
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+
+        host_exports.data_source_create(
+            &logger,
+            &mut ctx.state,
+            name.to_string(),
+            params,
+            None, // No context for now
+            ctx.block_ptr.number,
+            gas,
+        )
+    }
+
+    /// Rust ABI: ipfs.cat
+    pub async fn rust_ipfs_cat(
+        &mut self,
+        _gas: &GasCounter,
+        hash: &str,
+    ) -> Result<Vec<u8>, HostExportError> {
+        let logger = self.as_ref().ctx.logger.cheap_clone();
+
+        if self.as_ref().ctx.instrument {
+            debug!(self.as_ref().ctx.logger, "rust_ipfs_cat";
+                    "hash" => hash);
+        }
+
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+
+        host_exports
+            .ipfs_cat(&logger, hash.to_string())
+            .await
+            .map_err(|e| HostExportError::PossibleReorg(e.into()))
+    }
 }

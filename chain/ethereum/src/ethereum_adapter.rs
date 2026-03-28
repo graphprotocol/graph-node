@@ -698,6 +698,18 @@ impl EthereumAdapter {
             .map_err(|e| e.into_inner().unwrap_or(ContractCallError::Timeout))
     }
 
+    /// Make a raw eth_call without ABI encoding.
+    /// Used by Rust ABI subgraphs where the SDK handles encoding/decoding.
+    pub async fn raw_call(
+        &self,
+        req: call::Request,
+        block_ptr: BlockPtr,
+        gas: Option<u32>,
+    ) -> Result<call::Retval, ContractCallError> {
+        let logger = self.provider_logger(&self.logger);
+        self.call(logger, req, block_ptr, gas).await
+    }
+
     async fn call_and_cache(
         &self,
         logger: &ProviderLogger,

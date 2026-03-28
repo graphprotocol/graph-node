@@ -23,7 +23,7 @@ use graph::runtime::AscPtr;
 use graph::runtime::HostExportError;
 use graph::semver::Version;
 use graph_runtime_wasm::module::ToAscPtr;
-use graph_runtime_wasm::rust_abi::{RustLogTrigger, ToRustBytes};
+use graph_runtime_wasm::rust_abi::{RustBlockTrigger, RustCallTrigger, RustLogTrigger, ToRustBytes};
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::runtime::abi::AscEthereumBlock;
@@ -666,7 +666,6 @@ impl ToRustBytes for MappingTrigger {
                 receipt: _,
                 calls: _,
             } => {
-                // Convert to RustLogTrigger for serialization
                 let rust_trigger = RustLogTrigger {
                     address: log.inner.address.0 .0,
                     tx_hash: transaction.tx_hash().0,
@@ -684,13 +683,41 @@ impl ToRustBytes for MappingTrigger {
                 };
                 rust_trigger.to_rust_bytes()
             }
-            MappingTrigger::Call { .. } => {
-                // TODO: Implement call trigger serialization
-                Vec::new()
+            MappingTrigger::Call {
+                block,
+                transaction,
+                call,
+                inputs: _,
+                outputs: _,
+            } => {
+                let rust_trigger = RustCallTrigger {
+                    to: call.to.0 .0,
+                    from: call.from.0 .0,
+                    tx_hash: transaction.tx_hash().0,
+                    block_number: block.number_u64(),
+                    block_timestamp: block.inner().header.timestamp,
+                    block_hash: block.inner().header.hash.0,
+                    input: call.input.to_vec(),
+                    output: call.output.to_vec(),
+                };
+                rust_trigger.to_rust_bytes()
             }
-            MappingTrigger::Block { .. } => {
-                // TODO: Implement block trigger serialization
-                Vec::new()
+            MappingTrigger::Block { block } => {
+                // Convert U256 difficulty to big-endian bytes
+                let difficulty: [u8; 32] = block.inner().header.difficulty.to_be_bytes();
+
+                let rust_trigger = RustBlockTrigger {
+                    hash: block.inner().header.hash.0,
+                    parent_hash: block.inner().header.parent_hash.0,
+                    number: block.number_u64(),
+                    timestamp: block.inner().header.timestamp,
+                    author: block.inner().header.beneficiary.0 .0,
+                    gas_used: block.inner().header.gas_used,
+                    gas_limit: block.inner().header.gas_limit,
+                    difficulty,
+                    base_fee_per_gas: block.inner().header.base_fee_per_gas.unwrap_or(0),
+                };
+                rust_trigger.to_rust_bytes()
             }
         }
     }

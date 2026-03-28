@@ -130,6 +130,7 @@ pub fn mock_context(
         ),
         proof_of_indexing: SharedProofOfIndexing::ignored(),
         host_fns: Arc::new(Vec::new()),
+        raw_eth_call: None,
         debug_fork: None,
         mapping_logger: Logger::root(slog::Discard, o!()),
         instrument: false,
