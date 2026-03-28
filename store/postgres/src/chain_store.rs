@@ -129,7 +129,10 @@ mod data {
     use diesel::dsl::sql;
     use diesel::insert_into;
     use diesel::sql_types::{Array, Binary, Bool, Nullable, Text};
-    use diesel::{delete, sql_query, ExpressionMethods, JoinOnDsl, OptionalExtension, QueryDsl};
+    use diesel::{
+        delete, sql_query, BoolExpressionMethods, ExpressionMethods, JoinOnDsl,
+        NullableExpressionMethods, OptionalExtension, QueryDsl,
+    };
     use diesel::{
         deserialize::FromSql,
         pg::Pg,
@@ -745,6 +748,73 @@ mod data {
                 .collect())
         }
 
+        /// Return the parent block pointer for the block with the given hash.
+        /// Only reads header columns, not the data column.
+        pub(super) async fn block_parent_ptr(
+            &self,
+            conn: &mut AsyncPgConnection,
+            chain: &str,
+            hash: &BlockHash,
+        ) -> Result<Option<BlockPtr>, Error> {
+            let result = match self {
+                Storage::Shared => {
+                    use public::ethereum_blocks as b;
+
+                    let (child, parent) = diesel::alias!(
+                        public::ethereum_blocks as child,
+                        public::ethereum_blocks as parent
+                    );
+
+                    child
+                        .inner_join(
+                            parent.on(child
+                                .field(b::parent_hash)
+                                .assume_not_null()
+                                .eq(parent.field(b::hash))
+                                .and(parent.field(b::network_name).eq(chain))),
+                        )
+                        .select((parent.field(b::hash), parent.field(b::number)))
+                        .filter(child.field(b::hash).eq(format!("{:x}", hash)))
+                        .filter(child.field(b::network_name).eq(chain))
+                        .first::<(String, i64)>(conn)
+                        .await
+                        .optional()?
+                        .map(|(h, n)| {
+                            Ok::<_, Error>(BlockPtr::new(h.parse()?, i32::try_from(n).unwrap()))
+                        })
+                        .transpose()?
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    // We can't use diesel::alias! here because the table is
+                    // dynamic, so we write the SQL query manually
+
+                    let query = format!(
+                        "SELECT parent.hash, parent.number \
+                         FROM {qname} child, {qname} parent \
+                         WHERE child.hash = $1 \
+                         AND child.parent_hash = parent.hash",
+                        qname = blocks.qname
+                    );
+
+                    #[derive(QueryableByName)]
+                    struct BlockHashAndNumber {
+                        #[diesel(sql_type = Bytea)]
+                        hash: Vec<u8>,
+                        #[diesel(sql_type = BigInt)]
+                        number: i64,
+                    }
+
+                    sql_query(query)
+                        .bind::<Bytea, _>(hash.as_slice())
+                        .get_result::<BlockHashAndNumber>(conn)
+                        .await
+                        .optional()?
+                        .map(|block| BlockPtr::from((block.hash, block.number)))
+                }
+            };
+            Ok(result)
+        }
+
         pub(super) async fn block_hashes_by_block_number(
             &self,
             conn: &mut AsyncPgConnection,
@@ -1220,6 +1290,89 @@ mod data {
                 })
             };
             Ok(data_and_ptr)
+        }
+
+        /// Like `ancestor_block` but returns only the `BlockPtr` without
+        /// fetching the `data` column.
+        pub(super) async fn ancestor_block_ptr(
+            &self,
+            conn: &mut AsyncPgConnection,
+            block_ptr: BlockPtr,
+            offset: BlockNumber,
+            root: Option<BlockHash>,
+        ) -> Result<Option<BlockPtr>, Error> {
+            let short_circuit_predicate = match root {
+                Some(_) => "and b.parent_hash <> $3",
+                None => "",
+            };
+
+            match self {
+                Storage::Shared => {
+                    let query =
+                        self.ancestor_block_query(short_circuit_predicate, "ethereum_blocks");
+
+                    #[derive(QueryableByName)]
+                    struct BlockHashAndNumber {
+                        #[diesel(sql_type = Text)]
+                        hash: String,
+                        #[diesel(sql_type = BigInt)]
+                        number: i64,
+                    }
+
+                    let block = match root {
+                        Some(root) => sql_query(query)
+                            .bind::<Text, _>(block_ptr.hash_hex())
+                            .bind::<BigInt, _>(offset as i64)
+                            .bind::<Text, _>(root.hash_hex())
+                            .get_result::<BlockHashAndNumber>(conn),
+                        None => sql_query(query)
+                            .bind::<Text, _>(block_ptr.hash_hex())
+                            .bind::<BigInt, _>(offset as i64)
+                            .get_result::<BlockHashAndNumber>(conn),
+                    }
+                    .await
+                    .optional()?;
+
+                    match block {
+                        None => Ok(None),
+                        Some(block) => Ok(Some(BlockPtr::new(
+                            BlockHash::from_str(&block.hash)?,
+                            i32::try_from(block.number).unwrap(),
+                        ))),
+                    }
+                }
+                Storage::Private(Schema { blocks, .. }) => {
+                    let query =
+                        self.ancestor_block_query(short_circuit_predicate, blocks.qname.as_str());
+
+                    #[derive(QueryableByName)]
+                    struct BlockHashAndNumber {
+                        #[diesel(sql_type = Bytea)]
+                        hash: Vec<u8>,
+                        #[diesel(sql_type = BigInt)]
+                        number: i64,
+                    }
+
+                    let block = match &root {
+                        Some(root) => sql_query(query)
+                            .bind::<Bytea, _>(block_ptr.hash_slice())
+                            .bind::<BigInt, _>(offset as i64)
+                            .bind::<Bytea, _>(root.as_slice())
+                            .get_result::<BlockHashAndNumber>(conn),
+                        None => sql_query(query)
+                            .bind::<Bytea, _>(block_ptr.hash_slice())
+                            .bind::<BigInt, _>(offset as i64)
+                            .get_result::<BlockHashAndNumber>(conn),
+                    }
+                    .await
+                    .optional()?;
+
+                    match block {
+                        None => Ok(None),
+                        Some(block) => Ok(Some(BlockPtr::from((block.hash, block.number)))),
+                    }
+                }
+            }
         }
 
         pub(super) async fn delete_blocks_before(
@@ -2194,6 +2347,9 @@ pub struct ChainStore {
     chain_head_ptr_cache: ChainHeadPtrCache,
     /// Herd cache to prevent thundering herd on chain_head_ptr() lookups
     chain_head_ptr_herd: HerdCache<Arc<Result<Option<BlockPtr>, StoreError>>>,
+    /// Number of blocks from chain head for which to keep block data cached.
+    /// Used with `GRAPH_STORE_IGNORE_BLOCK_CACHE` to simulate block data eviction.
+    cache_size: BlockNumber,
 }
 
 impl ChainStore {
@@ -2205,6 +2361,7 @@ impl ChainStore {
         pool: ConnectionPool,
         recent_blocks_cache_capacity: usize,
         metrics: Arc<ChainStoreMetrics>,
+        cache_size: BlockNumber,
     ) -> Self {
         let recent_blocks_cache =
             RecentBlocksCache::new(recent_blocks_cache_capacity, chain.clone(), metrics.clone());
@@ -2225,6 +2382,21 @@ impl ChainStore {
             ancestor_cache,
             chain_head_ptr_cache,
             chain_head_ptr_herd,
+            cache_size,
+        }
+    }
+
+    /// Return the block number below which blocks should be treated as
+    /// not cached. Returns `0` when the feature is disabled (effectively
+    /// no cutoff). Returns `i32::MAX` when no chain head is known to
+    /// avoid serving stale data.
+    async fn cache_cutoff(self: &Arc<Self>) -> BlockNumber {
+        if !ENV_VARS.store.ignore_block_cache {
+            return 0;
+        }
+        match self.clone().chain_head_ptr().await {
+            Ok(Some(head)) => head.block_number().saturating_sub(self.cache_size),
+            _ => i32::MAX,
         }
     }
 
@@ -2453,15 +2625,20 @@ impl ChainStore {
         self: &Arc<Self>,
         hashes: Vec<BlockHash>,
     ) -> Result<Vec<JsonBlock>, StoreError> {
+        let cutoff = self.cache_cutoff().await;
         let mut conn = self.pool.get_permitted().await?;
         let values = self.storage.blocks(&mut conn, &self.chain, &hashes).await?;
-        Ok(values)
+        Ok(values
+            .into_iter()
+            .filter(|b| b.ptr.block_number() >= cutoff)
+            .collect())
     }
 
     async fn blocks_from_store_by_numbers(
         self: &Arc<Self>,
         numbers: Vec<BlockNumber>,
     ) -> Result<BTreeMap<BlockNumber, Vec<JsonBlock>>, StoreError> {
+        let cutoff = self.cache_cutoff().await;
         let mut conn = self.pool.get_permitted().await?;
         let values = self
             .storage
@@ -2470,7 +2647,10 @@ impl ChainStore {
 
         let mut block_map = BTreeMap::new();
 
-        for block in values {
+        for block in values
+            .into_iter()
+            .filter(|b| b.ptr.block_number() >= cutoff)
+        {
             let block_number = block.ptr.block_number();
             block_map
                 .entry(block_number)
@@ -2865,6 +3045,12 @@ impl ChainStoreTrait for ChainStore {
             block_ptr.hash_hex()
         );
 
+        let target_number = block_ptr.block_number() - offset;
+        let cutoff = self.cache_cutoff().await;
+        if target_number < cutoff {
+            return Ok(None);
+        }
+
         // Use herd cache to avoid thundering herd when multiple callers
         // request the same ancestor block simultaneously. The cache check
         // is inside the future so that only one caller checks and populates
@@ -2923,6 +3109,47 @@ impl ChainStoreTrait for ChainStore {
         }
 
         Ok(result)
+    }
+
+    async fn ancestor_block_ptr(
+        self: Arc<Self>,
+        block_ptr: BlockPtr,
+        offset: BlockNumber,
+        root: Option<BlockHash>,
+    ) -> Result<Option<BlockPtr>, Error> {
+        ensure!(
+            block_ptr.number >= offset,
+            "block offset {} for block `{}` points to before genesis block",
+            offset,
+            block_ptr.hash_hex()
+        );
+
+        // Check the in-memory cache first.
+        if let Some((ptr, _)) = self.recent_blocks_cache.get_ancestor(&block_ptr, offset) {
+            return Ok(Some(ptr));
+        }
+
+        // Cache miss, query the database (CTE only, no data fetch).
+        let mut conn = self.pool.get_permitted().await?;
+        self.storage
+            .ancestor_block_ptr(&mut conn, block_ptr, offset, root)
+            .await
+    }
+
+    async fn block_parent_ptr(
+        self: Arc<Self>,
+        hash: &BlockHash,
+    ) -> Result<Option<BlockPtr>, Error> {
+        // Check the in-memory cache first.
+        if let Some(parent_ptr) = self.recent_blocks_cache.get_parent_ptr_by_hash(hash) {
+            return Ok(Some(parent_ptr));
+        }
+
+        // Cache miss, query the database.
+        let mut conn = self.pool.get_permitted().await?;
+        self.storage
+            .block_parent_ptr(&mut conn, &self.chain, hash)
+            .await
     }
 
     async fn cleanup_cached_blocks(
@@ -3121,6 +3348,14 @@ mod recent_blocks_cache {
                 .and_then(|block| block.data.as_ref().map(|data| (&block.ptr, data)))
         }
 
+        fn get_parent_ptr_by_hash(&self, hash: &BlockHash) -> Option<BlockPtr> {
+            let block = self.blocks.values().find(|b| &b.ptr.hash == hash)?;
+            self.blocks
+                .values()
+                .find(|b| b.ptr.hash == block.parent_hash)
+                .map(|parent| parent.ptr.clone())
+        }
+
         fn get_block_by_number(&self, number: BlockNumber) -> Option<&CacheBlock> {
             self.blocks.get(&number)
         }
@@ -3235,6 +3470,17 @@ mod recent_blocks_cache {
             }
 
             block_opt
+        }
+
+        pub fn get_parent_ptr_by_hash(&self, hash: &BlockHash) -> Option<BlockPtr> {
+            let inner = self.inner.read();
+            let result = inner.get_parent_ptr_by_hash(hash);
+            if result.is_some() {
+                inner.metrics.record_cache_hit(&inner.network);
+            } else {
+                inner.metrics.record_cache_miss(&inner.network);
+            }
+            result
         }
 
         pub fn get_blocks_by_hash(&self, hashes: &[BlockHash]) -> Vec<(BlockPtr, CachedBlock)> {

@@ -145,6 +145,10 @@ pub struct EnvVarsStore {
     pub use_brin_for_all_query_types: bool,
     /// Temporary env var to disable certain lookups in the chain store
     pub disable_block_cache_for_lookup: bool,
+    /// When set, block reads for blocks that are more than `cache_size`
+    /// blocks behind the chain head will act as if the data field in
+    /// the database was null. Set by `GRAPH_STORE_IGNORE_BLOCK_CACHE`.
+    pub ignore_block_cache: bool,
     /// Safety switch to increase the number of columns used when
     /// calculating the chunk size in `InsertQuery::chunk_size`. This can be
     /// used to work around Postgres errors complaining 'number of
@@ -237,6 +241,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             create_gin_indexes: x.create_gin_indexes,
             use_brin_for_all_query_types: x.use_brin_for_all_query_types,
             disable_block_cache_for_lookup: x.disable_block_cache_for_lookup,
+            ignore_block_cache: x.ignore_block_cache,
             insert_extra_cols: x.insert_extra_cols,
             fdw_fetch_size: x.fdw_fetch_size,
             account_like_scan_interval_hours: x.account_like_scan_interval_hours,
@@ -345,6 +350,8 @@ pub struct InnerStore {
     use_brin_for_all_query_types: bool,
     #[envconfig(from = "GRAPH_STORE_DISABLE_BLOCK_CACHE_FOR_LOOKUP", default = "false")]
     disable_block_cache_for_lookup: bool,
+    #[envconfig(from = "GRAPH_STORE_IGNORE_BLOCK_CACHE", default = "false")]
+    ignore_block_cache: bool,
     #[envconfig(from = "GRAPH_STORE_INSERT_EXTRA_COLS", default = "0")]
     insert_extra_cols: usize,
     #[envconfig(from = "GRAPH_STORE_FDW_FETCH_SIZE", default = "1000")]

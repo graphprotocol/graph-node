@@ -530,12 +530,26 @@ impl ChainStore for MockChainStore {
     async fn blocks(self: Arc<Self>, _hashes: Vec<BlockHash>) -> Result<Vec<CachedBlock>, Error> {
         unimplemented!()
     }
+    async fn block_parent_ptr(
+        self: Arc<Self>,
+        _hash: &BlockHash,
+    ) -> Result<Option<BlockPtr>, Error> {
+        unimplemented!()
+    }
     async fn ancestor_block(
         self: Arc<Self>,
         _block_ptr: BlockPtr,
         _offset: BlockNumber,
         _root: Option<BlockHash>,
     ) -> Result<Option<(CachedBlock, BlockPtr)>, Error> {
+        unimplemented!()
+    }
+    async fn ancestor_block_ptr(
+        self: Arc<Self>,
+        _block_ptr: BlockPtr,
+        _offset: BlockNumber,
+        _root: Option<BlockHash>,
+    ) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
     async fn cleanup_cached_blocks(

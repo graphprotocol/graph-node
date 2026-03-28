@@ -1,7 +1,10 @@
 use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
-    components::network_provider::{AmpChainNames, ChainName},
+    components::{
+        network_provider::{AmpChainNames, ChainName},
+        store::BLOCK_CACHE_SIZE,
+    },
     env::ENV_VARS,
     firehose::{SubgraphLimit, SUBGRAPHS_PER_CONN},
     itertools::Itertools,
@@ -13,7 +16,7 @@ use graph::{
             de::{self, value, SeqAccess, Visitor},
             Deserialize, Deserializer,
         },
-        serde_json, serde_regex, toml, Logger, NodeId, StoreError,
+        serde_json, serde_regex, toml, Logger, NodeId, StoreError, BLOCK_NUMBER_MAX,
     },
 };
 use graph_chain_ethereum as ethereum;
@@ -72,6 +75,8 @@ impl Default for Opt {
 pub struct Config {
     #[serde(skip, default = "default_node_id")]
     pub node: NodeId,
+    #[serde(skip)]
+    pub disable_block_ingestor: bool,
     pub general: Option<GeneralSection>,
     #[serde(rename = "store")]
     pub stores: BTreeMap<String, Shard>,
@@ -104,6 +109,15 @@ fn validate_name(s: &str) -> Result<()> {
 }
 
 impl Config {
+    /// Returns `true` if this node should run block ingestion.
+    ///
+    /// Block ingestion runs when the `--disable-block-ingestor` kill switch
+    /// is **not** set and this node's id matches the `ingestor` value from
+    /// the `[chains]` config section.
+    pub fn is_block_ingestor(&self) -> bool {
+        !self.disable_block_ingestor && self.chains.ingestor == self.node.to_string()
+    }
+
     pub fn chain_ids(&self) -> Vec<ChainName> {
         self.chains
             .chains
@@ -142,7 +156,7 @@ impl Config {
             ));
         }
         for (key, shard) in self.stores.iter_mut() {
-            shard.validate(key)?;
+            shard.validate(key, &self.node)?;
         }
         self.deployment.validate()?;
 
@@ -182,7 +196,7 @@ impl Config {
     /// a config from the command line arguments in `opt`
     pub fn load(logger: &Logger, opt: &Opt) -> Result<Config> {
         if let Some(config) = &opt.config {
-            Self::from_file(logger, config, &opt.node_id)
+            Self::from_file(logger, config, opt)
         } else {
             info!(
                 logger,
@@ -192,14 +206,16 @@ impl Config {
         }
     }
 
-    pub fn from_file(logger: &Logger, path: &str, node: &str) -> Result<Config> {
+    pub fn from_file(logger: &Logger, path: &str, opt: &Opt) -> Result<Config> {
         info!(logger, "Reading configuration file `{}`", path);
-        Self::from_str(&read_to_string(path)?, node)
+        Self::from_str(&read_to_string(path)?, opt)
     }
 
-    pub fn from_str(config: &str, node: &str) -> Result<Config> {
+    pub fn from_str(config: &str, opt: &Opt) -> Result<Config> {
         let mut config: Config = toml::from_str(config)?;
-        config.node = NodeId::new(node).map_err(|node| anyhow!("invalid node id {}", node))?;
+        config.node =
+            NodeId::new(&opt.node_id).map_err(|node| anyhow!("invalid node id {}", node))?;
+        config.disable_block_ingestor = opt.disable_block_ingestor;
         config.validate()?;
         Ok(config)
     }
@@ -213,6 +229,7 @@ impl Config {
         stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(true, opt)?);
         Ok(Config {
             node,
+            disable_block_ingestor: opt.disable_block_ingestor,
             general: None,
             stores,
             chains,
@@ -267,10 +284,10 @@ pub struct Shard {
 }
 
 impl Shard {
-    fn validate(&mut self, name: &str) -> Result<()> {
+    fn validate(&mut self, name: &str, node: &NodeId) -> Result<()> {
         ShardName::new(name.to_string()).map_err(|e| anyhow!(e))?;
 
-        self.expand_connection()?;
+        self.expand_connection(node)?;
 
         if matches!(self.pool_size, PoolSize::None) {
             return Err(anyhow!("missing pool size definition for shard `{}`", name));
@@ -320,22 +337,25 @@ impl Shard {
         })
     }
 
-    fn expand_connection(&mut self) -> Result<()> {
+    // Put the PGAPPNAME into the URL since tokio-postgres ignores this
+    // environment variable. If PGAPPNAME is not set, use `node`.
+    fn expand_connection(&mut self, node: &NodeId) -> Result<()> {
+        let app_name = std::env::var("PGAPPNAME").unwrap_or(node.to_string());
+
         let mut url = Url::parse(shellexpand::env(&self.connection)?.as_ref())?;
-        // Put the PGAPPNAME into the URL since tokio-postgres ignores this
-        // environment variable
-        if let Ok(app_name) = std::env::var("PGAPPNAME") {
-            let query = match url.query() {
-                Some(query) => {
-                    format!("{query}&application_name={app_name}")
-                }
-                None => {
-                    format!("application_name={app_name}")
-                }
-            };
-            url.set_query(Some(&query));
-        }
+
+        let query = match url.query() {
+            Some(query) => {
+                format!("{query}&application_name={app_name}")
+            }
+            None => {
+                format!("application_name={app_name}")
+            }
+        };
+        url.set_query(Some(&query));
+
         self.connection = url.to_string();
+
         Ok(())
     }
 }
@@ -439,14 +459,45 @@ pub struct ChainSection {
     pub ingestor: String,
     #[serde(flatten)]
     pub chains: BTreeMap<String, Chain>,
+    /// The default for chains that don't set this explicitly. When running
+    /// without a config file, we use `BLOCK_NUMBER_MAX` to turn off pruning
+    /// the block cache
+    #[serde(default = "default_cache_size")]
+    pub cache_size: i32,
 }
 
 impl ChainSection {
     fn validate(&mut self) -> Result<()> {
         NodeId::new(&self.ingestor)
             .map_err(|node| anyhow!("invalid node id for ingestor {}", node))?;
-        for (_, chain) in self.chains.iter_mut() {
-            chain.validate()?
+        let reorg_threshold = ENV_VARS.reorg_threshold();
+
+        if self.cache_size <= reorg_threshold {
+            return Err(anyhow!(
+                "default chains.cache_size ({}) must be greater than reorg_threshold ({})",
+                self.cache_size,
+                reorg_threshold
+            ));
+        }
+
+        // Apply section-level cache_size as default for chains that
+        // don't set their own.
+        for chain in self.chains.values_mut() {
+            if chain.cache_size == 0 {
+                chain.cache_size = self.cache_size;
+            }
+        }
+
+        for (name, chain) in self.chains.iter_mut() {
+            chain.validate()?;
+            if chain.cache_size <= reorg_threshold {
+                return Err(anyhow!(
+                    "chain '{}': cache_size ({}) must be greater than reorg_threshold ({})",
+                    name,
+                    chain.cache_size,
+                    reorg_threshold
+                ));
+            }
         }
 
         // Validate that effective AMP names are unique and don't collide
@@ -486,18 +537,17 @@ impl ChainSection {
     }
 
     fn from_opt(opt: &Opt) -> Result<Self> {
-        // If we are not the block ingestor, set the node name
-        // to something that is definitely not our node_id
-        let ingestor = if opt.disable_block_ingestor {
-            format!("{} is not ingesting", opt.node_id)
-        } else {
-            opt.node_id.clone()
-        };
+        let ingestor = opt.node_id.clone();
         let mut chains = BTreeMap::new();
         Self::parse_networks(&mut chains, Transport::Rpc, &opt.ethereum_rpc)?;
         Self::parse_networks(&mut chains, Transport::Ws, &opt.ethereum_ws)?;
         Self::parse_networks(&mut chains, Transport::Ipc, &opt.ethereum_ipc)?;
-        Ok(Self { ingestor, chains })
+        Ok(Self {
+            ingestor,
+            chains,
+            // When running without a config file, we do not prune the block cache
+            cache_size: BLOCK_NUMBER_MAX,
+        })
     }
 
     pub fn providers(&self) -> Vec<String> {
@@ -576,6 +626,7 @@ impl ChainSection {
                     polling_interval: default_polling_interval(),
                     providers: vec![],
                     amp: None,
+                    cache_size: 0,
                 });
                 entry.providers.push(provider);
             }
@@ -600,6 +651,15 @@ pub struct Chain {
     /// resolve to this chain. Defaults to the chain name.
     #[serde(default)]
     pub amp: Option<String>,
+    /// Number of blocks from chain head for which to keep block data
+    /// cached. When `GRAPH_STORE_IGNORE_BLOCK_CACHE` is set, blocks
+    /// older than this are treated as if they have no data.
+    #[serde(default)]
+    pub cache_size: i32,
+}
+
+fn default_cache_size() -> i32 {
+    BLOCK_CACHE_SIZE
 }
 
 fn default_blockchain_kind() -> BlockchainKind {
@@ -1334,6 +1394,7 @@ mod tests {
                 polling_interval: default_polling_interval(),
                 providers: vec![],
                 amp: None,
+                cache_size: 0,
             },
             actual
         );
@@ -1357,9 +1418,35 @@ mod tests {
                 polling_interval: default_polling_interval(),
                 providers: vec![],
                 amp: None,
+                cache_size: 0,
             },
             actual
         );
+    }
+
+    #[test]
+    fn chain_inherits_cache_size_from_section() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            cache_size = 1000
+            [mainnet]
+            shard = "primary"
+            provider = []
+            [sepolia]
+            shard = "primary"
+            provider = []
+            cache_size = 2000
+            "#,
+        )
+        .unwrap();
+
+        section.validate().unwrap();
+
+        // mainnet inherits from section
+        assert_eq!(section.chains["mainnet"].cache_size, 1000);
+        // sepolia keeps its explicit value
+        assert_eq!(section.chains["sepolia"].cache_size, 2000);
     }
 
     #[test]
@@ -1939,7 +2026,9 @@ fdw_pool_size = [
             )
             .unwrap();
 
-            shard.validate("index_node_1").unwrap();
+            shard
+                .validate("shard_1", &NodeId::new("index_node_1").unwrap())
+                .unwrap();
             shard
         };
         if let Some(appname) = appname {
@@ -2059,6 +2148,7 @@ fdw_pool_size = [
 
         let config = Config {
             node: NodeId::new("test").unwrap(),
+            disable_block_ingestor: false,
             general: None,
             stores: {
                 let mut s = std::collections::BTreeMap::new();
@@ -2089,5 +2179,43 @@ fdw_pool_size = [
             amp.resolve(&"unknown".into()),
             graph::components::network_provider::ChainName::from("unknown")
         );
+    }
+
+    #[test]
+    fn is_block_ingestor() {
+        let make_config = |node: &str, ingestor: &str, disable: bool| -> Config {
+            let section: ChainSection =
+                toml::from_str(&format!(r#"ingestor = "{}""#, ingestor)).unwrap();
+            Config {
+                node: NodeId::new(node).unwrap(),
+                disable_block_ingestor: disable,
+                general: None,
+                stores: {
+                    let mut s = std::collections::BTreeMap::new();
+                    s.insert(
+                        "primary".to_string(),
+                        toml::from_str::<Shard>(r#"connection = "postgresql://u:p@h/db""#).unwrap(),
+                    );
+                    s
+                },
+                chains: section,
+                deployment: toml::from_str(
+                    "[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]",
+                )
+                .unwrap(),
+            }
+        };
+
+        // Node matches ingestor, not disabled
+        assert!(make_config("index-0", "index-0", false).is_block_ingestor());
+
+        // Node does not match ingestor
+        assert!(!make_config("query-0", "index-0", false).is_block_ingestor());
+
+        // Node matches but kill switch is on
+        assert!(!make_config("index-0", "index-0", true).is_block_ingestor());
+
+        // Node does not match and kill switch is on
+        assert!(!make_config("query-0", "index-0", true).is_block_ingestor());
     }
 }

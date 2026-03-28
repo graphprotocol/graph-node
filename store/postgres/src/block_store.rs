@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use graph::parking_lot::RwLock;
+use graph::{components::store::BLOCK_CACHE_SIZE, parking_lot::RwLock};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -217,8 +217,9 @@ pub struct Inner {
     /// known to the system at startup, either from configuration or from
     /// previous state in the database.
     stores: RwLock<HashMap<String, Arc<ChainStore>>>,
-    // We keep this information so we can create chain stores during startup
-    shards: Vec<(String, Shard)>,
+    /// We keep this information so we can create chain stores during
+    /// startup. The triple is (network, shard, cache_size)
+    shards: Vec<(String, Shard, BlockNumber)>,
     pools: HashMap<Shard, ConnectionPool>,
     sender: Arc<NotificationSender>,
     mirror: PrimaryMirror,
@@ -240,8 +241,8 @@ impl BlockStore {
     /// a chain uses the pool from `pools` for the given shard.
     pub async fn new(
         logger: Logger,
-        // (network, shard)
-        shards: Vec<(String, Shard)>,
+        // (network, shard, cache_size)
+        shards: Vec<(String, Shard, BlockNumber)>,
         // shard -> pool
         pools: HashMap<Shard, ConnectionPool>,
         sender: Arc<NotificationSender>,
@@ -271,7 +272,7 @@ impl BlockStore {
         let block_store = Self { inner };
 
         // For each configured chain, add a chain store
-        for (chain_name, shard) in chains {
+        for (chain_name, shard, _cache_size) in chains {
             if let Some(chain) = existing_chains
                 .iter()
                 .find(|chain| chain.name == chain_name)
@@ -363,6 +364,17 @@ impl BlockStore {
         );
         let ident = chain.network_identifier()?;
         let logger = self.logger.new(o!("network" => chain.name.clone()));
+        let cache_size = self
+            .shards
+            .iter()
+            .find_map(|(network, _, chain_size)| {
+                if network == &chain.name {
+                    Some(*chain_size)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(BLOCK_CACHE_SIZE);
         let store = ChainStore::new(
             logger,
             chain.name.clone(),
@@ -371,6 +383,7 @@ impl BlockStore {
             pool,
             ENV_VARS.store.recent_blocks_cache_capacity,
             self.chain_store_metrics.clone(),
+            cache_size,
         );
         if create {
             store.create(&ident).await?;
@@ -565,7 +578,7 @@ impl BlockStore {
         let shard = self
             .shards
             .iter()
-            .find_map(|(chain_id, shard)| {
+            .find_map(|(chain_id, shard, _cache_size)| {
                 if chain_id.as_str().eq(network) {
                     Some(shard)
                 } else {

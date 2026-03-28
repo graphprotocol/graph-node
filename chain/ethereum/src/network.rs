@@ -249,6 +249,15 @@ impl EthereumNetworkAdapters {
         Self::cheapest_from(cheapest, required_capabilities, self.retest_percent)
     }
 
+    /// Returns all validated providers. Unvalidated providers are excluded.
+    pub async fn all_cheapest(&self) -> Vec<Arc<EthereumAdapter>> {
+        self.manager
+            .providers(&self.chain_id)
+            .await
+            .map(|adapters| adapters.map(|a| a.adapter.clone()).collect())
+            .unwrap_or_default()
+    }
+
     pub async fn cheapest(&self) -> Option<Arc<EthereumAdapter>> {
         // EthereumAdapters are sorted by their NodeCapabilities when the EthereumNetworks
         // struct is instantiated so they do not need to be sorted here

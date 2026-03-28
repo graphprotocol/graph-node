@@ -26,7 +26,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.41.2"
+version = "0.42.1"
 edition = "2021"
 authors = ["The Graph core developers & contributors"]
 readme = "README.md"
@@ -35,7 +35,7 @@ repository = "https://github.com/graphprotocol/graph-node"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-alloy = { version = "1.6.3", features = ["dyn-abi", "json-abi", "full", "arbitrary", "json-rpc", "serde"] }
+alloy = { version = "1.7.3", features = ["dyn-abi", "json-abi", "full", "arbitrary", "json-rpc", "serde"] }
 alloy-rpc-types = "1.0.33"
 anyhow = "1.0"
 async-graphql = { version = "7.2.1", features = ["chrono"] }
@@ -56,12 +56,12 @@ diesel = { version = "2.2.7", features = [
     "chrono",
     "i-implement-a-third-party-backend-and-opt-into-breaking-changes",
 ] }
-diesel-async = { version = "0.7.4", features = ["deadpool", "async-connection-wrapper", "tokio", "postgres"] }
+diesel-async = { version = "0.8.0", features = ["deadpool", "async-connection-wrapper", "tokio", "postgres"] }
 diesel-derive-enum = { version = "2.1.0", features = ["postgres"] }
 diesel-dynamic-schema = { version = "0.2.3", features = ["postgres"] }
 diesel_derives = "2.3.7"
 diesel_migrations = "2.3.1"
-env_logger = "0.11.9"
+env_logger = "0.11.10"
 envconfig = "0.11.1"
 git-testament = "0.2"
 graph = { path = "./graph" }
@@ -77,7 +77,7 @@ itertools = "0.14.0"
 lazy_static = "1.5.0"
 prost = "0.14"
 prost-types = "0.14"
-redis = { version = "1.0.5", features = [
+redis = { version = "1.1.0", features = [
     "aio",
     "connection-manager",
     "tokio-comp",

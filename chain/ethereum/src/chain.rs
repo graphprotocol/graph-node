@@ -1148,11 +1148,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         let block = match self.chain_client.as_ref() {
             ChainClient::Firehose(endpoints) => {
                 let chain_store = self.chain_store.cheap_clone();
-                // First try to get the block from the store (typed cache)
-                if let Ok(blocks) = chain_store.blocks(vec![block.hash.clone()]).await {
-                    if let Some(cached_block) = blocks.into_iter().next() {
-                        return Ok(cached_block.light_block().parent_ptr());
-                    }
+                // First try to get the parent pointer from the store header columns
+                if let Ok(Some(parent)) = chain_store.block_parent_ptr(&block.hash).await {
+                    return Ok(Some(parent));
                 }
 
                 // If not in store, fetch from Firehose

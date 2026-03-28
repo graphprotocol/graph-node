@@ -195,4 +195,59 @@ mod tests {
         assert!(json.contains(r#""id":"req-1""#));
         assert!(!json.contains("result"));
     }
+
+    #[test]
+    fn deserialize_batch_request() {
+        let json = r#"[
+            {"jsonrpc":"2.0","method":"subgraph_create","id":1},
+            {"jsonrpc":"2.0","method":"subgraph_remove","id":2}
+        ]"#;
+        let requests: Vec<JsonRpcRequest> = serde_json::from_str(json).unwrap();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].method, "subgraph_create");
+        assert_eq!(requests[0].id, Some(JsonRpcId::Number(1)));
+        assert_eq!(requests[1].method, "subgraph_remove");
+        assert_eq!(requests[1].id, Some(JsonRpcId::Number(2)));
+    }
+
+    #[test]
+    fn serialize_batch_response() {
+        let responses = vec![
+            JsonRpcResponse::success(JsonRpcId::Number(1), serde_json::json!({"ok": true})),
+            JsonRpcResponse::error(
+                JsonRpcId::Number(2),
+                JsonRpcError::new(-32601, "Method not found"),
+            ),
+        ];
+        let json = serde_json::to_string(&responses).unwrap();
+        // Must be a JSON array
+        assert!(json.starts_with('['));
+        assert!(json.ends_with(']'));
+        // Both responses present
+        let parsed: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0]["id"], 1);
+        assert_eq!(parsed[1]["id"], 2);
+    }
+
+    #[test]
+    fn batch_with_notification_omits_response() {
+        // A notification has no id — when filtered, the batch response should
+        // contain fewer entries than the batch request.
+        let json = r#"[
+            {"jsonrpc":"2.0","method":"subgraph_create","id":1},
+            {"jsonrpc":"2.0","method":"subgraph_remove"}
+        ]"#;
+        let requests: Vec<JsonRpcRequest> = serde_json::from_str(json).unwrap();
+        assert_eq!(requests.len(), 2);
+        assert!(requests[0].id.is_some());
+        assert!(requests[1].id.is_none());
+    }
+
+    #[test]
+    fn empty_batch_is_valid_json_array() {
+        let json = "[]";
+        let requests: Vec<JsonRpcRequest> = serde_json::from_str(json).unwrap();
+        assert!(requests.is_empty());
+    }
 }

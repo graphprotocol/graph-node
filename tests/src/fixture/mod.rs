@@ -52,6 +52,7 @@ use graph_chain_ethereum::chain::RuntimeAdapterBuilder;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::Chain;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
+use graph_node::config::Opt;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
 use graph_runtime_wasm::RuntimeHostBuilder;
@@ -377,7 +378,7 @@ pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
             Err(e) => panic!("{}", e.to_string()),
         };
         let config = config.replace("$THEGRAPH_STORE_POSTGRES_DIESEL_URL", &db_url);
-        Config::from_str(&config, "default").expect("failed to create configuration")
+        Config::from_str(&config, &Opt::default()).expect("failed to create configuration")
     };
 
     let logger = test_logger(test_name);

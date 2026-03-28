@@ -47,6 +47,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler musl-tools
+          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
 
       - name: Install dependencies (macOS)
         if: startsWith(matrix.runner, 'macos')
@@ -61,6 +64,8 @@ jobs:
       - name: Build gnd binary (Unix/Mac)
         if: ${{ !startsWith(matrix.runner, 'windows') }}
         run: cargo build --bin gnd --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Build gnd binary (Windows)
         if: startsWith(matrix.runner, 'windows')

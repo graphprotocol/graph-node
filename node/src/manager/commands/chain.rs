@@ -134,10 +134,11 @@ pub async fn info(
     let head_block = chain_store.cheap_clone().chain_head_ptr().await?;
     let ancestor = match &head_block {
         None => None,
-        Some(head_block) => chain_store
-            .ancestor_block(head_block.clone(), offset, None)
-            .await?
-            .map(|x| x.1),
+        Some(head_block) => {
+            chain_store
+                .ancestor_block_ptr(head_block.clone(), offset, None)
+                .await?
+        }
     };
 
     row("name", chain.name);
