@@ -338,6 +338,12 @@ impl ValidModule {
         config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
         config.async_support(true);
 
+        // Enable wasmtime fuel metering for Rust modules.
+        // AS modules use parity_wasm-injected gas() calls instead.
+        if is_rust_module {
+            config.consume_fuel(true);
+        }
+
         let engine = &wasmtime::Engine::new(&config)?;
         let module = wasmtime::Module::from_binary(engine, &raw_module)?;
 

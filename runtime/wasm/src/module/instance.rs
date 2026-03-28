@@ -246,6 +246,17 @@ impl WasmInstance {
                         .as_secs()
                 ))));
             }
+            Err(trap)
+                if trap
+                    .chain()
+                    .any(|e| e.downcast_ref::<Trap>() == Some(&Trap::OutOfFuel)) =>
+            {
+                // Fuel exhaustion is deterministic — same code always burns the same fuel.
+                Some(anyhow::anyhow!(
+                    "Handler '{}' exceeded fuel limit (possible infinite loop)",
+                    handler
+                ))
+            }
             Err(trap) => {
                 let trap_is_deterministic = is_trap_deterministic(&trap)
                     || self.instance_ctx().as_ref().deterministic_host_trap;
@@ -850,6 +861,13 @@ impl WasmInstance {
         //
         // See also: runtime-timeouts
         store.set_epoch_deadline(2);
+
+        // For Rust modules, set initial fuel for wasmtime's built-in fuel metering.
+        // This replaces the parity_wasm gas injection which can't parse modern WASM features.
+        // 10 billion fuel units is generous for any reasonable handler but catches infinite loops.
+        if valid_module.language == crate::rust_abi::MappingLanguage::Rust {
+            store.set_fuel(10_000_000_000)?;
+        }
 
         let instance = valid_module
             .instance_pre
