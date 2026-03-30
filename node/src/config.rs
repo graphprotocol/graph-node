@@ -489,7 +489,9 @@ impl ChainSection {
         }
 
         for (name, chain) in self.chains.iter_mut() {
-            chain.validate(name)?;
+            chain
+                .validate()
+                .map_err(|e| anyhow!("chain '{}': {}", name, e))?;
             if chain.cache_size <= reorg_threshold {
                 return Err(anyhow!(
                     "chain '{}': cache_size ({}) must be greater than reorg_threshold ({})",
@@ -641,7 +643,7 @@ impl ChainSection {
 /// `polling_interval`.
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct ChainSettings {
-    /// Set by `polling_interval` (milliseconds). Defaults to `GRAPH_ETHEREUM_POLLING_INTERVAL`.
+    /// Set by `polling_interval` (milliseconds). Defaults to `ETHEREUM_POLLING_INTERVAL`.
     #[serde(
         default = "default_polling_interval",
         deserialize_with = "deserialize_duration_millis"
@@ -704,6 +706,15 @@ impl Default for ChainSettings {
 impl ChainSettings {
     fn validate(&self) -> Result<()> {
         anyhow::ensure!(
+            !self.polling_interval.is_zero(),
+            "polling_interval must be > 0"
+        );
+        anyhow::ensure!(
+            !self.json_rpc_timeout.is_zero(),
+            "json_rpc_timeout must be > 0"
+        );
+        anyhow::ensure!(self.request_retries > 0, "request_retries must be > 0");
+        anyhow::ensure!(
             self.max_block_range_size > 0,
             "max_block_range_size must be > 0"
         );
@@ -723,6 +734,10 @@ impl ChainSettings {
         anyhow::ensure!(
             self.get_logs_max_contracts > 0,
             "get_logs_max_contracts must be > 0"
+        );
+        anyhow::ensure!(
+            self.target_triggers_per_block_range > 0,
+            "target_triggers_per_block_range must be > 0"
         );
         Ok(())
     }
@@ -758,12 +773,12 @@ fn default_blockchain_kind() -> BlockchainKind {
 }
 
 impl Chain {
-    fn validate(&mut self, name: &str) -> Result<()> {
+    fn validate(&mut self) -> Result<()> {
         let mut labels = self.providers.iter().map(|p| &p.label).collect_vec();
         labels.sort();
         labels.dedup();
         if labels.len() != self.providers.len() {
-            return Err(anyhow!("chain {}: provider labels must be unique", name));
+            return Err(anyhow!("provider labels must be unique"));
         }
 
         // `Config` validates that `self.shard` references a configured shard
@@ -771,9 +786,9 @@ impl Chain {
             provider.validate()?
         }
 
-        self.settings
-            .validate()
-            .map_err(|e| anyhow!("chain {}: {}", name, e))?;
+        if self.protocol == BlockchainKind::Ethereum {
+            self.settings.validate()?;
+        }
 
         Ok(())
     }
@@ -2591,6 +2606,86 @@ fdw_pool_size = [
         assert!(
             err.contains("get_logs_max_contracts must be > 0"),
             "expected get_logs_max_contracts error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_polling_interval() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            polling_interval = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("polling_interval must be > 0"),
+            "expected polling_interval error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_json_rpc_timeout() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            json_rpc_timeout = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("json_rpc_timeout must be > 0"),
+            "expected json_rpc_timeout error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_request_retries() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            request_retries = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("request_retries must be > 0"),
+            "expected request_retries error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_target_triggers_per_block_range() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            target_triggers_per_block_range = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("target_triggers_per_block_range must be > 0"),
+            "expected target_triggers_per_block_range error, got: {err}"
         );
     }
 

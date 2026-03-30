@@ -136,7 +136,7 @@ default (see [environment-variables.md](environment-variables.md) for
 details):
 
 - `polling_interval`: block ingestor polling interval in milliseconds.
-  Default: `ETHEREUM_POLLING_INTERVAL` (500ms).
+  Default: `ETHEREUM_POLLING_INTERVAL` (1000ms).
 - `json_rpc_timeout`: timeout for JSON-RPC requests in seconds.
   Default: `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT` (180s).
 - `request_retries`: number of times to retry failed JSON-RPC requests.
