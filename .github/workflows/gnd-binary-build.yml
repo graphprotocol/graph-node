@@ -279,3 +279,73 @@ jobs:
       - name: Publish
         run: npm publish --provenance --access public --tag ${{ steps.version.outputs.tag }} ${{ inputs.dry_run && '--dry-run' || '' }}
         working-directory: pkg
+
+  publish-npm-wrapper:
+    name: Publish @graphprotocol/gnd wrapper
+    needs: publish-npm
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Determine version and npm tag
+        id: version
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          if [[ "$VERSION" == *-* ]]; then
+            PRE="${VERSION#*-}"
+            TAG="${PRE%%.*}"
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create wrapper package
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          mkdir -p pkg/bin
+          cp gnd/npm/bin/gnd.js pkg/bin/gnd.js
+          cp gnd/npm/README.md pkg/README.md
+
+          cat > pkg/package.json << EOF
+          {
+            "name": "@graphprotocol/gnd",
+            "version": "${VERSION}",
+            "description": "Graph Node Development CLI",
+            "bin": {
+              "gnd": "./bin/gnd.js"
+            },
+            "optionalDependencies": {
+              "@graphprotocol/gnd-darwin-arm64": "${VERSION}",
+              "@graphprotocol/gnd-darwin-x64": "${VERSION}",
+              "@graphprotocol/gnd-linux-arm64": "${VERSION}",
+              "@graphprotocol/gnd-linux-x64": "${VERSION}",
+              "@graphprotocol/gnd-win32-x64": "${VERSION}"
+            },
+            "publishConfig": {
+              "access": "public",
+              "provenance": true
+            },
+            "license": "(Apache-2.0 OR MIT)",
+            "repository": {
+              "type": "git",
+              "url": "https://github.com/graphprotocol/graph-node.git"
+            }
+          }
+          EOF
+
+      - name: Publish
+        run: npm publish --provenance --access public --tag ${{ steps.version.outputs.tag }} ${{ inputs.dry_run && '--dry-run' || '' }}
+        working-directory: pkg
