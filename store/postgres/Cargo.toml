@@ -24,6 +24,7 @@ lru_time_cache = "0.11"
 postgres = "0.19.1"
 openssl = { version = "0.10.76", features = ["vendored"] }
 postgres-openssl = "0.5.2"
+tokio-postgres = "0.7"
 rand.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }

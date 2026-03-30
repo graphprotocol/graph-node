@@ -7,7 +7,7 @@ use deadpool::managed::{Hook, RecycleError, RecycleResult};
 use diesel::IntoSql;
 
 use diesel_async::pooled_connection::{PoolError as DieselPoolError, PoolableConnection};
-use diesel_async::{AsyncConnection, RunQueryDsl};
+use diesel_async::RunQueryDsl;
 use graph::env::ENV_VARS;
 use graph::prelude::error;
 use graph::prelude::AtomicMovingStats;
@@ -17,6 +17,8 @@ use graph::prelude::MetricsRegistry;
 use graph::prelude::PoolWaitStats;
 use graph::slog::info;
 use graph::slog::Logger;
+use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
+use postgres_openssl::MakeTlsConnector;
 
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
@@ -100,11 +102,44 @@ impl deadpool::managed::Manager for ConnectionManager {
     type Error = DieselPoolError;
 
     async fn create(&self) -> Result<Self::Type, Self::Error> {
-        let res = diesel_async::AsyncPgConnection::establish(&self.connection_url).await;
-        if let Err(ref e) = res {
-            self.handle_error(e);
-        }
-        res.map_err(DieselPoolError::ConnectionError)
+        // diesel-async's AsyncPgConnection::establish() uses
+        // tokio_postgres::NoTls, which never negotiates TLS. This breaks
+        // connections to any PostgreSQL server that requires encrypted
+        // connections via pg_hba.conf.
+        //
+        // We use postgres-openssl to provide TLS support, with
+        // SslVerifyMode::NONE to match libpq's default sslmode=prefer
+        // behavior: encrypt the connection when the server supports it,
+        // but don't verify the server certificate. tokio-postgres handles
+        // the sslmode parameter from the connection URL to decide whether
+        // TLS is used (disable/prefer/require); we configure how the
+        // handshake behaves.
+        //
+        // Note: tokio-postgres does not support sslmode=verify-ca or
+        // sslmode=verify-full. Certificate verification would require
+        // upstream support in the tokio-postgres URL parser.
+        let tls = make_tls_connector().map_err(|e| {
+            DieselPoolError::ConnectionError(diesel::ConnectionError::BadConnection(
+                e.to_string(),
+            ))
+        })?;
+
+        let (client, conn) =
+            tokio_postgres::connect(&self.connection_url, tls)
+                .await
+                .map_err(|e| {
+                    self.handle_error(&e);
+                    DieselPoolError::ConnectionError(
+                        diesel::ConnectionError::BadConnection(e.to_string()),
+                    )
+                })?;
+
+        diesel_async::AsyncPgConnection::try_from_client_and_connection(client, conn)
+            .await
+            .map_err(|e| {
+                self.handle_error(&e);
+                DieselPoolError::ConnectionError(e)
+            })
     }
 
     async fn recycle(
@@ -247,6 +282,18 @@ impl StateTracker {
             })
         })
     }
+}
+
+/// Build an OpenSSL TLS connector for PostgreSQL connections.
+///
+/// Uses `SslVerifyMode::NONE` (encrypt without certificate verification),
+/// matching libpq's behavior for sslmode=prefer and sslmode=require.
+/// tokio-postgres handles the sslmode URL parameter to decide whether TLS
+/// is actually used (disable/prefer/require).
+fn make_tls_connector() -> Result<MakeTlsConnector, openssl::error::ErrorStack> {
+    let mut builder = SslConnector::builder(SslMethod::tls())?;
+    builder.set_verify(SslVerifyMode::NONE);
+    Ok(MakeTlsConnector::new(builder.build()))
 }
 
 fn brief_error_msg(error: &dyn std::error::Error) -> String {
