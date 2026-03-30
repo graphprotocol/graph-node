@@ -2,6 +2,11 @@ name: Build gnd Binaries
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry-run npm publish (no actual publish)'
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -18,7 +23,7 @@ jobs:
             runner: ubuntu-22.04
             asset_name: gnd-linux-aarch64
           - target: x86_64-apple-darwin
-            runner: macos-13
+            runner: macos-14
             asset_name: gnd-macos-x86_64
           - target: aarch64-apple-darwin
             runner: macos-latest
@@ -29,21 +34,32 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Cache built binary
+        id: bin-cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ matrix.asset_name }}.gz
+            ${{ matrix.asset_name }}.zip
+          key: gnd-${{ matrix.target }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml', '**/*.rs') }}
 
       - name: Install Rust toolchain
+        if: steps.bin-cache.outputs.cache-hit != 'true'
         run: |
           rustup toolchain install stable
           rustup target add ${{ matrix.target }}
           rustup default stable
 
       - name: Rust Cache
+        if: steps.bin-cache.outputs.cache-hit != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
 
       - name: Install dependencies (Ubuntu)
-        if: startsWith(matrix.runner, 'ubuntu')
+        if: steps.bin-cache.outputs.cache-hit != 'true' && startsWith(matrix.runner, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler musl-tools
@@ -52,27 +68,26 @@ jobs:
           fi
 
       - name: Install dependencies (macOS)
-        if: startsWith(matrix.runner, 'macos')
+        if: steps.bin-cache.outputs.cache-hit != 'true' && startsWith(matrix.runner, 'macos')
         run: |
           brew install protobuf
 
       - name: Install protobuf (Windows)
-        if: startsWith(matrix.runner, 'windows')
+        if: steps.bin-cache.outputs.cache-hit != 'true' && startsWith(matrix.runner, 'windows')
         run: choco install protoc
 
-
       - name: Build gnd binary (Unix/Mac)
-        if: ${{ !startsWith(matrix.runner, 'windows') }}
+        if: steps.bin-cache.outputs.cache-hit != 'true' && !startsWith(matrix.runner, 'windows')
         run: cargo build --bin gnd --release --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Build gnd binary (Windows)
-        if: startsWith(matrix.runner, 'windows')
+        if: steps.bin-cache.outputs.cache-hit != 'true' && startsWith(matrix.runner, 'windows')
         run: cargo build --bin gnd --release --target ${{ matrix.target }}
 
       - name: Sign macOS binary
-        if: startsWith(matrix.runner, 'macos')
+        if: steps.bin-cache.outputs.cache-hit != 'true' && startsWith(matrix.runner, 'macos')
         uses: lando/code-sign-action@v3
         with:
           file: target/${{ matrix.target }}/release/gnd
@@ -82,7 +97,7 @@ jobs:
           options: --options runtime --entitlements entitlements.plist
 
       - name: Notarize macOS binary
-        if: startsWith(matrix.runner, 'macos')
+        if: steps.bin-cache.outputs.cache-hit != 'true' && startsWith(matrix.runner, 'macos')
         uses: lando/notarize-action@v2
         with:
           product-path: target/${{ matrix.target }}/release/gnd
@@ -91,20 +106,20 @@ jobs:
           appstore-connect-team-id: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Prepare binary (Unix)
-        if: ${{ !startsWith(matrix.runner, 'windows') }}
+        if: steps.bin-cache.outputs.cache-hit != 'true' && !startsWith(matrix.runner, 'windows')
         run: |
           cp target/${{ matrix.target }}/release/gnd ${{ matrix.asset_name }}
           chmod +x ${{ matrix.asset_name }}
           gzip ${{ matrix.asset_name }}
 
       - name: Prepare binary (Windows)
-        if: startsWith(matrix.runner, 'windows')
+        if: steps.bin-cache.outputs.cache-hit != 'true' && startsWith(matrix.runner, 'windows')
         run: |
           copy target\${{ matrix.target }}\release\gnd.exe ${{ matrix.asset_name }}
           7z a -tzip ${{ matrix.asset_name }}.zip ${{ matrix.asset_name }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
           path: |
@@ -119,7 +134,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup GitHub CLI
         run: |
@@ -129,7 +144,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -142,18 +157,125 @@ jobs:
           VERSION=${GITHUB_REF#refs/tags/}
           
           # Upload Linux x86_64 asset
-          gh release upload $VERSION artifacts/gnd-linux-x86_64/gnd-linux-x86_64.gz --repo $GITHUB_REPOSITORY
-          
-          # Upload Linux ARM64 asset
-          gh release upload $VERSION artifacts/gnd-linux-aarch64/gnd-linux-aarch64.gz --repo $GITHUB_REPOSITORY
-          
-          # Upload macOS x86_64 asset
-          gh release upload $VERSION artifacts/gnd-macos-x86_64/gnd-macos-x86_64.gz --repo $GITHUB_REPOSITORY
-          
-          # Upload macOS ARM64 asset
-          gh release upload $VERSION artifacts/gnd-macos-aarch64/gnd-macos-aarch64.gz --repo $GITHUB_REPOSITORY
-          
-          # Upload Windows x86_64 asset
-          gh release upload $VERSION artifacts/gnd-windows-x86_64.exe/gnd-windows-x86_64.exe.zip --repo $GITHUB_REPOSITORY
+          gh release upload $VERSION --clobber --repo $GITHUB_REPOSITORY \
+            artifacts/gnd-linux-x86_64/gnd-linux-x86_64.gz \
+            artifacts/gnd-linux-aarch64/gnd-linux-aarch64.gz \
+            artifacts/gnd-macos-x86_64/gnd-macos-x86_64.gz \
+            artifacts/gnd-macos-aarch64/gnd-macos-aarch64.gz \
+            artifacts/gnd-windows-x86_64.exe/gnd-windows-x86_64.exe.zip
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-npm:
+    name: Publish npm package for ${{ matrix.platform }}
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            asset: gnd-linux-x86_64.gz
+            os_field: linux
+            cpu_field: x64
+            extract: gunzip
+          - platform: linux-arm64
+            asset: gnd-linux-aarch64.gz
+            os_field: linux
+            cpu_field: arm64
+            extract: gunzip
+          - platform: darwin-x64
+            asset: gnd-macos-x86_64.gz
+            os_field: darwin
+            cpu_field: x64
+            extract: gunzip
+          - platform: darwin-arm64
+            asset: gnd-macos-aarch64.gz
+            os_field: darwin
+            cpu_field: arm64
+            extract: gunzip
+          - platform: win32-x64
+            asset: gnd-windows-x86_64.exe.zip
+            os_field: win32
+            cpu_field: x64
+            extract: unzip
+    steps:
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Download gnd binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --pattern "${{ matrix.asset }}" \
+            --output ./binary-archive
+
+      - name: Extract binary
+        run: |
+          mkdir -p pkg/bin
+          if [ "${{ matrix.extract }}" = "gunzip" ]; then
+            gunzip -c ./binary-archive > pkg/bin/gnd
+            chmod +x pkg/bin/gnd
+          else
+            unzip ./binary-archive -d pkg/bin
+            mv pkg/bin/*.exe pkg/bin/gnd.exe
+          fi
+
+      - name: Determine version and npm tag
+        id: version
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          # Prerelease versions (e.g. 0.42.2-dev.1) need an explicit --tag
+          if [[ "$VERSION" == *-* ]]; then
+            # Extract prerelease identifier (e.g. "dev" from "0.42.2-dev.1")
+            PRE="${VERSION#*-}"
+            TAG="${PRE%%.*}"
+            echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create package.json
+        shell: bash
+        run: |
+          if [ "${{ matrix.os_field }}" = "win32" ]; then
+            BIN_PATH="./bin/gnd.exe"
+          else
+            BIN_PATH="./bin/gnd"
+          fi
+
+          cat > pkg/package.json << EOF
+          {
+            "name": "@graphprotocol/gnd-${{ matrix.platform }}",
+            "version": "${{ steps.version.outputs.version }}",
+            "description": "gnd binary for ${{ matrix.platform }}",
+            "os": ["${{ matrix.os_field }}"],
+            "cpu": ["${{ matrix.cpu_field }}"],
+            "bin": {
+              "gnd": "${BIN_PATH}"
+            },
+            "publishConfig": {
+              "access": "public",
+              "provenance": true
+            },
+            "license": "(Apache-2.0 OR MIT)",
+            "repository": {
+              "type": "git",
+              "url": "https://github.com/graphprotocol/graph-node.git"
+            }
+          }
+          EOF
+
+      - name: Publish
+        run: npm publish --provenance --access public --tag ${{ steps.version.outputs.tag }} ${{ inputs.dry_run && '--dry-run' || '' }}
+        working-directory: pkg
