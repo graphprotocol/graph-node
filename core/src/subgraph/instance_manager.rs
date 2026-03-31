@@ -399,7 +399,15 @@ impl<S: SubgraphStore, AC: amp::Client> SubgraphInstanceManager<S, AC> {
         //   when to stop processing them.
         // - Offchain data sources might require processing beyond the end block of
         //   onchain data sources, so the subgraph needs to continue.
-        let max_end_block: Option<BlockNumber> = if data_sources.len() == end_blocks.len() {
+        //
+        // Note: we explicitly check each data source rather than comparing lengths, because
+        // `end_blocks` is a BTreeSet and deduplicates equal values, which would cause the
+        // length comparison to fail when multiple data sources share the same `end_block`.
+        let max_end_block: Option<BlockNumber> = if data_sources.iter().all(|d| {
+            d.as_onchain()
+                .and_then(|d: &C::DataSource| d.end_block())
+                .is_some()
+        }) {
             end_blocks.iter().max().cloned()
         } else {
             None
