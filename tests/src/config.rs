@@ -233,9 +233,7 @@ impl Config {
             .stderr(stderr)
             .args(args.clone())
             .env("GRAPH_STORE_WRITE_BATCH_DURATION", "5")
-            .env("ETHEREUM_REORG_THRESHOLD", "0")
-            .env("GRAPH_LOG_STORE_BACKEND", "file")
-            .env("GRAPH_LOG_STORE_FILE_DIR", "/tmp/integration-test-logs");
+            .env("ETHEREUM_REORG_THRESHOLD", "0");
 
         status!(
             "graph-node",
