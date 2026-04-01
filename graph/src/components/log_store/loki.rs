@@ -33,7 +33,7 @@ impl LokiLogStore {
 
         // Add log level selector if specified
         if let Some(level) = &query.level {
-            selectors.push(format!("level=\"{}\"", level.as_str()));
+            selectors.push(format!("level=\"{}\"", level.as_str().to_ascii_lowercase()));
         }
 
         // Base selector
@@ -234,8 +234,8 @@ struct LokiLogMeta {
 
 #[cfg(test)]
 mod tests {
-    use super::super::LogLevel;
     use super::*;
+    use slog::Level;
 
     #[test]
     fn test_build_logql_query_basic() {
@@ -260,7 +260,7 @@ mod tests {
         let store = LokiLogStore::new("http://localhost:3100".to_string(), None).unwrap();
         let query = LogQuery {
             subgraph_id: DeploymentHash::new("QmTest").unwrap(),
-            level: Some(LogLevel::Error),
+            level: Some(Level::Error),
             from: None,
             to: None,
             search: None,

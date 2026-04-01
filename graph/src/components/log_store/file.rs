@@ -286,8 +286,8 @@ struct FileLogMeta {
 
 #[cfg(test)]
 mod tests {
-    use super::super::LogLevel;
     use super::*;
+    use slog::Level;
     use std::io::Write;
     use tempfile::TempDir;
 
@@ -377,7 +377,7 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].id, "log-1");
         assert_eq!(entries[0].text, "Test error message");
-        assert_eq!(entries[0].level, LogLevel::Error);
+        assert_eq!(entries[0].level, Level::Error);
     }
 
     #[tokio::test]
@@ -410,7 +410,7 @@ mod tests {
         // Query for errors only
         let query = LogQuery {
             subgraph_id,
-            level: Some(LogLevel::Error),
+            level: Some(Level::Error),
             from: None,
             to: None,
             search: None,
@@ -424,7 +424,7 @@ mod tests {
 
         let entries = result.unwrap();
         assert_eq!(entries.len(), 2);
-        assert!(entries.iter().all(|e| e.level == LogLevel::Error));
+        assert!(entries.iter().all(|e| e.level == Level::Error));
     }
 
     #[tokio::test]

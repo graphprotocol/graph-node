@@ -4,6 +4,7 @@ pub mod file;
 pub mod loki;
 
 use async_trait::async_trait;
+use slog::Level;
 use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -56,42 +57,6 @@ pub enum LogStoreConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LogLevel {
-    Critical,
-    Error,
-    Warning,
-    Info,
-    Debug,
-}
-
-impl LogLevel {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            LogLevel::Critical => "critical",
-            LogLevel::Error => "error",
-            LogLevel::Warning => "warning",
-            LogLevel::Info => "info",
-            LogLevel::Debug => "debug",
-        }
-    }
-}
-
-impl FromStr for LogLevel {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim().to_lowercase().as_str() {
-            "critical" => Ok(LogLevel::Critical),
-            "error" => Ok(LogLevel::Error),
-            "warning" => Ok(LogLevel::Warning),
-            "info" => Ok(LogLevel::Info),
-            "debug" => Ok(LogLevel::Debug),
-            _ => Err(format!("Invalid log level: {}", s)),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OrderDirection {
     Asc,
     Desc,
@@ -136,7 +101,7 @@ pub struct LogEntry {
     pub id: String,
     pub subgraph_id: DeploymentHash,
     pub timestamp: String,
-    pub level: LogLevel,
+    pub level: Level,
     pub text: String,
     pub arguments: Vec<(String, String)>,
     pub meta: LogMeta,
@@ -145,7 +110,7 @@ pub struct LogEntry {
 #[derive(Debug, Clone)]
 pub struct LogQuery {
     pub subgraph_id: DeploymentHash,
-    pub level: Option<LogLevel>,
+    pub level: Option<Level>,
     pub from: Option<String>,
     pub to: Option<String>,
     pub search: Option<String>,

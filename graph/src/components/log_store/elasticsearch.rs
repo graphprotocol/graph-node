@@ -45,7 +45,7 @@ impl ElasticsearchLogStore {
         if let Some(level) = &query.level {
             must_clauses.push(json!({
                 "term": {
-                    "level": level.as_str()
+                    "level": level.as_str().to_ascii_lowercase()
                 }
             }));
         }

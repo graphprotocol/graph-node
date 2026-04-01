@@ -70,11 +70,11 @@ pub fn build_log_query(
         match name.as_str() {
             "level" => {
                 if let r::Value::Enum(level_str) = value {
-                    level = Some(level_str.parse().map_err(|e: String| {
+                    level = Some(level_str.parse().map_err(|_| {
                         QueryExecutionError::InvalidArgumentError(
                             field.position,
                             "level".to_string(),
-                            q::Value::String(e),
+                            q::Value::String(format!("Invalid log level: {}", level_str)),
                         )
                     })?);
                 }
