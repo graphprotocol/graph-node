@@ -1313,7 +1313,7 @@ fn meta_field() -> s::Field {
 fn logs_field() -> s::Field {
     lazy_static! {
         static ref LOGS_FIELD: s::Field = s::Field {
-            position: Pos::default(),
+            position: q::Pos::default(),
             description: Some(
                 "Query execution logs emitted by the subgraph during indexing. \
                 Results are sorted by timestamp in descending order (newest first)."
@@ -1323,7 +1323,7 @@ fn logs_field() -> s::Field {
             arguments: vec![
                 // level: LogLevel
                 s::InputValue {
-                    position: Pos::default(),
+                    position: q::Pos::default(),
                     description: Some(
                         "Filter logs by severity level. Only logs at this level will be returned."
                         .to_string()
@@ -1335,7 +1335,7 @@ fn logs_field() -> s::Field {
                 },
                 // from: String (RFC3339 timestamp)
                 s::InputValue {
-                    position: Pos::default(),
+                    position: q::Pos::default(),
                     description: Some(
                         "Filter logs from this timestamp onwards (inclusive). \
                         Must be in RFC3339 format (e.g., '2024-01-15T10:30:00Z')."
@@ -1348,7 +1348,7 @@ fn logs_field() -> s::Field {
                 },
                 // to: String (RFC3339 timestamp)
                 s::InputValue {
-                    position: Pos::default(),
+                    position: q::Pos::default(),
                     description: Some(
                         "Filter logs until this timestamp (inclusive). \
                         Must be in RFC3339 format (e.g., '2024-01-15T23:59:59Z')."
@@ -1361,7 +1361,7 @@ fn logs_field() -> s::Field {
                 },
                 // search: String (full-text search)
                 s::InputValue {
-                    position: Pos::default(),
+                    position: q::Pos::default(),
                     description: Some(
                         "Search for logs containing this text in the message. \
                         Case-insensitive substring match. Maximum length: 1000 characters."
@@ -1374,7 +1374,7 @@ fn logs_field() -> s::Field {
                 },
                 // first: Int (default 100, max 1000)
                 s::InputValue {
-                    position: Pos::default(),
+                    position: q::Pos::default(),
                     description: Some(
                         "Maximum number of logs to return. Default: 100, Maximum: 1000."
                         .to_string()
@@ -1386,7 +1386,7 @@ fn logs_field() -> s::Field {
                 },
                 // skip: Int (default 0, max 10000)
                 s::InputValue {
-                    position: Pos::default(),
+                    position: q::Pos::default(),
                     description: Some(
                         "Number of logs to skip (for pagination). Default: 0, Maximum: 10000."
                         .to_string()
@@ -1398,7 +1398,7 @@ fn logs_field() -> s::Field {
                 },
                 // orderDirection: OrderDirection (default desc)
                 s::InputValue {
-                    position: Pos::default(),
+                    position: q::Pos::default(),
                     description: Some(
                         "Sort direction for results. Default: desc (newest first)."
                         .to_string()

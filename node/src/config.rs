@@ -2420,6 +2420,7 @@ fdw_pool_size = [
             chains: section,
             deployment: toml::from_str("[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]")
                 .unwrap(),
+            log_store: None,
         };
 
         let amp = config.amp_chain_names();
@@ -2462,6 +2463,7 @@ fdw_pool_size = [
                     "[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]",
                 )
                 .unwrap(),
+                log_store: None,
             }
         };
 
