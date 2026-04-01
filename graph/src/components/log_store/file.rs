@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use slog::{warn, Logger};
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::fs::File;
@@ -13,6 +14,7 @@ use super::{LogEntry, LogMeta, LogQuery, LogStore, LogStoreError};
 pub struct FileLogStore {
     directory: PathBuf,
     retention_hours: u32,
+    logger: Logger,
 }
 
 impl FileLogStore {
@@ -24,6 +26,7 @@ impl FileLogStore {
         let store = Self {
             directory,
             retention_hours,
+            logger: crate::log::logger(false),
         };
 
         // Run cleanup on startup for all existing log files
@@ -53,10 +56,29 @@ impl FileLogStore {
 
     /// Parse a JSON line into a LogEntry
     fn parse_line(&self, line: &str) -> Option<LogEntry> {
-        let doc: FileLogDocument = serde_json::from_str(line).ok()?;
+        let doc: FileLogDocument = match serde_json::from_str(line) {
+            Ok(doc) => doc,
+            Err(e) => {
+                warn!(self.logger, "Failed to parse log line"; "error" => e.to_string());
+                return None;
+            }
+        };
 
-        let level = doc.level.parse().ok()?;
-        let subgraph_id = DeploymentHash::new(&doc.subgraph_id).ok()?;
+        let level = match doc.level.parse() {
+            Ok(l) => l,
+            Err(_) => {
+                warn!(self.logger, "Invalid log level"; "level" => &doc.level);
+                return None;
+            }
+        };
+
+        let subgraph_id = match DeploymentHash::new(&doc.subgraph_id) {
+            Ok(id) => id,
+            Err(_) => {
+                warn!(self.logger, "Invalid subgraph ID"; "subgraph_id" => &doc.subgraph_id);
+                return None;
+            }
+        };
 
         Some(LogEntry {
             id: doc.id,

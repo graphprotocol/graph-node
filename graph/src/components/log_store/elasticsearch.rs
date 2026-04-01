@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
+use slog::{warn, Logger};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -17,11 +18,13 @@ pub struct ElasticsearchLogStore {
     client: Client,
     index: String,
     timeout: Duration,
+    logger: Logger,
 }
 
 impl ElasticsearchLogStore {
     pub fn new(config: ElasticLoggingConfig, index: String, timeout: Duration) -> Self {
         Self {
+            logger: crate::log::logger(false),
             endpoint: config.endpoint,
             username: config.username,
             password: config.password,
@@ -146,8 +149,21 @@ impl ElasticsearchLogStore {
     }
 
     fn parse_log_entry(&self, source: ElasticsearchLogDocument) -> Option<LogEntry> {
-        let level = source.level.parse().ok()?;
-        let subgraph_id = DeploymentHash::new(&source.subgraph_id).ok()?;
+        let level = match source.level.parse() {
+            Ok(l) => l,
+            Err(_) => {
+                warn!(self.logger, "Invalid log level in Elasticsearch entry"; "level" => &source.level);
+                return None;
+            }
+        };
+
+        let subgraph_id = match DeploymentHash::new(&source.subgraph_id) {
+            Ok(id) => id,
+            Err(_) => {
+                warn!(self.logger, "Invalid subgraph ID in Elasticsearch entry"; "subgraph_id" => &source.subgraph_id);
+                return None;
+            }
+        };
 
         // Convert arguments HashMap to Vec<(String, String)>
         let arguments: Vec<(String, String)> = source.arguments.into_iter().collect();

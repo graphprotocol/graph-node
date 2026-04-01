@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
+use slog::{warn, Logger};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -14,6 +15,7 @@ pub struct LokiLogStore {
     username: Option<String>,
     password: Option<String>,
     client: Client,
+    logger: Logger,
 }
 
 impl LokiLogStore {
@@ -34,6 +36,7 @@ impl LokiLogStore {
             username,
             password,
             client,
+            logger: crate::log::logger(false),
         })
     }
 
@@ -146,10 +149,29 @@ impl LokiLogStore {
     ) -> Option<LogEntry> {
         // value is [timestamp_ns, log_line]
         // We expect the log line to be JSON with our log entry structure
-        let log_data: LokiLogDocument = serde_json::from_str(&value.1).ok()?;
+        let log_data: LokiLogDocument = match serde_json::from_str(&value.1) {
+            Ok(doc) => doc,
+            Err(e) => {
+                warn!(self.logger, "Failed to parse Loki log entry"; "error" => e.to_string());
+                return None;
+            }
+        };
 
-        let level = log_data.level.parse().ok()?;
-        let subgraph_id = DeploymentHash::new(&log_data.subgraph_id).ok()?;
+        let level = match log_data.level.parse() {
+            Ok(l) => l,
+            Err(_) => {
+                warn!(self.logger, "Invalid log level in Loki entry"; "level" => &log_data.level);
+                return None;
+            }
+        };
+
+        let subgraph_id = match DeploymentHash::new(&log_data.subgraph_id) {
+            Ok(id) => id,
+            Err(_) => {
+                warn!(self.logger, "Invalid subgraph ID in Loki entry"; "subgraph_id" => &log_data.subgraph_id);
+                return None;
+            }
+        };
 
         Some(LogEntry {
             id: log_data.id,
