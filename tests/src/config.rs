@@ -198,21 +198,61 @@ impl Config {
     ) -> anyhow::Result<Child> {
         let ports = &self.graph_node.ports;
 
+        // Generate a TOML config file so we can include [log_store]
+        let log_dir = "/tmp/integration-test-logs";
+        std::fs::create_dir_all(log_dir).ok();
+        let config_content = format!(
+            r#"
+[store]
+[store.primary]
+connection = "{db_url}"
+pool_size = 10
+
+[deployment]
+[[deployment.rule]]
+store = "primary"
+indexers = ["default"]
+
+[chains]
+ingestor = "default"
+
+[chains.test]
+shard = "primary"
+provider = [
+  {{ label = "test", url = "{eth_url}", features = [] }}
+]
+
+[log_store]
+backend = "file"
+directory = "{log_dir}"
+retention_hours = 0
+"#,
+            db_url = self.db.url(),
+            eth_url = self.eth.url(),
+            log_dir = log_dir,
+        );
+        let config_path = std::env::temp_dir().join("graph-node-integration-test.toml");
+        std::fs::write(&config_path, &config_content)?;
+
+        let config_path_str = config_path.to_string_lossy().to_string();
+        let http_port = ports.http.to_string();
+        let index_port = ports.index.to_string();
+        let admin_port = ports.admin.to_string();
+        let metrics_port = ports.metrics.to_string();
+
         let args = [
-            "--postgres-url",
-            &self.db.url(),
-            "--ethereum-rpc",
-            &self.eth.network_url(),
+            "--config",
+            &config_path_str,
             "--ipfs",
             &self.graph_node.ipfs_uri,
             "--http-port",
-            &ports.http.to_string(),
+            &http_port,
             "--index-node-port",
-            &ports.index.to_string(),
+            &index_port,
             "--admin-port",
-            &ports.admin.to_string(),
+            &admin_port,
             "--metrics-port",
-            &ports.metrics.to_string(),
+            &metrics_port,
         ];
 
         let args = args
