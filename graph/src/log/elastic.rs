@@ -31,14 +31,6 @@ pub struct ElasticLoggingConfig {
     pub client: Client,
 }
 
-/// Serializes an slog log level using a serde Serializer.
-fn serialize_log_level<S>(level: &str, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: SerdeSerializer,
-{
-    serializer.serialize_str(level)
-}
-
 type ElasticLogMeta = LogMeta;
 
 // Log message to be written to Elasticsearch.
@@ -51,8 +43,8 @@ struct ElasticLog {
     arguments: HashMap<String, String>,
     timestamp: String,
     text: String,
-    #[serde(serialize_with = "serialize_log_level")]
-    level: String,
+    #[serde(serialize_with = "super::common::serialize_log_level")]
+    level: Level,
     meta: ElasticLogMeta,
 }
 
@@ -260,7 +252,7 @@ impl Drain for ElasticDrain {
             arguments: builder.build_arguments_map(),
             timestamp,
             text: builder.build_text(),
-            level: builder.level_str().to_string(),
+            level: builder.level(),
             meta: builder.build_meta(),
         };
 

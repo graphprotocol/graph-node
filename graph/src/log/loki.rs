@@ -34,7 +34,8 @@ struct LokiLogDocument {
     id: String,
     subgraph_id: String,
     timestamp: String,
-    level: String,
+    #[serde(serialize_with = "super::common::serialize_log_level")]
+    level: Level,
     text: String,
     arguments: HashMap<String, String>,
     meta: LokiLogMeta,
@@ -183,7 +184,7 @@ impl Drain for LokiDrain {
             id: builder.build_id(),
             subgraph_id: builder.subgraph_id().to_string(),
             timestamp,
-            level: builder.level_str().to_string(),
+            level: builder.level(),
             text: builder.build_text(),
             arguments: builder.build_arguments_map(),
             meta: builder.build_meta(),
@@ -201,7 +202,10 @@ impl Drain for LokiDrain {
         // Build labels for Loki stream
         let mut labels = HashMap::new();
         labels.insert("subgraphId".to_string(), builder.subgraph_id().to_string());
-        labels.insert("level".to_string(), builder.level_str().to_string());
+        labels.insert(
+            "level".to_string(),
+            builder.level().as_str().to_ascii_lowercase(),
+        );
 
         // Create log entry
         let entry = LokiLogEntry {
@@ -306,7 +310,7 @@ mod tests {
             id: "test-id".to_string(),
             subgraph_id: "QmTest".to_string(),
             timestamp: "2024-01-15T10:30:00Z".to_string(),
-            level: "error".to_string(),
+            level: Level::Error,
             text: "Test error".to_string(),
             arguments,
             meta: LokiLogMeta {

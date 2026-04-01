@@ -25,7 +25,8 @@ struct FileLogDocument {
     id: String,
     subgraph_id: String,
     timestamp: String,
-    level: String,
+    #[serde(serialize_with = "super::common::serialize_log_level")]
+    level: Level,
     text: String,
     arguments: Vec<(String, String)>,
     meta: FileLogMeta,
@@ -83,7 +84,7 @@ impl Drain for FileDrain {
             id: builder.build_id(),
             subgraph_id: builder.subgraph_id().to_string(),
             timestamp: builder.timestamp().to_string(),
-            level: builder.level_str().to_string(),
+            level: builder.level(),
             text: builder.build_text(),
             arguments: builder.build_arguments_vec(),
             meta: builder.build_meta(),
@@ -161,7 +162,7 @@ mod tests {
             id: "test-id".to_string(),
             subgraph_id: "QmTest".to_string(),
             timestamp: "2024-01-15T10:30:00Z".to_string(),
-            level: "error".to_string(),
+            level: Level::Error,
             text: "Test error message".to_string(),
             arguments,
             meta: FileLogMeta {

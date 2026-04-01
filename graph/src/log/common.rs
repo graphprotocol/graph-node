@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use serde::ser::Serializer as SerdeSerializer;
 use serde::Serialize;
 use slog::*;
 
@@ -105,16 +106,12 @@ pub struct LogMeta {
     pub column: i64,
 }
 
-/// Converts an slog Level to a string representation
-pub fn level_to_str(level: Level) -> &'static str {
-    match level {
-        Level::Critical => "critical",
-        Level::Error => "error",
-        Level::Warning => "warning",
-        Level::Info => "info",
-        Level::Debug => "debug",
-        Level::Trace => "trace",
-    }
+/// Serializes an slog Level as a lowercase string
+pub fn serialize_log_level<S>(level: &Level, serializer: S) -> std::result::Result<S::Ok, S::Error>
+where
+    S: SerdeSerializer,
+{
+    serializer.serialize_str(&level.as_str().to_ascii_lowercase())
 }
 
 /// Builder for common log entry fields across different drain implementations
@@ -205,9 +202,9 @@ impl<'a> LogEntryBuilder<'a> {
         }
     }
 
-    /// Gets the level as a string
-    pub fn level_str(&self) -> &'static str {
-        level_to_str(self.record.level())
+    /// Gets the log level
+    pub fn level(&self) -> Level {
+        self.record.level()
     }
 
     /// Gets the timestamp
