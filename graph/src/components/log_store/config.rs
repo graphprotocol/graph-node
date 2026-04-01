@@ -1,5 +1,6 @@
 use slog::{warn, Logger};
 use std::env;
+use std::str::FromStr;
 
 /// Read environment variable with fallback to deprecated key
 ///
@@ -52,39 +53,16 @@ pub fn read_env_with_default(
     read_env_with_fallback(logger, new_key, old_key).unwrap_or_else(|| default.to_string())
 }
 
-/// Parse u64 from environment variable with fallback
+/// Parse a value from environment variable with fallback
 ///
-/// Reads an environment variable with fallback support and parses it as a u64.
+/// Reads an environment variable with fallback support and parses it using `FromStr`.
 /// Returns the default value if the variable is not set or cannot be parsed.
-///
-/// # Arguments
-/// * `logger` - Logger for emitting deprecation warnings
-/// * `new_key` - The new environment variable name
-/// * `old_key` - The deprecated environment variable name
-/// * `default` - Default value to return if parsing fails or neither key is set
-///
-/// # Returns
-/// The parsed u64 value, or the default if parsing fails or neither key is set
-pub fn read_u64_with_fallback(logger: &Logger, new_key: &str, old_key: &str, default: u64) -> u64 {
-    read_env_with_fallback(logger, new_key, old_key)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(default)
-}
-
-/// Parse u32 from environment variable with fallback
-///
-/// Reads an environment variable with fallback support and parses it as a u32.
-/// Returns the default value if the variable is not set or cannot be parsed.
-///
-/// # Arguments
-/// * `logger` - Logger for emitting deprecation warnings
-/// * `new_key` - The new environment variable name
-/// * `old_key` - The deprecated environment variable name
-/// * `default` - Default value to return if parsing fails or neither key is set
-///
-/// # Returns
-/// The parsed u32 value, or the default if parsing fails or neither key is set
-pub fn read_u32_with_fallback(logger: &Logger, new_key: &str, old_key: &str, default: u32) -> u32 {
+pub fn read_parsed_with_fallback<T: FromStr>(
+    logger: &Logger,
+    new_key: &str,
+    old_key: &str,
+    default: T,
+) -> T {
     read_env_with_fallback(logger, new_key, old_key)
         .and_then(|s| s.parse().ok())
         .unwrap_or(default)
@@ -148,69 +126,49 @@ mod tests {
     }
 
     #[test]
-    fn test_read_u64_with_fallback() {
+    fn test_read_parsed_with_fallback() {
         let logger = crate::log::logger(true);
-        std::env::set_var("NEW_KEY_U64", "12345");
 
-        let result = read_u64_with_fallback(&logger, "NEW_KEY_U64", "OLD_KEY_U64", 999);
+        // Test u64 parsing
+        std::env::set_var("NEW_KEY_PARSED", "12345");
+        let result: u64 =
+            read_parsed_with_fallback(&logger, "NEW_KEY_PARSED", "OLD_KEY_PARSED", 999);
         assert_eq!(result, 12345);
+        std::env::remove_var("NEW_KEY_PARSED");
 
-        std::env::remove_var("NEW_KEY_U64");
-
-        // Test with old key
-        std::env::set_var("OLD_KEY_U64", "67890");
-        let result = read_u64_with_fallback(&logger, "NEW_KEY_U64", "OLD_KEY_U64", 999);
-        assert_eq!(result, 67890);
-
-        std::env::remove_var("OLD_KEY_U64");
-
-        // Test with default
-        let result = read_u64_with_fallback(&logger, "NEW_KEY_U64", "OLD_KEY_U64", 999);
-        assert_eq!(result, 999);
-    }
-
-    #[test]
-    fn test_read_u32_with_fallback() {
-        let logger = crate::log::logger(true);
-        std::env::set_var("NEW_KEY_U32", "123");
-
-        let result = read_u32_with_fallback(&logger, "NEW_KEY_U32", "OLD_KEY_U32", 999);
+        // Test u32 parsing
+        std::env::set_var("NEW_KEY_PARSED", "123");
+        let result: u32 =
+            read_parsed_with_fallback(&logger, "NEW_KEY_PARSED", "OLD_KEY_PARSED", 999);
         assert_eq!(result, 123);
+        std::env::remove_var("NEW_KEY_PARSED");
 
-        std::env::remove_var("NEW_KEY_U32");
+        // Test with old key fallback
+        std::env::set_var("OLD_KEY_PARSED", "67890");
+        let result: u64 =
+            read_parsed_with_fallback(&logger, "NEW_KEY_PARSED", "OLD_KEY_PARSED", 999);
+        assert_eq!(result, 67890);
+        std::env::remove_var("OLD_KEY_PARSED");
 
-        // Test with old key
-        std::env::set_var("OLD_KEY_U32", "456");
-        let result = read_u32_with_fallback(&logger, "NEW_KEY_U32", "OLD_KEY_U32", 999);
-        assert_eq!(result, 456);
-
-        std::env::remove_var("OLD_KEY_U32");
-
-        // Test with default
-        let result = read_u32_with_fallback(&logger, "NEW_KEY_U32", "OLD_KEY_U32", 999);
+        // Test with default when neither key is set
+        let result: u64 =
+            read_parsed_with_fallback(&logger, "NEW_KEY_PARSED", "OLD_KEY_PARSED", 999);
         assert_eq!(result, 999);
     }
 
     #[test]
-    fn test_invalid_u64_uses_default() {
+    fn test_read_parsed_invalid_uses_default() {
         let logger = crate::log::logger(true);
-        std::env::set_var("NEW_KEY_INVALID", "not_a_number");
+        std::env::set_var("NEW_KEY_INVALID_PARSED", "not_a_number");
 
-        let result = read_u64_with_fallback(&logger, "NEW_KEY_INVALID", "OLD_KEY_INVALID", 999);
+        let result: u64 = read_parsed_with_fallback(
+            &logger,
+            "NEW_KEY_INVALID_PARSED",
+            "OLD_KEY_INVALID_PARSED",
+            999,
+        );
         assert_eq!(result, 999);
 
-        std::env::remove_var("NEW_KEY_INVALID");
-    }
-
-    #[test]
-    fn test_invalid_u32_uses_default() {
-        let logger = crate::log::logger(true);
-        std::env::set_var("NEW_KEY_INVALID_U32", "not_a_number");
-
-        let result =
-            read_u32_with_fallback(&logger, "NEW_KEY_INVALID_U32", "OLD_KEY_INVALID_U32", 999);
-        assert_eq!(result, 999);
-
-        std::env::remove_var("NEW_KEY_INVALID_U32");
+        std::env::remove_var("NEW_KEY_INVALID_PARSED");
     }
 }

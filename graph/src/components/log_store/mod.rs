@@ -261,7 +261,7 @@ impl LogStoreFactory {
 
                 // Default: 10 seconds query timeout
                 // Configurable via GRAPH_LOG_STORE_ELASTICSEARCH_TIMEOUT environment variable
-                let timeout_secs = config::read_u64_with_fallback(
+                let timeout_secs = config::read_parsed_with_fallback(
                     &logger,
                     "GRAPH_LOG_STORE_ELASTICSEARCH_TIMEOUT",
                     "GRAPH_ELASTICSEARCH_TIMEOUT",
@@ -316,7 +316,7 @@ impl LogStoreFactory {
 
                 // Default: 0 hours (disabled, keep all logs)
                 // Configurable via GRAPH_LOG_STORE_FILE_RETENTION_HOURS environment variable
-                let retention_hours = config::read_u32_with_fallback(
+                let retention_hours = config::read_parsed_with_fallback(
                     &logger,
                     "GRAPH_LOG_STORE_FILE_RETENTION_HOURS",
                     "GRAPH_LOG_FILE_RETENTION_HOURS",
