@@ -219,7 +219,7 @@ ingestor = "default"
 [chains.test]
 shard = "primary"
 provider = [
-  {{ label = "test", url = "{eth_url}", features = [] }}
+  {{ label = "test", url = "{eth_url}", features = ["archive", "traces"] }}
 ]
 
 [log_store]
