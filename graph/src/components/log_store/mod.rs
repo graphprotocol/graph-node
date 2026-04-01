@@ -46,6 +46,8 @@ pub enum LogStoreConfig {
     Loki {
         endpoint: String,
         tenant_id: Option<String>,
+        username: Option<String>,
+        password: Option<String>,
     },
 
     /// File-based logs (JSON lines format)
@@ -161,7 +163,11 @@ impl LogStoreFactory {
             LogStoreConfig::Loki {
                 endpoint,
                 tenant_id,
-            } => Ok(Arc::new(loki::LokiLogStore::new(endpoint, tenant_id)?)),
+                username,
+                password,
+            } => Ok(Arc::new(loki::LokiLogStore::new(
+                endpoint, tenant_id, username, password,
+            )?)),
 
             LogStoreConfig::File {
                 directory,

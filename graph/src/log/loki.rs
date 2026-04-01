@@ -15,6 +15,8 @@ use super::common::{create_async_logger, LogEntryBuilder, LogMeta};
 pub struct LokiDrainConfig {
     pub endpoint: String,
     pub tenant_id: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
     pub flush_interval: Duration,
     pub subgraph_id: String,
 }
@@ -136,6 +138,10 @@ impl LokiDrain {
 
                 if let Some(ref tenant_id) = config.tenant_id {
                     request = request.header("X-Scope-OrgID", tenant_id);
+                }
+
+                if let Some(ref username) = config.username {
+                    request = request.basic_auth(username, config.password.as_ref());
                 }
 
                 match request.send().await {

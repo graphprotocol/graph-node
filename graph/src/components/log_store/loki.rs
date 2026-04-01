@@ -11,11 +11,18 @@ use super::{LogEntry, LogMeta, LogQuery, LogStore, LogStoreError};
 pub struct LokiLogStore {
     endpoint: String,
     tenant_id: Option<String>,
+    username: Option<String>,
+    password: Option<String>,
     client: Client,
 }
 
 impl LokiLogStore {
-    pub fn new(endpoint: String, tenant_id: Option<String>) -> Result<Self, LogStoreError> {
+    pub fn new(
+        endpoint: String,
+        tenant_id: Option<String>,
+        username: Option<String>,
+        password: Option<String>,
+    ) -> Result<Self, LogStoreError> {
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
             .build()
@@ -24,6 +31,8 @@ impl LokiLogStore {
         Ok(Self {
             endpoint,
             tenant_id,
+            username,
+            password,
             client,
         })
     }
@@ -80,6 +89,11 @@ impl LokiLogStore {
         // Add X-Scope-OrgID header for multi-tenancy if configured
         if let Some(tenant_id) = &self.tenant_id {
             request = request.header("X-Scope-OrgID", tenant_id);
+        }
+
+        // Add basic auth if configured
+        if let Some(username) = &self.username {
+            request = request.basic_auth(username, self.password.as_ref());
         }
 
         let response = request.send().await.map_err(|e| {
@@ -239,7 +253,8 @@ mod tests {
 
     #[test]
     fn test_build_logql_query_basic() {
-        let store = LokiLogStore::new("http://localhost:3100".to_string(), None).unwrap();
+        let store =
+            LokiLogStore::new("http://localhost:3100".to_string(), None, None, None).unwrap();
         let query = LogQuery {
             subgraph_id: DeploymentHash::new("QmTest").unwrap(),
             level: None,
@@ -257,7 +272,8 @@ mod tests {
 
     #[test]
     fn test_build_logql_query_with_level() {
-        let store = LokiLogStore::new("http://localhost:3100".to_string(), None).unwrap();
+        let store =
+            LokiLogStore::new("http://localhost:3100".to_string(), None, None, None).unwrap();
         let query = LogQuery {
             subgraph_id: DeploymentHash::new("QmTest").unwrap(),
             level: Some(Level::Error),
@@ -275,7 +291,8 @@ mod tests {
 
     #[test]
     fn test_build_logql_query_with_text_filter() {
-        let store = LokiLogStore::new("http://localhost:3100".to_string(), None).unwrap();
+        let store =
+            LokiLogStore::new("http://localhost:3100".to_string(), None, None, None).unwrap();
         let query = LogQuery {
             subgraph_id: DeploymentHash::new("QmTest").unwrap(),
             level: None,

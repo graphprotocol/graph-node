@@ -151,12 +151,16 @@ impl LoggerFactory {
             Some(LogStoreConfig::Loki {
                 endpoint,
                 tenant_id,
+                username,
+                password,
             }) => {
                 // Use Loki
                 Some(loki_logger(
                     LokiDrainConfig {
                         endpoint: endpoint.clone(),
                         tenant_id: tenant_id.clone(),
+                        username: username.clone(),
+                        password: password.clone(),
                         flush_interval: Duration::from_secs(5),
                         subgraph_id: loc.hash.to_string(),
                     },

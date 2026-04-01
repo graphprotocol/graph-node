@@ -323,6 +323,8 @@ impl LogStoreSection {
                 Ok(LogStoreConfig::Loki {
                     endpoint,
                     tenant_id: self.tenant_id.clone(),
+                    username: self.username.clone(),
+                    password: self.password.clone(),
                 })
             }
 
