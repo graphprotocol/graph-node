@@ -10,10 +10,15 @@ those.
 
 ## JSON-RPC configuration for EVM chains
 
+> **Note**: Many of these settings can now be overridden per-chain in the TOML
+> configuration file under `[chains.<name>]`. When a per-chain value is set in
+> the config file it takes precedence over the environment variable. See
+> [config.md](config.md#configuring-chains) for details.
+
 - `ETHEREUM_REORG_THRESHOLD`: Maximum expected reorg size, if a larger reorg
   happens, subgraphs might process inconsistent data. Defaults to 250.
 - `ETHEREUM_POLLING_INTERVAL`: how often to poll Ethereum for new blocks (in ms,
-  defaults to 500ms)
+  defaults to 1000ms)
 - `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: The ideal amount of triggers
   to be processed in a batch. If this is too small it may cause too many requests
   to the ethereum node, if it is too large it may cause unreasonably expensive

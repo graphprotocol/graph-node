@@ -66,6 +66,7 @@ use crate::adapter::EthereumRpcError;
 use crate::adapter::ProviderStatus;
 use crate::call_helper::interpret_eth_call_error;
 use crate::chain::BlockFinality;
+use crate::chain::ChainSettings;
 use crate::trigger::{LogPosition, LogRef};
 use crate::Chain;
 use crate::NodeCapabilities;
@@ -98,6 +99,7 @@ pub struct EthereumAdapter {
     supports_eip_1898: bool,
     call_only: bool,
     supports_block_receipts: Arc<RwLock<Option<bool>>>,
+    pub(crate) settings: Arc<ChainSettings>,
 }
 
 impl std::fmt::Debug for EthereumAdapter {
@@ -110,6 +112,7 @@ impl std::fmt::Debug for EthereumAdapter {
             .field("supports_eip_1898", &self.supports_eip_1898)
             .field("call_only", &self.call_only)
             .field("supports_block_receipts", &self.supports_block_receipts)
+            .field("settings", &self.settings)
             .finish()
     }
 }
@@ -124,6 +127,7 @@ impl CheapClone for EthereumAdapter {
             supports_eip_1898: self.supports_eip_1898,
             call_only: self.call_only,
             supports_block_receipts: self.supports_block_receipts.cheap_clone(),
+            settings: self.settings.clone(),
         }
     }
 }
@@ -163,6 +167,7 @@ impl EthereumAdapter {
         provider_metrics: Arc<ProviderEthRpcMetrics>,
         supports_eip_1898: bool,
         call_only: bool,
+        settings: Arc<ChainSettings>,
     ) -> Self {
         let alloy = match &transport {
             Transport::RPC(client) => Arc::new(
@@ -197,6 +202,7 @@ impl EthereumAdapter {
             supports_eip_1898,
             call_only,
             supports_block_receipts: Arc::new(RwLock::new(None)),
+            settings,
         }
     }
 
@@ -216,8 +222,8 @@ impl EthereumAdapter {
 
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
-            .limit(ENV_VARS.request_retries)
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .limit(self.settings.request_retries)
+            .timeout_secs(self.settings.json_rpc_timeout.as_secs())
             .run(move || {
                 let eth = eth.clone();
                 let logger = logger.clone();
@@ -410,8 +416,8 @@ impl EthereumAdapter {
                         .any(|f| e.to_string().contains(f)),
                 },
             )
-            .limit(ENV_VARS.request_retries)
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .limit(self.settings.request_retries)
+            .timeout_secs(self.settings.json_rpc_timeout.as_secs())
             .run(move || {
                 let eth_adapter = eth_adapter.cheap_clone();
                 let subgraph_metrics = subgraph_metrics.clone();
@@ -470,6 +476,7 @@ impl EthereumAdapter {
             ranges
         };
 
+        let block_batch_size = self.settings.block_batch_size;
         let eth = self;
 
         futures03::stream::iter(ranges.into_iter().map(move |(start, end)| {
@@ -489,7 +496,7 @@ impl EthereumAdapter {
                     .await
             }
         }))
-        .buffered(ENV_VARS.block_batch_size)
+        .buffered(block_batch_size)
         .map_ok(|traces| futures03::stream::iter(traces.into_iter().map(Ok)))
         .try_flatten()
     }
@@ -525,7 +532,7 @@ impl EthereumAdapter {
         let step = match filter.contracts.is_empty() {
             // `to - from + 1`  blocks will be scanned.
             false => to - from,
-            true => (to - from).min(ENV_VARS.max_event_only_range - 1),
+            true => (to - from).min(self.settings.max_event_only_range - 1),
         };
 
         // Typically this will loop only once and fetch the entire range in one request. But if the
@@ -610,8 +617,8 @@ impl EthereumAdapter {
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
             .when(|result| result.is_err())
-            .limit(ENV_VARS.request_retries)
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .limit(self.settings.request_retries)
+            .timeout_secs(self.settings.json_rpc_timeout.as_secs())
             .run(move || {
                 let alloy = alloy.cheap_clone();
                 async move {
@@ -640,8 +647,8 @@ impl EthereumAdapter {
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
             .when(|result| result.is_err())
-            .limit(ENV_VARS.request_retries)
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .limit(self.settings.request_retries)
+            .timeout_secs(self.settings.json_rpc_timeout.as_secs())
             .run(move || {
                 let alloy = alloy.cheap_clone();
                 async move {
@@ -669,8 +676,8 @@ impl EthereumAdapter {
         let retry_log_message = format!("eth_call RPC call for block {}", block_ptr);
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
-            .limit(ENV_VARS.request_retries)
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .limit(self.settings.request_retries)
+            .timeout_secs(self.settings.json_rpc_timeout.as_secs())
             .run(move || {
                 let call_data = call_data.clone();
                 let alloy = alloy.cheap_clone();
@@ -748,6 +755,8 @@ impl EthereumAdapter {
         ids: Vec<B256>,
     ) -> impl futures03::Stream<Item = Result<Arc<LightEthereumBlock>, Error>> + Send {
         let alloy = self.alloy.clone();
+        let request_retries = self.settings.request_retries;
+        let json_rpc_timeout_secs = self.settings.json_rpc_timeout.as_secs();
 
         futures03::stream::iter(ids.into_iter().map(move |hash| {
             let alloy = alloy.clone();
@@ -756,8 +765,8 @@ impl EthereumAdapter {
             async move {
                 retry(format!("load block {}", hash), &logger)
                     .redact_log_urls(true)
-                    .limit(ENV_VARS.request_retries)
-                    .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                    .limit(request_retries)
+                    .timeout_secs(json_rpc_timeout_secs)
                     .run(move || {
                         let alloy = alloy.cheap_clone();
                         async move {
@@ -786,7 +795,7 @@ impl EthereumAdapter {
                     })
             }
         }))
-        .buffered(ENV_VARS.block_batch_size)
+        .buffered(self.settings.block_batch_size)
     }
 
     /// Request blocks by number through JSON-RPC.
@@ -796,6 +805,8 @@ impl EthereumAdapter {
         numbers: Vec<BlockNumber>,
     ) -> impl futures03::Stream<Item = Result<Arc<ExtendedBlockPtr>, Error>> + Send {
         let alloy = self.alloy.clone();
+        let request_retries = self.settings.request_retries;
+        let json_rpc_timeout_secs = self.settings.json_rpc_timeout.as_secs();
 
         futures03::stream::iter(numbers.into_iter().map(move |number| {
             let alloy = alloy.clone();
@@ -804,8 +815,8 @@ impl EthereumAdapter {
             async move {
                 retry(format!("load block {}", number), &logger)
                     .redact_log_urls(true)
-                    .limit(ENV_VARS.request_retries)
-                    .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                    .limit(request_retries)
+                    .timeout_secs(json_rpc_timeout_secs)
                     .run(move || {
                         let alloy = alloy.cheap_clone();
 
@@ -846,7 +857,7 @@ impl EthereumAdapter {
                     })
             }
         }))
-        .buffered(ENV_VARS.block_ptr_batch_size)
+        .buffered(self.settings.block_ptr_batch_size)
     }
 
     /// Request blocks ptrs for numbers through JSON-RPC.
@@ -858,6 +869,7 @@ impl EthereumAdapter {
         block_nums: Vec<BlockNumber>,
     ) -> impl Stream<Item = BlockPtr, Error = Error> + Send {
         let alloy = self.alloy.clone();
+        let json_rpc_timeout_secs = self.settings.json_rpc_timeout.as_secs();
 
         stream::iter_ok::<_, Error>(block_nums.into_iter().map(move |block_num| {
             let alloy = alloy.clone();
@@ -865,7 +877,7 @@ impl EthereumAdapter {
                 .redact_log_urls(true)
                 .when(|res| !res.is_ok() && !detect_null_block(res))
                 .no_limit()
-                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                .timeout_secs(json_rpc_timeout_secs)
                 .run(move || {
                     let alloy = alloy.cheap_clone();
                     async move {
@@ -891,7 +903,7 @@ impl EthereumAdapter {
                     }
                 })
         }))
-        .buffered(ENV_VARS.block_batch_size)
+        .buffered(self.settings.block_batch_size)
         .filter_map(|b| b)
         .map(|b| BlockPtr::from((b.header.hash, b.header.number)))
     }
@@ -930,17 +942,22 @@ impl EthereumAdapter {
         let eth: Self = self.cheap_clone();
         let logger = self.provider_logger(logger);
 
-        futures03::stream::iter(log_filter.eth_get_logs_filters().map(move |filter| {
-            eth.cheap_clone().log_stream(
-                logger.cheap_clone(),
-                subgraph_metrics.cheap_clone(),
-                from,
-                to,
-                filter,
-            )
-        }))
+        let max_contracts = eth.settings.get_logs_max_contracts;
+        futures03::stream::iter(
+            log_filter
+                .eth_get_logs_filters(max_contracts)
+                .map(move |filter| {
+                    eth.cheap_clone().log_stream(
+                        logger.cheap_clone(),
+                        subgraph_metrics.cheap_clone(),
+                        from,
+                        to,
+                        filter,
+                    )
+                }),
+        )
         // Real limits on the number of parallel requests are imposed within the adapter.
-        .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls)
+        .buffered(self.settings.block_ingestor_max_concurrent_json_rpc_calls)
         .try_concat()
         .boxed()
     }
@@ -1148,7 +1165,7 @@ impl EthereumAdapter {
         retry("chain_id RPC call", &logger)
             .redact_log_urls(true)
             .no_limit()
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .timeout_secs(self.settings.json_rpc_timeout.as_secs())
             .run(move || {
                 let alloy = alloy.cheap_clone();
                 async move { alloy.get_chain_id().await.map_err(Error::from) }
@@ -1205,9 +1222,10 @@ impl EthereumAdapterTrait for EthereumAdapter {
         let alloy_provider = self.alloy.clone();
         let metrics = self.metrics.clone();
         let provider = self.provider().to_string();
+        let genesis_block_number = self.settings.genesis_block_number;
         let retry_log_message = format!(
             "eth_getBlockByNumber({}, false) RPC call",
-            ENV_VARS.genesis_block_number
+            genesis_block_number
         );
         let gen_block_hash_future = retry(retry_log_message, &logger)
             .redact_log_urls(true)
@@ -1220,7 +1238,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 async move {
                     alloy_genesis
                         .get_block_by_number(alloy::rpc::types::BlockNumberOrTag::Number(
-                            ENV_VARS.genesis_block_number,
+                            genesis_block_number,
                         ))
                         .await
                         .inspect_err(|_| {
@@ -1259,7 +1277,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         retry("eth_getBlockByNumber(latest) no txs RPC call", logger)
             .redact_log_urls(true)
             .limit(ENV_VARS.request_retries)
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .timeout_secs(self.settings.json_rpc_timeout.as_secs())
             .run(move || {
                 let alloy = alloy.cheap_clone();
                 async move {
@@ -1304,8 +1322,8 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
-            .limit(ENV_VARS.request_retries)
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .limit(self.settings.request_retries)
+            .timeout_secs(self.settings.json_rpc_timeout.as_secs())
             .run(move || {
                 let alloy = alloy.cheap_clone();
                 async move {
@@ -1338,7 +1356,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
             .no_limit()
-            .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+            .timeout_secs(self.settings.json_rpc_timeout.as_secs())
             .run(move || {
                 let alloy = alloy.clone();
                 async move {
@@ -1392,12 +1410,19 @@ impl EthereumAdapterTrait for EthereumAdapter {
             )
             .await;
 
-        fetch_receipts_with_retry(alloy, hashes, block_hash, logger, supports_block_receipts)
-            .await
-            .map(|transaction_receipts| EthereumBlock {
-                block: Arc::new(LightEthereumBlock::new(block)),
-                transaction_receipts,
-            })
+        fetch_receipts_with_retry(
+            alloy,
+            hashes,
+            block_hash,
+            logger,
+            supports_block_receipts,
+            &self.settings,
+        )
+        .await
+        .map(|transaction_receipts| EthereumBlock {
+            block: Arc::new(LightEthereumBlock::new(block)),
+            transaction_receipts,
+        })
     }
 
     async fn get_balance(
@@ -1447,7 +1472,7 @@ impl EthereumAdapterTrait for EthereumAdapter {
                 .redact_log_urls(true)
                 .when(|res| !res.is_ok() && !detect_null_block(res))
                 .no_limit()
-                .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+                .timeout_secs(self.settings.json_rpc_timeout.as_secs())
                 .run(move || {
                     let alloy = alloy.cheap_clone();
                     async move {
@@ -2223,6 +2248,7 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
     hashes: Vec<B256>,
     block_hash: B256,
     logger: ProviderLogger,
+    settings: &ChainSettings,
 ) -> Result<Vec<Arc<AnyTransactionReceiptBare>>, IngestorError> {
     let retry_log_message = format!(
         "batch eth_getTransactionReceipt RPC call for block {:?}",
@@ -2230,9 +2256,9 @@ async fn fetch_transaction_receipts_in_batch_with_retry(
     );
     retry(retry_log_message, &logger)
         .redact_log_urls(true)
-        .limit(ENV_VARS.request_retries)
+        .limit(settings.request_retries)
         .no_logging()
-        .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+        .timeout_secs(settings.json_rpc_timeout.as_secs())
         .run(move || {
             let alloy = alloy.cheap_clone();
             let hashes = hashes.clone();
@@ -2339,11 +2365,12 @@ async fn fetch_receipts_with_retry(
     block_hash: B256,
     logger: ProviderLogger,
     supports_block_receipts: bool,
+    settings: &ChainSettings,
 ) -> Result<Vec<Arc<AnyTransactionReceiptBare>>, IngestorError> {
     if supports_block_receipts {
-        return fetch_block_receipts_with_retry(alloy, hashes, block_hash, logger).await;
+        return fetch_block_receipts_with_retry(alloy, hashes, block_hash, logger, settings).await;
     }
-    fetch_individual_receipts_with_retry(alloy, hashes, block_hash, logger).await
+    fetch_individual_receipts_with_retry(alloy, hashes, block_hash, logger, settings).await
 }
 
 // Fetches receipts for each transaction in the block individually.
@@ -2352,11 +2379,18 @@ async fn fetch_individual_receipts_with_retry(
     hashes: Vec<B256>,
     block_hash: B256,
     logger: ProviderLogger,
+    settings: &ChainSettings,
 ) -> Result<Vec<Arc<AnyTransactionReceiptBare>>, IngestorError> {
     if ENV_VARS.fetch_receipts_in_batches {
-        return fetch_transaction_receipts_in_batch_with_retry(alloy, hashes, block_hash, logger)
-            .await;
+        return fetch_transaction_receipts_in_batch_with_retry(
+            alloy, hashes, block_hash, logger, settings,
+        )
+        .await;
     }
+
+    let request_retries = settings.request_retries;
+    let json_rpc_timeout = settings.json_rpc_timeout;
+    let concurrent_requests = settings.block_ingestor_max_concurrent_json_rpc_calls;
 
     // Use a stream to fetch receipts individually
     let hash_stream = tokio_stream::iter(hashes);
@@ -2367,9 +2401,11 @@ async fn fetch_individual_receipts_with_retry(
                 tx_hash,
                 block_hash,
                 logger.cheap_clone(),
+                request_retries,
+                json_rpc_timeout,
             )
         })
-        .buffered(ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls);
+        .buffered(concurrent_requests);
 
     tokio_stream::StreamExt::collect::<Result<Vec<Arc<AnyTransactionReceiptBare>>, IngestorError>>(
         receipt_stream,
@@ -2383,6 +2419,7 @@ async fn fetch_block_receipts_with_retry(
     hashes: Vec<B256>,
     block_hash: B256,
     logger: ProviderLogger,
+    settings: &ChainSettings,
 ) -> Result<Vec<Arc<AnyTransactionReceiptBare>>, IngestorError> {
     use graph::prelude::alloy::rpc::types::BlockId;
     let retry_log_message = format!("eth_getBlockReceipts RPC call for block {:?}", block_hash);
@@ -2390,8 +2427,8 @@ async fn fetch_block_receipts_with_retry(
     // Perform the retry operation
     let receipts_option = retry(retry_log_message, &logger)
         .redact_log_urls(true)
-        .limit(ENV_VARS.request_retries)
-        .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+        .limit(settings.request_retries)
+        .timeout_secs(settings.json_rpc_timeout.as_secs())
         .run(move || alloy.get_block_receipts(BlockId::from(block_hash)).boxed())
         .await
         .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
@@ -2427,6 +2464,8 @@ async fn fetch_transaction_receipt_with_retry(
     transaction_hash: B256,
     block_hash: B256,
     logger: ProviderLogger,
+    request_retries: usize,
+    json_rpc_timeout: Duration,
 ) -> Result<Arc<AnyTransactionReceiptBare>, IngestorError> {
     let retry_log_message = format!(
         "eth_getTransactionReceipt RPC call for transaction {:?}",
@@ -2435,8 +2474,8 @@ async fn fetch_transaction_receipt_with_retry(
 
     retry(retry_log_message, &logger)
         .redact_log_urls(true)
-        .limit(ENV_VARS.request_retries)
-        .timeout_secs(ENV_VARS.json_rpc_timeout.as_secs())
+        .limit(request_retries)
+        .timeout_secs(json_rpc_timeout.as_secs())
         .run(move || {
             let alloy_clone = alloy.clone();
             async move { alloy_clone.get_transaction_receipt(transaction_hash).await }.boxed()
@@ -2613,6 +2652,8 @@ async fn get_transaction_receipts_for_transaction_hashes(
                 *transaction_hash,
                 *block_hash,
                 logger.cheap_clone(),
+                adapter.settings.request_retries,
+                adapter.settings.json_rpc_timeout,
             );
             receipt_futures.push(receipt_future)
         }

@@ -31,7 +31,11 @@ mod assertion;
 mod block_stream;
 mod eth_calls;
 mod matchstick;
+mod mock_arweave;
 mod mock_chain;
+mod mock_ipfs;
+mod mock_runtime;
+mod mock_transport;
 mod noop;
 mod output;
 mod runner;
@@ -110,8 +114,7 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
         return matchstick::run(&opt).await;
     }
 
-    // Build the subgraph first so the WASM and schema are available in build/.
-    // This mirrors what a user would do manually before running tests.
+    // Build the subgraph first (WASM and schema must be available in build/).
     if !opt.skip_build {
         step(Step::Generate, "Building subgraph");
         let build_opt = crate::commands::BuildOpt {
@@ -170,7 +173,7 @@ pub async fn run_test(opt: TestOpt) -> Result<()> {
             }
         };
 
-        match runner::run_single_test(&opt, &manifest_info, &test_file).await {
+        match runner::run_single_test(&opt, &manifest_info, &test_file, &path).await {
             Ok(result) => {
                 output::print_test_result(&test_file.name, &result);
                 if result.is_passed() {

@@ -1,19 +1,16 @@
 //! Integration tests for `gnd test` — the mock-based subgraph test runner.
 //!
-//! These tests verify that `gnd test` can:
-//! - Build and run fixture subgraph tests end-to-end
-//! - Execute individual test files
-//! - Report correct pass/fail counts
+//! Each fixture under `tests/fixtures/gnd_test/` covers one focused area:
 //!
-//! The fixture subgraph at `tests/fixtures/gnd_test/subgraph/` covers:
-//! - Event handling with eth_call mocking (transfer.json)
-//! - Block handlers with various filters (blocks.json)
-//! - Dynamic data source templates (templates.json)
+//! - `token/`             — ERC20 event handling, eth_call mocking, dynamic templates
+//! - `blocks/`            — Block handlers (`every`, `once`, `polling` filters)
+//! - `receipts/`          — Transaction receipts (`receipt: true` handlers)
+//! - `file-data-sources/` — IPFS and Arweave file data sources
 //!
 //! # Prerequisites
 //!
 //! - Build the gnd binary: `cargo build -p gnd`
-//! - AssemblyScript compiler (`asc`) in PATH
+//! - AssemblyScript compiler (`asc`) in PATH or local `node_modules/.bin`
 //! - pnpm available for dependency installation
 //!
 //! # Running
@@ -33,24 +30,35 @@ use std::process::Command;
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
-/// Copy the fixture subgraph into a fresh temp directory, install pnpm
-/// dependencies, and run `gnd codegen`. Returns the temp dir handle (to
-/// keep it alive) and the path to the prepared subgraph directory.
-fn setup_fixture() -> (TempDir, PathBuf) {
+// ============================================================================
+// Shared helpers
+// ============================================================================
+
+fn fixtures_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join("gnd_test")
+}
+
+/// Copy a named fixture into a fresh temp directory, install pnpm dependencies,
+/// and run `gnd codegen`. Returns the temp dir handle (to keep it alive) and
+/// the path to the prepared subgraph directory.
+fn setup_fixture(name: &str) -> (TempDir, PathBuf) {
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
-    let subgraph_dir = temp_dir.path().join("subgraph");
+    let subgraph_dir = temp_dir.path().join(name);
     fs::create_dir_all(&subgraph_dir).unwrap();
 
-    let fixture = fixture_path();
+    let fixture = fixtures_root().join(name);
     assert!(
         fixture.exists(),
-        "Fixture not found at {}",
+        "Fixture '{}' not found at {}",
+        name,
         fixture.display()
     );
 
     copy_dir_recursive(&fixture, &subgraph_dir).expect("Failed to copy fixture to temp directory");
 
-    // Install dependencies (graph-ts, graph-cli)
     let npm_output = Command::new("pnpm")
         .arg("install")
         .current_dir(&subgraph_dir)
@@ -59,7 +67,8 @@ fn setup_fixture() -> (TempDir, PathBuf) {
 
     assert!(
         npm_output.status.success(),
-        "pnpm install failed in fixture:\nstdout: {}\nstderr: {}",
+        "pnpm install failed in fixture '{}':\nstdout: {}\nstderr: {}",
+        name,
         String::from_utf8_lossy(&npm_output.stdout),
         String::from_utf8_lossy(&npm_output.stderr),
     );
@@ -75,7 +84,8 @@ fn setup_fixture() -> (TempDir, PathBuf) {
 
     assert!(
         codegen_output.status.success(),
-        "gnd codegen failed in fixture:\nstdout: {}\nstderr: {}",
+        "gnd codegen failed in fixture '{}':\nstdout: {}\nstderr: {}",
+        name,
         String::from_utf8_lossy(&codegen_output.stdout),
         String::from_utf8_lossy(&codegen_output.stderr),
     );
@@ -83,7 +93,6 @@ fn setup_fixture() -> (TempDir, PathBuf) {
     (temp_dir, subgraph_dir)
 }
 
-/// Get the path to the gnd binary.
 fn gnd_binary_path() -> PathBuf {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     PathBuf::from(manifest_dir)
@@ -94,7 +103,6 @@ fn gnd_binary_path() -> PathBuf {
         .join("gnd")
 }
 
-/// Verify the gnd binary exists, panic with a helpful message if not.
 fn verify_gnd_binary() -> PathBuf {
     let gnd_path = gnd_binary_path();
     assert!(
@@ -105,16 +113,6 @@ fn verify_gnd_binary() -> PathBuf {
     gnd_path
 }
 
-/// Get the path to the gnd_test fixture subgraph.
-fn fixture_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join("gnd_test")
-        .join("subgraph")
-}
-
-/// Assert that `asc` (AssemblyScript compiler) is available in PATH or in local node_modules.
 fn verify_asc_available(subgraph_dir: &Path) {
     assert!(
         gnd::compiler::find_asc_binary(subgraph_dir).is_some(),
@@ -124,7 +122,6 @@ fn verify_asc_available(subgraph_dir: &Path) {
     );
 }
 
-/// Copy a directory recursively.
 fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     for entry in WalkDir::new(src).min_depth(1) {
         let entry = entry?;
@@ -140,8 +137,6 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Run `gnd test` with the given args in the given directory.
-/// Returns the Output (status, stdout, stderr).
 fn run_gnd_test(args: &[&str], cwd: &Path) -> std::process::Output {
     let gnd = verify_gnd_binary();
     let mut cmd = Command::new(&gnd);
@@ -160,45 +155,121 @@ fn run_gnd_test(args: &[&str], cwd: &Path) -> std::process::Output {
 }
 
 // ============================================================================
-// gnd test — run all fixture tests
+// token — ERC20 events, eth_call mocking, dynamic templates
 // ============================================================================
 
 #[test]
-fn test_gnd_test_all() {
-    let (_temp_dir, subgraph_dir) = setup_fixture();
+fn test_token_transfer() {
+    let (_temp_dir, subgraph_dir) = setup_fixture("token");
 
-    // Run only the passing test files (exclude failing.json which is used by the negative test).
-    let output = run_gnd_test(
-        &[
-            "tests/transfer.json",
-            "tests/blocks.json",
-            "tests/templates.json",
-        ],
-        &subgraph_dir,
-    );
+    let output = run_gnd_test(&["tests/transfer.json"], &subgraph_dir);
 
     assert!(
         output.status.success(),
-        "gnd test failed with exit code: {:?}\nstdout: {}\nstderr: {}",
-        output.status.code(),
+        "gnd test failed for token fixture\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
     );
 }
 
-// ============================================================================
-// gnd test — verify failure on wrong assertions
-// ============================================================================
-
 #[test]
-fn test_gnd_test_failing_assertions() {
-    let (_temp_dir, subgraph_dir) = setup_fixture();
+fn test_templates() {
+    let (_temp_dir, subgraph_dir) = setup_fixture("token");
+
+    let output = run_gnd_test(&["tests/templates.json"], &subgraph_dir);
+
+    assert!(
+        output.status.success(),
+        "gnd test failed for token fixture\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+/// Verifies that `gnd test` exits with a non-zero code when an assertion fails.
+#[test]
+fn test_token_failing_assertion() {
+    let (_temp_dir, subgraph_dir) = setup_fixture("token");
 
     let output = run_gnd_test(&["tests/failing.json"], &subgraph_dir);
 
     assert!(
         !output.status.success(),
         "gnd test should have failed for failing.json but exited with code 0\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+// ============================================================================
+// blocks — block handlers with every/once/polling filters
+// ============================================================================
+
+#[test]
+fn test_blocks() {
+    let (_temp_dir, subgraph_dir) = setup_fixture("blocks");
+
+    let output = run_gnd_test(&["tests/blocks.json"], &subgraph_dir);
+
+    assert!(
+        output.status.success(),
+        "gnd test failed for blocks fixture\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+// ============================================================================
+// receipts — receipt: true event handlers
+// ============================================================================
+
+#[test]
+fn test_receipts() {
+    let (_temp_dir, subgraph_dir) = setup_fixture("receipts");
+
+    let output = run_gnd_test(&["tests/receipts.json"], &subgraph_dir);
+
+    assert!(
+        output.status.success(),
+        "gnd test failed for receipts fixture\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+// ============================================================================
+// file-data-sources — IPFS and Arweave file data sources
+// ============================================================================
+
+/// Verifies that an event handler can spawn a `file/ipfs` data source, the mock
+/// IPFS client serves the pre-loaded content, and the file handler writes an
+/// entity whose content matches the mocked bytes.
+#[test]
+fn test_file_ipfs() {
+    let (_temp_dir, subgraph_dir) = setup_fixture("file-data-sources");
+
+    let output = run_gnd_test(&["tests/file_ipfs.json"], &subgraph_dir);
+
+    assert!(
+        output.status.success(),
+        "gnd test failed for file_ipfs.json\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+}
+
+/// Verifies that an event handler can spawn a `file/arweave` data source, the
+/// mock Arweave resolver serves the pre-loaded content, and the file handler
+/// writes an entity whose content matches the mocked bytes.
+#[test]
+fn test_file_arweave() {
+    let (_temp_dir, subgraph_dir) = setup_fixture("file-data-sources");
+
+    let output = run_gnd_test(&["tests/file_arweave.json"], &subgraph_dir);
+
+    assert!(
+        output.status.success(),
+        "gnd test failed for file_arweave.json\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
     );

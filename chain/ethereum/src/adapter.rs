@@ -364,7 +364,7 @@ pub struct EthereumLogFilter {
 
 impl From<EthereumLogFilter> for Vec<LogFilter> {
     fn from(val: EthereumLogFilter) -> Self {
-        val.eth_get_logs_filters()
+        val.eth_get_logs_filters(ENV_VARS.get_logs_max_contracts)
             .map(
                 |EthGetLogsFilter {
                      contracts,
@@ -546,7 +546,10 @@ impl EthereumLogFilter {
     /// Filters for `eth_getLogs` calls. The filters will not return false positives. This attempts
     /// to balance between having granular filters but too many calls and having few calls but too
     /// broad filters causing the Ethereum endpoint to timeout.
-    pub fn eth_get_logs_filters(self) -> impl Iterator<Item = EthGetLogsFilter> {
+    pub fn eth_get_logs_filters(
+        self,
+        get_logs_max_contracts: usize,
+    ) -> impl Iterator<Item = EthGetLogsFilter> {
         let mut filters = Vec::new();
 
         // Start with the wildcard event filters.
@@ -596,7 +599,7 @@ impl EthereumLogFilter {
             for neighbor in g.neighbors(max_vertex) {
                 match neighbor {
                     LogFilterNode::Contract(address) => {
-                        if filter.contracts.len() == ENV_VARS.get_logs_max_contracts {
+                        if filter.contracts.len() == get_logs_max_contracts {
                             // The batch size was reached, register the filter and start a new one.
                             let event = filter.event_signatures[0];
                             push_filter(filter);
@@ -1771,7 +1774,7 @@ fn complete_log_filter() {
                 wildcard_events: HashMap::new(),
                 events_with_topic_filters: HashMap::new(),
             }
-            .eth_get_logs_filters()
+            .eth_get_logs_filters(ENV_VARS.get_logs_max_contracts)
             .collect();
 
             // Assert that a contract or event is filtered on iff it was present in the graph.

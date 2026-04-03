@@ -1,7 +1,8 @@
-use crate::config::{Config, ProviderDetails};
+use crate::config::{ChainSettings as ConfigChainSettings, Config, ProviderDetails};
 use crate::network_setup::{
     AdapterConfiguration, EthAdapterConfig, FirehoseAdapterConfig, Networks,
 };
+use ethereum::chain::ChainSettings;
 use ethereum::chain::{
     EthereumAdapterSelector, EthereumBlockRefetcher, EthereumRuntimeAdapterBuilder,
     EthereumStreamBuilder,
@@ -146,6 +147,37 @@ pub fn create_firehose_networks(
         .collect()
 }
 
+impl From<ConfigChainSettings> for ChainSettings {
+    fn from(c: ConfigChainSettings) -> Self {
+        let ConfigChainSettings {
+            polling_interval,
+            json_rpc_timeout,
+            request_retries,
+            max_block_range_size,
+            block_batch_size,
+            block_ptr_batch_size,
+            max_event_only_range,
+            target_triggers_per_block_range,
+            get_logs_max_contracts,
+            block_ingestor_max_concurrent_json_rpc_calls,
+            genesis_block_number,
+        } = c;
+        ChainSettings {
+            polling_interval,
+            json_rpc_timeout,
+            request_retries,
+            max_block_range_size,
+            block_batch_size,
+            block_ptr_batch_size,
+            max_event_only_range,
+            target_triggers_per_block_range,
+            get_logs_max_contracts,
+            block_ingestor_max_concurrent_json_rpc_calls,
+            genesis_block_number,
+        }
+    }
+}
+
 /// Parses all Ethereum connection strings and returns their network names and
 /// `EthereumAdapter`.
 pub async fn create_ethereum_networks(
@@ -188,6 +220,7 @@ pub async fn create_ethereum_networks_for_chain(
         .chains
         .get(network_name)
         .ok_or_else(|| anyhow!("unknown network {}", network_name))?;
+    let settings = Arc::new(ChainSettings::from(chain.settings.clone()));
     let mut adapters = vec![];
     let mut call_only_adapters = vec![];
 
@@ -243,6 +276,7 @@ pub async fn create_ethereum_networks_for_chain(
                     eth_rpc_metrics.clone(),
                     supports_eip_1898,
                     call_only,
+                    settings.clone(),
                 )
                 .await,
             ),
@@ -269,7 +303,7 @@ pub async fn create_ethereum_networks_for_chain(
         chain_id: network_name.into(),
         adapters,
         call_only: call_only_adapters,
-        polling_interval: Some(chain.polling_interval),
+        settings,
     }))
 }
 
@@ -335,12 +369,12 @@ pub async fn networks_as_chains(
 
         match kind {
             BlockchainKind::Ethereum => {
-                // polling interval is set per chain so if set all adapter configuration will have
-                // the same value.
-                let polling_interval = adapters
-                    .first()
-                    .and_then(|a| a.as_rpc().and_then(|a| a.polling_interval))
-                    .unwrap_or(config.ingestor_polling_interval);
+                // settings come from the first RPC adapter config; falls back to ENV_VAR
+                // defaults for firehose-only chains.
+                let settings = adapters
+                    .iter()
+                    .find_map(|a| a.as_rpc().map(|r| r.settings.clone()))
+                    .unwrap_or_else(|| Arc::new(ChainSettings::from_env_defaults()));
 
                 let firehose_endpoints = networks.firehose_endpoints(chain_id.clone());
                 let eth_adapters = networks.ethereum_rpcs(chain_id.clone());
@@ -377,8 +411,8 @@ pub async fn networks_as_chains(
                     Arc::new(EthereumRuntimeAdapterBuilder {}),
                     eth_adapters,
                     ENV_VARS.reorg_threshold(),
-                    polling_interval,
                     true,
+                    settings,
                 );
 
                 blockchain_map

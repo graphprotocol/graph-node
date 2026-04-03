@@ -594,8 +594,8 @@ impl ChainStore for MockChainStore {
     }
     async fn clear_stale_call_cache(
         &self,
-        _ttl_days: i32,
-        _ttl_max_contracts: Option<i64>,
+        _ttl_days: usize,
+        _ttl_max_contracts: Option<usize>,
     ) -> Result<(), Error> {
         unimplemented!()
     }

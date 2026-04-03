@@ -123,13 +123,42 @@ The configuration for a chain `name` is specified in the section
 - `shard`: where chain data is stored
 - `protocol`: the protocol type being indexed, default `ethereum`
   (alternatively `near`, `cosmos`,`arweave`,`starknet`)
-- `polling_interval`: the polling interval for the block ingestor (default 500ms)
 - `amp`: the network name used by AMP for this chain; defaults to the chain name.
   Set this when AMP uses a different name than graph-node (e.g., `amp = "ethereum-mainnet"`
   on a chain named `mainnet`).
 - `cache_size`: number of blocks from the chain head for which to keep
   block data cached. Defaults to the section-level `cache_size`.
 - `provider`: a list of providers for that chain
+
+Additionally, Ethereum chains support per-chain RPC tuning settings. When
+omitted, each setting falls back to its corresponding environment variable
+default (see [environment-variables.md](environment-variables.md) for
+details):
+
+- `polling_interval`: block ingestor polling interval in milliseconds.
+  Default: `ETHEREUM_POLLING_INTERVAL` (1000ms).
+- `json_rpc_timeout`: timeout for JSON-RPC requests in seconds.
+  Default: `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT` (180s).
+- `request_retries`: number of times to retry failed JSON-RPC requests.
+  Default: `GRAPH_ETHEREUM_REQUEST_RETRIES` (10).
+- `max_block_range_size`: maximum number of blocks to scan for triggers per
+  request. Default: `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE` (1000).
+- `block_batch_size`: number of blocks to request in parallel.
+  Default: `ETHEREUM_BLOCK_BATCH_SIZE` (10).
+- `block_ptr_batch_size`: number of block pointers to request in parallel.
+  Default: `ETHEREUM_BLOCK_PTR_BATCH_SIZE` (100).
+- `max_event_only_range`: maximum range for `eth_getLogs` requests that
+  don't filter on contract address.
+  Default: `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE` (500).
+- `target_triggers_per_block_range`: ideal number of triggers per batch.
+  Default: `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE` (100).
+- `get_logs_max_contracts`: maximum contracts per `eth_getLogs` call.
+  Default: `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS` (2000).
+- `block_ingestor_max_concurrent_json_rpc_calls`: maximum concurrent
+  JSON-RPC calls for transaction receipts during block ingestion.
+  Default: `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS` (1000).
+- `genesis_block_number`: genesis block number for this chain.
+  Default: `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER` (0).
 
 A `provider` is an object with the following characteristics:
 
@@ -181,6 +210,10 @@ cache_size = 500
 [chains.mainnet]
 shard = "vip"
 amp = "ethereum-mainnet"
+# Per-chain RPC tuning (all optional — omitted fields use env var defaults)
+json_rpc_timeout = 300
+request_retries = 15
+max_block_range_size = 2000
 provider = [
   { label = "mainnet1", url = "http://..", features = [], headers = { Authorization = "Bearer foo" } },
   { label = "mainnet2", url = "http://..", features = [ "archive", "traces" ] }

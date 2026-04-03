@@ -63,21 +63,15 @@ impl BlockStreamBuilder<Chain> for StaticStreamBuilder {
     }
 }
 
-/// A `Stream` that synchronously yields pre-defined blocks one at a time.
-///
-/// Each `poll_next` call returns the next block immediately (no async waiting).
-/// When all blocks have been emitted, returns `None` to signal stream completion,
-/// which tells the indexer that sync is done.
+/// A `Stream` that yields pre-defined blocks synchronously.
+/// Returns `None` when all blocks are emitted, signaling sync completion.
 struct StaticStream {
     blocks: Vec<BlockWithTriggers<Chain>>,
     current_idx: usize,
 }
 
 impl StaticStream {
-    /// Create a new stream, optionally skipping past already-processed blocks.
-    ///
-    /// `skip_to`: If `Some(i)`, start from block `i+1` (block `i` was already processed).
-    /// If `None`, start from the beginning.
+    /// `skip_to`: if `Some(i)`, start from block `i+1` (block `i` already processed).
     fn new(blocks: Vec<BlockWithTriggers<Chain>>, skip_to: Option<usize>) -> Self {
         Self {
             blocks,

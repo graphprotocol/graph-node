@@ -300,6 +300,8 @@ fn input_value(
                 .map_or(r::Value::Null, |value| {
                     r::Value::String(format!("{}", value))
                 }),
+        isDeprecated: false,
+        deprecationReason: r::Value::Null,
     }
 }
 

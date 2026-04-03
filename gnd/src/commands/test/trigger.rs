@@ -9,21 +9,27 @@
 use super::schema::{LogEvent, TestFile};
 use anyhow::{anyhow, ensure, Context, Result};
 use graph::blockchain::block_stream::BlockWithTriggers;
+use graph::components::ethereum::AnyTransactionReceiptBare;
+use graph::prelude::alloy::consensus::{Eip658Value, Receipt, ReceiptWithBloom};
 use graph::prelude::alloy::dyn_abi::{DynSolType, DynSolValue};
 use graph::prelude::alloy::json_abi::Event;
-use graph::prelude::alloy::primitives::{keccak256, Address, Bytes, B256, I256, U256};
-use graph::prelude::alloy::rpc::types::Log;
+use graph::prelude::alloy::network::AnyReceiptEnvelope;
+use graph::prelude::alloy::primitives::{keccak256, Address, Bloom, Bytes, B256, I256, U256};
+use graph::prelude::alloy::rpc::types::{Log, TransactionReceipt};
 use graph::prelude::{BlockPtr, LightEthereumBlock};
 use graph_chain_ethereum::chain::BlockFinality;
 use graph_chain_ethereum::trigger::{EthereumBlockTriggerType, EthereumTrigger, LogRef};
 use graph_chain_ethereum::Chain;
+use std::collections::HashMap;
 use std::sync::Arc;
 
-/// Convert test blocks into `BlockWithTriggers`, chained by parent hash.
-/// Block numbers auto-increment from `start_block` when not explicit.
+/// Build `BlockWithTriggers` from test blocks, chained by parent hash.
+/// Numbers auto-increment from `start_block` when omitted.
+/// Only logs whose topic0 is in `receipt_required_selectors` get a non-null receipt.
 pub fn build_blocks_with_triggers(
     test_file: &TestFile,
     start_block: u64,
+    receipt_required_selectors: &std::collections::HashSet<B256>,
 ) -> Result<Vec<BlockWithTriggers<Chain>>> {
     let mut blocks = Vec::new();
     let mut current_number = start_block;
@@ -40,22 +46,36 @@ pub fn build_blocks_with_triggers(
             .context("Invalid block hash")?
             .unwrap_or_else(|| keccak256(number.to_be_bytes()));
 
-        // Default: use block number as timestamp (seconds since epoch).
-        // Avoids assuming a chain-specific block time and prevents future timestamps
-        // on chains with high block numbers (e.g. Arbitrum).
+        // Default timestamp = block number — avoids chain-specific block times.
         let timestamp = test_block.timestamp.unwrap_or(number);
 
         let mut triggers = Vec::new();
 
-        for (log_index, log_event) in test_block.events.iter().enumerate() {
-            let eth_trigger = build_log_trigger(number, hash, log_index as u64, log_event)?;
-            triggers.push(eth_trigger);
+        // Pass 1: parse each event into (tx_hash, Arc<Log>).
+        let event_logs: Vec<(B256, Arc<Log>)> = test_block
+            .events
+            .iter()
+            .enumerate()
+            .map(|(i, e)| prepare_event_log(number, hash, i as u64, e))
+            .collect::<Result<_>>()?;
+
+        // Pass 2: build one mock receipt per tx-hash group.
+        let receipts = build_receipts_by_tx(number, hash, &event_logs);
+
+        // Pass 3: one log trigger per event. Receipt only for `receipt: true` handlers.
+        for (tx_hash, full_log) in &event_logs {
+            let needs_receipt = full_log
+                .topics()
+                .first()
+                .is_some_and(|t| receipt_required_selectors.contains(t));
+            let receipt = needs_receipt.then(|| receipts[tx_hash].clone());
+            triggers.push(EthereumTrigger::Log(LogRef::FullLog(
+                full_log.clone(),
+                receipt,
+            )));
         }
 
-        // Auto-inject block triggers for every block so that block handlers
-        // with any filter fire correctly:
-        // - Start: matches `once` handlers (at start_block) and initialization handlers
-        // - End: matches unfiltered and `polling` handlers
+        // Inject Start/End block triggers so `once`, `polling`, and unfiltered handlers fire.
         ensure!(
             number <= i32::MAX as u64,
             "block number {} exceeds i32::MAX",
@@ -81,27 +101,24 @@ pub fn build_blocks_with_triggers(
     Ok(blocks)
 }
 
-/// Build an `EthereumTrigger::Log` from a test JSON event.
-fn build_log_trigger(
+/// Parse a test event into `(tx_hash, Arc<Log>)`.
+/// tx_hash from the event or generated as `keccak256(block_number || log_index)`.
+fn prepare_event_log(
     block_number: u64,
     block_hash: B256,
     log_index: u64,
     trigger: &LogEvent,
-) -> Result<EthereumTrigger> {
-    let address: Address = trigger
-        .address
-        .parse()
-        .context("Invalid contract address")?;
+) -> Result<(B256, Arc<Log>)> {
+    let address: Address = trigger.address.parse()?;
 
     let (topics, data) = encode_event_log(&trigger.event, &trigger.params)?;
 
-    // Generate deterministic tx hash if not provided: keccak256(block_number || log_index).
+    // Deterministic tx hash: keccak256(block_number || log_index).
     let tx_hash = trigger
         .tx_hash
         .as_ref()
         .map(|h| h.parse::<B256>())
-        .transpose()
-        .context("Invalid tx hash")?
+        .transpose()?
         .unwrap_or_else(|| {
             keccak256([block_number.to_be_bytes(), log_index.to_be_bytes()].concat())
         });
@@ -122,31 +139,77 @@ fn build_log_trigger(
         removed: false,
     });
 
-    Ok(EthereumTrigger::Log(LogRef::FullLog(full_log, None)))
+    Ok((tx_hash, full_log))
 }
 
-/// Encode event parameters into EVM log topics and data using `alloy::json_abi::Event::parse()`.
+/// Build one receipt per unique tx_hash. Logs sharing a tx_hash are grouped;
+/// events without an explicit tx_hash each get their own receipt.
+fn build_receipts_by_tx(
+    block_number: u64,
+    block_hash: B256,
+    event_logs: &[(B256, Arc<Log>)],
+) -> HashMap<B256, Arc<AnyTransactionReceiptBare>> {
+    // Collect logs per tx_hash, preserving insertion order for tx_index.
+    let mut tx_order: Vec<B256> = Vec::new();
+    let mut logs_by_tx: HashMap<B256, Vec<Log>> = HashMap::new();
+
+    for (tx_hash, log) in event_logs {
+        let entry = logs_by_tx.entry(*tx_hash).or_insert_with(|| {
+            tx_order.push(*tx_hash);
+            Vec::new()
+        });
+        entry.push((**log).clone());
+    }
+
+    let mut receipts: HashMap<B256, Arc<AnyTransactionReceiptBare>> =
+        HashMap::with_capacity(tx_order.len());
+
+    for (tx_index, tx_hash) in tx_order.into_iter().enumerate() {
+        let logs = logs_by_tx.remove(&tx_hash).unwrap_or_default();
+
+        let core_receipt = Receipt {
+            status: Eip658Value::Eip658(true),
+            cumulative_gas_used: 21_000,
+            logs,
+        };
+
+        let receipt_with_bloom = ReceiptWithBloom::new(core_receipt, Bloom::default());
+
+        let any_envelope = AnyReceiptEnvelope {
+            inner: receipt_with_bloom,
+            r#type: 2,
+        };
+
+        let receipt = TransactionReceipt {
+            transaction_hash: tx_hash,
+            transaction_index: Some(tx_index as u64),
+            block_hash: Some(block_hash),
+            block_number: Some(block_number),
+            gas_used: 21_000,
+            from: Address::ZERO,
+            to: None,
+            effective_gas_price: 0,
+            blob_gas_used: None,
+            blob_gas_price: None,
+            contract_address: None,
+            inner: any_envelope,
+        };
+
+        receipts.insert(tx_hash, Arc::new(receipt));
+    }
+
+    receipts
+}
+
+/// ABI-encode event params into EVM log (topics, data).
 ///
-/// Given a human-readable event signature like:
-///   `"Transfer(address indexed from, address indexed to, uint256 value)"`
-/// and parameter values like:
-///   `{"from": "0xaaaa...", "to": "0xbbbb...", "value": "1000"}`
-///
-/// Produces:
-/// - topics[0] = keccak256("Transfer(address,address,uint256)") (the event selector)
-/// - topics[1] = left-padded `from` address (indexed)
-/// - topics[2] = left-padded `to` address (indexed)
-/// - data = ABI-encoded `value` as uint256 (non-indexed)
-///
-/// Indexed parameters become topics (max 3 after topic0), non-indexed parameters
-/// are ABI-encoded together as the log data.
+/// topic0 = keccak256 of the canonical signature; indexed params → topics;
+/// non-indexed params → ABI-encoded data.
 pub fn encode_event_log(
     event_sig: &str,
     params: &serde_json::Map<String, serde_json::Value>,
 ) -> Result<(Vec<B256>, Bytes)> {
-    // Event::parse expects "event EventName(...)" format.
-    // If the user already wrote "event Transfer(...)" use as-is,
-    // otherwise prepend "event ".
+    // Event::parse requires "event " prefix — add if missing.
     let sig_with_prefix = if event_sig.trim_start().starts_with("event ") {
         event_sig.to_string()
     } else {
@@ -284,8 +347,7 @@ pub fn json_to_sol_value(sol_type: &DynSolType, value: &serde_json::Value) -> Re
                     len
                 ));
             }
-            // DynSolValue::FixedBytes always wraps a B256 (32 bytes) plus the actual
-            // byte count. Right-zero-pad the input to fill the full 32 bytes.
+            // DynSolValue::FixedBytes wraps a full B256 — right-zero-pad.
             let mut padded = [0u8; 32];
             padded[..bytes.len()].copy_from_slice(&bytes);
             Ok(DynSolValue::FixedBytes(B256::from(padded), *len))
@@ -355,7 +417,7 @@ fn sol_value_to_topic(value: &DynSolValue) -> Result<B256> {
             Ok(B256::from(bytes))
         }
         DynSolValue::FixedBytes(b, _) => Ok(*b),
-        // Dynamic types are hashed per Solidity spec — the original value cannot be recovered from the topic.
+        // Dynamic types are hashed per Solidity spec.
         DynSolValue::Bytes(b) => Ok(keccak256(b)),
         DynSolValue::String(s) => Ok(keccak256(s.as_bytes())),
         _ => Err(anyhow!("Cannot convert {:?} to topic", value)),

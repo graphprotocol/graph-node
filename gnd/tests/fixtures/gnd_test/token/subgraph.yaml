@@ -14,73 +14,15 @@ dataSources:
       language: wasm/assemblyscript
       file: ./src/token.ts
       entities:
-        - TransferEvent
+        - Token
+        - Account
+        - Balance
       abis:
         - name: ERC20
           file: ./abis/ERC20.json
       eventHandlers:
         - event: Transfer(indexed address,indexed address,uint256)
           handler: handleTransfer
-  - name: EveryBlock
-    kind: ethereum
-    network: arbitrum
-    source:
-      abi: ERC20
-      address: "0x0000000000000000000000000000000000000000"
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.9
-      language: wasm/assemblyscript
-      file: ./src/blocks.ts
-      entities:
-        - Block
-      abis:
-        - name: ERC20
-          file: ./abis/ERC20.json
-      blockHandlers:
-        - handler: handleEveryBlock
-  - name: BlockOnce
-    kind: ethereum
-    network: arbitrum
-    source:
-      abi: ERC20
-      address: "0x0000000000000000000000000000000000000000"
-      startBlock: 1000
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.9
-      language: wasm/assemblyscript
-      file: ./src/blocks.ts
-      entities:
-        - BlockOnce
-      abis:
-        - name: ERC20
-          file: ./abis/ERC20.json
-      blockHandlers:
-        - handler: handleOnce
-          filter:
-            kind: once
-  - name: BlockPolling
-    kind: ethereum
-    network: arbitrum
-    source:
-      abi: ERC20
-      address: "0x0000000000000000000000000000000000000000"
-    mapping:
-      kind: ethereum/events
-      apiVersion: 0.0.9
-      language: wasm/assemblyscript
-      file: ./src/blocks.ts
-      entities:
-        - PollingBlock
-      abis:
-        - name: ERC20
-          file: ./abis/ERC20.json
-      blockHandlers:
-        - handler: handlePolling
-          filter:
-            kind: polling
-            every: 5
   - name: Factory
     kind: ethereum/contract
     network: arbitrum
@@ -94,7 +36,7 @@ dataSources:
       language: wasm/assemblyscript
       file: ./src/factory.ts
       entities:
-        - FactoryToken
+        - Token
       abis:
         - name: TokenFactory
           file: ./abis/TokenFactory.json
@@ -115,7 +57,9 @@ templates:
       language: wasm/assemblyscript
       file: ./src/token.ts
       entities:
-        - FactoryTokenTransfer
+        - Token
+        - Account
+        - Balance
       abis:
         - name: ERC20
           file: ./abis/ERC20.json

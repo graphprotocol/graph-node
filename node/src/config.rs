@@ -489,7 +489,9 @@ impl ChainSection {
         }
 
         for (name, chain) in self.chains.iter_mut() {
-            chain.validate()?;
+            chain
+                .validate()
+                .map_err(|e| anyhow!("chain '{}': {}", name, e))?;
             if chain.cache_size <= reorg_threshold {
                 return Err(anyhow!(
                     "chain '{}': cache_size ({}) must be greater than reorg_threshold ({})",
@@ -623,14 +625,120 @@ impl ChainSection {
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
                     protocol: BlockchainKind::Ethereum,
-                    polling_interval: default_polling_interval(),
                     providers: vec![],
                     amp: None,
                     cache_size: 0,
+                    settings: ChainSettings::default(),
                 });
                 entry.providers.push(provider);
             }
         }
+        Ok(())
+    }
+}
+
+/// Per-chain settings. Flattened into `Chain` so all fields appear as top-level keys in
+/// `[chains.X]` TOML sections. Absent fields fall back to the corresponding `GRAPH_ETHEREUM_*` /
+/// `ETHEREUM_*` environment variable defaults via serde default functions — the same pattern as
+/// `polling_interval`.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct ChainSettings {
+    /// Set by `polling_interval` (milliseconds). Defaults to `ETHEREUM_POLLING_INTERVAL`.
+    #[serde(
+        default = "default_polling_interval",
+        deserialize_with = "deserialize_duration_millis"
+    )]
+    pub polling_interval: Duration,
+    /// Set by `json_rpc_timeout` (seconds). Defaults to `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`.
+    #[serde(
+        default = "default_json_rpc_timeout",
+        deserialize_with = "deserialize_duration_secs"
+    )]
+    pub json_rpc_timeout: Duration,
+    /// Defaults to `GRAPH_ETHEREUM_REQUEST_RETRIES`.
+    #[serde(default = "default_request_retries")]
+    pub request_retries: usize,
+    /// Defaults to `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`.
+    #[serde(default = "default_max_block_range_size")]
+    pub max_block_range_size: i32,
+    /// Defaults to `ETHEREUM_BLOCK_BATCH_SIZE`.
+    #[serde(default = "default_block_batch_size")]
+    pub block_batch_size: usize,
+    /// Defaults to `ETHEREUM_BLOCK_PTR_BATCH_SIZE`.
+    #[serde(default = "default_block_ptr_batch_size")]
+    pub block_ptr_batch_size: usize,
+    /// Defaults to `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`.
+    #[serde(default = "default_max_event_only_range")]
+    pub max_event_only_range: i32,
+    /// Defaults to `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`.
+    #[serde(default = "default_target_triggers_per_block_range")]
+    pub target_triggers_per_block_range: u64,
+    /// Defaults to `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`.
+    #[serde(default = "default_get_logs_max_contracts")]
+    pub get_logs_max_contracts: usize,
+    /// Defaults to `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`.
+    #[serde(default = "default_block_ingestor_max_concurrent_json_rpc_calls")]
+    pub block_ingestor_max_concurrent_json_rpc_calls: usize,
+    /// Defaults to `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER`.
+    #[serde(default = "default_genesis_block_number")]
+    pub genesis_block_number: u64,
+}
+
+impl Default for ChainSettings {
+    fn default() -> Self {
+        ChainSettings {
+            polling_interval: default_polling_interval(),
+            json_rpc_timeout: default_json_rpc_timeout(),
+            request_retries: default_request_retries(),
+            max_block_range_size: default_max_block_range_size(),
+            block_batch_size: default_block_batch_size(),
+            block_ptr_batch_size: default_block_ptr_batch_size(),
+            max_event_only_range: default_max_event_only_range(),
+            target_triggers_per_block_range: default_target_triggers_per_block_range(),
+            get_logs_max_contracts: default_get_logs_max_contracts(),
+            block_ingestor_max_concurrent_json_rpc_calls:
+                default_block_ingestor_max_concurrent_json_rpc_calls(),
+            genesis_block_number: default_genesis_block_number(),
+        }
+    }
+}
+
+impl ChainSettings {
+    fn validate(&self) -> Result<()> {
+        anyhow::ensure!(
+            !self.polling_interval.is_zero(),
+            "polling_interval must be > 0"
+        );
+        anyhow::ensure!(
+            !self.json_rpc_timeout.is_zero(),
+            "json_rpc_timeout must be > 0"
+        );
+        anyhow::ensure!(self.request_retries > 0, "request_retries must be > 0");
+        anyhow::ensure!(
+            self.max_block_range_size > 0,
+            "max_block_range_size must be > 0"
+        );
+        anyhow::ensure!(
+            self.max_event_only_range > 0,
+            "max_event_only_range must be > 0"
+        );
+        anyhow::ensure!(self.block_batch_size > 0, "block_batch_size must be > 0");
+        anyhow::ensure!(
+            self.block_ptr_batch_size > 0,
+            "block_ptr_batch_size must be > 0"
+        );
+        anyhow::ensure!(
+            self.block_ingestor_max_concurrent_json_rpc_calls > 0,
+            "block_ingestor_max_concurrent_json_rpc_calls must be > 0"
+        );
+        anyhow::ensure!(
+            self.get_logs_max_contracts > 0,
+            "get_logs_max_contracts must be > 0"
+        );
+        anyhow::ensure!(
+            self.target_triggers_per_block_range > 0,
+            "target_triggers_per_block_range must be > 0"
+        );
         Ok(())
     }
 }
@@ -640,11 +748,6 @@ pub struct Chain {
     pub shard: String,
     #[serde(default = "default_blockchain_kind")]
     pub protocol: BlockchainKind,
-    #[serde(
-        default = "default_polling_interval",
-        deserialize_with = "deserialize_duration_millis"
-    )]
-    pub polling_interval: Duration,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
     /// AMP network name alias. When set, AMP manifests using this name will
@@ -656,6 +759,9 @@ pub struct Chain {
     /// older than this are treated as if they have no data.
     #[serde(default)]
     pub cache_size: i32,
+    /// Per-chain settings (flat fields). Absent fields fall back to ENV_VAR defaults.
+    #[serde(flatten)]
+    pub settings: ChainSettings,
 }
 
 fn default_cache_size() -> i32 {
@@ -672,12 +778,16 @@ impl Chain {
         labels.sort();
         labels.dedup();
         if labels.len() != self.providers.len() {
-            return Err(anyhow!("Provider labels must be unique"));
+            return Err(anyhow!("provider labels must be unique"));
         }
 
         // `Config` validates that `self.shard` references a configured shard
         for provider in self.providers.iter_mut() {
             provider.validate()?
+        }
+
+        if self.protocol == BlockchainKind::Ethereum {
+            self.settings.validate()?;
         }
 
         Ok(())
@@ -1303,12 +1413,60 @@ fn default_polling_interval() -> Duration {
     ENV_VARS.ingestor_polling_interval
 }
 
+fn default_json_rpc_timeout() -> Duration {
+    ethereum::ENV_VARS.json_rpc_timeout
+}
+
+fn default_request_retries() -> usize {
+    ethereum::ENV_VARS.request_retries
+}
+
+fn default_max_block_range_size() -> i32 {
+    ethereum::ENV_VARS.max_block_range_size
+}
+
+fn default_block_batch_size() -> usize {
+    ethereum::ENV_VARS.block_batch_size
+}
+
+fn default_block_ptr_batch_size() -> usize {
+    ethereum::ENV_VARS.block_ptr_batch_size
+}
+
+fn default_max_event_only_range() -> i32 {
+    ethereum::ENV_VARS.max_event_only_range
+}
+
+fn default_target_triggers_per_block_range() -> u64 {
+    ethereum::ENV_VARS.target_triggers_per_block_range
+}
+
+fn default_get_logs_max_contracts() -> usize {
+    ethereum::ENV_VARS.get_logs_max_contracts
+}
+
+fn default_block_ingestor_max_concurrent_json_rpc_calls() -> usize {
+    ethereum::ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls
+}
+
+fn default_genesis_block_number() -> u64 {
+    ethereum::ENV_VARS.genesis_block_number
+}
+
 fn deserialize_duration_millis<'de, D>(data: D) -> Result<Duration, D::Error>
 where
     D: Deserializer<'de>,
 {
     let millis = u64::deserialize(data)?;
     Ok(Duration::from_millis(millis))
+}
+
+fn deserialize_duration_secs<'de, D>(data: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let secs = u64::deserialize(data)?;
+    Ok(Duration::from_secs(secs))
 }
 
 // From https://github.com/serde-rs/serde/issues/889#issuecomment-295988865
@@ -1346,10 +1504,19 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::config::{default_polling_interval, ChainSection, Web3Rule};
+    use std::time::Duration;
+
+    use crate::config::{
+        default_block_batch_size, default_block_ingestor_max_concurrent_json_rpc_calls,
+        default_block_ptr_batch_size, default_genesis_block_number, default_get_logs_max_contracts,
+        default_json_rpc_timeout, default_max_block_range_size, default_max_event_only_range,
+        default_polling_interval, default_request_retries, default_target_triggers_per_block_range,
+        ChainSection, Web3Rule,
+    };
 
     use super::{
-        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Shard, Transport, Web3Provider,
+        Chain, ChainSettings, Config, FirehoseProvider, Provider, ProviderDetails, Shard,
+        Transport, Web3Provider,
     };
     use graph::blockchain::BlockchainKind;
     use graph::firehose::SubgraphLimit;
@@ -1391,10 +1558,10 @@ mod tests {
             Chain {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Ethereum,
-                polling_interval: default_polling_interval(),
                 providers: vec![],
                 amp: None,
                 cache_size: 0,
+                settings: ChainSettings::default(),
             },
             actual
         );
@@ -1415,10 +1582,10 @@ mod tests {
             Chain {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Near,
-                polling_interval: default_polling_interval(),
                 providers: vec![],
                 amp: None,
                 cache_size: 0,
+                settings: ChainSettings::default(),
             },
             actual
         );
@@ -1978,7 +2145,12 @@ mod tests {
 
         assert_eq!(
             default,
-            actual.chains.get("mainnet").unwrap().polling_interval
+            actual
+                .chains
+                .get("mainnet")
+                .unwrap()
+                .settings
+                .polling_interval
         );
 
         // Polling interval set explicitly, use that
@@ -1998,7 +2170,12 @@ mod tests {
 
         assert_eq!(
             different,
-            actual.chains.get("mainnet").unwrap().polling_interval
+            actual
+                .chains
+                .get("mainnet")
+                .unwrap()
+                .settings
+                .polling_interval
         );
     }
 
@@ -2217,5 +2394,318 @@ fdw_pool_size = [
 
         // Node does not match and kill switch is on
         assert!(!make_config("query-0", "index-0", true).is_block_ingestor());
+    }
+
+    #[test]
+    fn chain_settings_valid_overrides() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            json_rpc_timeout = 300
+            request_retries = 15
+            max_block_range_size = 2000
+            block_batch_size = 20
+            block_ptr_batch_size = 50
+            max_event_only_range = 1000
+            target_triggers_per_block_range = 200
+            get_logs_max_contracts = 5000
+            block_ingestor_max_concurrent_json_rpc_calls = 500
+            genesis_block_number = 1
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        assert!(section.validate().is_ok());
+        let settings = &section.chains.get("mainnet").unwrap().settings;
+        assert_eq!(settings.json_rpc_timeout, Duration::from_secs(300));
+        assert_eq!(settings.request_retries, 15);
+        assert_eq!(settings.max_block_range_size, 2000);
+        assert_eq!(settings.block_batch_size, 20);
+        assert_eq!(settings.block_ptr_batch_size, 50);
+        assert_eq!(settings.max_event_only_range, 1000);
+        assert_eq!(settings.target_triggers_per_block_range, 200);
+        assert_eq!(settings.get_logs_max_contracts, 5000);
+        assert_eq!(settings.block_ingestor_max_concurrent_json_rpc_calls, 500);
+        assert_eq!(settings.genesis_block_number, 1);
+    }
+
+    #[test]
+    fn chain_settings_defaults_match_env_vars() {
+        let settings = ChainSettings::default();
+        assert_eq!(settings.polling_interval, default_polling_interval());
+        assert_eq!(settings.json_rpc_timeout, default_json_rpc_timeout());
+        assert_eq!(settings.request_retries, default_request_retries());
+        assert_eq!(
+            settings.max_block_range_size,
+            default_max_block_range_size()
+        );
+        assert_eq!(settings.block_batch_size, default_block_batch_size());
+        assert_eq!(
+            settings.block_ptr_batch_size,
+            default_block_ptr_batch_size()
+        );
+        assert_eq!(
+            settings.max_event_only_range,
+            default_max_event_only_range()
+        );
+        assert_eq!(
+            settings.target_triggers_per_block_range,
+            default_target_triggers_per_block_range()
+        );
+        assert_eq!(
+            settings.get_logs_max_contracts,
+            default_get_logs_max_contracts()
+        );
+        assert_eq!(
+            settings.block_ingestor_max_concurrent_json_rpc_calls,
+            default_block_ingestor_max_concurrent_json_rpc_calls()
+        );
+        assert_eq!(
+            settings.genesis_block_number,
+            default_genesis_block_number()
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_max_block_range_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            max_block_range_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("max_block_range_size must be > 0"),
+            "expected max_block_range_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_negative_max_block_range_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            max_block_range_size = -1
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("max_block_range_size must be > 0"),
+            "expected max_block_range_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_max_event_only_range() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            max_event_only_range = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("max_event_only_range must be > 0"),
+            "expected max_event_only_range error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_block_batch_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            block_batch_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("block_batch_size must be > 0"),
+            "expected block_batch_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_block_ptr_batch_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            block_ptr_batch_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("block_ptr_batch_size must be > 0"),
+            "expected block_ptr_batch_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_concurrent_json_rpc_calls() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            block_ingestor_max_concurrent_json_rpc_calls = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("block_ingestor_max_concurrent_json_rpc_calls must be > 0"),
+            "expected block_ingestor_max_concurrent_json_rpc_calls error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_get_logs_max_contracts() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            get_logs_max_contracts = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("get_logs_max_contracts must be > 0"),
+            "expected get_logs_max_contracts error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_polling_interval() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            polling_interval = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("polling_interval must be > 0"),
+            "expected polling_interval error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_json_rpc_timeout() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            json_rpc_timeout = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("json_rpc_timeout must be > 0"),
+            "expected json_rpc_timeout error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_request_retries() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            request_retries = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("request_retries must be > 0"),
+            "expected request_retries error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_target_triggers_per_block_range() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            target_triggers_per_block_range = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("target_triggers_per_block_range must be > 0"),
+            "expected target_triggers_per_block_range error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_validation_error_includes_chain_name() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [my_chain]
+            shard = "primary"
+            block_batch_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("my_chain"),
+            "expected chain name in error, got: {err}"
+        );
     }
 }

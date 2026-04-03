@@ -555,11 +555,18 @@ where
                 .observe(block.trigger_count() as f64);
         }
 
-        // Check if we should skip this block (optimization for blocks without triggers)
+        // Check if we should skip this block (optimization for blocks without triggers).
+        // Do not skip if max_end_block has been reached — fall through to process_block so the
+        // block pointer is persisted and the existing max_end_block check in handle_action fires.
+        let max_end_block_reached = self
+            .inputs
+            .max_end_block
+            .is_some_and(|max| block_ptr.number >= max);
         if block.trigger_count() == 0
             && self.state.skip_ptr_updates_timer.elapsed() <= SKIP_PTR_UPDATES_THRESHOLD
             && !self.inputs.store.is_deployment_synced()
             && !close_to_chain_head(&block_ptr, &self.inputs.chain.chain_head_ptr().await?, 1000)
+            && !max_end_block_reached
         {
             // Skip this block and continue with the same stream
             return Ok(RunnerState::AwaitingBlock { block_stream });

@@ -12,7 +12,11 @@
 
 use super::assertion::run_assertions;
 use super::block_stream::StaticStreamBuilder;
+use super::mock_arweave::MockArweaveResolver;
 use super::mock_chain;
+use super::mock_ipfs::MockIpfsClient;
+use super::mock_runtime::TestRuntimeAdapterBuilder;
+use super::mock_transport::MockTransport;
 use super::noop::{NoopAdapterSelector, StaticBlockRefetcher};
 use super::schema::{TestFile, TestResult};
 use super::trigger::build_blocks_with_triggers;
@@ -23,7 +27,7 @@ use graph::amp::FlightClient;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{BlockPtr, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
-use graph::components::link_resolver::{ArweaveClient, FileLinkResolver};
+use graph::components::link_resolver::FileLinkResolver;
 use graph::components::metrics::MetricsRegistry;
 use graph::components::network_provider::{
     AmpChainNames, ChainName, ProviderCheckStrategy, ProviderManager,
@@ -35,16 +39,16 @@ use graph::data::subgraph::schema::SubgraphError;
 use graph::endpoint::EndpointMetrics;
 use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
-use graph::ipfs::{IpfsMetrics, IpfsRpcClient, ServerAddress};
+use graph::ipfs::{ContentPath, IpfsMetrics};
 use graph::prelude::{
     DeploymentHash, LoggerFactory, NodeId, SubgraphCountMetric, SubgraphName, SubgraphRegistrar,
     SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode,
 };
 use graph::slog::{info, o, Logger};
-use graph_chain_ethereum::chain::EthereumRuntimeAdapterBuilder;
 use graph_chain_ethereum::network::{EthereumNetworkAdapter, EthereumNetworkAdapters};
 use graph_chain_ethereum::{
-    Chain, EthereumAdapter, NodeCapabilities, ProviderEthRpcMetrics, Transport,
+    chain::ChainSettings, Chain, EthereumAdapter, NodeCapabilities, ProviderEthRpcMetrics,
+    Transport,
 };
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
 use graph_graphql::prelude::GraphQlRunner;
@@ -52,6 +56,7 @@ use graph_node::config::{Config, Opt};
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -73,10 +78,17 @@ fn make_test_logger(verbose: u8) -> Logger {
         0 => graph::log::discard(),
         1 => graph::log::logger_with_levels(false, None),
         2 => graph::log::logger_with_levels(true, None),
-        // "trace" is parsed by slog_envlogger::LogBuilder::parse() as a global
-        // level filter — equivalent to setting GRAPH_LOG=trace.
+        // "trace" sets GRAPH_LOG=trace globally via slog_envlogger.
         _ => graph::log::logger_with_levels(true, Some("trace")),
     }
+}
+
+/// Mock file data passed to `setup_context`.
+struct MockData {
+    ipfs_files: HashMap<ContentPath, graph::bytes::Bytes>,
+    ipfs_unresolved_tx: tokio::sync::mpsc::UnboundedSender<ContentPath>,
+    arweave_files: HashMap<String, graph::bytes::Bytes>,
+    arweave_unresolved_tx: tokio::sync::mpsc::UnboundedSender<String>,
 }
 
 struct TestStores {
@@ -95,14 +107,11 @@ pub(super) struct TestContext {
     pub(super) graphql_runner: Arc<GraphQlRunner<Store>>,
 }
 
-/// Pre-computed manifest data shared across all tests in a run.
-///
-/// Loaded once to avoid redundant parsing.
+/// Manifest data shared across all tests in a run.
 pub(super) struct ManifestInfo {
     pub build_dir: PathBuf,
-    /// Canonical path to the built manifest file (e.g., `build/subgraph.yaml`).
-    /// Registered as an alias for `hash` in `FileLinkResolver` so that
-    /// `clone_for_manifest` can resolve the Qm hash to a real filesystem path.
+    /// Built manifest path. Aliased to `hash` in `FileLinkResolver` so the Qm
+    /// hash resolves to a real filesystem path.
     pub manifest_path: PathBuf,
     pub network_name: ChainName,
     pub min_start_block: u64,
@@ -110,18 +119,19 @@ pub(super) struct ManifestInfo {
     pub start_block_override: Option<BlockPtr>,
     pub hash: DeploymentHash,
     pub subgraph_name: SubgraphName,
+    /// Event selectors (topic0) for handlers that declare `receipt: true`.
+    /// Only logs whose topic0 is in this set receive a non-null receipt.
+    pub receipt_required_selectors:
+        std::collections::HashSet<graph::prelude::alloy::primitives::B256>,
 }
 
-/// Compute a `DeploymentHash` from a path and seed.
-///
-/// Produces `"Qm" + hex(sha1(path + '\0' + seed))`. The seed makes each run
-/// produce a distinct hash so sequential runs never collide in the store.
+/// Compute `"Qm" + hex(sha1(path + '\0' + seed))`. Seed ensures per-run uniqueness.
 fn deployment_hash_from_path_and_seed(path: &Path, seed: u128) -> Result<DeploymentHash> {
     use sha1::{Digest, Sha1};
 
     let input = format!("{}\0{}", path.display(), seed);
     let digest = Sha1::digest(input.as_bytes());
-    let qm = format!("Qm{:x}", digest);
+    let qm = format!("Qm{}", hex::encode(digest));
     DeploymentHash::new(qm).map_err(|e| anyhow!("Failed to create deployment hash: {}", e))
 }
 
@@ -162,8 +172,7 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
         None
     };
 
-    // Use Unix epoch millis as a per-run seed so each invocation gets a unique
-    // deployment hash and subgraph name, avoiding conflicts with previous runs.
+    // Per-run seed for unique deployment hash and subgraph name.
     let seed = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -171,8 +180,7 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
 
     let hash = deployment_hash_from_path_and_seed(&built_manifest_path, seed)?;
 
-    // Derive subgraph name from the root directory (e.g., "my-subgraph" → "test/my-subgraph-<seed>").
-    // Sanitize to alphanumeric + hyphens + underscores for SubgraphName compatibility.
+    // Derive subgraph name from the root dir, sanitized for SubgraphName compatibility.
     let root_dir_name = manifest_dir
         .canonicalize()
         .unwrap_or(manifest_dir.clone())
@@ -185,6 +193,8 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
     let subgraph_name = SubgraphName::new(format!("test/{}-{}", root_dir_name, seed))
         .map_err(|e| anyhow!("{}", e))?;
 
+    let receipt_required_selectors = extract_receipt_required_selectors(&manifest);
+
     Ok(ManifestInfo {
         build_dir,
         manifest_path: built_manifest_path,
@@ -193,7 +203,30 @@ pub(super) fn load_manifest_info(opt: &TestOpt) -> Result<ManifestInfo> {
         start_block_override,
         hash,
         subgraph_name,
+        receipt_required_selectors,
     })
+}
+
+/// Collect topic0 selectors for handlers declaring `receipt: true`.
+///
+/// Covers data sources and templates. Mirrors `MappingEventHandler::topic0()`:
+/// strip `"indexed "` and spaces, then keccak256.
+fn extract_receipt_required_selectors(
+    manifest: &Manifest,
+) -> std::collections::HashSet<graph::prelude::alloy::primitives::B256> {
+    use graph::prelude::alloy::primitives::keccak256;
+
+    manifest
+        .data_sources
+        .iter()
+        .flat_map(|ds| &ds.event_handlers)
+        .chain(manifest.templates.iter().flat_map(|t| &t.event_handlers))
+        .filter(|h| h.receipt)
+        .map(|h| {
+            let normalized = h.event.replace("indexed ", "").replace(' ', "");
+            keccak256(normalized.as_bytes())
+        })
+        .collect()
 }
 
 fn extract_network_from_manifest(manifest: &Manifest) -> Result<String> {
@@ -207,8 +240,6 @@ fn extract_network_from_manifest(manifest: &Manifest) -> Result<String> {
 }
 
 /// Extract the minimum `startBlock` across all data sources.
-///
-/// Used to build `start_block_override` for bypassing on-chain validation.
 fn extract_start_block_from_manifest(manifest: &Manifest) -> Result<u64> {
     Ok(manifest
         .data_sources
@@ -222,6 +253,7 @@ pub async fn run_single_test(
     opt: &TestOpt,
     manifest_info: &ManifestInfo,
     test_file: &TestFile,
+    test_file_path: &Path,
 ) -> Result<TestResult> {
     // Warn (and short-circuit) when there are no assertions.
     if test_file.assertions.is_empty() {
@@ -244,33 +276,65 @@ pub async fn run_single_test(
         }
     }
 
-    // Default block numbering starts at the manifest's startBlock so that
-    // test blocks without explicit numbers fall in the subgraph's indexed range.
-    let blocks = build_blocks_with_triggers(test_file, manifest_info.min_start_block)?;
+    // Start numbering at the manifest's startBlock so implicit blocks are in range.
+    let blocks = build_blocks_with_triggers(
+        test_file,
+        manifest_info.min_start_block,
+        &manifest_info.receipt_required_selectors,
+    )?;
 
-    // Create the database for this test. For pgtemp, the `db` value must
-    // stay alive for the duration of the test — dropping it destroys the database.
+    // Build mock IPFS file map.
+    let test_file_dir = test_file_path
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let mut mock_files: HashMap<ContentPath, graph::bytes::Bytes> = HashMap::new();
+    for entry in &test_file.files {
+        let path = ContentPath::new(&entry.cid)
+            .map_err(|e| anyhow!("Invalid CID '{}' in test files: {}", entry.cid, e))?;
+        let content = entry
+            .resolve(&test_file_dir)
+            .with_context(|| format!("Failed to resolve mock file for CID '{}'", entry.cid))?;
+        mock_files.insert(path, content);
+    }
+
+    let (unresolved_tx, mut unresolved_rx) = tokio::sync::mpsc::unbounded_channel::<ContentPath>();
+
+    let mut mock_arweave_files: HashMap<String, graph::bytes::Bytes> = HashMap::new();
+    for entry in &test_file.arweave_files {
+        let content = entry.resolve(&test_file_dir).with_context(|| {
+            format!(
+                "Failed to resolve mock Arweave file for txId '{}'",
+                entry.tx_id
+            )
+        })?;
+        mock_arweave_files.insert(entry.tx_id.clone(), content);
+    }
+
+    let (arweave_unresolved_tx, mut arweave_unresolved_rx) =
+        tokio::sync::mpsc::unbounded_channel::<String>();
+
+    // `db` must stay alive — dropping it destroys a pgtemp database.
     let db = create_test_database(opt, &manifest_info.build_dir)?;
 
     let logger = make_test_logger(opt.verbose).new(o!("test" => test_file.name.clone()));
 
     let stores = setup_stores(&logger, &db, &manifest_info.network_name).await?;
 
-    let chain = setup_chain(&logger, blocks.clone(), &stores).await?;
+    let mock_transport = MockTransport::new(test_file, &blocks)?;
+    let chain = setup_chain(&logger, blocks.clone(), &stores, mock_transport).await?;
 
-    let ctx = setup_context(&logger, &stores, &chain, manifest_info).await?;
+    let mock_data = MockData {
+        ipfs_files: mock_files,
+        ipfs_unresolved_tx: unresolved_tx,
+        arweave_files: mock_arweave_files,
+        arweave_unresolved_tx,
+    };
 
-    // Populate eth_call cache with mock responses before starting indexer.
-    // This ensures handlers can successfully retrieve mocked contract call results.
-    super::eth_calls::populate_eth_call_cache(
-        &logger,
-        stores.chain_store.cheap_clone(),
-        &blocks,
-        test_file,
-    )
-    .await?;
+    let ctx = setup_context(&logger, &stores, &chain, manifest_info, mock_data).await?;
 
-    // Determine the target block — the indexer will process until it reaches this.
+    // The indexer will process until it reaches this block.
     let stop_block = if blocks.is_empty() {
         mock_chain::genesis_ptr()
     } else {
@@ -292,26 +356,75 @@ pub async fn run_single_test(
     )
     .await
     {
-        Ok(()) => run_assertions(&ctx, &test_file.assertions).await,
+        Ok(()) => {
+            // Drain unresolved CIDs/tx IDs, deduplicating.
+            let mut unresolved_ipfs: Vec<ContentPath> = Vec::new();
+            while let Ok(cid) = unresolved_rx.try_recv() {
+                if !unresolved_ipfs.contains(&cid) {
+                    unresolved_ipfs.push(cid);
+                }
+            }
+
+            let mut unresolved_arweave: Vec<String> = Vec::new();
+            while let Ok(tx_id) = arweave_unresolved_rx.try_recv() {
+                if !unresolved_arweave.contains(&tx_id) {
+                    unresolved_arweave.push(tx_id);
+                }
+            }
+
+            let mut missing_parts: Vec<String> = Vec::new();
+
+            if !unresolved_ipfs.is_empty() {
+                let list = unresolved_ipfs
+                    .iter()
+                    .map(|p| format!("  - {}", p))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                missing_parts.push(format!(
+                    "IPFS CIDs not found in mock 'files':\n{}\n\
+                     Add the missing CID(s) to the \"files\" array in your test JSON.",
+                    list
+                ));
+            }
+
+            if !unresolved_arweave.is_empty() {
+                let list = unresolved_arweave
+                    .iter()
+                    .map(|id| format!("  - {}", id))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                missing_parts.push(format!(
+                    "Arweave tx IDs not found in mock 'arweaveFiles':\n{}\n\
+                     Add the missing txId(s) to the \"arweaveFiles\" array in your test JSON.",
+                    list
+                ));
+            }
+
+            if !missing_parts.is_empty() {
+                Ok(TestResult {
+                    handler_error: Some(missing_parts.join("\n\n")),
+                    assertions: vec![],
+                })
+            } else {
+                run_assertions(&ctx, &test_file.assertions).await
+            }
+        }
         Err(subgraph_error) => {
-            // The subgraph handler threw a fatal error during indexing.
-            // Report it as a test failure without running assertions.
+            // Fatal handler error — skip assertions.
             Ok(TestResult {
-                handler_error: Some(subgraph_error.message),
+                handler_error: Some(format_handler_error(&subgraph_error)),
                 assertions: vec![],
             })
         }
     };
 
-    // Always stop the subgraph to ensure cleanup, even when wait_for_sync errors
+    // Stop the subgraph regardless of result.
     ctx.provider
         .clone()
         .stop_subgraph(ctx.deployment.clone())
         .await;
 
-    // For persistent databases, clean up the deployment after the test so the
-    // database is left in a clean state. On failure, skip cleanup so the data
-    // is preserved for inspection.
+    // For persistent DBs: clean up on pass, preserve on failure for inspection.
     if db.needs_cleanup() {
         let test_passed = result.as_ref().map(|r| r.is_passed()).unwrap_or(false);
         if test_passed {
@@ -334,9 +447,7 @@ pub async fn run_single_test(
     result
 }
 
-/// Create the database for this test run.
-///
-/// Returns `Temporary` (pgtemp, auto-dropped) or `Persistent` (--postgres-url).
+/// Create the test database: pgtemp (auto-dropped) or persistent (`--postgres-url`).
 /// On non-Unix systems, `--postgres-url` is required.
 fn create_test_database(opt: &TestOpt, build_dir: &Path) -> Result<TestDatabase> {
     if let Some(url) = &opt.postgres_url {
@@ -352,11 +463,8 @@ fn create_test_database(opt: &TestOpt, build_dir: &Path) -> Result<TestDatabase>
             );
         }
 
-        // pgtemp sets `unix_socket_directories` to the data dir by default.
-        // On macOS the temp dir path can exceed the 104-byte Unix socket limit
-        // (e.g. /private/var/folders/.../build/pgtemp-xxx/pg_data_dir/.s.PGSQL.PORT),
-        // causing postgres to silently fail to start. Override to /tmp so the
-        // socket path stays short. Different port numbers prevent conflicts.
+        // Override unix_socket_directories to /tmp: macOS temp paths can exceed
+        // the 104-byte Unix socket limit, causing postgres to silently fail to start.
         let db = PgTempDBBuilder::new()
             .with_data_dir_prefix(build_dir)
             .persist_data(false)
@@ -399,9 +507,8 @@ impl TestDatabase {
         }
     }
 
-    /// Persistent databases accumulate state across test runs and need
-    /// explicit post-test cleanup to remove each run's deployment.
-    /// Temporary databases are dropped automatically — no cleanup needed.
+    /// Returns true if the deployment must be cleaned up after the test.
+    /// Temporary databases are auto-dropped; persistent ones accumulate state.
     fn needs_cleanup(&self) -> bool {
         match self {
             #[cfg(unix)]
@@ -469,19 +576,17 @@ ingestor = "default"
     })
 }
 
-/// Construct a mock Ethereum `Chain` with pre-built blocks.
-///
-/// Uses `StaticStreamBuilder` for blocks, noops for unused adapters,
-/// and a dummy firehose endpoint (never connected to).
+/// Construct the mock Ethereum `Chain` with pre-built blocks.
 async fn setup_chain(
     logger: &Logger,
     blocks: Vec<BlockWithTriggers<Chain>>,
     stores: &TestStores,
+    mock_transport: MockTransport,
 ) -> Result<Arc<Chain>> {
     let mock_registry = Arc::new(MetricsRegistry::mock());
     let logger_factory = LoggerFactory::new(logger.clone(), None, mock_registry.clone());
 
-    // Dummy firehose endpoint — required by Chain constructor but never used.
+    // Dummy firehose endpoint — required by Chain constructor, never used.
     let firehose_endpoints = FirehoseEndpoints::for_testing(vec![Arc::new(FirehoseEndpoint::new(
         "",
         "http://0.0.0.0:0",
@@ -496,23 +601,13 @@ async fn setup_chain(
     let client =
         Arc::new(graph::blockchain::client::ChainClient::<Chain>::new_firehose(firehose_endpoints));
 
-    let block_stream_builder: Arc<dyn graph::blockchain::block_stream::BlockStreamBuilder<Chain>> =
-        Arc::new(StaticStreamBuilder { chain: blocks });
-
-    // Create a dummy Ethereum adapter with archive capabilities.
-    // The adapter itself is never used for RPC — ethereum.call results come from
-    // the pre-populated call cache. But the RuntimeAdapter needs to resolve an
-    // adapter with matching capabilities before it can invoke the cache lookup.
     let endpoint_metrics = Arc::new(EndpointMetrics::mock());
     let provider_metrics = Arc::new(ProviderEthRpcMetrics::new(mock_registry.clone()));
-    let transport = Transport::new_rpc(
-        graph::url::Url::parse("http://0.0.0.0:0").unwrap(),
-        graph::http::HeaderMap::new(),
-        endpoint_metrics.clone(),
-        "",
-        false, // no_eip2718
-        graph_chain_ethereum::Compression::None,
-    );
+    let rpc_client = graph::prelude::alloy::rpc::client::RpcClient::new(mock_transport, true);
+    let transport = Transport::RPC(rpc_client);
+
+    let block_stream_builder: Arc<dyn graph::blockchain::block_stream::BlockStreamBuilder<Chain>> =
+        Arc::new(StaticStreamBuilder { chain: blocks });
     let dummy_adapter = Arc::new(
         EthereumAdapter::new(
             logger.clone(),
@@ -521,6 +616,7 @@ async fn setup_chain(
             provider_metrics,
             true,
             false,
+            Arc::new(ChainSettings::from_env_defaults()),
         )
         .await,
     );
@@ -545,6 +641,7 @@ async fn setup_chain(
         None,
     ));
 
+    let chain_settings = Arc::new(ChainSettings::from_env_defaults());
     let chain = Chain::new(
         logger_factory,
         stores.network_name.clone(),
@@ -560,11 +657,11 @@ async fn setup_chain(
         Arc::new(NoopAdapterSelector {
             _phantom: PhantomData,
         }),
-        Arc::new(EthereumRuntimeAdapterBuilder {}),
+        Arc::new(TestRuntimeAdapterBuilder),
         eth_adapters,
         graph::prelude::ENV_VARS.reorg_threshold(),
-        graph::prelude::ENV_VARS.ingestor_polling_interval,
         true,
+        chain_settings,
     );
 
     Ok(Arc::new(chain))
@@ -576,6 +673,7 @@ async fn setup_context(
     stores: &TestStores,
     chain: &Arc<Chain>,
     manifest_info: &ManifestInfo,
+    mock_data: MockData,
 ) -> Result<TestContext> {
     let build_dir = &manifest_info.build_dir;
     let manifest_path = &manifest_info.manifest_path;
@@ -590,28 +688,26 @@ async fn setup_context(
 
     let subgraph_store = stores.network_store.subgraph_store();
 
-    // Map the network name to our mock chain so graph-node routes triggers correctly.
+    // Route triggers to our mock chain.
     let mut blockchain_map = BlockchainMap::new();
     blockchain_map.insert(stores.network_name.clone(), chain.clone());
     let blockchain_map = Arc::new(blockchain_map);
 
-    // FileLinkResolver loads the manifest and WASM from the build directory
-    // instead of fetching from IPFS. The alias maps the Qm deployment hash to the
-    // actual manifest path so that clone_for_manifest can resolve it without
-    // treating the hash as a filesystem path.
+    // FileLinkResolver loads from build dir. Alias maps the Qm hash → manifest path
+    // so clone_for_manifest can resolve it without treating the hash as a path.
     let aliases =
         std::collections::HashMap::from([(hash.to_string(), manifest_path.to_path_buf())]);
     let link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver> = Arc::new(
         FileLinkResolver::new(Some(build_dir.to_path_buf()), aliases),
     );
 
-    // IPFS client is required by the instance manager constructor but not used
-    // for manifest loading (FileLinkResolver handles that).
+    // Mock IPFS client for file data sources (FileLinkResolver handles the manifest).
     let ipfs_metrics = IpfsMetrics::new(&mock_registry);
-    let ipfs_client = Arc::new(
-        IpfsRpcClient::new_unchecked(ServerAddress::test_rpc_api(), ipfs_metrics, logger)
-            .context("Failed to create IPFS client")?,
-    );
+    let ipfs_client = Arc::new(MockIpfsClient {
+        files: mock_data.ipfs_files,
+        metrics: ipfs_metrics,
+        unresolved_tx: mock_data.ipfs_unresolved_tx,
+    });
 
     let ipfs_service = ipfs_service(
         ipfs_client,
@@ -620,9 +716,13 @@ async fn setup_context(
         env_vars.mappings.ipfs_request_limit,
     );
 
-    let arweave_resolver = Arc::new(ArweaveClient::default());
+    let arweave_resolver: Arc<dyn graph::components::link_resolver::ArweaveResolver> =
+        Arc::new(MockArweaveResolver {
+            files: mock_data.arweave_files,
+            unresolved_tx: mock_data.arweave_unresolved_tx,
+        });
     let arweave_service = arweave_service(
-        arweave_resolver.cheap_clone(),
+        arweave_resolver,
         env_vars.mappings.ipfs_request_limit,
         graph::components::link_resolver::FileSizeLimit::MaxBytes(
             env_vars.mappings.max_ipfs_file_bytes as u64,
@@ -673,8 +773,7 @@ async fn setup_context(
         mock_registry.clone(),
     ));
 
-    // The registrar handles subgraph naming and version management.
-    // Uses PanicSubscriptionManager because tests don't need GraphQL subscriptions.
+    // Uses PanicSubscriptionManager — tests don't need GraphQL subscriptions.
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
     let subgraph_registrar = Arc::new(graph_core::subgraph::SubgraphRegistrar::new(
         &logger_factory,
@@ -692,8 +791,7 @@ async fn setup_context(
 
     SubgraphRegistrar::create_subgraph(subgraph_registrar.as_ref(), subgraph_name.clone()).await?;
 
-    // Deploy the subgraph version (loads manifest, compiles WASM, creates schema tables).
-    // start_block_override bypasses on-chain block validation when startBlock > 0.
+    // Deploy the subgraph. start_block_override bypasses on-chain block validation.
     let deployment = SubgraphRegistrar::create_subgraph_version(
         subgraph_registrar.as_ref(),
         subgraph_name.clone(),
@@ -736,17 +834,33 @@ async fn cleanup(
     Ok(())
 }
 
-/// Poll until the subgraph reaches `stop_block` or fails.
-///
-/// Returns `Ok(())` on success or `Err(SubgraphError)` on fatal error or timeout.
+/// Format a `SubgraphError` for user-facing output.
+fn format_handler_error(err: &SubgraphError) -> String {
+    let mut parts = Vec::new();
+
+    if let Some(handler) = &err.handler {
+        parts.push(format!("in {handler}"));
+    }
+    if let Some(block_ptr) = &err.block_ptr {
+        parts.push(format!("at block #{}", block_ptr.number));
+    }
+
+    let location = parts.join(" ");
+    if location.is_empty() {
+        err.message.clone()
+    } else {
+        format!("{location}: {}", err.message)
+    }
+}
+
+/// Poll until the subgraph reaches `stop_block`, returning `Err` on fatal error or timeout.
 async fn wait_for_sync(
     logger: &Logger,
     store: Arc<SubgraphStore>,
     deployment: &DeploymentLocator,
     stop_block: BlockPtr,
 ) -> Result<(), SubgraphError> {
-    // NOTE: Hardcoded timeout/interval - could be made configurable via env var
-    // or CLI flag for slow subgraphs or faster iteration during development.
+    // Hardcoded; could be made configurable via env var or CLI flag.
     const MAX_WAIT: Duration = Duration::from_secs(60);
     const WAIT_TIME: Duration = Duration::from_millis(500);
 
@@ -775,7 +889,7 @@ async fn wait_for_sync(
 
         info!(logger, "Sync progress"; "current" => block_ptr.number, "target" => stop_block.number);
 
-        // Check if the subgraph hit a fatal error (e.g., handler panic, deterministic error).
+        // Check for fatal errors.
         let status = store.status_for_id(deployment.id).await;
         if let Some(fatal_error) = status.fatal_error {
             return Err(fatal_error);

@@ -22,11 +22,11 @@ use graph::prelude::{
 use graph::schema::EntityType;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::trigger::LogRef;
-use graph_chain_ethereum::Chain;
 use graph_chain_ethereum::{
     chain::BlockFinality,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
 };
+use graph_chain_ethereum::{chain::ChainSettings, Chain};
 
 pub async fn chain(
     test_name: &str,
@@ -67,9 +67,9 @@ pub async fn chain(
         Arc::new(NoopRuntimeAdapterBuilder {}),
         eth_adapters,
         ENV_VARS.reorg_threshold(),
-        ENV_VARS.ingestor_polling_interval,
         // We assume the tested chain is always ingestible for now
         true,
+        Arc::new(ChainSettings::from_env_defaults()),
     );
 
     TestChain {

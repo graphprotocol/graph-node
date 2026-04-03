@@ -171,6 +171,11 @@ pub struct EnvVarsStore {
     /// Disables storing or reading `eth_call` results from the store call cache.
     /// Set by `GRAPH_STORE_DISABLE_CALL_CACHE`. Defaults to false.
     pub disable_call_cache: bool,
+    /// The number of contracts to delete from the call cache in one batch
+    /// when clearing stale entries, set by
+    /// `GRAPH_STORE_STALE_CALL_CACHE_CONTRACTS_BATCH_SIZE`. The default
+    /// value is 100 contracts.
+    pub stale_call_cache_contracts_batch_size: usize,
     /// Set by `GRAPH_STORE_DISABLE_CHAIN_HEAD_PTR_CACHE`. Default is false.
     /// Set to true to disable chain_head_ptr caching (safety escape hatch).
     pub disable_chain_head_ptr_cache: bool,
@@ -248,6 +253,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             account_like_min_versions_count: x.account_like_min_versions_count,
             account_like_max_unique_ratio: x.account_like_max_unique_ratio.map(|r| r.0),
             disable_call_cache: x.disable_call_cache,
+            stale_call_cache_contracts_batch_size: x.stale_call_cache_contracts_batch_size,
             disable_chain_head_ptr_cache: x.disable_chain_head_ptr_cache,
             connection_validation_idle_secs: Duration::from_secs(x.connection_validation_idle_secs),
             connection_unavailable_retry: Duration::from_secs(
@@ -364,6 +370,11 @@ pub struct InnerStore {
     account_like_max_unique_ratio: Option<ZeroToOneF64>,
     #[envconfig(from = "GRAPH_STORE_DISABLE_CALL_CACHE", default = "false")]
     disable_call_cache: bool,
+    #[envconfig(
+        from = "GRAPH_STORE_STALE_CALL_CACHE_CONTRACTS_BATCH_SIZE",
+        default = "100"
+    )]
+    stale_call_cache_contracts_batch_size: usize,
     #[envconfig(from = "GRAPH_STORE_DISABLE_CHAIN_HEAD_PTR_CACHE", default = "false")]
     disable_chain_head_ptr_cache: bool,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_VALIDATION_IDLE_SECS", default = "30")]

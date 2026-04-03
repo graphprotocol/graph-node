@@ -883,6 +883,8 @@ async fn successfully_runs_introspection_query_against_complex_schema() {
           description
           type { ...TypeRef }
           defaultValue
+          isDeprecated
+          deprecationReason
         }
 
         fragment TypeRef on __Type {

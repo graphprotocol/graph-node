@@ -456,7 +456,7 @@ async fn upload_file_to_ipfs(
     let content_hash = {
         let mut hasher = Sha1::new();
         hasher.update(&content);
-        format!("{:x}", hasher.finalize())
+        hex::encode(hasher.finalize())
     };
 
     let ipfs_hash = if let Some(hash) = uploaded.content_to_ipfs.get(&content_hash) {
@@ -911,8 +911,7 @@ fn file_hash(path: &Path) -> Result<String> {
     let content = fs::read(path).with_context(|| format!("Failed to read file: {:?}", path))?;
     let mut hasher = Sha1::new();
     hasher.update(&content);
-    let result = hasher.finalize();
-    Ok(format!("{:x}", result))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 #[cfg(test)]

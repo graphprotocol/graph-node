@@ -1,10 +1,8 @@
-//! JSON schema types for test files and result types.
+//! JSON schema types for test files.
 //!
-//! Test files are JSON documents that describe a sequence of mock blockchain
-//! blocks with triggers (log events) and GraphQL assertions to validate the
-//! resulting entity state after indexing. Block triggers are auto-injected
-//! for every block (both `Start` and `End` types) so block handlers with any
-//! filter (`once`, `polling`, or none) fire correctly without explicit config.
+//! Test files describe mock blockchain blocks with triggers and GraphQL assertions.
+//! Block triggers (Start/End) are auto-injected so block handlers with any filter
+//! (`once`, `polling`, or none) fire without explicit config.
 //!
 //! ```json
 //! {
@@ -30,6 +28,7 @@
 //! }
 //! ```
 
+use graph::bytes::Bytes;
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -39,6 +38,14 @@ use std::path::{Path, PathBuf};
 pub struct TestFile {
     pub name: String,
 
+    /// Mock IPFS file contents keyed by CID. Used for file data sources.
+    #[serde(default)]
+    pub files: Vec<MockFile>,
+
+    /// Mock Arweave file contents keyed by transaction ID. Used for file/arweave data sources.
+    #[serde(default, rename = "arweaveFiles")]
+    pub arweave_files: Vec<MockArweaveFile>,
+
     /// Ordered sequence of mock blocks to index.
     #[serde(default)]
     pub blocks: Vec<TestBlock>,
@@ -46,6 +53,102 @@ pub struct TestFile {
     /// GraphQL assertions to run after indexing.
     #[serde(default)]
     pub assertions: Vec<Assertion>,
+}
+
+/// A mock IPFS file entry for file data source testing.
+///
+/// Exactly one of `content` or `file` must be set.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MockFile {
+    /// IPFS CID (`Qm...` or `bafy...`). The mock ignores hash/content relationship.
+    pub cid: String,
+
+    /// Inline UTF-8 content. Exactly one of `content` or `file` must be set.
+    #[serde(default)]
+    pub content: Option<String>,
+
+    /// File path, resolved relative to the test JSON. One of `content` or `file` required.
+    #[serde(default)]
+    pub file: Option<String>,
+}
+
+/// A mock Arweave file entry for file/arweave data source testing.
+///
+/// Exactly one of `content` or `file` must be set.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MockArweaveFile {
+    /// Arweave transaction ID or bundle path (e.g. `"txid/filename.json"`).
+    /// No format validation — treated as an opaque string key.
+    #[serde(rename = "txId")]
+    pub tx_id: String,
+
+    /// Inline UTF-8 content. Exactly one of `content` or `file` must be set.
+    #[serde(default)]
+    pub content: Option<String>,
+
+    /// File path, resolved relative to the test JSON. One of `content` or `file` required.
+    #[serde(default)]
+    pub file: Option<String>,
+}
+
+impl MockArweaveFile {
+    /// Resolve to bytes. Exactly one of `content` or `file` must be set.
+    pub fn resolve(&self, test_dir: &Path) -> anyhow::Result<graph::bytes::Bytes> {
+        match (&self.content, &self.file) {
+            (Some(content), None) => Ok(graph::bytes::Bytes::from(content.clone().into_bytes())),
+            (None, Some(file)) => {
+                let path = if Path::new(file).is_absolute() {
+                    PathBuf::from(file)
+                } else {
+                    test_dir.join(file)
+                };
+                let data = std::fs::read(&path).map_err(|e| {
+                    anyhow::anyhow!("Failed to read file '{}': {}", path.display(), e)
+                })?;
+                Ok(graph::bytes::Bytes::from(data))
+            }
+            (Some(_), Some(_)) => anyhow::bail!(
+                "MockArweaveFile entry for txId '{}' must have either 'content' or 'file', not both",
+                self.tx_id
+            ),
+            (None, None) => anyhow::bail!(
+                "MockArweaveFile entry for txId '{}' must have either 'content' or 'file'",
+                self.tx_id
+            ),
+        }
+    }
+}
+
+impl MockFile {
+    /// Resolve to bytes. Exactly one of `content` or `file` must be set.
+    pub fn resolve(&self, test_dir: &Path) -> anyhow::Result<Bytes> {
+        match (&self.content, &self.file) {
+            (Some(content), None) => Ok(Bytes::from(content.clone().into_bytes())),
+            (None, Some(file)) => {
+                let path = if Path::new(file).is_absolute() {
+                    PathBuf::from(file)
+                } else {
+                    test_dir.join(file)
+                };
+                let data = std::fs::read(&path).map_err(|e| {
+                    anyhow::anyhow!("Failed to read file '{}': {}", path.display(), e)
+                })?;
+                Ok(Bytes::from(data))
+            }
+            (Some(_), Some(_)) => {
+                anyhow::bail!(
+                    "MockFile entry for CID '{}' must have either 'content' or 'file', not both",
+                    self.cid
+                )
+            }
+            (None, None) => {
+                anyhow::bail!(
+                    "MockFile entry for CID '{}' must have either 'content' or 'file'",
+                    self.cid
+                )
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -60,8 +163,7 @@ pub struct TestBlock {
     #[serde(default)]
     pub hash: Option<String>,
 
-    /// Unix timestamp in seconds. If omitted, defaults to the block number
-    /// (monotonically increasing, chain-agnostic).
+    /// Unix timestamp in seconds. Defaults to the block number if omitted.
     #[serde(default)]
     pub timestamp: Option<u64>,
 
@@ -69,9 +171,14 @@ pub struct TestBlock {
     #[serde(default)]
     pub events: Vec<LogEvent>,
 
-    /// Mock contract call responses pre-cached before the test runs.
     #[serde(default, rename = "ethCalls")]
     pub eth_calls: Vec<MockEthCall>,
+
+    #[serde(default, rename = "getBalanceCalls")]
+    pub get_balance_calls: Vec<MockBalance>,
+
+    #[serde(default, rename = "hasCodeCalls")]
+    pub has_code_calls: Vec<MockCode>,
 }
 
 /// A mock Ethereum event log.
@@ -80,25 +187,20 @@ pub struct LogEvent {
     /// Contract address that emitted the event (checksummed or lowercase hex).
     pub address: String,
 
-    /// Full event signature including parameter names and `indexed` keywords.
-    /// Example: `"Transfer(address indexed from, address indexed to, uint256 value)"`
-    ///
-    /// The signature is parsed to determine:
-    /// - topic0 (keccak256 hash of the canonical signature)
-    /// - Which parameters are indexed (become topics) vs non-indexed (become data)
+    /// Full event signature with parameter names and `indexed` keywords.
+    /// e.g. `"Transfer(address indexed from, address indexed to, uint256 value)"`
     pub event: String,
 
-    /// Event parameter values keyed by name. Values are JSON strings/numbers
-    /// that get converted to the appropriate Solidity type:
-    /// - Addresses: hex string `"0x1234..."`
-    /// - Integers: string `"1000000000000000000"` or number `1000`
+    /// Parameter values keyed by name. JSON → Solidity type:
+    /// - Addresses: `"0x1234..."`
+    /// - Integers: `"1000000000000000000"` or `1000`
     /// - Booleans: `true` / `false`
-    /// - Bytes: hex string `"0xdeadbeef"`
+    /// - Bytes: `"0xdeadbeef"`
     #[serde(default)]
     pub params: serde_json::Map<String, Value>,
 
     /// Explicit tx hash, or generated as `keccak256(block_number || log_index)`.
-    #[serde(default)]
+    #[serde(default, rename = "txHash")]
     pub tx_hash: Option<String>,
 }
 
@@ -112,6 +214,22 @@ pub struct MockEthCall {
 
     #[serde(default)]
     pub reverts: bool,
+}
+
+/// Mock `ethereum.getBalance()` response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MockBalance {
+    pub address: String,
+    /// Wei as a decimal string.
+    pub value: String,
+}
+
+/// Mock `ethereum.hasCode()` response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MockCode {
+    pub address: String,
+    #[serde(rename = "hasCode")]
+    pub has_code: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -151,7 +269,7 @@ pub struct AssertionFailure {
     pub actual: Value,
 }
 
-/// Parse a JSON test file. NOTE: Only validates JSON schema, not semantic correctness.
+/// Parse a JSON test file (validates schema only, not semantic correctness).
 pub fn parse_test_file(path: &Path) -> anyhow::Result<TestFile> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("Failed to read test file {}: {}", path.display(), e))?;
@@ -159,7 +277,8 @@ pub fn parse_test_file(path: &Path) -> anyhow::Result<TestFile> {
         .map_err(|e| anyhow::anyhow!("Failed to parse test file {}: {}", path.display(), e))
 }
 
-/// Discover `*.json` / `*.test.json` test files in a directory (recursive). Skips entries starting with non-alphanumeric characters.
+/// Recursively discover `*.json` / `*.test.json` files.
+/// Skips entries whose name starts with a non-alphanumeric character.
 pub fn discover_test_files(dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
 
@@ -181,7 +300,6 @@ fn discover_recursive(dir: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()
             None => continue,
         };
 
-        // Skip entries whose name starts with a non-alphanumeric character.
         if !name.starts_with(|c: char| c.is_alphanumeric()) {
             continue;
         }

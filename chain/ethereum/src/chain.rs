@@ -68,6 +68,44 @@ use graph::blockchain::block_stream::{
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
 const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
 
+/// Resolved per-chain settings. Populated at chain initialisation from the config file (with
+/// ENV_VAR fallbacks) and stored on [`Chain`] and [`crate::EthereumAdapter`].
+#[derive(Clone, Debug)]
+pub struct ChainSettings {
+    pub polling_interval: Duration,
+    pub json_rpc_timeout: Duration,
+    pub request_retries: usize,
+    pub max_block_range_size: BlockNumber,
+    pub block_batch_size: usize,
+    pub block_ptr_batch_size: usize,
+    pub max_event_only_range: BlockNumber,
+    pub target_triggers_per_block_range: u64,
+    pub get_logs_max_contracts: usize,
+    pub block_ingestor_max_concurrent_json_rpc_calls: usize,
+    pub genesis_block_number: u64,
+}
+
+impl ChainSettings {
+    /// Constructs a [`ChainSettings`] from environment variable defaults.
+    /// Used in tests and for firehose-only chains that have no RPC config.
+    pub fn from_env_defaults() -> Self {
+        ChainSettings {
+            polling_interval: graph::env::ENV_VARS.ingestor_polling_interval,
+            json_rpc_timeout: ENV_VARS.json_rpc_timeout,
+            request_retries: ENV_VARS.request_retries,
+            max_block_range_size: ENV_VARS.max_block_range_size,
+            block_batch_size: ENV_VARS.block_batch_size,
+            block_ptr_batch_size: ENV_VARS.block_ptr_batch_size,
+            max_event_only_range: ENV_VARS.max_event_only_range,
+            target_triggers_per_block_range: ENV_VARS.target_triggers_per_block_range,
+            get_logs_max_contracts: ENV_VARS.get_logs_max_contracts,
+            block_ingestor_max_concurrent_json_rpc_calls: ENV_VARS
+                .block_ingestor_max_concurrent_json_rpc_calls,
+            genesis_block_number: ENV_VARS.genesis_block_number,
+        }
+    }
+}
+
 pub struct EthereumStreamBuilder {}
 
 #[async_trait]
@@ -192,9 +230,9 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         };
 
         let max_block_range_size = if is_using_subgraph_composition {
-            ENV_VARS.max_block_range_size * 10
+            chain.settings.max_block_range_size * 10
         } else {
-            ENV_VARS.max_block_range_size
+            chain.settings.max_block_range_size
         };
 
         Ok(Box::new(PollingBlockStream::new(
@@ -206,7 +244,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             reorg_threshold,
             logger,
             max_block_range_size,
-            ENV_VARS.target_triggers_per_block_range,
+            chain.settings.target_triggers_per_block_range,
             unified_api_version,
             subgraph_current_block,
         )))
@@ -325,13 +363,13 @@ pub struct Chain {
     call_cache: Arc<dyn EthereumCallCache>,
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     reorg_threshold: BlockNumber,
-    polling_ingestor_interval: Duration,
     pub is_ingestible: bool,
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     block_refetcher: Arc<dyn BlockRefetcher<Self>>,
     adapter_selector: Arc<dyn TriggersAdapterSelector<Self>>,
     runtime_adapter_builder: Arc<dyn RuntimeAdapterBuilder>,
     eth_adapters: Arc<EthereumNetworkAdapters>,
+    pub settings: Arc<ChainSettings>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -388,8 +426,8 @@ impl Chain {
         runtime_adapter_builder: Arc<dyn RuntimeAdapterBuilder>,
         eth_adapters: Arc<EthereumNetworkAdapters>,
         reorg_threshold: BlockNumber,
-        polling_ingestor_interval: Duration,
         is_ingestible: bool,
+        settings: Arc<ChainSettings>,
     ) -> Self {
         Chain {
             logger_factory,
@@ -406,7 +444,7 @@ impl Chain {
             eth_adapters,
             reorg_threshold,
             is_ingestible,
-            polling_ingestor_interval,
+            settings,
         }
     }
 
@@ -637,7 +675,7 @@ impl Blockchain for Chain {
                     graph::env::ENV_VARS.reorg_threshold(),
                     self.chain_client(),
                     self.chain_store.cheap_clone(),
-                    self.polling_ingestor_interval,
+                    self.settings.polling_interval,
                     self.name.clone(),
                 )?)
             }

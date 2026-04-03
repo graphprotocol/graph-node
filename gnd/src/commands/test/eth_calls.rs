@@ -1,28 +1,16 @@
-//! Pre-populates the eth_call cache with mock responses for `gnd test`.
-//!
-//! Function signatures use graph-node's convention: `name(inputs):(outputs)`
-//! e.g. `"balanceOf(address):(uint256)"`, `"getReserves():(uint112,uint112,uint32)"`.
-//! Call data is encoded using the same path as production graph-node, so cache
-//! IDs match exactly what the runtime generates.
+//! ABI encoding helpers for mock Ethereum call data.
 
-use super::schema::{MockEthCall, TestFile};
 use super::trigger::json_to_sol_value;
 use anyhow::{anyhow, Context, Result};
 use graph::abi::FunctionExt as GraphFunctionExt;
-use graph::blockchain::block_stream::BlockWithTriggers;
-use graph::blockchain::BlockPtr;
-use graph::components::store::EthereumCallCache;
-use graph::data::store::ethereum::call;
 use graph::prelude::alloy::dyn_abi::{DynSolType, FunctionExt as AlloyFunctionExt};
 use graph::prelude::alloy::json_abi::Function;
-use graph::prelude::alloy::primitives::Address;
-use graph::slog::Logger;
-use graph_chain_ethereum::Chain;
-use graph_store_postgres::ChainStore;
-use std::sync::Arc;
 
 /// ABI-encode a function call (selector + params) using graph-node's encoding path.
-fn encode_function_call(function_sig: &str, params: &[serde_json::Value]) -> Result<Vec<u8>> {
+pub(super) fn encode_function_call(
+    function_sig: &str,
+    params: &[serde_json::Value],
+) -> Result<Vec<u8>> {
     let alloy_sig = to_alloy_signature(function_sig);
     let function = Function::parse(&alloy_sig).map_err(|e| {
         anyhow!(
@@ -57,7 +45,10 @@ fn encode_function_call(function_sig: &str, params: &[serde_json::Value]) -> Res
 }
 
 /// ABI-encode function return values (no selector prefix).
-fn encode_return_value(function_sig: &str, returns: &[serde_json::Value]) -> Result<Vec<u8>> {
+pub(super) fn encode_return_value(
+    function_sig: &str,
+    returns: &[serde_json::Value],
+) -> Result<Vec<u8>> {
     let alloy_sig = to_alloy_signature(function_sig);
     let function = Function::parse(&alloy_sig).map_err(|e| {
         anyhow!(
@@ -92,17 +83,9 @@ fn encode_return_value(function_sig: &str, returns: &[serde_json::Value]) -> Res
         .map_err(|e| anyhow!("Failed to encode return value: {}", e))
 }
 
-/// Convert a graph-node style function signature to alloy's expected format.
-///
-/// Graph-node uses `name(inputs):(outputs)` while alloy expects
-/// `name(inputs) returns (outputs)`.
-///
-/// Examples:
-/// - `"balanceOf(address):(uint256)"` → `"balanceOf(address) returns (uint256)"`
-/// - `"name():(string)"` → `"name() returns (string)"`
-/// - `"transfer(address,uint256)"` → `"transfer(address,uint256)"` (no change)
-/// - `"balanceOf(address) returns (uint256)"` → unchanged (already alloy format)
-fn to_alloy_signature(sig: &str) -> String {
+/// Convert graph-node `name(inputs):(outputs)` to alloy `name(inputs) returns (outputs)`.
+/// Passes through signatures already in alloy format or without outputs.
+pub(super) fn to_alloy_signature(sig: &str) -> String {
     // If it already contains "returns", assume alloy format.
     if sig.contains(" returns ") {
         return sig.to_string();
@@ -116,49 +99,6 @@ fn to_alloy_signature(sig: &str) -> String {
     } else {
         sig.to_string()
     }
-}
-
-/// Populate the eth_call cache from test block mock calls before indexing starts.
-pub async fn populate_eth_call_cache(
-    logger: &Logger,
-    chain_store: Arc<ChainStore>,
-    blocks: &[BlockWithTriggers<Chain>],
-    test_file: &TestFile,
-) -> Result<()> {
-    for (block_data, test_block) in blocks.iter().zip(&test_file.blocks) {
-        let block_ptr = block_data.ptr();
-
-        for eth_call in &test_block.eth_calls {
-            populate_single_call(logger, chain_store.clone(), &block_ptr, eth_call).await?;
-        }
-    }
-    Ok(())
-}
-
-async fn populate_single_call(
-    logger: &Logger,
-    chain_store: Arc<ChainStore>,
-    block_ptr: &BlockPtr,
-    eth_call: &MockEthCall,
-) -> Result<()> {
-    let address: Address = eth_call.address.parse()?;
-
-    let encoded_call = encode_function_call(&eth_call.function, &eth_call.params)?;
-
-    let request = call::Request::new(address, encoded_call, 0);
-
-    let retval = if eth_call.reverts {
-        call::Retval::Null
-    } else {
-        let encoded_return = encode_return_value(&eth_call.function, &eth_call.returns)?;
-        call::Retval::Value(encoded_return.into())
-    };
-
-    chain_store
-        .set_call(logger, request, block_ptr.clone(), retval)
-        .await?;
-
-    Ok(())
 }
 
 #[cfg(test)]

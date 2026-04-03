@@ -528,7 +528,7 @@ pub trait ChainIdStore: Send + Sync + 'static {
 /// The default size for the block cache, i.e., how many blocks behind
 /// the chain head we should keep in the database cache. The
 /// configuration can change this for individual chains
-pub const BLOCK_CACHE_SIZE: BlockNumber = 500;
+pub const BLOCK_CACHE_SIZE: BlockNumber = i32::MAX;
 
 /// Common trait for blockchain store implementations.
 #[async_trait]
@@ -660,8 +660,8 @@ pub trait ChainStore: ChainHeadStore {
     /// Clears stale call cache entries for the given TTL in days.
     async fn clear_stale_call_cache(
         &self,
-        ttl_days: i32,
-        ttl_max_contracts: Option<i64>,
+        ttl_days: usize,
+        ttl_max_contracts: Option<usize>,
     ) -> Result<(), Error>;
 
     /// Return the chain identifier for this store.
