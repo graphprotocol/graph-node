@@ -211,8 +211,7 @@ impl ToRustWasm for BigDecimal {
 impl FromRustWasm for BigDecimal {
     fn read_from<R: Read>(reader: &mut R) -> io::Result<Self> {
         let s = String::read_from(reader)?;
-        BigDecimal::from_str(&s)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        BigDecimal::from_str(&s).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
     }
 }
 

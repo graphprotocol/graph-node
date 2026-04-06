@@ -146,9 +146,11 @@ impl MappingTriggerTrait for NearTrigger {
 
 impl ToRustBytes for NearTrigger {
     fn to_rust_bytes(&self) -> Vec<u8> {
-        // NEAR triggers are not yet supported by Graphite SDK.
-        // This stub satisfies the trait bound so Ethereum Rust subgraphs can compile.
-        unimplemented!("Rust ABI serialization is not yet supported for NEAR triggers")
+        // NEAR triggers are not yet supported by the Rust ABI.
+        // Return empty bytes rather than panicking; the handler will receive no data
+        // and can decide how to proceed. A Rust subgraph targeting NEAR would need
+        // to implement NEAR-specific serialization in a future PR.
+        Vec::new()
     }
 }
 

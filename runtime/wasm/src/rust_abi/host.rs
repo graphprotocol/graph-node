@@ -21,10 +21,7 @@ fn read_bytes_with_gas(
     gas: &graph::runtime::gas::GasCounter,
 ) -> Result<Vec<u8>, anyhow::Error> {
     // Charge gas for memory read
-    gas.consume_host_fn_with_metrics(
-        Gas::new(GAS_COST_LOAD as u64 * len as u64),
-        "rust_abi_read",
-    )?;
+    gas.consume_host_fn_with_metrics(Gas::new(GAS_COST_LOAD as u64 * len as u64), "rust_abi_read")?;
 
     let data = memory.data(&store);
     let start = ptr as usize;
@@ -160,8 +157,13 @@ pub fn link_rust_host_functions(
                     let memory = get_memory(&mut caller)?;
                     let gas = caller.data().gas.cheap_clone();
 
-                    let entity_type =
-                        read_string_with_gas(&memory, &caller, entity_type_ptr, entity_type_len, &gas)?;
+                    let entity_type = read_string_with_gas(
+                        &memory,
+                        &caller,
+                        entity_type_ptr,
+                        entity_type_len,
+                        &gas,
+                    )?;
                     let id = read_string_with_gas(&memory, &caller, id_ptr, id_len, &gas)?;
                     let data_bytes =
                         read_bytes_with_gas(&memory, &caller, data_ptr, data_len, &gas)?;
@@ -197,8 +199,13 @@ pub fn link_rust_host_functions(
                     let memory = get_memory(&mut caller)?;
                     let gas = caller.data().gas.cheap_clone();
 
-                    let entity_type =
-                        read_string_with_gas(&memory, &caller, entity_type_ptr, entity_type_len, &gas)?;
+                    let entity_type = read_string_with_gas(
+                        &memory,
+                        &caller,
+                        entity_type_ptr,
+                        entity_type_len,
+                        &gas,
+                    )?;
                     let id = read_string_with_gas(&memory, &caller, id_ptr, id_len, &gas)?;
 
                     // Call the actual store_get through WasmInstanceContext
@@ -233,8 +240,13 @@ pub fn link_rust_host_functions(
                     let memory = get_memory(&mut caller)?;
                     let gas = caller.data().gas.cheap_clone();
 
-                    let entity_type =
-                        read_string_with_gas(&memory, &caller, entity_type_ptr, entity_type_len, &gas)?;
+                    let entity_type = read_string_with_gas(
+                        &memory,
+                        &caller,
+                        entity_type_ptr,
+                        entity_type_len,
+                        &gas,
+                    )?;
                     let id = read_string_with_gas(&memory, &caller, id_ptr, id_len, &gas)?;
 
                     let mut ctx = std::pin::pin!(WasmInstanceContext::new(&mut caller));
@@ -393,7 +405,13 @@ pub fn link_rust_host_functions(
                                 Ok(bytes.len() as u32)
                             }
                         }
-                        Err(_) => Ok(u32::MAX), // Error indicator
+                        Err(e) => {
+                            // Propagate reorg signals as traps so the block can be retried.
+                            if let graph::runtime::HostExportError::PossibleReorg(_) = &e {
+                                caller.data_mut().possible_reorg = true;
+                            }
+                            Err(anyhow::anyhow!("ipfs_cat failed: {}", e))
+                        }
                     }
                 })
             },
@@ -438,8 +456,7 @@ pub fn link_rust_host_functions(
                     address.copy_from_slice(&addr_bytes);
 
                     // Read calldata
-                    let calldata =
-                        read_bytes_with_gas(&memory, &caller, data_ptr, data_len, &gas)?;
+                    let calldata = read_bytes_with_gas(&memory, &caller, data_ptr, data_len, &gas)?;
 
                     // Get the raw_eth_call capability from ctx
                     let raw_eth_call = caller
@@ -457,7 +474,9 @@ pub fn link_rust_host_functions(
                     let block_ptr = caller.data().ctx.block_ptr.cheap_clone();
 
                     // Make the call
-                    let result = raw_eth_call.call(address, &calldata, &block_ptr, None).await;
+                    let result = raw_eth_call
+                        .call(address, &calldata, &block_ptr, None)
+                        .await;
 
                     match result {
                         Ok(Some(bytes)) => {
@@ -503,8 +522,9 @@ pub fn link_rust_host_functions(
                 let memory = get_memory(&mut caller)?;
                 let gas = caller.data().gas.cheap_clone();
 
-                let message = read_string_with_gas(&memory, &caller, message_ptr, message_len, &gas)
-                    .unwrap_or_else(|_| "<failed to read message>".to_string());
+                let message =
+                    read_string_with_gas(&memory, &caller, message_ptr, message_len, &gas)
+                        .unwrap_or_else(|_| "<failed to read message>".to_string());
 
                 // Mark as deterministic trap
                 caller.data_mut().deterministic_host_trap = true;

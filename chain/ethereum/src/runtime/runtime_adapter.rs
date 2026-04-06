@@ -221,7 +221,7 @@ impl RawEthCall for EthereumRawEthCall {
                 archive: false,
                 traces: false,
             }))
-            .map_err(|e| HostExportError::Unknown(e.into()))?;
+            .map_err(HostExportError::Unknown)?;
 
         // Create a raw call request
         let req = call::Request::new(Address::from(address), calldata.to_vec(), 0);
@@ -267,15 +267,12 @@ impl RawEthCall for EthereumRawEthCall {
                     call::Retval::Null => Ok(None),
                 }
             }
-            Err(ContractCallError::AlloyError(e)) => {
-                Err(HostExportError::PossibleReorg(anyhow::anyhow!(
-                    "eth_call RPC error: {}",
-                    e
-                )))
-            }
-            Err(ContractCallError::Timeout) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
-                "eth_call timed out"
-            ))),
+            Err(ContractCallError::AlloyError(e)) => Err(HostExportError::PossibleReorg(
+                anyhow::anyhow!("eth_call RPC error: {}", e),
+            )),
+            Err(ContractCallError::Timeout) => Err(HostExportError::PossibleReorg(
+                anyhow::anyhow!("eth_call timed out"),
+            )),
             Err(e) => Err(HostExportError::Unknown(anyhow::anyhow!(
                 "eth_call failed: {}",
                 e

@@ -23,7 +23,9 @@ use graph::runtime::AscPtr;
 use graph::runtime::HostExportError;
 use graph::semver::Version;
 use graph_runtime_wasm::module::ToAscPtr;
-use graph_runtime_wasm::rust_abi::{RustBlockTrigger, RustCallTrigger, RustLogTrigger, ToRustBytes};
+use graph_runtime_wasm::rust_abi::{
+    RustBlockTrigger, RustCallTrigger, RustLogTrigger, ToRustBytes,
+};
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::runtime::abi::AscEthereumBlock;
@@ -672,13 +674,7 @@ impl ToRustBytes for MappingTrigger {
                     log_index: log.log_index.unwrap_or(0),
                     block_number: block.number_u64(),
                     block_timestamp: block.inner().header.timestamp,
-                    topics: log
-                        .inner
-                        .data
-                        .topics()
-                        .iter()
-                        .map(|t| t.0)
-                        .collect(),
+                    topics: log.inner.data.topics().iter().map(|t| t.0).collect(),
                     data: log.inner.data.data.to_vec(),
                 };
                 rust_trigger.to_rust_bytes()

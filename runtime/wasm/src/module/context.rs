@@ -1289,10 +1289,8 @@ impl WasmInstanceContext<'_> {
         }
 
         // Convert HashMap<String, Value> to HashMap<Word, Value>
-        let data: std::collections::HashMap<Word, store::Value> = data
-            .into_iter()
-            .map(|(k, v)| (Word::from(k), v))
-            .collect();
+        let data: std::collections::HashMap<Word, store::Value> =
+            data.into_iter().map(|(k, v)| (Word::from(k), v)).collect();
 
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let ctx = &mut self.as_mut().ctx;
@@ -1404,7 +1402,13 @@ impl WasmInstanceContext<'_> {
         let ctx = &mut self.as_mut().ctx;
 
         host_exports
-            .log_log(&ctx.logger, slog_level, message.to_string(), gas, &mut ctx.state)
+            .log_log(
+                &ctx.logger,
+                slog_level,
+                message.to_string(),
+                gas,
+                &mut ctx.state,
+            )
             .map_err(|e| HostExportError::Deterministic(e.into()))
     }
 
@@ -1480,6 +1484,6 @@ impl WasmInstanceContext<'_> {
         host_exports
             .ipfs_cat(&logger, hash.to_string())
             .await
-            .map_err(|e| HostExportError::PossibleReorg(e.into()))
+            .map_err(HostExportError::PossibleReorg)
     }
 }

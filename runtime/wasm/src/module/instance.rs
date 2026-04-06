@@ -218,7 +218,10 @@ impl WasmInstance {
             Ok(result_code) => {
                 if result_code != 0 {
                     // Non-zero return code indicates handler error
-                    Some(anyhow::anyhow!("handler returned error code {}", result_code))
+                    Some(anyhow::anyhow!(
+                        "handler returned error code {}",
+                        result_code
+                    ))
                 } else {
                     assert!(!self.instance_ctx().as_ref().possible_reorg);
                     assert!(!self.instance_ctx().as_ref().deterministic_host_trap);
@@ -551,7 +554,9 @@ pub(crate) fn build_linker(
         linker.func_wrap(
             "gas",
             "gas",
-            |mut caller: wasmtime::Caller<'_, WasmInstanceData>, gas_used: u32| -> anyhow::Result<()> {
+            |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
+             gas_used: u32|
+             -> anyhow::Result<()> {
                 use graph::runtime::gas::SaturatingInto;
                 if let Err(e) = caller
                     .data()

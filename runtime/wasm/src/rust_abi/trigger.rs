@@ -48,16 +48,16 @@ impl ToRustBytes for RustLogTrigger {
 impl ToRustWasm for RustLogTrigger {
     fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         // Fixed-size fields first (no length prefix)
-        writer.write_all(&self.address)?;        // 20 bytes
-        writer.write_all(&self.tx_hash)?;        // 32 bytes
-        writer.write_all(&self.log_index.to_le_bytes())?;      // 8 bytes
-        writer.write_all(&self.block_number.to_le_bytes())?;   // 8 bytes
+        writer.write_all(&self.address)?; // 20 bytes
+        writer.write_all(&self.tx_hash)?; // 32 bytes
+        writer.write_all(&self.log_index.to_le_bytes())?; // 8 bytes
+        writer.write_all(&self.block_number.to_le_bytes())?; // 8 bytes
         writer.write_all(&self.block_timestamp.to_le_bytes())?; // 8 bytes
 
         // Topics array: count + data
         writer.write_all(&(self.topics.len() as u32).to_le_bytes())?;
         for topic in &self.topics {
-            writer.write_all(topic)?;  // 32 bytes each
+            writer.write_all(topic)?; // 32 bytes each
         }
 
         // Data: length + bytes
@@ -100,12 +100,12 @@ impl ToRustBytes for RustCallTrigger {
 impl ToRustWasm for RustCallTrigger {
     fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         // Fixed-size fields
-        writer.write_all(&self.to)?;                              // 20 bytes
-        writer.write_all(&self.from)?;                            // 20 bytes
-        writer.write_all(&self.tx_hash)?;                         // 32 bytes
-        writer.write_all(&self.block_number.to_le_bytes())?;      // 8 bytes
-        writer.write_all(&self.block_timestamp.to_le_bytes())?;   // 8 bytes
-        writer.write_all(&self.block_hash)?;                      // 32 bytes
+        writer.write_all(&self.to)?; // 20 bytes
+        writer.write_all(&self.from)?; // 20 bytes
+        writer.write_all(&self.tx_hash)?; // 32 bytes
+        writer.write_all(&self.block_number.to_le_bytes())?; // 8 bytes
+        writer.write_all(&self.block_timestamp.to_le_bytes())?; // 8 bytes
+        writer.write_all(&self.block_hash)?; // 32 bytes
 
         // Input: length + bytes
         writer.write_all(&(self.input.len() as u32).to_le_bytes())?;
@@ -152,15 +152,15 @@ impl ToRustBytes for RustBlockTrigger {
 
 impl ToRustWasm for RustBlockTrigger {
     fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
-        writer.write_all(&self.hash)?;                            // 32 bytes
-        writer.write_all(&self.parent_hash)?;                     // 32 bytes
-        writer.write_all(&self.number.to_le_bytes())?;            // 8 bytes
-        writer.write_all(&self.timestamp.to_le_bytes())?;         // 8 bytes
-        writer.write_all(&self.author)?;                          // 20 bytes
-        writer.write_all(&self.gas_used.to_le_bytes())?;          // 8 bytes
-        writer.write_all(&self.gas_limit.to_le_bytes())?;         // 8 bytes
-        writer.write_all(&self.difficulty)?;                      // 32 bytes
-        writer.write_all(&self.base_fee_per_gas.to_le_bytes())?;  // 8 bytes
+        writer.write_all(&self.hash)?; // 32 bytes
+        writer.write_all(&self.parent_hash)?; // 32 bytes
+        writer.write_all(&self.number.to_le_bytes())?; // 8 bytes
+        writer.write_all(&self.timestamp.to_le_bytes())?; // 8 bytes
+        writer.write_all(&self.author)?; // 20 bytes
+        writer.write_all(&self.gas_used.to_le_bytes())?; // 8 bytes
+        writer.write_all(&self.gas_limit.to_le_bytes())?; // 8 bytes
+        writer.write_all(&self.difficulty)?; // 32 bytes
+        writer.write_all(&self.base_fee_per_gas.to_le_bytes())?; // 8 bytes
         Ok(())
     }
 }
@@ -193,7 +193,8 @@ mod tests {
 
         // Check topics count
         let topics_offset = 20 + 32 + 24;
-        let topics_count = u32::from_le_bytes(bytes[topics_offset..topics_offset+4].try_into().unwrap());
+        let topics_count =
+            u32::from_le_bytes(bytes[topics_offset..topics_offset + 4].try_into().unwrap());
         assert_eq!(topics_count, 2);
     }
 

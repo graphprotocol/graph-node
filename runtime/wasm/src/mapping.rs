@@ -273,13 +273,21 @@ impl ValidModule {
         raw_module: &[u8],
         timeout: Option<Duration>,
     ) -> Result<Self, anyhow::Error> {
-        // Detect Rust modules by scanning for the "graphite" import namespace.
-        // Rust modules use modern WASM features (bulk-memory, reference-types, etc.)
-        // that parity_wasm cannot parse, so we skip parity_wasm gas injection for them.
+        // Pre-parse detection: scan raw bytes for the "graphite" import namespace string.
+        // This is a fast heuristic used solely to decide whether to skip parity_wasm gas
+        // injection, which cannot parse modern WASM features (bulk-memory, reference-types)
+        // that Rust-compiled modules use. A false positive (an AS module containing the
+        // literal string "graphite") would be caught later: build_linker() does a proper
+        // import-map check, and invoke_handler_rust() would immediately fail with
+        // "function 'allocate' not found" rather than silently misbehaving.
+        // The authoritative language detection happens in build_linker() below.
         let is_rust_module = raw_module.windows(8).any(|w| w == b"graphite");
 
         let (raw_module, start_function) = if is_rust_module {
-            info!(logger, "Detected Rust WASM module, skipping parity_wasm gas injection");
+            info!(
+                logger,
+                "Detected Rust WASM module, skipping parity_wasm gas injection"
+            );
             (raw_module.to_vec(), None)
         } else {
             // Add the gas calls here. Module name "gas" must match. See also
@@ -317,8 +325,9 @@ impl ValidModule {
 
                 name
             });
-            let parity_module = wasm_instrument::gas_metering::inject(parity_module, &GasRules, "gas")
-                .map_err(|_| anyhow!("Failed to inject gas counter"))?;
+            let parity_module =
+                wasm_instrument::gas_metering::inject(parity_module, &GasRules, "gas")
+                    .map_err(|_| anyhow!("Failed to inject gas counter"))?;
             (parity_module.into_bytes()?, start_function)
         };
 
