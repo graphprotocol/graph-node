@@ -144,13 +144,49 @@ impl MappingTriggerTrait for NearTrigger {
     }
 }
 
+/// Sentinel header byte returned by [`NearTrigger::to_rust_bytes`] to
+/// signal "unsupported chain" to any SDK that attempts to decode a NEAR
+/// trigger payload. Chosen as `0xFF` because it is outside the current
+/// TLV value-tag range (`0x00`..=`0x09`, see
+/// `runtime/wasm/src/rust_abi/types.rs::tags`) and therefore guarantees a
+/// deterministic decode failure rather than silent misinterpretation.
+const UNSUPPORTED_CHAIN_SENTINEL: u8 = 0xFF;
+
 impl ToRustBytes for NearTrigger {
+    /// Produce a Rust ABI payload for a NEAR trigger.
+    ///
+    /// NEAR triggers are **not** yet wired up to the Rust ABI. A real
+    /// implementation would need to serialise, at minimum:
+    ///
+    /// - For [`NearTrigger::Block`]: the block header fields (hash,
+    ///   prev_hash, height, timestamp, author, gas_price, total_supply,
+    ///   etc.) plus any chunk metadata the SDK exposes to block handlers.
+    /// - For [`NearTrigger::Receipt`]: the receipt id, predecessor /
+    ///   receiver account ids, the enclosing block's hash and height, the
+    ///   full action list (`CreateAccount`, `DeployContract`,
+    ///   `FunctionCall`, `Transfer`, `Stake`, `AddKey`, `DeleteKey`,
+    ///   `DeleteAccount`), and the execution outcome (status, gas burnt,
+    ///   tokens burnt, logs, emitted receipt ids).
+    ///
+    /// None of the above is currently serialised. Instead we emit a
+    /// single-byte sentinel payload (`[UNSUPPORTED_CHAIN_SENTINEL]`, i.e.
+    /// `[0xFF]`) that is guaranteed to fail decoding on the SDK side
+    /// because `0xFF` is not a valid TLV value tag (the tag space is
+    /// `0x00`..=`0x09`; see `runtime/wasm/src/rust_abi/types.rs::tags`).
+    ///
+    /// This is intentionally louder than the previous `Vec::new()` stub:
+    /// an empty payload could be silently round-tripped as "no data", and
+    /// a Rust subgraph targeting NEAR would index garbage without ever
+    /// realising something was wrong. The sentinel byte forces a
+    /// deterministic handler failure at the first byte of the payload.
+    ///
+    /// There is deliberately no logging call here: `to_rust_bytes` has
+    /// no `Logger` in scope and threading one through would pollute the
+    /// trait for every chain. Operators will see the SDK-side decode
+    /// error surfaced as a mapping failure, which is the loud signal we
+    /// want.
     fn to_rust_bytes(&self) -> Vec<u8> {
-        // NEAR triggers are not yet supported by the Rust ABI.
-        // Return empty bytes rather than panicking; the handler will receive no data
-        // and can decide how to proceed. A Rust subgraph targeting NEAR would need
-        // to implement NEAR-specific serialization in a future PR.
-        Vec::new()
+        vec![UNSUPPORTED_CHAIN_SENTINEL]
     }
 }
 

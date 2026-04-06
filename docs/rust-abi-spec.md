@@ -398,8 +398,13 @@ Total: 156 bytes (fixed-width).
 
 #### 4.7.4 Other Chains
 
-Only Ethereum implements `ToRustBytes` at present. NEAR has a stub
-returning `unimplemented!()`. Adding a new chain requires only an impl of
+Only Ethereum implements `ToRustBytes` at present. NEAR has a documented
+stub in `chain/near/src/trigger.rs` that returns a single-byte
+"unsupported chain" sentinel (`0xFF`). The sentinel is deliberately
+outside the TLV value-tag range (`0x00`..=`0x09`) so that any SDK that
+attempts to decode it will fail deterministically at the first byte
+rather than silently treating an empty payload as "no data". Adding a
+new chain requires only an impl of
 `ToRustBytes for <Chain>::MappingTrigger`; no changes to `rust_abi/` are
 required.
 
@@ -851,8 +856,9 @@ may address:
    limitation, not a design decision.
 
 4. **Non-Ethereum chains.** Only Ethereum implements `ToRustBytes`. NEAR
-   has a stub. Other chains will require a per-chain serialization impl
-   when they want to opt into Rust mappings.
+   has a documented sentinel stub (section 4.7.4) that fails decode
+   deterministically. Other chains will require a per-chain
+   serialization impl when they want to opt into Rust mappings.
 
 5. **`apiVersion` initial value.** Whether to start at `0.0.1` (own
    namespace) or `0.0.8` (after the latest AS version) is a policy
