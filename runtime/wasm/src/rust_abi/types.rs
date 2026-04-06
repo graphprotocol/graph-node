@@ -7,35 +7,57 @@ use graph::prelude::*;
 use std::io::{self, Read, Write};
 use std::str::FromStr;
 
+/// Canonical TLV value tag bytes.
+///
+/// These are the single source of truth for the tag byte of each `Value`
+/// variant on the wire. They match the table in
+/// `docs/rust-abi-spec.md` section 4.6 one-for-one. Changing any value in
+/// this module is a breaking ABI change and requires an `apiVersion` bump.
+pub mod tags {
+    pub const NULL: u8 = 0x00;
+    pub const STRING: u8 = 0x01;
+    pub const INT: u8 = 0x02;
+    pub const INT8: u8 = 0x03;
+    pub const BIG_INT: u8 = 0x04;
+    pub const BIG_DECIMAL: u8 = 0x05;
+    pub const BOOL: u8 = 0x06;
+    pub const BYTES: u8 = 0x07;
+    pub const ADDRESS: u8 = 0x08;
+    pub const ARRAY: u8 = 0x09;
+}
+
 /// Value type tags for TLV serialization.
+///
+/// Discriminants are pulled from the [`tags`] module so there is a single
+/// authoritative definition of each on-wire byte.
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValueTag {
-    Null = 0x00,
-    String = 0x01,
-    Int = 0x02,
-    Int8 = 0x03,
-    BigInt = 0x04,
-    BigDecimal = 0x05,
-    Bool = 0x06,
-    Bytes = 0x07,
-    Address = 0x08,
-    Array = 0x09,
+    Null = tags::NULL,
+    String = tags::STRING,
+    Int = tags::INT,
+    Int8 = tags::INT8,
+    BigInt = tags::BIG_INT,
+    BigDecimal = tags::BIG_DECIMAL,
+    Bool = tags::BOOL,
+    Bytes = tags::BYTES,
+    Address = tags::ADDRESS,
+    Array = tags::ARRAY,
 }
 
 impl ValueTag {
     pub fn from_u8(v: u8) -> Option<Self> {
         match v {
-            0x00 => Some(Self::Null),
-            0x01 => Some(Self::String),
-            0x02 => Some(Self::Int),
-            0x03 => Some(Self::Int8),
-            0x04 => Some(Self::BigInt),
-            0x05 => Some(Self::BigDecimal),
-            0x06 => Some(Self::Bool),
-            0x07 => Some(Self::Bytes),
-            0x08 => Some(Self::Address),
-            0x09 => Some(Self::Array),
+            tags::NULL => Some(Self::Null),
+            tags::STRING => Some(Self::String),
+            tags::INT => Some(Self::Int),
+            tags::INT8 => Some(Self::Int8),
+            tags::BIG_INT => Some(Self::BigInt),
+            tags::BIG_DECIMAL => Some(Self::BigDecimal),
+            tags::BOOL => Some(Self::Bool),
+            tags::BYTES => Some(Self::Bytes),
+            tags::ADDRESS => Some(Self::Address),
+            tags::ARRAY => Some(Self::Array),
             _ => None,
         }
     }

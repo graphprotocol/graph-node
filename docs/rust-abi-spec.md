@@ -300,6 +300,15 @@ Notes:
 - The decoder on the host side rejects unknown tags with
   `io::ErrorKind::InvalidData`.
 
+The canonical host-side tag byte values are defined as named constants in
+the `tags` module in `runtime/wasm/src/rust_abi/types.rs` (`tags::NULL`,
+`tags::STRING`, `tags::INT`, `tags::INT8`, `tags::BIG_INT`,
+`tags::BIG_DECIMAL`, `tags::BOOL`, `tags::BYTES`, `tags::ADDRESS`,
+`tags::ARRAY`). The `ValueTag` enum discriminants are derived from those
+constants, so there is exactly one place in the host codebase where the
+on-wire bytes are defined. Any edit to those constants is, by definition,
+a breaking ABI change (see section 8.1).
+
 The reference implementation lives in
 `runtime/wasm/src/rust_abi/entity.rs`.
 

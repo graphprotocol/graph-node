@@ -4,7 +4,7 @@
 //! Works with `HashMap<String, Value>` for deserialization since graph-node's
 //! `Entity` type requires schema context for construction.
 
-use super::types::{FromRustWasm, ToRustWasm, ValueTag};
+use super::types::{tags, FromRustWasm, ToRustWasm, ValueTag};
 use graph::data::store::scalar::Bytes;
 use graph::data::store::{Entity, Value};
 use graph::prelude::*;
@@ -92,38 +92,38 @@ impl ToRustWasm for Value {
     fn write_to<W: Write>(&self, writer: &mut W) -> io::Result<()> {
         match self {
             Value::Null => {
-                writer.write_all(&[ValueTag::Null as u8])?;
+                writer.write_all(&[tags::NULL])?;
             }
             Value::String(s) => {
-                writer.write_all(&[ValueTag::String as u8])?;
+                writer.write_all(&[tags::STRING])?;
                 s.as_str().write_to(writer)?;
             }
             Value::Int(n) => {
-                writer.write_all(&[ValueTag::Int as u8])?;
+                writer.write_all(&[tags::INT])?;
                 n.write_to(writer)?;
             }
             Value::Int8(n) => {
-                writer.write_all(&[ValueTag::Int8 as u8])?;
+                writer.write_all(&[tags::INT8])?;
                 n.write_to(writer)?;
             }
             Value::BigInt(n) => {
-                writer.write_all(&[ValueTag::BigInt as u8])?;
+                writer.write_all(&[tags::BIG_INT])?;
                 n.write_to(writer)?;
             }
             Value::BigDecimal(n) => {
-                writer.write_all(&[ValueTag::BigDecimal as u8])?;
+                writer.write_all(&[tags::BIG_DECIMAL])?;
                 n.write_to(writer)?;
             }
             Value::Bool(b) => {
-                writer.write_all(&[ValueTag::Bool as u8])?;
+                writer.write_all(&[tags::BOOL])?;
                 b.write_to(writer)?;
             }
             Value::Bytes(b) => {
-                writer.write_all(&[ValueTag::Bytes as u8])?;
+                writer.write_all(&[tags::BYTES])?;
                 b.as_slice().to_vec().write_to(writer)?;
             }
             Value::List(arr) => {
-                writer.write_all(&[ValueTag::Array as u8])?;
+                writer.write_all(&[tags::ARRAY])?;
                 writer.write_all(&(arr.len() as u32).to_le_bytes())?;
                 for v in arr {
                     v.write_to(writer)?;
@@ -131,7 +131,7 @@ impl ToRustWasm for Value {
             }
             Value::Timestamp(ts) => {
                 // Serialize timestamp as BigInt (microseconds since epoch)
-                writer.write_all(&[ValueTag::BigInt as u8])?;
+                writer.write_all(&[tags::BIG_INT])?;
                 BigInt::from(ts.as_microseconds_since_epoch()).write_to(writer)?;
             }
         }
