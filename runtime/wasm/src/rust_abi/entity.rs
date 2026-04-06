@@ -256,4 +256,253 @@ mod tests {
         assert_eq!(data.get("balance"), recovered.get("balance"));
         assert_eq!(data.get("active"), recovered.get("active"));
     }
+
+    // -------------------------------------------------------------------------
+    // ABI cross-validation vectors.
+    //
+    // These tests encode known byte sequences by hand and assert that
+    // graph-node's ToRustWasm/FromRustWasm impls produce identical bytes.
+    // The same raw bytes are validated against the Graphite SDK in
+    // graphite/src/abi_vectors_tests.rs.
+    // -------------------------------------------------------------------------
+
+    fn le32(n: u32) -> [u8; 4] {
+        n.to_le_bytes()
+    }
+
+    // -- Null (tag 0x00) --
+
+    #[test]
+    fn abi_vec_null_encodes_to_single_byte() {
+        let bytes = Value::Null.to_bytes();
+        assert_eq!(bytes, [0x00u8]);
+    }
+
+    #[test]
+    fn abi_vec_null_decode() {
+        let v = Value::from_bytes(&[0x00u8]).unwrap();
+        assert_eq!(v, Value::Null);
+    }
+
+    // -- String (tag 0x01, len:u32 LE, utf-8 bytes) --
+
+    #[test]
+    fn abi_vec_string_known_bytes() {
+        // "hi" → [0x01, 0x02 0x00 0x00 0x00, 0x68 0x69]
+        let v = Value::String("hi".to_string());
+        let bytes = v.to_bytes();
+        let mut expected = vec![0x01u8];
+        expected.extend_from_slice(&le32(2));
+        expected.extend_from_slice(b"hi");
+        assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn abi_vec_string_decode_known_bytes() {
+        let mut raw = vec![0x01u8];
+        raw.extend_from_slice(&le32(2));
+        raw.extend_from_slice(b"hi");
+        let v = Value::from_bytes(&raw).unwrap();
+        assert_eq!(v, Value::String("hi".to_string()));
+    }
+
+    // -- Int (tag 0x02, i32 LE 4 bytes) --
+
+    #[test]
+    fn abi_vec_int_known_bytes() {
+        let v = Value::Int(42);
+        let bytes = v.to_bytes();
+        let mut expected = vec![0x02u8];
+        expected.extend_from_slice(&42i32.to_le_bytes());
+        assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn abi_vec_int_negative() {
+        let v = Value::Int(-1);
+        let bytes = v.to_bytes();
+        let mut expected = vec![0x02u8];
+        expected.extend_from_slice(&(-1i32).to_le_bytes());
+        assert_eq!(bytes, expected);
+    }
+
+    // -- Int8 (tag 0x03, i64 LE 8 bytes) --
+
+    #[test]
+    fn abi_vec_int8_known_bytes() {
+        let v = Value::Int8(i64::MAX);
+        let bytes = v.to_bytes();
+        let mut expected = vec![0x03u8];
+        expected.extend_from_slice(&i64::MAX.to_le_bytes());
+        assert_eq!(bytes, expected);
+    }
+
+    // -- BigInt (tag 0x04, len:u32 LE, signed-LE bytes) --
+
+    #[test]
+    fn abi_vec_bigint_uses_signed_le() {
+        // 1000 in signed-LE is [0xe8, 0x03]
+        let n = BigInt::from(1000u64);
+        let le = n.to_signed_bytes_le();
+        assert_eq!(le, vec![0xe8u8, 0x03]);
+
+        let v = Value::BigInt(n);
+        let bytes = v.to_bytes();
+        assert_eq!(bytes[0], 0x04);
+        let len = u32::from_le_bytes(bytes[1..5].try_into().unwrap()) as usize;
+        assert_eq!(len, 2);
+        assert_eq!(&bytes[5..], &[0xe8u8, 0x03]);
+    }
+
+    #[test]
+    fn abi_vec_bigint_decode_known_le_bytes() {
+        // hand-encoded 1000 as signed-LE
+        let mut raw = vec![0x04u8];
+        raw.extend_from_slice(&le32(2));
+        raw.push(0xe8);
+        raw.push(0x03);
+        let v = Value::from_bytes(&raw).unwrap();
+        assert_eq!(v, Value::BigInt(BigInt::from(1000u64)));
+    }
+
+    #[test]
+    fn abi_vec_bigint_zero_len_zero() {
+        let v = Value::BigInt(BigInt::from(0i32));
+        let bytes = v.to_bytes();
+        // zero may encode as empty or as [0x00]; either is valid as long as decode round-trips
+        let recovered = Value::from_bytes(&bytes).unwrap();
+        assert_eq!(recovered, Value::BigInt(BigInt::from(0i32)));
+    }
+
+    // -- BigDecimal (tag 0x05, len:u32 LE, UTF-8 string) --
+
+    #[test]
+    fn abi_vec_bigdecimal_encodes_as_string() {
+        use std::str::FromStr;
+        let d = graph::prelude::BigDecimal::from_str("3.14").unwrap();
+        let v = Value::BigDecimal(d);
+        let bytes = v.to_bytes();
+        assert_eq!(bytes[0], 0x05);
+        let len = u32::from_le_bytes(bytes[1..5].try_into().unwrap()) as usize;
+        let s = std::str::from_utf8(&bytes[5..5 + len]).unwrap();
+        // must be a valid decimal string representation
+        assert!(s.contains('.') || s.chars().all(|c| c.is_ascii_digit() || c == '-' || c == 'E' || c == 'e'),
+            "expected decimal string, got: {}", s);
+    }
+
+    #[test]
+    fn abi_vec_bigdecimal_decode_known_bytes() {
+        use std::str::FromStr;
+        let s = b"3.14";
+        let mut raw = vec![0x05u8];
+        raw.extend_from_slice(&le32(s.len() as u32));
+        raw.extend_from_slice(s);
+        let v = Value::from_bytes(&raw).unwrap();
+        let expected = Value::BigDecimal(graph::prelude::BigDecimal::from_str("3.14").unwrap());
+        assert_eq!(v, expected);
+    }
+
+    // -- Bool (tag 0x06) --
+
+    #[test]
+    fn abi_vec_bool_true_known_bytes() {
+        assert_eq!(Value::Bool(true).to_bytes(), [0x06u8, 0x01]);
+    }
+
+    #[test]
+    fn abi_vec_bool_false_known_bytes() {
+        assert_eq!(Value::Bool(false).to_bytes(), [0x06u8, 0x00]);
+    }
+
+    // -- Bytes (tag 0x07, len:u32 LE, raw bytes) --
+
+    #[test]
+    fn abi_vec_bytes_known_bytes() {
+        use graph::data::store::scalar::Bytes as StoreBytes;
+        let payload = vec![0xde, 0xad, 0xbe, 0xef];
+        let v = Value::Bytes(StoreBytes::from(payload.clone()));
+        let encoded = v.to_bytes();
+        let mut expected = vec![0x07u8];
+        expected.extend_from_slice(&le32(4));
+        expected.extend_from_slice(&payload);
+        assert_eq!(encoded, expected);
+    }
+
+    // -- Address (tag 0x08, 20 raw bytes, NO length prefix) --
+
+    #[test]
+    fn abi_vec_address_decode_tag_0x08() {
+        // The SDK writes Address as tag 0x08 + 20 raw bytes (no length prefix).
+        // graph-node decodes tag 0x08 as Value::Bytes(20 bytes).
+        // Note: graph-node re-encodes Bytes as tag 0x07 (length-prefixed); the
+        // asymmetry is intentional — 0x08 is a SDK-write/host-read optimisation.
+        let addr = [0xabu8; 20];
+        let mut raw = vec![0x08u8];
+        raw.extend_from_slice(&addr);
+        assert_eq!(raw.len(), 21); // tag + 20 bytes, no length prefix
+
+        // graph-node must decode SDK-written 0x08 as Bytes carrying the 20-byte address
+        let v = Value::from_bytes(&raw).unwrap();
+        if let Value::Bytes(b) = &v {
+            assert_eq!(b.as_slice(), &addr);
+        } else {
+            panic!("expected Bytes for Address tag, got {:?}", v);
+        }
+    }
+
+    // -- Array (tag 0x09, len:u32 LE, tagged Values) --
+
+    #[test]
+    fn abi_vec_array_empty() {
+        let v = Value::List(vec![]);
+        let bytes = v.to_bytes();
+        let mut expected = vec![0x09u8];
+        expected.extend_from_slice(&le32(0));
+        assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn abi_vec_array_known_bytes() {
+        // [Int(1), Bool(true)]
+        let v = Value::List(vec![Value::Int(1), Value::Bool(true)]);
+        let bytes = v.to_bytes();
+        assert_eq!(bytes[0], 0x09);
+        let count = u32::from_le_bytes(bytes[1..5].try_into().unwrap());
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn abi_vec_array_decode_known_bytes() {
+        let mut raw = vec![0x09u8];
+        raw.extend_from_slice(&le32(2));
+        raw.push(0x02);
+        raw.extend_from_slice(&1i32.to_le_bytes());
+        raw.push(0x06);
+        raw.push(0x01);
+        let v = Value::from_bytes(&raw).unwrap();
+        assert_eq!(v, Value::List(vec![Value::Int(1), Value::Bool(true)]));
+    }
+
+    // -- Cross-wire: spec worked example --
+
+    #[test]
+    fn abi_vec_spec_worked_example() {
+        // { id: "tx-1", value: 42, active: true }  (spec section 4.6.1)
+        // field_count: 3, field order unspecified but all fields must survive
+        let mut data = EntityData::new();
+        data.insert("id".to_string(), Value::String("tx-1".to_string()));
+        data.insert("value".to_string(), Value::Int(42));
+        data.insert("active".to_string(), Value::Bool(true));
+
+        let bytes = data.to_bytes();
+
+        // field count must be 3
+        let count = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
+        assert_eq!(count, 3);
+
+        let recovered = EntityData::from_bytes(&bytes).unwrap();
+        assert_eq!(recovered.get("id"), Some(&Value::String("tx-1".to_string())));
+        assert_eq!(recovered.get("value"), Some(&Value::Int(42)));
+        assert_eq!(recovered.get("active"), Some(&Value::Bool(true)));
+    }
 }
