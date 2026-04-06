@@ -763,8 +763,9 @@ function.
 Three layers of tests cover the Rust ABI:
 
 1. **Unit tests** in each `rust_abi/` file (round-trip serialization for
-   each `Value` variant, each trigger type, each primitive). 14 unit
-   tests today.
+   each `Value` variant, each trigger type, each primitive). 12 unit
+   tests today. ABI test vectors in `tests/integration/` cross-validate
+   the host-side encoding against the SDK-side decoder byte-for-byte.
 2. **WASM integration test** at `tests/integration/tests/wasm_handler.rs`,
    which loads a real Rust-compiled ERC20 mapping into wasmtime,
    serializes a `RustLogTrigger` using the exact production format,

@@ -1,5 +1,20 @@
 # NEWS
 
+## Unreleased
+
+### What's New
+
+- **Rust subgraph ABI support (draft, [#6462](https://github.com/graphprotocol/graph-node/pull/6462)).** A new `rust_abi/` module (~1,450 LOC) enables subgraphs compiled from Rust to `wasm32-unknown-unknown`. Selected via `mapping.kind: wasm/rust` in `subgraph.yaml`. Key properties:
+  - Clean `ptr+len` calling convention — no managed heap, no `AscPtr<T>` juggling.
+  - TLV entity serialization with a closed tag table; tag bytes are named constants (`tags::*` in `rust_abi/types.rs`).
+  - Fixed-layout trigger serialization for Ethereum log, call, and block handlers. NEAR has a documented stub with a `0xFF` sentinel.
+  - Wasmtime fuel metering (10 billion units per handler; `Trap::OutOfFuel` is a deterministic error).
+  - Language detection via manifest `mapping.kind`; `is_rust_module()` cross-checks by scanning the `graphite` import namespace.
+  - Bypasses the `parity_wasm` gas-injection pipeline (incompatible with modern WASM opcodes); gas is provided entirely by wasmtime fuel.
+  - Formal ABI specification: `docs/rust-abi-spec.md`.
+  - 12 unit tests; ABI test vectors cross-validated against the Graphite SDK.
+  - Live-tested: USDC Transfer events from Ethereum mainnet indexed end-to-end via GraphQL.
+
 ## v0.42.1
 
 ### Bug Fixes
