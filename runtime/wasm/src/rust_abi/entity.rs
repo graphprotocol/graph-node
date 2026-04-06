@@ -386,8 +386,13 @@ mod tests {
         let len = u32::from_le_bytes(bytes[1..5].try_into().unwrap()) as usize;
         let s = std::str::from_utf8(&bytes[5..5 + len]).unwrap();
         // must be a valid decimal string representation
-        assert!(s.contains('.') || s.chars().all(|c| c.is_ascii_digit() || c == '-' || c == 'E' || c == 'e'),
-            "expected decimal string, got: {}", s);
+        assert!(
+            s.contains('.')
+                || s.chars()
+                    .all(|c| c.is_ascii_digit() || c == '-' || c == 'E' || c == 'e'),
+            "expected decimal string, got: {}",
+            s
+        );
     }
 
     #[test]
@@ -501,7 +506,10 @@ mod tests {
         assert_eq!(count, 3);
 
         let recovered = EntityData::from_bytes(&bytes).unwrap();
-        assert_eq!(recovered.get("id"), Some(&Value::String("tx-1".to_string())));
+        assert_eq!(
+            recovered.get("id"),
+            Some(&Value::String("tx-1".to_string()))
+        );
         assert_eq!(recovered.get("value"), Some(&Value::Int(42)));
         assert_eq!(recovered.get("active"), Some(&Value::Bool(true)));
     }
