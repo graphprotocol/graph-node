@@ -99,7 +99,7 @@ syn = { version = "2.0.117", features = ["full"] }
 test-store = { path = "./store/test-store" }
 thiserror = "2.0.18"
 deadpool = { version = "0.13", features = ["rt_tokio_1", "managed"] }
-tokio = { version = "1.50.0", features = ["full"] }
+tokio = { version = "1.51.0", features = ["full"] }
 tokio-stream = { version = "0.1.18", features = ["sync"] }
 tokio-retry = "0.3.0"
 
