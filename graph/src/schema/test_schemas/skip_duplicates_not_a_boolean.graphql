@@ -1,0 +1,5 @@
+# fail: EntityDirectiveNonBooleanArgValue("skipDuplicates")
+
+type Data @entity(immutable: true, skipDuplicates: "yes") {
+  id: Bytes!
+}

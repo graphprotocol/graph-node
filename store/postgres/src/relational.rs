@@ -44,7 +44,7 @@ use graph::schema::{
     AggregationInterval, EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition,
     InputSchema,
 };
-use graph::slog::warn;
+use graph::slog::{debug, warn};
 use index::IndexList;
 use inflector::Inflector;
 use itertools::Itertools;
@@ -818,7 +818,7 @@ impl Layout {
             }
         }
         if affected_rows < expected_rows && table.immutable && table.skip_duplicates {
-            warn!(logger, "Cross-batch duplicate inserts skipped by ON CONFLICT DO NOTHING";
+            debug!(logger, "Cross-batch duplicate inserts skipped by ON CONFLICT DO NOTHING";
                 "entity_type" => table.object.as_str(),
                 "expected_rows" => expected_rows,
                 "affected_rows" => affected_rows,
@@ -960,7 +960,6 @@ impl Layout {
 
     pub async fn update<'a>(
         &'a self,
-        logger: &Logger,
         conn: &mut AsyncPgConnection,
         group: &'a RowGroup,
         stopwatch: &StopwatchMetrics,
@@ -968,10 +967,6 @@ impl Layout {
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable && group.has_clamps() {
             if table.skip_duplicates {
-                let ids = group.ids().join(", ");
-                warn!(logger, "Skipping immutable entity update in store layer";
-                    "entity_type" => group.entity_type.to_string(),
-                    "ids" => ids);
                 return Ok(0);
             }
             let ids = group
@@ -1015,7 +1010,6 @@ impl Layout {
 
     pub async fn delete(
         &self,
-        logger: &Logger,
         conn: &mut AsyncPgConnection,
         group: &RowGroup,
         stopwatch: &StopwatchMetrics,
@@ -1041,10 +1035,6 @@ impl Layout {
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable {
             if table.skip_duplicates {
-                let ids = group.ids().join(", ");
-                warn!(logger, "Skipping immutable entity delete in store layer";
-                    "entity_type" => group.entity_type.to_string(),
-                    "ids" => ids);
                 return Ok(0);
             }
             return Err(internal_error!(

@@ -360,7 +360,7 @@ impl DeploymentStore {
             // Clamp entities before inserting them to avoid having versions
             // with overlapping block ranges
             let section = stopwatch.start_section("apply_entity_modifications_delete");
-            layout.delete(logger, conn, group, stopwatch).await?;
+            layout.delete(conn, group, stopwatch).await?;
             section.end();
 
             let section = stopwatch.start_section("check_interface_entity_uniqueness");

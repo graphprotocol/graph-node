@@ -5,9 +5,8 @@ use graph::{
     components::store::write::RowGroup,
     data_source::CausalityRegion,
     entity,
-    prelude::{r, serde_json as json, DeploymentHash, EntityFilter, Logger},
+    prelude::{r, serde_json as json, DeploymentHash, EntityFilter},
     schema::InputSchema,
-    slog,
 };
 
 use crate::{
@@ -219,8 +218,7 @@ fn insert_sql_for_schema(gql: &str, entity_type_name: &str) -> String {
         end: None,
     };
 
-    let logger = Logger::root(slog::Discard, slog::o!());
-    let mut group = RowGroup::new(et, table.immutable, table.skip_duplicates, logger);
+    let mut group = RowGroup::new(et);
     group.push(emod, 1).unwrap();
 
     let chunks: Vec<_> = group.write_chunks(100).collect();

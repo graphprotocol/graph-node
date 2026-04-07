@@ -1,0 +1,5 @@
+# fail: SkipDuplicatesRequiresImmutable("Data")
+
+type Data @entity(skipDuplicates: true) {
+  id: Bytes!
+}

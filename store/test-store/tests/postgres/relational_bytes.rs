@@ -85,12 +85,7 @@ pub fn row_group_update(
     block: BlockNumber,
     data: impl IntoIterator<Item = (EntityKey, Entity)>,
 ) -> RowGroup {
-    let mut group = RowGroup::new(
-        entity_type.clone(),
-        false,
-        false,
-        slog::Logger::root(slog::Discard, slog::o!()),
-    );
+    let mut group = RowGroup::new(entity_type.clone());
     for (key, data) in data {
         group
             .push(EntityModification::overwrite(key, data, block), block)
@@ -104,12 +99,7 @@ pub fn row_group_insert(
     block: BlockNumber,
     data: impl IntoIterator<Item = (EntityKey, Entity)>,
 ) -> RowGroup {
-    let mut group = RowGroup::new(
-        entity_type.clone(),
-        false,
-        false,
-        slog::Logger::root(slog::Discard, slog::o!()),
-    );
+    let mut group = RowGroup::new(entity_type.clone());
     for (key, data) in data {
         group
             .push(EntityModification::insert(key, data, block), block)
@@ -123,12 +113,7 @@ pub fn row_group_delete(
     block: BlockNumber,
     data: impl IntoIterator<Item = EntityKey>,
 ) -> RowGroup {
-    let mut group = RowGroup::new(
-        entity_type.clone(),
-        false,
-        false,
-        slog::Logger::root(slog::Discard, slog::o!()),
-    );
+    let mut group = RowGroup::new(entity_type.clone());
     for key in data {
         group
             .push(EntityModification::remove(key, block), block)
@@ -365,7 +350,7 @@ async fn update() {
         let entities = vec![(key, entity.clone())];
         let group = row_group_update(&entity_type, 1, entities);
         layout
-            .update(&LOGGER, conn, &group, &MOCK_STOPWATCH)
+            .update(conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to update");
 
@@ -397,7 +382,7 @@ async fn delete() {
         let mut entity_keys = vec![key.clone()];
         let group = row_group_delete(&entity_type, 1, entity_keys.clone());
         let count = layout
-            .delete(&LOGGER, conn, &group, &MOCK_STOPWATCH)
+            .delete(conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to delete");
         assert_eq!(0, count);
@@ -409,7 +394,7 @@ async fn delete() {
             .expect("Failed to update entity types");
         let group = row_group_delete(&entity_type, 1, entity_keys);
         let count = layout
-            .delete(&LOGGER, conn, &group, &MOCK_STOPWATCH)
+            .delete(conn, &group, &MOCK_STOPWATCH)
             .await
             .expect("Failed to delete");
         assert_eq!(1, count);
