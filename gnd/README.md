@@ -378,6 +378,52 @@ gnd dev [OPTIONS]
 | `--ethereum-rpc` | | Ethereum RPC URL |
 | `--ipfs` | | IPFS node URL |
 
+### `gnd indexer`
+
+Manage indexer operations via [`indexer-cli`](https://github.com/graphprotocol/indexer/tree/main/packages/indexer-cli).
+
+Requires `graph-indexer` to be installed and on `$PATH`:
+
+```bash
+npm install -g @graphprotocol/indexer-cli
+```
+
+```bash
+gnd indexer <subcommand> [args...]
+```
+
+**Help:**
+
+There are two ways to get help:
+
+| Command | What it shows |
+|---------|---------------|
+| `gnd indexer --help` | gnd's own help for the indexer subcommand (works without `graph-indexer` installed) |
+| `gnd indexer help` | Full `graph-indexer` help with all available commands (requires `graph-indexer`) |
+
+**Examples:**
+
+```bash
+# Check indexer status
+gnd indexer status --network arbitrum-one
+
+# Manage indexing rules
+gnd indexer rules get all --network mainnet
+gnd indexer rules set <deployment> decisionBasis always --network mainnet
+
+# Manage allocations
+gnd indexer allocations get --network arbitrum-one
+
+# Manage cost models
+gnd indexer cost get
+
+# View available indexer commands
+gnd indexer help
+
+# Check graph-indexer version
+gnd indexer version
+```
+
 ### `gnd completions`
 
 Generate shell completions.

@@ -1,6 +1,8 @@
+use std::ffi::OsString;
 use std::io;
+use std::process::Command;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use git_testament::{git_testament, render_testament};
@@ -83,6 +85,22 @@ enum Commands {
     /// Remove build artifacts and generated files
     Clean(CleanOpt),
 
+    /// Manage indexer operations. Requires `graph-indexer` to be installed and available on $PATH.
+    ///
+    /// Install it with:
+    ///
+    ///   npm install -g @graphprotocol/indexer-cli
+    ///
+    /// Arguments are forwarded to `graph-indexer`. For example:
+    ///
+    ///   gnd indexer allocations get --network arbitrum-one
+    ///
+    /// Use `gnd indexer help` for more details on available commands.
+    Indexer {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<OsString>,
+    },
+
     /// Generate shell completions
     Completions(CompletionsOpt),
 }
@@ -153,6 +171,57 @@ fn generate_completions(completions_opt: CompletionsOpt) -> Result<()> {
     Ok(())
 }
 
+/// Delegates to the `graph-indexer` binary from the `indexer-cli` npm package.
+///
+/// The `graph-indexer` CLI expects all indexer management commands to be
+/// prefixed with `indexer` (e.g. `graph-indexer indexer allocations get ...`).
+/// This is because `graph-indexer` uses Gluegun's plugin system where `indexer`
+/// is the plugin namespace. We prepend it automatically so that users can write
+/// `gnd indexer allocations get` instead of the longer form.
+fn run_indexer(args: Vec<OsString>) -> Result<()> {
+    let mut cmd = Command::new("graph-indexer");
+    // `version` and `help` are top-level commands, but all other commands
+    // require the `indexer` namespace prefix (e.g. `graph-indexer indexer allocations get`).
+    let first = args.first().and_then(|s| s.to_str());
+    match first {
+        Some("version" | "--version" | "v" | "-v" | "help" | "h") => {}
+        // If no arguments are provided, default to showing top-level help
+        None => {
+            cmd.arg("help");
+        }
+        _ => {
+            cmd.arg("indexer");
+        }
+    }
+    cmd.args(&args);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        let err = cmd.exec();
+        if err.kind() == io::ErrorKind::NotFound {
+            bail!(
+                "'graph-indexer' not found on $PATH. Install indexer-cli: npm install -g @graphprotocol/indexer-cli"
+            );
+        }
+        bail!("failed to exec 'graph-indexer': {err}");
+    }
+
+    #[cfg(not(unix))]
+    {
+        match cmd.status() {
+            Ok(status) if status.success() => Ok(()),
+            Ok(status) => std::process::exit(status.code().unwrap_or(1)),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                bail!(
+                    "'graph-indexer' not found on $PATH. Install indexer-cli: npm install -g @graphprotocol/indexer-cli"
+                );
+            }
+            Err(e) => bail!("failed to run 'graph-indexer': {e}"),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     unsafe {
@@ -188,6 +257,7 @@ async fn main() -> Result<()> {
             run_test(test_opt).await
         }
         Commands::Clean(clean_opt) => run_clean(clean_opt),
+        Commands::Indexer { args } => run_indexer(args),
         Commands::Completions(completions_opt) => generate_completions(completions_opt),
     };
 

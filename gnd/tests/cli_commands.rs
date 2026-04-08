@@ -81,6 +81,61 @@ fn run_gnd_success(args: &[&str], cwd: &Path) -> std::process::Output {
 }
 
 // ============================================================================
+// gnd indexer tests
+// ============================================================================
+
+#[test]
+fn test_indexer_missing_binary_error() {
+    let gnd = verify_gnd_binary();
+
+    // Run with an empty PATH so graph-indexer cannot be found.
+    let output = Command::new(&gnd)
+        .args(["indexer", "status", "--network", "mainnet"])
+        .env("PATH", "")
+        .output()
+        .expect("Failed to execute gnd");
+
+    assert!(
+        !output.status.success(),
+        "gnd indexer should fail when graph-indexer is not on $PATH"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("graph-indexer") && stderr.contains("not found"),
+        "Error should mention graph-indexer not found. Got:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("indexer-cli"),
+        "Error should mention indexer-cli install instructions. Got:\n{stderr}"
+    );
+}
+
+#[test]
+fn test_indexer_clap_help() {
+    let gnd = verify_gnd_binary();
+
+    // `--help` is intercepted by clap, not forwarded to graph-indexer.
+    let output = Command::new(&gnd)
+        .args(["indexer", "--help"])
+        .env("PATH", "")
+        .output()
+        .expect("Failed to execute gnd");
+
+    assert!(output.status.success(), "gnd indexer --help should succeed");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("indexer-cli"),
+        "Help should mention indexer-cli. Got:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("graph-indexer"),
+        "Help should mention graph-indexer. Got:\n{stdout}"
+    );
+}
+
+// ============================================================================
 // gnd init tests
 // ============================================================================
 

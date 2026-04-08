@@ -33,6 +33,7 @@ gnd deploy my-subgraph  # defaults to Studio
 | `graph test` | `gnd test` | Identical flags |
 | `graph clean` | `gnd clean` | Identical flags (new in graph-cli 0.80+) |
 | `graph publish` | `gnd publish` | Identical flags |
+| `graph indexer` | `gnd indexer` | Delegates to `graph-indexer` — requires `indexer-cli` installed |
 | `graph local` | N/A | Not implemented - use graph-node's test infrastructure |
 | `graph node` | N/A | Not implemented - use `graphman` |
 
@@ -67,6 +68,7 @@ Same success checkmarks, step descriptions, and progress indicators:
 
 - `0` for success
 - `1` for any error
+- `gnd indexer` passes through the exit code from `graph-indexer`
 
 ### Configuration Files
 
@@ -82,6 +84,20 @@ Your existing auth keys work with both tools.
 Code generation produces identical AssemblyScript output (after formatting). Your existing subgraph code will work without changes.
 
 ## What's Different
+
+### Indexer Commands
+
+`gnd indexer` provides access to indexer management commands via [`indexer-cli`](https://github.com/graphprotocol/indexer/tree/main/packages/indexer-cli). Requires `graph-indexer` on `$PATH`:
+
+```bash
+npm install -g @graphprotocol/indexer-cli
+
+gnd indexer status --network arbitrum-one
+gnd indexer rules get all --network mainnet
+gnd indexer allocations get --network arbitrum-one
+```
+
+Note: `gnd indexer --help` shows gnd's own help and works without `graph-indexer` installed. Use `gnd indexer help` to see the full list of `graph-indexer` commands.
 
 ### Commands Not Available
 
