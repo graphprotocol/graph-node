@@ -28,7 +28,6 @@ use graph::prelude::{
         network::TransactionResponse,
         primitives::{Address, B256},
         providers::{
-            ext::TraceApi,
             fillers::{
                 BlobGasFiller, ChainIdFiller, FillProvider, GasFiller, JoinFill, NonceFiller,
             },
@@ -258,7 +257,34 @@ impl EthereumAdapter {
         let alloy_trace_filter = Self::build_trace_filter(from, to, &addresses);
         let start = Instant::now();
 
-        let result = self.alloy.trace_filter(&alloy_trace_filter).await;
+        #[derive(Debug)]
+        struct SafeTrace(LocalizedTransactionTrace);
+        impl<'de> ::serde::Deserialize<'de> for SafeTrace {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: ::serde::Deserializer<'de>,
+            {
+                let mut value = ::serde_json::Value::deserialize(deserializer)?;
+                if let Some(result) = value.get_mut("result").and_then(|r| r.as_object_mut()) {
+                    if !result.contains_key("output") {
+                        result.insert(
+                            "output".to_string(),
+                            ::serde_json::Value::String("0x".to_string()),
+                        );
+                    }
+                }
+                ::serde::Deserialize::deserialize(value)
+                    .map(SafeTrace)
+                    .map_err(::serde::de::Error::custom)
+            }
+        }
+
+        let result = self
+            .alloy
+            .client()
+            .request::<_, Vec<SafeTrace>>("trace_filter", (alloy_trace_filter,))
+            .await
+            .map(|traces| traces.into_iter().map(|t| t.0).collect::<Vec<_>>());
 
         if let Ok(traces) = &result {
             self.log_trace_results(&logger, from, to, traces.len());

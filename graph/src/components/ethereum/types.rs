@@ -351,3 +351,39 @@ impl CachedBlock {
         self.light_block().block_ptr()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy::rpc::types::trace::parity::LocalizedTransactionTrace;
+
+    #[test]
+    fn test_issue_6489_reproduce() {
+        let trace_json = r#"{
+  "action": {
+    "from": "0xf7cf0d9398d06d5cb7e4d37dc1e18a829bfff934",
+    "value": "0x0",
+    "gas": "0x0",
+    "init": "0x",
+    "address": "0xf7cf0d9398d06d5cb7e4d37dc1e18a829bfff934",
+    "refund_address": "0x4c3ccc98c01103be72bcfd29e1d2454c98d1a6e3",
+    "balance": "0x0"
+  },
+  "blockHash": "0x6b747793a61c3ce4e5f3355cf80edcb6aa465913ed43f4b0136d93803cf330f3",
+  "blockNumber": 66762070,
+  "result": {
+    "gasUsed": "0x0"
+  },
+  "subtraces": 0,
+  "traceAddress": [
+    1,
+    1
+  ],
+  "transactionHash": "0x5b3dc50c4c7bd9b0e80469b21febbc5d1b54b364a01b22b1e9c426e4632e0b8f",
+  "transactionPosition": 0,
+  "type": "suicide"
+}"#;
+        let trace: Result<LocalizedTransactionTrace, _> = serde_json::from_str(trace_json);
+        assert!(trace.is_ok(), "Failed to parse trace: {:?}", trace.err());
+    }
+}
