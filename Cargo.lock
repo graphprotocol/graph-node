@@ -397,7 +397,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "serde",
  "sha3",
- "tiny-keccak 2.0.2",
+ "tiny-keccak",
 ]
 
 [[package]]
@@ -707,7 +707,7 @@ dependencies = [
  "quote",
  "syn 2.0.117",
  "syn-solidity",
- "tiny-keccak 2.0.2",
+ "tiny-keccak",
 ]
 
 [[package]]
@@ -2224,7 +2224,7 @@ checksum = "f9d839f2a20b0aee515dc581a6172f2321f96cab76c1a38a4c584a194955390e"
 dependencies = [
  "getrandom 0.2.15",
  "once_cell",
- "tiny-keccak 2.0.2",
+ "tiny-keccak",
 ]
 
 [[package]]
@@ -3889,7 +3889,7 @@ dependencies = [
  "stable-hash 0.4.4",
  "strum_macros 0.28.0",
  "thiserror 2.0.18",
- "tiny-keccak 1.5.0",
+ "tiny-keccak",
  "tokio",
  "tokio-retry",
  "tokio-stream",
@@ -3933,7 +3933,7 @@ dependencies = [
  "semver 1.0.28",
  "serde",
  "thiserror 2.0.18",
- "tiny-keccak 1.5.0",
+ "tiny-keccak",
  "tokio",
  "tokio-stream",
  "tonic-prost-build",
@@ -8115,15 +8115,6 @@ checksum = "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
 dependencies = [
  "num-conv",
  "time-core",
-]
-
-[[package]]
-name = "tiny-keccak"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d8a021c69bb74a44ccedb824a046447e2c84a01df9e5c20779750acb38e11b2"
-dependencies = [
- "crunchy",
 ]
 
 [[package]]
