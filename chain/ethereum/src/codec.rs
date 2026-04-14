@@ -162,6 +162,11 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
         // Extract data from trace and block
         let block_hash = self.block.hash.try_decode_proto("transaction block hash")?;
         let block_number = self.block.number;
+        let block_timestamp = self
+            .block
+            .header
+            .as_ref()
+            .and_then(|h| h.timestamp.as_ref().map(|t| t.seconds as u64));
         let transaction_index = Some(self.trace.index as u64);
         let from_address = self
             .trace
@@ -241,6 +246,7 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
                 inner: recovered,
                 block_hash: Some(block_hash),
                 block_number: Some(block_number),
+                block_timestamp,
                 transaction_index,
                 effective_gas_price: if gas_price > 0 { Some(gas_price) } else { None },
             });
@@ -451,6 +457,7 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
             inner: recovered,
             block_hash: Some(block_hash),
             block_number: Some(block_number),
+            block_timestamp,
             transaction_index,
             effective_gas_price: if gas_price > 0 { Some(gas_price) } else { None }, // gas_price already contains effective gas price per protobuf spec
         })
@@ -528,6 +535,8 @@ impl TryInto<AnyBlock> for &Block {
             } else {
                 Some(header.requests_hash.try_decode_proto("requests hash")?)
             },
+            block_access_list_hash: None,
+            slot_number: None,
         };
 
         let rpc_header = alloy::rpc::types::Header {

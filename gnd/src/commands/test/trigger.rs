@@ -446,6 +446,7 @@ fn dummy_transaction(
         inner: Recovered::new_unchecked(envelope, Address::ZERO),
         block_hash: Some(block_hash),
         block_number: Some(block_number),
+        block_timestamp: None,
         transaction_index: Some(transaction_index),
         effective_gas_price: None,
     }

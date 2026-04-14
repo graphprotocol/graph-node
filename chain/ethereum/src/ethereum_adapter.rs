@@ -174,13 +174,11 @@ impl EthereumAdapter {
             Transport::RPC(client) => Arc::new(
                 alloy::providers::ProviderBuilder::<_, _, AnyNetworkBare>::default()
                     .network::<AnyNetworkBare>()
-                    .with_recommended_fillers()
                     .connect_client(client.clone()),
             ),
             Transport::IPC(ipc_connect) => Arc::new(
                 alloy::providers::ProviderBuilder::<_, _, AnyNetworkBare>::default()
                     .network::<AnyNetworkBare>()
-                    .with_recommended_fillers()
                     .connect_ipc(ipc_connect.clone())
                     .await
                     .expect("Failed to connect to Ethereum IPC"),
@@ -188,7 +186,6 @@ impl EthereumAdapter {
             Transport::WS(ws_connect) => Arc::new(
                 alloy::providers::ProviderBuilder::<_, _, AnyNetworkBare>::default()
                     .network::<AnyNetworkBare>()
-                    .with_recommended_fillers()
                     .connect_ws(ws_connect.clone())
                     .await
                     .expect("Failed to connect to Ethereum WS"),
@@ -2790,7 +2787,6 @@ mod tests {
             let asserter = Asserter::new();
             let provider = ProviderBuilder::<_, _, AnyNetworkBare>::default()
                 .network::<AnyNetworkBare>()
-                .with_recommended_fillers()
                 .connect_mocked_client(asserter.clone());
 
             asserter.push_success(&json_value);

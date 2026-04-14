@@ -36,7 +36,7 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 alloy = { version = "2.0.0", features = ["dyn-abi", "json-abi", "full", "arbitrary", "json-rpc", "serde"] }
-alloy-rpc-types = "1.0.33"
+alloy-rpc-types = "2.0.0"
 anyhow = "1.0"
 async-graphql = { version = "7.2.1", features = ["chrono"] }
 async-graphql-axum = "7.2.1"

@@ -468,6 +468,7 @@ fn create_dummy_transaction(
         inner: recovered,
         block_hash: Some(block_hash),
         block_number: Some(block_number),
+        block_timestamp: None,
         transaction_index,
         effective_gas_price: None,
     })
