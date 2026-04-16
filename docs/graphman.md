@@ -8,6 +8,7 @@
 - [Drop](#drop)
 - [Chain Check Blocks](#check-blocks)
 - [Chain Call Cache Remove](#chain-call-cache-remove)
+- [Chain Rebuild Storage](#chain-rebuild-storage)
 
 <a id="info"></a>
 # ⌘ Info
@@ -438,4 +439,70 @@ Remove stale contracts from the call cache that have not been accessed in the la
 
 Remove stale contracts from the call cache that have not been accessed in the last 7 days, limiting the removal to a maximum of 100 contracts:
     graphman --config config.toml chain call-cache ethereum remove --ttl-days 7 --ttl-max-contracts 100
+
+<a id="chain-rebuild-storage"></a>
+# ⌘ Chain Rebuild Storage
+
+### SYNOPSIS
+
+    Rebuild a chain's storage schema and reset head metadata
+
+    If the storage schema is missing, rebuilds it silently.
+    If the storage already exists, prompts for confirmation before
+    dropping and rebuilding it (use --force to skip the prompt).
+
+    USAGE:
+        graphman --config <CONFIG> chain rebuild-storage [OPTIONS] <CHAIN_NAME>
+
+    ARGS:
+        <CHAIN_NAME>    Chain name (must be an existing chain, see 'chain list')
+
+    OPTIONS:
+        -f, --force   Skip confirmation prompt when storage already exists
+        -h, --help    Print help information
+
+### DESCRIPTION
+
+The `chain rebuild-storage` command recovers from a situation where a chain's storage schema
+(e.g. `chain42`) has been dropped or corrupted on the shard but the chain's metadata in
+`public.chains` still exists. This can happen after manual database operations or partial failures.
+
+The command behaves differently depending on the state of the storage:
+
+**Storage missing** (non-destructive): the command silently rebuilds the schema and resets
+head metadata. No confirmation is required.
+
+**Storage exists** (destructive): the command prompts for confirmation before dropping the
+existing schema and rebuilding it from scratch. Use `--force` to skip the prompt.
+
+In both cases, the command performs the following steps in a single transaction:
+
+1. Drops the existing storage schema if present (`DROP SCHEMA IF EXISTS ... CASCADE`).
+2. Upserts the chain's row in `ethereum_networks` on the shard: inserts if missing, or repairs
+   identity metadata (`namespace`, `net_version`, `genesis_block_hash`) and resets head tracking
+   columns (`head_block_hash`, `head_block_number`, `head_block_cursor`) to `NULL` if the row exists.
+3. Rebuilds the storage schema with empty `blocks`, `call_cache`, and `call_meta` tables.
+
+After this, graph-node will treat the chain as freshly added and begin syncing from scratch.
+
+The `public.chains` metadata row is never modified by this command.
+
+### CONSTRAINTS
+
+- The chain must already exist in `public.chains`. This command does not create new chains.
+- Chains using shared storage (`public`) are not supported.
+
+### EXAMPLES
+
+Rebuild missing storage for a chain:
+
+    graphman --config config.toml chain rebuild-storage mainnet
+
+Force-rebuild existing storage (skips confirmation):
+
+    graphman --config config.toml chain rebuild-storage mainnet --force
+
+Check what chains are available:
+
+    graphman --config config.toml chain list
 
