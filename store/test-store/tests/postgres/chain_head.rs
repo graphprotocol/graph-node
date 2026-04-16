@@ -660,3 +660,228 @@ fn test_transaction_receipts_in_block_function() {
         assert!(receipts.is_empty())
     })
 }
+
+// ---- rebuild_storage tests ----
+
+/// Helper that runs a test only on NETWORK_NAME (private storage).
+/// rebuild_storage is not supported on shared storage.
+fn run_rebuild_test<R, F>(chain: FakeBlockList, test: F)
+where
+    F: Fn(Arc<DieselChainStore>, Arc<DieselStore>) -> R + Send + Sync + 'static,
+    R: Future<Output = ()> + Send + 'static,
+{
+    run_test_sequentially(|store| async move {
+        block_store::set_chain(chain.clone(), NETWORK_NAME).await;
+
+        let chain_store = store
+            .block_store()
+            .chain_store(NETWORK_NAME)
+            .await
+            .expect("chain store for NETWORK_NAME");
+
+        test(chain_store, store).await;
+    });
+}
+
+#[test]
+fn rebuild_storage_with_existing_namespace() {
+    let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE, &*BLOCK_TWO];
+
+    run_rebuild_test(chain, |chain_store, store| async move {
+        let block_store = store.block_store();
+
+        // Look up the chain from primary metadata
+        let mut conn = PRIMARY_POOL.get().await.unwrap();
+        let chain = graph_store_postgres::find_chain(&mut conn, NETWORK_NAME)
+            .await
+            .unwrap()
+            .expect("chain exists in public.chains");
+        drop(conn);
+
+        let ident = chain.network_identifier().unwrap();
+
+        // Verify blocks are present before rebuild
+        let hashes = chain_store.block_hashes_by_block_number(1).await.unwrap();
+        assert!(!hashes.is_empty(), "block 1 should exist before rebuild");
+
+        // Verify namespace exists
+        assert!(
+            block_store.has_namespace(&chain).await.unwrap(),
+            "namespace should exist before rebuild"
+        );
+
+        // Rebuild storage (should drop and recreate)
+        block_store
+            .rebuild_chain_storage(NETWORK_NAME, &ident)
+            .await
+            .expect("rebuild_chain_storage succeeds");
+
+        // Verify namespace still exists after rebuild
+        assert!(
+            block_store.has_namespace(&chain).await.unwrap(),
+            "namespace should exist after rebuild"
+        );
+
+        // Verify blocks are gone after rebuild (tables are fresh)
+        let hashes = chain_store.block_hashes_by_block_number(1).await.unwrap();
+        assert!(hashes.is_empty(), "blocks should be gone after rebuild");
+
+        // Verify chain identity is intact
+        let ident_after = chain_store.chain_identifier().await.unwrap();
+        assert_eq!(ident.net_version, ident_after.net_version);
+        assert_eq!(ident.genesis_block_hash, ident_after.genesis_block_hash);
+
+        // Verify head is reset to null
+        let head = chain_store
+            .clone()
+            .chain_head_ptr()
+            .await
+            .expect("chain_head_ptr succeeds");
+        assert!(head.is_none(), "head should be null after rebuild");
+    });
+}
+
+#[test]
+fn rebuild_storage_with_missing_namespace() {
+    let chain = vec![&*GENESIS_BLOCK, &*BLOCK_ONE];
+
+    run_rebuild_test(chain, |chain_store, store| async move {
+        let block_store = store.block_store();
+
+        let mut conn = PRIMARY_POOL.get().await.unwrap();
+        let chain = graph_store_postgres::find_chain(&mut conn, NETWORK_NAME)
+            .await
+            .unwrap()
+            .expect("chain exists in public.chains");
+        drop(conn);
+
+        let ident = chain.network_identifier().unwrap();
+        let nsp = chain.storage.to_string();
+
+        // Drop the namespace manually to simulate missing storage
+        {
+            let mut conn = chain_store.get_conn_for_test().await.unwrap();
+            diesel::sql_query(format!("DROP SCHEMA IF EXISTS {nsp} CASCADE"))
+                .execute(&mut conn)
+                .await
+                .unwrap();
+        }
+
+        // Verify namespace is gone
+        assert!(
+            !block_store.has_namespace(&chain).await.unwrap(),
+            "namespace should be gone after manual drop"
+        );
+
+        // Rebuild should recreate the missing namespace
+        block_store
+            .rebuild_chain_storage(NETWORK_NAME, &ident)
+            .await
+            .expect("rebuild_chain_storage succeeds on missing namespace");
+
+        // Verify namespace exists again
+        assert!(
+            block_store.has_namespace(&chain).await.unwrap(),
+            "namespace should exist after rebuild"
+        );
+
+        // Verify chain identity is correct
+        let ident_after = chain_store.chain_identifier().await.unwrap();
+        assert_eq!(ident.net_version, ident_after.net_version);
+        assert_eq!(ident.genesis_block_hash, ident_after.genesis_block_hash);
+    });
+}
+
+#[test]
+fn rebuild_storage_repairs_ethereum_networks_row() {
+    let chain = vec![&*GENESIS_BLOCK];
+
+    run_rebuild_test(chain, |chain_store, store| async move {
+        let block_store = store.block_store();
+
+        let mut conn = PRIMARY_POOL.get().await.unwrap();
+        let chain = graph_store_postgres::find_chain(&mut conn, NETWORK_NAME)
+            .await
+            .unwrap()
+            .expect("chain exists in public.chains");
+        drop(conn);
+
+        let ident = chain.network_identifier().unwrap();
+        let nsp = chain.storage.to_string();
+
+        // Drop the namespace AND delete the ethereum_networks row to
+        // simulate a fully broken state
+        {
+            let mut conn = chain_store.get_conn_for_test().await.unwrap();
+            diesel::sql_query(format!("DROP SCHEMA IF EXISTS {nsp} CASCADE"))
+                .execute(&mut conn)
+                .await
+                .unwrap();
+            diesel::sql_query(format!(
+                "DELETE FROM public.ethereum_networks WHERE name = '{}'",
+                NETWORK_NAME
+            ))
+            .execute(&mut conn)
+            .await
+            .unwrap();
+        }
+
+        // Rebuild should recreate both the namespace and the
+        // ethereum_networks row via upsert
+        block_store
+            .rebuild_chain_storage(NETWORK_NAME, &ident)
+            .await
+            .expect("rebuild_chain_storage succeeds with missing ethereum_networks row");
+
+        // Verify the chain identity was restored from the ident we passed in
+        let ident_after = chain_store.chain_identifier().await.unwrap();
+        assert_eq!(ident.net_version, ident_after.net_version);
+        assert_eq!(ident.genesis_block_hash, ident_after.genesis_block_hash);
+
+        // Verify namespace exists
+        assert!(
+            block_store.has_namespace(&chain).await.unwrap(),
+            "namespace should exist after rebuild"
+        );
+    });
+}
+
+#[test]
+fn has_namespace_returns_false_for_missing_schema() {
+    let chain = vec![&*GENESIS_BLOCK];
+
+    run_rebuild_test(chain, |chain_store, store| async move {
+        let block_store = store.block_store();
+
+        let mut conn = PRIMARY_POOL.get().await.unwrap();
+        let chain = graph_store_postgres::find_chain(&mut conn, NETWORK_NAME)
+            .await
+            .unwrap()
+            .expect("chain exists");
+        drop(conn);
+
+        // Namespace should exist initially
+        assert!(block_store.has_namespace(&chain).await.unwrap());
+
+        let nsp = chain.storage.to_string();
+
+        // Drop the schema
+        {
+            let mut conn = chain_store.get_conn_for_test().await.unwrap();
+            diesel::sql_query(format!("DROP SCHEMA IF EXISTS {nsp} CASCADE"))
+                .execute(&mut conn)
+                .await
+                .unwrap();
+        }
+
+        // Should return false now
+        assert!(!block_store.has_namespace(&chain).await.unwrap());
+
+        // Rebuild to leave things clean for other tests
+        let ident = chain.network_identifier().unwrap();
+        block_store
+            .rebuild_chain_storage(NETWORK_NAME, &ident)
+            .await
+            .unwrap();
+    });
+}
