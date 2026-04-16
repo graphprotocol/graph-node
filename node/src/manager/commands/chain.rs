@@ -13,6 +13,7 @@ use graph::components::store::StoreError;
 use graph::prelude::BlockNumber;
 use graph::prelude::ChainStore as _;
 use graph::prelude::LightEthereumBlock;
+use graph::prelude::anyhow::Context as _;
 use graph::prelude::{anyhow, anyhow::bail};
 use graph::slog::Logger;
 use graph::{
@@ -27,11 +28,13 @@ use graph_store_postgres::ChainStore;
 use graph_store_postgres::PoolCoordinator;
 use graph_store_postgres::ScopedFutureExt;
 use graph_store_postgres::Shard;
+use graph_store_postgres::Storage;
 use graph_store_postgres::add_chain;
 use graph_store_postgres::find_chain;
 use graph_store_postgres::update_chain_name;
 use graph_store_postgres::{ConnectionPool, command_support::catalog::block_store};
 
+use crate::manager::prompt::prompt_for_confirmation;
 use crate::network_setup::Networks;
 
 pub async fn list(primary: ConnectionPool, store: BlockStore) -> Result<(), Error> {
@@ -327,5 +330,57 @@ pub async fn ingest(
     if rows > 0 {
         println!("    (also deleted {rows} duplicate row(s) with that number)");
     }
+    Ok(())
+}
+
+pub async fn rebuild_storage(
+    primary: ConnectionPool,
+    store: BlockStore,
+    name: String,
+    force: bool,
+) -> Result<(), Error> {
+    let mut conn = primary.get().await?;
+
+    let chain = block_store::find_chain(&mut conn, &name)
+        .await?
+        .ok_or_else(|| {
+            anyhow!(
+                "Chain {} not found in public.chains.\n\
+                 This command only supports chains already present in metadata.",
+                name
+            )
+        })?;
+
+    if matches!(chain.storage, Storage::Shared) {
+        bail!(
+            "Chain {} uses shared storage public and cannot be rebuilt with this command.",
+            name
+        );
+    }
+
+    let namespace = chain.storage.to_string();
+    let shard = &chain.shard;
+    let ident = chain.network_identifier()?;
+
+    if store.has_namespace(&chain).await? {
+        let prompt = format!(
+            "Storage {namespace} for chain {name} already exists on shard {shard}.\n\
+             This will drop and rebuild chain storage. All cached blocks and call cache \
+             data in that namespace will be permanently deleted.\n\
+             Proceed?"
+        );
+        if !force && !prompt_for_confirmation(&prompt)? {
+            println!("Aborting.");
+            return Ok(());
+        }
+    }
+
+    store
+        .rebuild_chain_storage(&name, &ident)
+        .await
+        .with_context(|| format!("Failed to rebuild storage {namespace} for chain {name}"))?;
+
+    println!("Successfully rebuilt storage {namespace} for chain {name} on shard {shard}.");
+
     Ok(())
 }
