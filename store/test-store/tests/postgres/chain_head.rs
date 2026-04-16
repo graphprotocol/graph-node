@@ -712,7 +712,7 @@ fn rebuild_storage_with_existing_namespace() {
 
         // Rebuild storage (should drop and recreate)
         block_store
-            .rebuild_chain_storage(NETWORK_NAME, &ident)
+            .rebuild_chain_storage(NETWORK_NAME, &ident, true)
             .await
             .expect("rebuild_chain_storage succeeds");
 
@@ -775,7 +775,7 @@ fn rebuild_storage_with_missing_namespace() {
 
         // Rebuild should recreate the missing namespace
         block_store
-            .rebuild_chain_storage(NETWORK_NAME, &ident)
+            .rebuild_chain_storage(NETWORK_NAME, &ident, false)
             .await
             .expect("rebuild_chain_storage succeeds on missing namespace");
 
@@ -829,7 +829,7 @@ fn rebuild_storage_repairs_ethereum_networks_row() {
         // Rebuild should recreate both the namespace and the
         // ethereum_networks row via upsert
         block_store
-            .rebuild_chain_storage(NETWORK_NAME, &ident)
+            .rebuild_chain_storage(NETWORK_NAME, &ident, false)
             .await
             .expect("rebuild_chain_storage succeeds with missing ethereum_networks row");
 
@@ -880,7 +880,7 @@ fn has_namespace_returns_false_for_missing_schema() {
         // Rebuild to leave things clean for other tests
         let ident = chain.network_identifier().unwrap();
         block_store
-            .rebuild_chain_storage(NETWORK_NAME, &ident)
+            .rebuild_chain_storage(NETWORK_NAME, &ident, false)
             .await
             .unwrap();
     });

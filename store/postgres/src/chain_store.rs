@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use diesel::sql_types::Text;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, insert_into, update};
 use diesel_async::AsyncConnection;
-use diesel_async::{RunQueryDsl, SimpleAsyncConnection, scoped_futures::ScopedFutureExt};
+use diesel_async::{RunQueryDsl, scoped_futures::ScopedFutureExt};
 
 use graph::components::store::ChainHeadStore;
 use graph::data::store::ethereum::call;
@@ -2483,7 +2483,11 @@ impl ChainStore {
     /// metadata in `ethereum_networks`, and rebuild the schema with
     /// empty tables. If the `ethereum_networks` row is missing, it is
     /// created from the provided `ident`.
-    pub(crate) async fn rebuild_storage(&self, ident: &ChainIdentifier) -> Result<(), Error> {
+    pub(crate) async fn rebuild_storage(
+        &self,
+        ident: &ChainIdentifier,
+        drop_schema: bool,
+    ) -> Result<(), Error> {
         use public::ethereum_networks as n;
 
         let nsp = self.storage.to_string();
@@ -2493,9 +2497,10 @@ impl ChainStore {
         let mut conn = self.pool.get_permitted().await?;
         conn.transaction(|conn| {
             async {
-                debug!(&self.logger, "Dropping existing schema if present"; "namespace" => &nsp);
-                conn.batch_execute(&format!("DROP SCHEMA IF EXISTS {nsp} CASCADE"))
-                    .await?;
+                if drop_schema {
+                    debug!(&self.logger, "Dropping existing schema"; "namespace" => &nsp);
+                    self.storage.drop_storage(conn, &self.chain).await?;
+                }
 
                 debug!(&self.logger, "Upserting ethereum_networks row"; "chain" => &self.chain);
                 insert_into(n::table)

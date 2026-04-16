@@ -498,13 +498,14 @@ impl BlockStore {
         &self,
         chain: &str,
         ident: &ChainIdentifier,
+        drop_schema: bool,
     ) -> Result<(), StoreError> {
         let chain_store = self
             .store(chain)
             .await
             .ok_or_else(|| internal_error!("No chain store found for {}", chain))?;
 
-        Ok(chain_store.rebuild_storage(ident).await?)
+        Ok(chain_store.rebuild_storage(ident, drop_schema).await?)
     }
 
     // Helper to clone the list of chain stores to avoid holding the lock

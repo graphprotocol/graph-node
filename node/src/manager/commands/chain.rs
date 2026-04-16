@@ -362,7 +362,8 @@ pub async fn rebuild_storage(
     let shard = &chain.shard;
     let ident = chain.network_identifier()?;
 
-    if store.has_namespace(&chain).await? {
+    let drop_schema = store.has_namespace(&chain).await?;
+    if drop_schema {
         let prompt = format!(
             "Storage {namespace} for chain {name} already exists on shard {shard}.\n\
              This will drop and rebuild chain storage. All cached blocks and call cache \
@@ -376,7 +377,7 @@ pub async fn rebuild_storage(
     }
 
     store
-        .rebuild_chain_storage(&name, &ident)
+        .rebuild_chain_storage(&name, &ident, drop_schema)
         .await
         .with_context(|| format!("Failed to rebuild storage {namespace} for chain {name}"))?;
 
