@@ -467,6 +467,8 @@ The `chain rebuild-storage` command recovers from a situation where a chain's st
 (e.g. `chain42`) has been dropped or corrupted on the shard but the chain's metadata in
 `public.chains` still exists. This can happen after manual database operations or partial failures.
 
+> **Operational requirement:** Stop graph-node before running this command.
+
 The command behaves differently depending on the state of the storage:
 
 **Storage missing** (non-destructive): the command silently rebuilds the schema and resets
@@ -477,7 +479,7 @@ existing schema and rebuilding it from scratch. Use `--force` to skip the prompt
 
 In both cases, the command performs the following steps in a single transaction:
 
-1. Drops the existing storage schema if present (`DROP SCHEMA IF EXISTS ... CASCADE`).
+1. Drops the existing storage schema if present (`DROP SCHEMA ... CASCADE`).
 2. Upserts the chain's row in `ethereum_networks` on the shard: inserts if missing, or repairs
    identity metadata (`namespace`, `net_version`, `genesis_block_hash`) and resets head tracking
    columns (`head_block_hash`, `head_block_number`, `head_block_cursor`) to `NULL` if the row exists.
