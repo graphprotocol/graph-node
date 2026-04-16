@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use diesel::sql_types::Text;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, insert_into, update};
 use diesel_async::AsyncConnection;
-use diesel_async::{RunQueryDsl, scoped_futures::ScopedFutureExt};
+use diesel_async::{RunQueryDsl, SimpleAsyncConnection, scoped_futures::ScopedFutureExt};
 
 use graph::components::store::ChainHeadStore;
 use graph::data::store::ethereum::call;
@@ -12,7 +12,7 @@ use graph::parking_lot::RwLock;
 use graph::prelude::MetricsRegistry;
 use graph::prelude::alloy::primitives::B256;
 use graph::prometheus::{CounterVec, GaugeVec};
-use graph::slog::{Logger, info, o};
+use graph::slog::{Logger, debug, info, o};
 use graph::stable_hash::crypto_stable_hash;
 use graph::util::herd_cache::HerdCache;
 
@@ -2472,6 +2472,55 @@ impl ChainStore {
                 delete(n::table.filter(n::name.eq(&self.chain)))
                     .execute(conn)
                     .await?;
+                Ok(())
+            }
+            .scope_boxed()
+        })
+        .await
+    }
+
+    /// Drop the chain's storage schema (if it exists), reset head
+    /// metadata in `ethereum_networks`, and rebuild the schema with
+    /// empty tables. If the `ethereum_networks` row is missing, it is
+    /// created from the provided `ident`.
+    pub(crate) async fn rebuild_storage(&self, ident: &ChainIdentifier) -> Result<(), Error> {
+        use public::ethereum_networks as n;
+
+        let nsp = self.storage.to_string();
+
+        debug!(&self.logger, "Rebuilding storage for chain"; "chain" => &self.chain, "namespace" => &nsp);
+
+        let mut conn = self.pool.get_permitted().await?;
+        conn.transaction(|conn| {
+            async {
+                debug!(&self.logger, "Dropping existing schema if present"; "namespace" => &nsp);
+                conn.batch_execute(&format!("DROP SCHEMA IF EXISTS {nsp} CASCADE"))
+                    .await?;
+
+                debug!(&self.logger, "Upserting ethereum_networks row"; "chain" => &self.chain);
+                insert_into(n::table)
+                    .values((
+                        n::name.eq(&self.chain),
+                        n::namespace.eq(&self.storage),
+                        n::net_version.eq(&ident.net_version),
+                        n::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
+                    ))
+                    .on_conflict(n::name)
+                    .do_update()
+                    .set((
+                        n::namespace.eq(&self.storage),
+                        n::net_version.eq(&ident.net_version),
+                        n::genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
+                        n::head_block_hash.eq(None::<String>),
+                        n::head_block_number.eq(None::<i64>),
+                        n::head_block_cursor.eq(None::<String>),
+                    ))
+                    .execute(conn)
+                    .await?;
+
+                debug!(&self.logger, "Creating storage schema and tables"; "namespace" => &nsp);
+                self.storage.create(conn).await?;
+
                 Ok(())
             }
             .scope_boxed()
