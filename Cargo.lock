@@ -3921,6 +3921,7 @@ dependencies = [
  "redis",
  "regex",
  "reqwest 0.12.23",
+ "rustls",
  "semver 1.0.28",
  "serde",
  "serde_derive",

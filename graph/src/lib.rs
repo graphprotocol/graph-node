@@ -33,6 +33,8 @@ pub mod env;
 
 pub mod ipfs;
 
+pub mod tls;
+
 pub mod abi;
 
 pub mod amp;

@@ -619,6 +619,7 @@ pub fn all_shards() -> Vec<Shard> {
 }
 
 fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager>) {
+    graph::tls::install_default_crypto_provider();
     let mut opt = Opt::default();
     let url = std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL").filter(|s| !s.is_empty());
     let file = std::env::var_os("GRAPH_NODE_TEST_CONFIG").filter(|s| !s.is_empty());

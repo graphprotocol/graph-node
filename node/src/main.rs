@@ -15,6 +15,7 @@ lazy_static! {
 }
 
 fn main() {
+    graph::tls::install_default_crypto_provider();
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .max_blocking_threads(*MAX_BLOCKING_THREADS)

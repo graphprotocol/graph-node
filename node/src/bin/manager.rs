@@ -1133,6 +1133,7 @@ impl Context {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    graph::tls::install_default_crypto_provider();
     // Disable load management for graphman commands
     unsafe {
         env::set_var("GRAPH_LOAD_THRESHOLD", "0");

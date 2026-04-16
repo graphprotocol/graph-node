@@ -365,6 +365,7 @@ fn test_logger(test_name: &str) -> Logger {
 
 #[allow(clippy::await_holding_lock)]
 pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
+    graph::tls::install_default_crypto_provider();
     let _mutex_guard = STORE_MUTEX.lock().unwrap();
 
     let config = {

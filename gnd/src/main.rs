@@ -224,6 +224,7 @@ fn run_indexer(args: Vec<OsString>) -> Result<()> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    graph::tls::install_default_crypto_provider();
     unsafe {
         std::env::set_var("ETHEREUM_REORG_THRESHOLD", "10");
         std::env::set_var("GRAPH_NODE_DISABLE_DEPLOYMENT_HASH_VALIDATION", "true");
