@@ -510,9 +510,7 @@ impl<V: PartialEq> PartialEq for Object<V> {
     }
 }
 
-impl<V: Eq> Eq for Object<V> {
-    fn assert_receiver_is_total_eq(&self) {}
-}
+impl<V: Eq> Eq for Object<V> {}
 
 impl<V: Serialize> Serialize for Object<V> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
