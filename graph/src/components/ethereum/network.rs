@@ -46,6 +46,7 @@ pub struct AnyNetworkBare;
 /// supertraits, so we must re-implement those by delegation since Rust doesn't auto-delegate
 /// trait impls through `Deref`.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct AnyTransactionRequest(WithOtherFields<TransactionRequest>);
 
 impl Deref for AnyTransactionRequest {
@@ -82,6 +83,8 @@ impl From<AnyTypedTransaction> for AnyTransactionRequest {
 
 impl From<AnyTransaction> for AnyTransactionRequest {
     fn from(value: AnyTransaction) -> Self {
+        // Upstream only has From<AnyRpcTransaction> for WithOtherFields<TransactionRequest>,
+        // so we wrap in WithOtherFields first to match that impl.
         let tx = WithOtherFields::<Transaction<AnyTxEnvelope>>::new(value);
         Self(AnyRpcTransaction::from(tx).into())
     }
