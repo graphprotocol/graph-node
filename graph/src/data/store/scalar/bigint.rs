@@ -41,7 +41,7 @@ mod big_int {
         pub fn new(inner: num_bigint::BigInt) -> Result<Self, anyhow::Error> {
             // `inner.bits()` won't include the sign bit, so we add 1 to account for it.
             let bits = inner.bits() + 1;
-            if bits > Self::MAX_BITS as usize {
+            if bits > Self::MAX_BITS as u64 {
                 anyhow::bail!(
                     "BigInt is too big, total bits {} (max {})",
                     bits,
@@ -73,7 +73,7 @@ mod big_int {
         }
 
         pub fn bits(&self) -> usize {
-            self.0.bits()
+            self.0.bits() as usize
         }
 
         pub(in super::super) fn inner(self) -> num_bigint::BigInt {
@@ -383,7 +383,7 @@ impl Shl<u8> for BigInt {
     type Output = Self;
 
     fn shl(self, bits: u8) -> Self {
-        BigInt::unchecked_new(self.inner().shl(bits.into()))
+        BigInt::unchecked_new(self.inner().shl(usize::from(bits)))
     }
 }
 
@@ -391,7 +391,7 @@ impl Shr<u8> for BigInt {
     type Output = Self;
 
     fn shr(self, bits: u8) -> Self {
-        BigInt::unchecked_new(self.inner().shr(bits.into()))
+        BigInt::unchecked_new(self.inner().shr(usize::from(bits)))
     }
 }
 

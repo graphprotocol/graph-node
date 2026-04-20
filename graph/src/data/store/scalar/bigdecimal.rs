@@ -1,3 +1,5 @@
+use bigdecimal::BigDecimal as UpstreamBigDecimal;
+pub use bigdecimal::ToPrimitive;
 use diesel::deserialize::FromSqlRow;
 use diesel::expression::AsExpression;
 use num_bigint::{self, ToBigInt};
@@ -12,8 +14,6 @@ use std::str::FromStr;
 
 use crate::anyhow::anyhow;
 use crate::runtime::gas::{Gas, GasSizeOf};
-use old_bigdecimal::BigDecimal as OldBigDecimal;
-pub use old_bigdecimal::ToPrimitive;
 
 use super::BigInt;
 
@@ -24,12 +24,12 @@ use super::BigInt;
 #[derive(
     Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, AsExpression, FromSqlRow,
 )]
-#[serde(from = "OldBigDecimal")]
+#[serde(from = "UpstreamBigDecimal")]
 #[diesel(sql_type = diesel::sql_types::Numeric)]
-pub struct BigDecimal(OldBigDecimal);
+pub struct BigDecimal(UpstreamBigDecimal);
 
-impl From<OldBigDecimal> for BigDecimal {
-    fn from(big_decimal: OldBigDecimal) -> Self {
+impl From<UpstreamBigDecimal> for BigDecimal {
+    fn from(big_decimal: UpstreamBigDecimal) -> Self {
         BigDecimal(big_decimal).normalized()
     }
 }
@@ -43,17 +43,17 @@ impl BigDecimal {
 
     pub fn new(digits: BigInt, exp: i64) -> Self {
         // bigdecimal uses `scale` as the opposite of the power of ten, so negate `exp`.
-        Self::from(OldBigDecimal::new(digits.inner(), -exp))
+        Self::from(UpstreamBigDecimal::new(digits.inner(), -exp))
     }
 
     pub fn parse_bytes(bytes: &[u8]) -> Option<Self> {
-        OldBigDecimal::parse_bytes(bytes, 10).map(Self)
+        UpstreamBigDecimal::parse_bytes(bytes, 10).map(Self)
     }
 
     pub fn zero() -> BigDecimal {
-        use old_bigdecimal::Zero;
+        use num_traits::Zero;
 
-        BigDecimal(OldBigDecimal::zero())
+        BigDecimal(UpstreamBigDecimal::zero())
     }
 
     pub fn as_bigint_and_exponent(&self) -> (num_bigint::BigInt, i64) {
@@ -75,7 +75,9 @@ impl BigDecimal {
             ));
         }
         let bi = self.0.to_bigint().ok_or_else(|| {
-            anyhow!("The implementation of `to_bigint` for `OldBigDecimal` always returns `Some`")
+            anyhow!(
+                "The implementation of `to_bigint` for `UpstreamBigDecimal` always returns `Some`"
+            )
         })?;
         BigInt::new(bi)
     }
@@ -84,8 +86,9 @@ impl BigDecimal {
         self.0.digits()
     }
 
-    // Copy-pasted from `OldBigDecimal::normalize`. We can use the upstream version once it
-    // is included in a released version supported by Diesel.
+    // Round to `MAX_SIGNFICANT_DIGITS` and strip trailing zeros. This is our
+    // PoI-stability policy; it is enforced on every construction path via
+    // `From<UpstreamBigDecimal>`.
     #[must_use]
     pub fn normalized(&self) -> BigDecimal {
         if self == &BigDecimal::zero() {
@@ -102,7 +105,7 @@ impl BigDecimal {
         let int_val = num_bigint::BigInt::from_radix_be(sign, &digits, 10).unwrap();
         let scale = exp - trailing_count as i64;
 
-        BigDecimal(OldBigDecimal::new(int_val, scale))
+        BigDecimal(UpstreamBigDecimal::new(int_val, scale))
     }
 }
 
@@ -119,46 +122,46 @@ impl fmt::Debug for BigDecimal {
 }
 
 impl FromStr for BigDecimal {
-    type Err = <OldBigDecimal as FromStr>::Err;
+    type Err = <UpstreamBigDecimal as FromStr>::Err;
 
     fn from_str(s: &str) -> Result<BigDecimal, Self::Err> {
-        Ok(Self::from(OldBigDecimal::from_str(s)?))
+        Ok(Self::from(UpstreamBigDecimal::from_str(s)?))
     }
 }
 
 impl From<i32> for BigDecimal {
     fn from(n: i32) -> Self {
-        Self::from(OldBigDecimal::from(n))
+        Self::from(UpstreamBigDecimal::from(n))
     }
 }
 
 impl From<i64> for BigDecimal {
     fn from(n: i64) -> Self {
-        Self::from(OldBigDecimal::from(n))
+        Self::from(UpstreamBigDecimal::from(n))
     }
 }
 
 impl From<i128> for BigDecimal {
     fn from(n: i128) -> Self {
-        Self::from(OldBigDecimal::new(BigInt::from(n).inner(), 0))
+        Self::from(UpstreamBigDecimal::new(BigInt::from(n).inner(), 0))
     }
 }
 
 impl From<u64> for BigDecimal {
     fn from(n: u64) -> Self {
-        Self::from(OldBigDecimal::from(n))
+        Self::from(UpstreamBigDecimal::from(n))
     }
 }
 
 impl From<f32> for BigDecimal {
     fn from(n: f32) -> Self {
-        Self::from(OldBigDecimal::from_f32(n).unwrap_or_default())
+        Self::from(UpstreamBigDecimal::from_f32(n).unwrap_or_default())
     }
 }
 
 impl From<f64> for BigDecimal {
     fn from(n: f64) -> Self {
-        Self::from(OldBigDecimal::from_f64(n).unwrap_or_default())
+        Self::from(UpstreamBigDecimal::from_f64(n).unwrap_or_default())
     }
 }
 
@@ -198,7 +201,7 @@ impl Div for BigDecimal {
     }
 }
 
-impl old_bigdecimal::ToPrimitive for BigDecimal {
+impl bigdecimal::ToPrimitive for BigDecimal {
     fn to_i64(&self) -> Option<i64> {
         self.0.to_i64()
     }
@@ -248,355 +251,27 @@ impl GasSizeOf for BigDecimal {
     }
 }
 
-// This code was copied from diesel. Unfortunately, we need to reimplement
-// it here because any change to diesel's version of bigdecimal will cause
-// the build to break as our old_bigdecimal::BigDecimal and diesel's
-// bigdecimal::BigDecimal will then become distinct types, and we can't
-// update our old_bigdecimal because updating causes PoI divergences.
-//
-// The code was taken from diesel-2.1.4/src/pg/types/numeric.rs
+// Delegate PG numeric codec to diesel's built-in impls for
+// `bigdecimal::BigDecimal`. This works because our `UpstreamBigDecimal`
+// alias is the exact type diesel targets (both resolve the `bigdecimal`
+// crate to the same version via workspace dependency resolution).
 mod pg {
-    use std::error::Error;
-
-    use diesel::deserialize::FromSql;
+    use diesel::deserialize::{self, FromSql};
     use diesel::pg::{Pg, PgValue};
     use diesel::serialize::{self, Output, ToSql};
     use diesel::sql_types::Numeric;
-    use diesel::{data_types::PgNumeric, deserialize};
-    use num_bigint::{BigInt, BigUint, Sign};
-    use num_integer::Integer;
-    use num_traits::{Signed, ToPrimitive, Zero};
 
-    use super::super::BigIntSign;
-    use super::{BigDecimal, OldBigDecimal};
-
-    /// Iterator over the digits of a big uint in base 10k.
-    /// The digits will be returned in little endian order.
-    struct ToBase10000(Option<BigUint>);
-
-    impl Iterator for ToBase10000 {
-        type Item = i16;
-
-        fn next(&mut self) -> Option<Self::Item> {
-            self.0.take().map(|v| {
-                let (div, rem) = v.div_rem(&BigUint::from(10_000u16));
-                if !div.is_zero() {
-                    self.0 = Some(div);
-                }
-                rem.to_i16().expect("10000 always fits in an i16")
-            })
-        }
-    }
-
-    impl<'a> TryFrom<&'a PgNumeric> for BigDecimal {
-        type Error = Box<dyn Error + Send + Sync>;
-
-        fn try_from(numeric: &'a PgNumeric) -> deserialize::Result<Self> {
-            let (sign, weight, scale, digits) = match *numeric {
-                PgNumeric::Positive {
-                    weight,
-                    scale,
-                    ref digits,
-                } => (BigIntSign::Plus, weight, scale, digits),
-                PgNumeric::Negative {
-                    weight,
-                    scale,
-                    ref digits,
-                } => (Sign::Minus, weight, scale, digits),
-                PgNumeric::NaN => {
-                    return Err(Box::from("NaN is not (yet) supported in BigDecimal"));
-                }
-            };
-
-            let mut result = BigUint::default();
-            let count = digits.len() as i64;
-            for digit in digits {
-                result *= BigUint::from(10_000u64);
-                result += BigUint::from(*digit as u64);
-            }
-            // First digit got factor 10_000^(digits.len() - 1), but should get 10_000^weight
-            let correction_exp = 4 * (i64::from(weight) - count + 1);
-            let result = OldBigDecimal::new(BigInt::from_biguint(sign, result), -correction_exp)
-                .with_scale(i64::from(scale));
-            Ok(BigDecimal(result))
-        }
-    }
-
-    impl TryFrom<PgNumeric> for BigDecimal {
-        type Error = Box<dyn Error + Send + Sync>;
-
-        fn try_from(numeric: PgNumeric) -> deserialize::Result<Self> {
-            (&numeric).try_into()
-        }
-    }
-
-    impl<'a> From<&'a BigDecimal> for PgNumeric {
-        // NOTE(clippy): No `std::ops::MulAssign` impl for `BigInt`
-        // NOTE(clippy): Clippy suggests to replace the `.take_while(|i| i.is_zero())`
-        // with `.take_while(Zero::is_zero)`, but that's a false positive.
-        // The closure gets an `&&i16` due to autoderef `<i16 as Zero>::is_zero(&self) -> bool`
-        // is called. There is no impl for `&i16` that would work with this closure.
-        #[allow(clippy::assign_op_pattern, clippy::redundant_closure)]
-        fn from(decimal: &'a BigDecimal) -> Self {
-            let (mut integer, scale) = decimal.as_bigint_and_exponent();
-
-            // Handling of negative scale
-            let scale = if scale < 0 {
-                for _ in 0..(-scale) {
-                    integer = integer * 10;
-                }
-                0
-            } else {
-                scale as u16
-            };
-
-            integer = integer.abs();
-
-            // Ensure that the decimal will always lie on a digit boundary
-            for _ in 0..(4 - scale % 4) {
-                integer = integer * 10;
-            }
-            let integer = integer.to_biguint().expect("integer is always positive");
-
-            let mut digits = ToBase10000(Some(integer)).collect::<Vec<_>>();
-            digits.reverse();
-            let digits_after_decimal = scale / 4 + 1;
-            let weight = digits.len() as i16 - digits_after_decimal as i16 - 1;
-
-            let unnecessary_zeroes = digits.iter().rev().take_while(|i| i.is_zero()).count();
-
-            let relevant_digits = digits.len() - unnecessary_zeroes;
-            digits.truncate(relevant_digits);
-
-            match decimal.0.sign() {
-                Sign::Plus => PgNumeric::Positive {
-                    digits,
-                    scale,
-                    weight,
-                },
-                Sign::Minus => PgNumeric::Negative {
-                    digits,
-                    scale,
-                    weight,
-                },
-                Sign::NoSign => PgNumeric::Positive {
-                    digits: vec![0],
-                    scale: 0,
-                    weight: 0,
-                },
-            }
-        }
-    }
-
-    impl From<BigDecimal> for PgNumeric {
-        fn from(bigdecimal: BigDecimal) -> Self {
-            (&bigdecimal).into()
-        }
-    }
+    use super::{BigDecimal, UpstreamBigDecimal};
 
     impl ToSql<Numeric, Pg> for BigDecimal {
         fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
-            let numeric = PgNumeric::from(self);
-            ToSql::<Numeric, Pg>::to_sql(&numeric, &mut out.reborrow())
+            <UpstreamBigDecimal as ToSql<Numeric, Pg>>::to_sql(&self.0, out)
         }
     }
 
     impl FromSql<Numeric, Pg> for BigDecimal {
-        fn from_sql(numeric: PgValue<'_>) -> deserialize::Result<Self> {
-            PgNumeric::from_sql(numeric)?.try_into()
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        // The tests are exactly the same as Diesel's tests, but we use our
-        // BigDecimal instead of bigdecimal::BigDecimal. In a few places, we
-        // have to construct the BigDecimal directly as
-        // `BigDecimal(OldBigDecimal...)` because BigDecimal::new inverts
-        // the sign of the exponent
-        use diesel::data_types::PgNumeric;
-
-        use super::super::{BigDecimal, OldBigDecimal};
-        use std::str::FromStr;
-
-        #[test]
-        fn bigdecimal_to_pgnumeric_converts_digits_to_base_10000() {
-            let decimal = BigDecimal::from_str("1").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: 0,
-                scale: 0,
-                digits: vec![1],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal::from_str("10").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: 0,
-                scale: 0,
-                digits: vec![10],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal::from_str("10000").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: 1,
-                scale: 0,
-                digits: vec![1],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal::from_str("10001").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: 1,
-                scale: 0,
-                digits: vec![1, 1],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal::from_str("100000000").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: 2,
-                scale: 0,
-                digits: vec![1],
-            };
-            assert_eq!(expected, decimal.into());
-        }
-
-        #[test]
-        fn bigdecimal_to_pg_numeric_properly_adjusts_scale() {
-            let decimal = BigDecimal::from_str("1").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: 0,
-                scale: 0,
-                digits: vec![1],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal(OldBigDecimal::from_str("1.0").unwrap());
-            let expected = PgNumeric::Positive {
-                weight: 0,
-                scale: 1,
-                digits: vec![1],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal::from_str("1.1").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: 0,
-                scale: 1,
-                digits: vec![1, 1000],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal(OldBigDecimal::from_str("1.10").unwrap());
-            let expected = PgNumeric::Positive {
-                weight: 0,
-                scale: 2,
-                digits: vec![1, 1000],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal::from_str("100000000.0001").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: 2,
-                scale: 4,
-                digits: vec![1, 0, 0, 1],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal::from_str("0.1").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: -1,
-                scale: 1,
-                digits: vec![1000],
-            };
-            assert_eq!(expected, decimal.into());
-        }
-
-        #[test]
-        fn bigdecimal_to_pg_numeric_retains_sign() {
-            let decimal = BigDecimal::from_str("123.456").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: 0,
-                scale: 3,
-                digits: vec![123, 4560],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal::from_str("-123.456").unwrap();
-            let expected = PgNumeric::Negative {
-                weight: 0,
-                scale: 3,
-                digits: vec![123, 4560],
-            };
-            assert_eq!(expected, decimal.into());
-        }
-
-        #[test]
-        fn bigdecimal_with_negative_scale_to_pg_numeric_works() {
-            let decimal = BigDecimal(OldBigDecimal::new(50.into(), -2));
-            let expected = PgNumeric::Positive {
-                weight: 0,
-                scale: 0,
-                digits: vec![5000],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal(OldBigDecimal::new(1.into(), -4));
-            let expected = PgNumeric::Positive {
-                weight: 1,
-                scale: 0,
-                digits: vec![1],
-            };
-            assert_eq!(expected, decimal.into());
-        }
-
-        #[test]
-        fn bigdecimal_with_negative_weight_to_pg_numeric_works() {
-            let decimal = BigDecimal(OldBigDecimal::from_str("0.1000000000000000").unwrap());
-            let expected = PgNumeric::Positive {
-                weight: -1,
-                scale: 16,
-                digits: vec![1000],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal::from_str("0.00315937").unwrap();
-            let expected = PgNumeric::Positive {
-                weight: -1,
-                scale: 8,
-                digits: vec![31, 5937],
-            };
-            assert_eq!(expected, decimal.into());
-
-            let decimal = BigDecimal(OldBigDecimal::from_str("0.003159370000000000").unwrap());
-            let expected = PgNumeric::Positive {
-                weight: -1,
-                scale: 18,
-                digits: vec![31, 5937],
-            };
-            assert_eq!(expected, decimal.into());
-        }
-
-        #[test]
-        fn pg_numeric_to_bigdecimal_works() {
-            let expected = BigDecimal::from_str("123.456").unwrap();
-            let pg_numeric = PgNumeric::Positive {
-                weight: 0,
-                scale: 3,
-                digits: vec![123, 4560],
-            };
-            let res: BigDecimal = pg_numeric.try_into().unwrap();
-            assert_eq!(res, expected);
-
-            let expected = BigDecimal::from_str("-56.78").unwrap();
-            let pg_numeric = PgNumeric::Negative {
-                weight: 0,
-                scale: 2,
-                digits: vec![56, 7800],
-            };
-            let res: BigDecimal = pg_numeric.try_into().unwrap();
-            assert_eq!(res, expected);
+        fn from_sql(value: PgValue<'_>) -> deserialize::Result<Self> {
+            <UpstreamBigDecimal as FromSql<Numeric, Pg>>::from_sql(value).map(BigDecimal)
         }
     }
 }
@@ -606,7 +281,7 @@ mod test {
     use super::{
         super::Bytes,
         super::test::{crypto_stable_hash, same_stable_hash},
-        BigDecimal, BigInt, OldBigDecimal,
+        BigDecimal, BigInt, UpstreamBigDecimal,
     };
     use std::str::FromStr;
 
@@ -664,17 +339,17 @@ mod test {
         let vals = vec![
             (
                 BigDecimal::new(BigInt::from(10), -2),
-                BigDecimal(OldBigDecimal::new(1.into(), 1)),
+                BigDecimal(UpstreamBigDecimal::new(1.into(), 1)),
                 "0.1",
             ),
             (
                 BigDecimal::new(BigInt::from(132400), 4),
-                BigDecimal(OldBigDecimal::new(1324.into(), -6)),
+                BigDecimal(UpstreamBigDecimal::new(1324.into(), -6)),
                 "1324000000",
             ),
             (
                 BigDecimal::new(BigInt::from(1_900_000), -3),
-                BigDecimal(OldBigDecimal::new(19.into(), -2)),
+                BigDecimal(UpstreamBigDecimal::new(19.into(), -2)),
                 "1900",
             ),
             (BigDecimal::new(0.into(), 3), BigDecimal::zero(), "0"),

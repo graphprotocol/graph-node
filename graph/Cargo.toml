@@ -9,13 +9,8 @@ base64 = "=0.21.7"
 anyhow = "1.0"
 async-trait = { workspace = true }
 async-stream = "0.3"
-atomic_refcell = "0.1.14"
-# We require this precise version of bigdecimal. Updating to later versions
-# has caused PoI differences; if you update this version, you will need to
-# make sure that it does not cause PoI changes
-old_bigdecimal = { version = "=0.1.2", features = [
-    "serde",
-], package = "bigdecimal" }
+atomic_refcell = "0.1.13"
+bigdecimal.workspace = true
 bytes = "1.0.1"
 bs58 = { workspace = true }
 cid = "0.11.3"
@@ -38,7 +33,7 @@ futures01 = { package = "futures", version = "0.1.31" }
 lru_time_cache = "0.11"
 graphql-tools = { workspace = true }
 lazy_static = { workspace = true }
-num-bigint = { version = "=0.2.6", features = ["serde"] }
+num-bigint.workspace = true
 num-integer = { version = "=0.1.46" }
 num-traits = "=0.2.19"
 rand.workspace = true
