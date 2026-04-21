@@ -1019,31 +1019,39 @@ impl EthereumAdapter {
                 + '_,
         >,
     > {
-        // Create a HashMap of block numbers to Vec<EthereumBlockTriggerType>
+        // Create a HashMap of block numbers to Vec<EthereumBlockTriggerType>.
+        // Scan polling_intervals twice per block so a once-rule and a polling-rule
+        // that match the same block both contribute their triggers. Matches the
+        // logic in `parse_block_triggers`.
         let matching_blocks = (from..=to)
             .filter_map(|block_number| {
-                filter
+                let has_once_trigger = filter
                     .polling_intervals
                     .iter()
-                    .find_map(|(start_block, interval)| {
-                        let has_once_trigger = (*interval == 0) && (block_number == *start_block);
-                        let has_polling_trigger = block_number >= *start_block
-                            && *interval > 0
-                            && ((block_number - start_block) % *interval) == 0;
+                    .any(|(start_block, interval)| *interval == 0 && block_number == *start_block);
 
-                        if has_once_trigger || has_polling_trigger {
-                            let mut triggers = Vec::new();
-                            if has_once_trigger {
-                                triggers.push(EthereumBlockTriggerType::Start);
-                            }
-                            if has_polling_trigger {
-                                triggers.push(EthereumBlockTriggerType::End);
-                            }
-                            Some((block_number, triggers))
-                        } else {
-                            None
-                        }
-                    })
+                let has_polling_trigger =
+                    filter
+                        .polling_intervals
+                        .iter()
+                        .any(|(start_block, interval)| {
+                            *interval > 0
+                                && block_number >= *start_block
+                                && (block_number - start_block) % *interval == 0
+                        });
+
+                if !has_once_trigger && !has_polling_trigger {
+                    return None;
+                }
+
+                let mut triggers = Vec::new();
+                if has_once_trigger {
+                    triggers.push(EthereumBlockTriggerType::Start);
+                }
+                if has_polling_trigger {
+                    triggers.push(EthereumBlockTriggerType::End);
+                }
+                Some((block_number, triggers))
             })
             .collect::<HashMap<_, _>>();
 
