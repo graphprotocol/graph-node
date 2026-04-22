@@ -858,8 +858,10 @@ impl DataSource {
                     .abi_decode_input(&call.input.0[4..])
                     .with_context(|| {
                         format!(
-                            "Generating function inputs for the call {:?} failed, raw input: {}",
+                            "Generating function inputs for the call {:?} failed, contract: {:#x}, block: {}, raw input: 0x{}",
                             &function_abi,
+                            call.to,
+                            call.block_number,
                             hex::encode(&call.input.0)
                         )
                     }) {
@@ -890,8 +892,11 @@ impl DataSource {
                     .abi_decode_output(&call.output.0)
                     .with_context(|| {
                         format!(
-                            "Decoding function outputs for the call {:?} failed, raw output: {}",
+                            "Decoding function outputs for the call {:?} failed, contract: {:#x}, block: {}, input: 0x{}, raw output: 0x{}",
                             &function_abi,
+                            call.to,
+                            call.block_number,
+                            hex::encode(&call.input.0),
                             hex::encode(&call.output.0)
                         )
                     })?;
