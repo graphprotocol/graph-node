@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use serde::ser::Serializer as SerdeSerializer;
 use serde::Serialize;
+use serde::ser::Serializer as SerdeSerializer;
 use slog::*;
 
 /// Serializer for concatenating key-value arguments into a string

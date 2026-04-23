@@ -7,7 +7,7 @@ use chrono::prelude::{SecondsFormat, Utc};
 use serde::Serialize;
 use slog::*;
 
-use super::common::{create_async_logger, LogEntryBuilder, LogMeta};
+use super::common::{LogEntryBuilder, LogMeta, create_async_logger};
 
 /// Configuration for `FileDrain`.
 #[derive(Clone, Debug)]

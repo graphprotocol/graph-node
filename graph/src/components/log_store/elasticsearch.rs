@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
-use slog::{warn, Logger};
+use slog::{Logger, warn};
 use std::collections::HashMap;
 use std::time::Duration;
 

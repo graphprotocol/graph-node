@@ -300,10 +300,9 @@ impl LogStoreSection {
             "disabled" | "none" => Ok(LogStoreConfig::Disabled),
 
             "elasticsearch" | "elastic" | "es" => {
-                let endpoint = self
-                    .url
-                    .clone()
-                    .ok_or_else(|| anyhow!("log_store: 'url' is required for elasticsearch backend"))?;
+                let endpoint = self.url.clone().ok_or_else(|| {
+                    anyhow!("log_store: 'url' is required for elasticsearch backend")
+                })?;
 
                 Ok(LogStoreConfig::Elasticsearch {
                     endpoint,
@@ -329,10 +328,9 @@ impl LogStoreSection {
             }
 
             "file" | "files" => {
-                let directory = self
-                    .directory
-                    .clone()
-                    .ok_or_else(|| anyhow!("log_store: 'directory' is required for file backend"))?;
+                let directory = self.directory.clone().ok_or_else(|| {
+                    anyhow!("log_store: 'directory' is required for file backend")
+                })?;
 
                 Ok(LogStoreConfig::File {
                     directory: std::path::PathBuf::from(directory),

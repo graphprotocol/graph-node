@@ -8,8 +8,8 @@ use crate::components::log_store::LogStoreConfig;
 use crate::components::metrics::MetricsRegistry;
 use crate::components::store::DeploymentLocator;
 use crate::log::elastic::*;
-use crate::log::file::{file_logger, FileDrainConfig};
-use crate::log::loki::{loki_logger, LokiDrainConfig};
+use crate::log::file::{FileDrainConfig, file_logger};
+use crate::log::loki::{LokiDrainConfig, loki_logger};
 use crate::log::split::*;
 use crate::prelude::ENV_VARS;
 

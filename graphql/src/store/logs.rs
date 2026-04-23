@@ -1,5 +1,5 @@
 use graph::components::log_store::LogQuery;
-use graph::prelude::{q, r, DeploymentHash, QueryExecutionError};
+use graph::prelude::{DeploymentHash, QueryExecutionError, q, r};
 
 use crate::execution::ast as a;
 

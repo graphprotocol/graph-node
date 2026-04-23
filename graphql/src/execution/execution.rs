@@ -351,7 +351,7 @@ pub(crate) async fn execute_root_selection_set_uncached(
             _ => {
                 return Err(vec![QueryExecutionError::AbstractTypeError(
                     "_Log_ is not an object type".to_string(),
-                )])
+                )]);
             }
         };
 

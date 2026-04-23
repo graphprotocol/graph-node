@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde_json::json;
 use slog::*;
 
-use super::common::{create_async_logger, LogEntryBuilder, LogMeta};
+use super::common::{LogEntryBuilder, LogMeta, create_async_logger};
 
 /// Configuration for `LokiDrain`.
 #[derive(Clone, Debug)]

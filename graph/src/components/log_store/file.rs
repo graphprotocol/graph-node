@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use slog::{warn, Logger};
+use slog::{Logger, warn};
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::fs::File;
@@ -30,17 +30,17 @@ impl FileLogStore {
         };
 
         // Run cleanup on startup for all existing log files
-        if retention_hours > 0 {
-            if let Ok(entries) = std::fs::read_dir(&store.directory) {
-                for entry in entries.filter_map(Result::ok) {
-                    let path = entry.path();
+        if retention_hours > 0
+            && let Ok(entries) = std::fs::read_dir(&store.directory)
+        {
+            for entry in entries.filter_map(Result::ok) {
+                let path = entry.path();
 
-                    // Only process .jsonl files
-                    if path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
-                        // Run cleanup, but don't fail initialization if cleanup fails
-                        if let Err(e) = store.cleanup_old_logs(&path) {
-                            eprintln!("Warning: Failed to cleanup old logs for {:?}: {}", path, e);
-                        }
+                // Only process .jsonl files
+                if path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                    // Run cleanup, but don't fail initialization if cleanup fails
+                    if let Err(e) = store.cleanup_old_logs(&path) {
+                        eprintln!("Warning: Failed to cleanup old logs for {:?}: {}", path, e);
                     }
                 }
             }
@@ -98,30 +98,30 @@ impl FileLogStore {
     /// Check if an entry matches the query filters
     fn matches_filters(&self, entry: &LogEntry, query: &LogQuery) -> bool {
         // Level filter
-        if let Some(level) = query.level {
-            if entry.level != level {
-                return false;
-            }
+        if let Some(level) = query.level
+            && entry.level != level
+        {
+            return false;
         }
 
         // Time range filters
-        if let Some(ref from) = query.from {
-            if entry.timestamp < *from {
-                return false;
-            }
+        if let Some(ref from) = query.from
+            && entry.timestamp < *from
+        {
+            return false;
         }
 
-        if let Some(ref to) = query.to {
-            if entry.timestamp > *to {
-                return false;
-            }
+        if let Some(ref to) = query.to
+            && entry.timestamp > *to
+        {
+            return false;
         }
 
         // Text search (case-insensitive)
-        if let Some(ref search) = query.search {
-            if !entry.text.to_lowercase().contains(&search.to_lowercase()) {
-                return false;
-            }
+        if let Some(ref search) = query.search
+            && !entry.text.to_lowercase().contains(&search.to_lowercase())
+        {
+            return false;
         }
 
         true

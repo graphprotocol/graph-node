@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use reqwest::Client;
 use serde::Deserialize;
-use slog::{warn, Logger};
+use slog::{Logger, warn};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -52,13 +52,11 @@ impl LokiLogStore {
         let selector = format!("{{{}}}", selectors.join(","));
 
         // Add line filter for text search if specified
-        let query_str = if let Some(search) = &query.search {
+        if let Some(search) = &query.search {
             format!("{} |~ \"(?i){}\"", selector, regex::escape(search))
         } else {
             selector
-        };
-
-        query_str
+        }
     }
 
     async fn execute_query(

@@ -10,13 +10,12 @@ use prometheus::Counter;
 use reqwest;
 use reqwest::Client;
 use serde::Serialize;
-use serde::ser::Serializer as SerdeSerializer;
 use serde_json::json;
 use slog::*;
 
 use crate::util::futures::retry;
 
-use super::common::{create_async_logger, LogEntryBuilder, LogMeta};
+use super::common::{LogEntryBuilder, LogMeta, create_async_logger};
 
 /// General configuration parameters for Elasticsearch logging.
 #[derive(Clone, Debug)]
