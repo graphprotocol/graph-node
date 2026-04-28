@@ -38,10 +38,11 @@ use graph::prelude::{
             TransactionInput, TransactionRequest,
             trace::{filter::TraceFilter as AlloyTraceFilter, parity::LocalizedTransactionTrace},
         },
-        transports::{RpcError, TransportErrorKind},
+        transports::RpcError,
     },
     tokio::try_join,
 };
+use graph::components::ethereum::json_patch;
 use graph::slog::o;
 use graph::{
     blockchain::{BlockPtr, IngestorError, block_stream::BlockWithTriggers},
@@ -91,9 +92,6 @@ type AlloyProvider = FillProvider<
     RootProvider<AnyNetworkBare>,
     AnyNetworkBare,
 >;
-
-const MISSING_TRACE_OUTPUT_ERROR: &str =
-    "data did not match any variant of untagged enum TraceOutput";
 
 #[derive(Clone)]
 pub struct EthereumAdapter {
@@ -262,15 +260,18 @@ impl EthereumAdapter {
 
         let result = match self.alloy.trace_filter(&alloy_trace_filter).await {
             Ok(traces) => Ok(traces),
-            Err(error) if Self::is_missing_trace_output_error(&error) => {
+            Err(RpcError::DeserError { text, err })
+                if err
+                    .to_string()
+                    .contains(json_patch::MISSING_TRACE_OUTPUT_ERROR) =>
+            {
                 warn!(
                     &logger,
-                    "trace_filter returned traces with missing result.output; retrying with compatibility parser";
+                    "trace_filter returned traces with missing result.output; applying compatibility patch";
                     "from" => from,
                     "to" => to,
                 );
-                self.trace_filter_with_compat_patch(&alloy_trace_filter)
-                    .await
+                Self::deserialize_trace_filter_response_with_patch(text)
             }
             Err(error) => Err(Error::from(error)),
         };
@@ -349,44 +350,13 @@ impl EthereumAdapter {
         }
     }
 
-    fn is_missing_trace_output_error(error: &RpcError<TransportErrorKind>) -> bool {
-        error.to_string().contains(MISSING_TRACE_OUTPUT_ERROR)
-    }
-
-    async fn trace_filter_with_compat_patch(
-        &self,
-        alloy_trace_filter: &AlloyTraceFilter,
+    fn deserialize_trace_filter_response_with_patch(
+        response_text: String,
     ) -> Result<Vec<LocalizedTransactionTrace>, Error> {
-        let mut batch = alloy::rpc::client::BatchRequest::new(self.alloy.client());
-        let trace_future = batch
-            .add_call::<(AlloyTraceFilter,), Value>("trace_filter", &(alloy_trace_filter.clone(),))
-            .map_err(Error::from)?;
-
-        batch.send().await.map_err(Error::from)?;
-
-        let mut raw_traces = trace_future.await.map_err(Error::from)?;
-        Self::patch_missing_trace_output(&mut raw_traces);
-
+        // TODO: remove after alloy-rs/alloy#3931 is released and adopted.
+        let mut raw_traces: Value = serde_json::from_str(&response_text).map_err(Error::from)?;
+        json_patch::patch_missing_trace_output(&mut raw_traces);
         serde_json::from_value(raw_traces).map_err(Error::from)
-    }
-
-    fn patch_missing_trace_output(raw_traces: &mut Value) {
-        let Some(traces) = raw_traces.as_array_mut() else {
-            return;
-        };
-
-        for trace in traces {
-            let Some(result) = trace.get_mut("result") else {
-                continue;
-            };
-            let Some(result_obj) = result.as_object_mut() else {
-                continue;
-            };
-
-            if result_obj.contains_key("gasUsed") && !result_obj.contains_key("output") {
-                result_obj.insert("output".to_owned(), Value::String("0x".to_owned()));
-            }
-        }
     }
 
     // This is a lazy check for block receipt support. It is only called once and then the result is
@@ -2754,7 +2724,7 @@ mod tests {
         block_trigger_types_from_intervals, check_block_receipt_support, parse_block_triggers,
     };
     use graph::blockchain::BlockPtr;
-    use graph::components::ethereum::AnyNetworkBare;
+    use graph::components::ethereum::{AnyNetworkBare, json_patch};
     use graph::prelude::alloy::primitives::{Address, B256, Bytes};
     use graph::prelude::alloy::providers::ext::TraceApi;
     use graph::prelude::alloy::providers::ProviderBuilder;
@@ -2917,7 +2887,7 @@ mod tests {
                 "gas": "0x0",
                 "init": "0x",
                 "address": "0xf7cf0d9398d06d5cb7e4d37dc1e18a829bfff934",
-                "refund_address": "0x4c3ccc98c01103be72bcfd29e1d2454c98d1a6e3",
+                "refundAddress": "0x4c3ccc98c01103be72bcfd29e1d2454c98d1a6e3",
                 "balance": "0x0"
             },
             "blockHash": "0x6b747793a61c3ce4e5f3355cf80edcb6aa465913ed43f4b0136d93803cf330f3",
@@ -2949,12 +2919,12 @@ mod tests {
 
         assert!(
             err.to_string()
-                .contains(super::MISSING_TRACE_OUTPUT_ERROR),
+                .contains(json_patch::MISSING_TRACE_OUTPUT_ERROR),
             "unexpected error: {err:#}"
         );
 
         let mut patched: Value = serde_json::from_str(trace_filter_response).unwrap();
-        super::EthereumAdapter::patch_missing_trace_output(&mut patched);
+        json_patch::patch_missing_trace_output(&mut patched);
         assert_eq!(patched[0]["result"]["output"], Value::String("0x".to_string()));
     }
 
