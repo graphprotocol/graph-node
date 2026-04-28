@@ -30,8 +30,11 @@ use std::{
 use crate::prelude::ENV_VARS;
 
 pub mod codes;
+pub mod common;
 pub mod elastic;
 pub mod factory;
+pub mod file;
+pub mod loki;
 pub mod split;
 
 pub fn logger(show_debug: bool) -> Logger {

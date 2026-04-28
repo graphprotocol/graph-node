@@ -1215,14 +1215,14 @@ fn fail_unfail_non_deterministic_error_noop() {
         // Fail the subgraph with a non-deterministic error, but with an advanced block.
         writable.fail_subgraph(error).await.unwrap();
 
-        // Since the block range of the block won't match the deployment head, this will be NOOP.
+        // Since the deployment head is behind the error block, this returns BehindErrorBlock.
         let outcome = writable
             .unfail_non_deterministic_error(&BLOCKS[1])
             .await
             .unwrap();
 
         // State continues the same besides a new error added to the database.
-        assert_eq!(outcome, UnfailOutcome::Noop);
+        assert_eq!(outcome, UnfailOutcome::BehindErrorBlock);
         assert_eq!(count().await, 2);
         let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());

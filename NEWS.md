@@ -1,5 +1,43 @@
 # NEWS
 
+## v0.43.0
+
+### What's New
+
+- **`skipDuplicates` for immutable entities.** A new `skipDuplicates` parameter on the `@entity` directive (`@entity(immutable: true, skipDuplicates: true)`) silently skips duplicate inserts instead of failing the subgraph. This unblocks subgraph composition on Amp-powered subgraphs where SQL queries can produce the same entities across block ranges. ([#6458](https://github.com/graphprotocol/graph-node/pull/6458))
+- **Per-chain RPC settings via TOML config.** Chain-specific tuning parameters (`json_rpc_timeout`, `request_retries`, `max_block_range_size`, `polling_interval`, `block_batch_size`, etc.) can now be set per chain in `config.toml` instead of relying on global environment variables. Fully backwards compatible — env vars remain the fallback. ([#6459](https://github.com/graphprotocol/graph-node/pull/6459))
+- **RPC provider failover for block ingestor.** When the current RPC provider becomes unreachable during block ingestion polling, graph-node now automatically switches to a healthy alternative provider. ([#6430](https://github.com/graphprotocol/graph-node/pull/6430))
+- Warn on startup when running a debug build, with `[DEBUG-BUILD]` prefix on all log lines. ([#6488](https://github.com/graphprotocol/graph-node/pull/6488))
+
+### Improvements
+
+- **Call cache eviction rewrite.** Replaced the old per-contract iteration approach with ctid-based join deletes against the `call_meta` table, significantly faster on large `call_cache` tables. The old `--ttl-max-contracts` flag has been replaced by `--max-contracts`, which computes an effective TTL cutoff instead of limiting per-invocation iteration. Eviction now also returns stats on the number of contracts and entries removed. ([#6476](https://github.com/graphprotocol/graph-node/pull/6476)) ([#6477](https://github.com/graphprotocol/graph-node/pull/6477))
+- Reduced unnecessary `eth_getBlockByHash` and `eth_getBlockByNumber` RPC calls by checking the block cache first in `block_pointer_from_number` and `fetch_full_block_with_rpc`. ([#6491](https://github.com/graphprotocol/graph-node/pull/6491), partially reverted by [#6537](https://github.com/graphprotocol/graph-node/pull/6537))
+- Header-only `ChainStore` query methods (`ancestor_block_ptr`, `block_parent_ptr`) skip deserializing the full block `data` JSONB column when only hash/number/parent are needed. ([#6456](https://github.com/graphprotocol/graph-node/pull/6456))
+- Batch checking for update attempts on immutable entities, reducing per-entity overhead.
+- Node name is now used as the PostgreSQL `application_name` when `PGAPPNAME` is not set, making it easier to identify graph-node connections in `pg_stat_activity`.
+
+### Bug Fixes
+
+- Fixed dropped block trigger when `once` and `polling` filters match the same block — only one trigger type was firing. ([#6530](https://github.com/graphprotocol/graph-node/pull/6530))
+- Fixed block stream ignoring configured `endBlock` in two cases: the block-skip optimization bypassing the `max_end_block` check, and `max_end_block` being set to `None` when multiple data sources share the same `endBlock`. ([#6474](https://github.com/graphprotocol/graph-node/pull/6474))
+- Fixed GraphQL introspection not returning `isDeprecated: false` for `__InputValue`, which caused some client libraries to fail. ([#6475](https://github.com/graphprotocol/graph-node/pull/6475))
+- Fixed IPC provider connections failing when configured with `ipc://` or `file://` URLs — the URL was passed directly to the transport instead of extracting the file path. ([#6443](https://github.com/graphprotocol/graph-node/pull/6443))
+- Fixed `graphman config pools` not working due to hardcoded pool size override. ([#6444](https://github.com/graphprotocol/graph-node/pull/6444))
+- Fixed unfail retry mechanism stopping after the first attempt when the deployment head was still behind the error block. ([#6529](https://github.com/graphprotocol/graph-node/pull/6529))
+
+### gnd (Graph Node Dev)
+
+- `gnd indexer` command that delegates to `graph-indexer`, allowing indexer management (allocations, rules, cost models, status) directly through gnd. ([#6492](https://github.com/graphprotocol/graph-node/pull/6492))
+- `gnd deploy` now prompts for `--version-label` in interactive mode and requires it in non-interactive mode. ([#6532](https://github.com/graphprotocol/graph-node/pull/6532))
+- Test framework improvements: partial receipt.logs support, mock IPFS/Arweave clients for file data source testing. ([#6442](https://github.com/graphprotocol/graph-node/pull/6442))
+
+### Contributors
+
+Thanks to all contributors for this release: @aayushbaluni, @dimitrovmaksim, @incrypto32, @isum, @lutter, @suntzu
+
+**Full Changelog**: https://github.com/graphprotocol/graph-node/compare/v0.42.1...v0.43.0
+
 ## v0.42.1
 
 ### Bug Fixes

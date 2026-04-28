@@ -1075,6 +1075,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 
     async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
+        // It is tempting to use the block cache here; but that can go wrong
+        // when graph-node gets shut down and some of its nonfinal blocks
+        // then are reorged; when graph-node gets started again when those
+        // block numbers have become final, it might consider a reorged
+        // block as canonical; allowing the use of the block cache here
+        // would require us to also track the finality of blocks.
         match &*self.chain_client {
             ChainClient::Firehose(endpoints) => {
                 let endpoint = endpoints.endpoint().await?;
@@ -1088,18 +1094,6 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
                 Ok(block.hash() == ptr.hash)
             }
             ChainClient::Rpc(adapter) => {
-                let cached = self
-                    .chain_store
-                    .cheap_clone()
-                    .block_ptrs_by_numbers(vec![ptr.number])
-                    .await
-                    .unwrap_or_default();
-                if let Some(ptrs) = cached.get(&ptr.number)
-                    && ptrs.len() == 1
-                {
-                    return Ok(ptrs[0].hash == ptr.hash);
-                }
-
                 let adapter = adapter
                     .cheapest()
                     .await

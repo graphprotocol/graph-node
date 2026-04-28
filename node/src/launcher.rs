@@ -367,6 +367,7 @@ fn build_graphql_server(
     metrics_registry: Arc<MetricsRegistry>,
     network_store: &Arc<Store>,
     logger_factory: &LoggerFactory,
+    log_store: Arc<dyn graph::components::log_store::LogStore>,
 ) -> GraphQLQueryServer<GraphQlRunner<Store>> {
     let shards: Vec<_> = config.stores.keys().cloned().collect();
     let load_manager = Arc::new(LoadManager::new(
@@ -380,6 +381,7 @@ fn build_graphql_server(
         network_store.clone(),
         load_manager,
         metrics_registry,
+        log_store,
     ));
 
     GraphQLQueryServer::new(logger_factory, graphql_runner.clone())
@@ -450,20 +452,45 @@ pub async fn run(
 
     info!(logger, "Starting up"; "node_id" => &node_id);
 
-    // Optionally, identify the Elasticsearch logging configuration
-    let elastic_config = opt
-        .elasticsearch_url
-        .clone()
-        .map(|endpoint| ElasticLoggingConfig {
-            endpoint,
-            username: opt.elasticsearch_user.clone(),
-            password: opt.elasticsearch_password.clone(),
-            client: reqwest::Client::new(),
-        });
+    // Resolve log store configuration from [log_store] TOML section
+    let (log_store, log_store_config) = match &config.log_store {
+        Some(section) => match section.to_log_store_config() {
+            Ok(store_config) => {
+                let store = graph::components::log_store::LogStoreFactory::from_config(
+                    store_config.clone(),
+                )
+                .unwrap_or_else(|e| {
+                    warn!(logger, "Failed to initialize log store: {}", e);
+                    Arc::new(graph::components::log_store::NoOpLogStore)
+                });
+                info!(logger, "Log store initialized"; "backend" => format!("{:?}", store_config));
+                (store, Some(store_config))
+            }
+            Err(e) => {
+                warn!(logger, "Invalid [log_store] configuration: {}", e);
+                (
+                    Arc::new(graph::components::log_store::NoOpLogStore)
+                        as Arc<dyn graph::components::log_store::LogStore>,
+                    None,
+                )
+            }
+        },
+        None => {
+            info!(
+                logger,
+                "No [log_store] section in config, log queries will return empty results"
+            );
+            (
+                Arc::new(graph::components::log_store::NoOpLogStore)
+                    as Arc<dyn graph::components::log_store::LogStore>,
+                None,
+            )
+        }
+    };
 
     // Create a component and subgraph logger factory
     let logger_factory =
-        LoggerFactory::new(logger.clone(), elastic_config, metrics_registry.clone());
+        LoggerFactory::new(logger.clone(), log_store_config, metrics_registry.clone());
 
     let arweave_resolver = Arc::new(ArweaveClient::new(
         logger.cheap_clone(),
@@ -580,6 +607,7 @@ pub async fn run(
             metrics_registry.clone(),
             &network_store,
             &logger_factory,
+            log_store.clone(),
         );
 
         let index_node_server = IndexNodeServer::new(

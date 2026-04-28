@@ -80,3 +80,8 @@ shard = "primary"
 provider = [
   { label = "kovan-0", url = "http://rpc.kovan.io", transport = "ws", features = [] }
 ]
+
+[log_store]
+backend = "file"
+directory = "/var/log/graph-node/subgraph-logs"
+retention_hours = 72

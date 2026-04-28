@@ -15,7 +15,7 @@ graph deploy --studio my-subgraph
 # Use:
 gnd codegen
 gnd build
-gnd deploy my-subgraph  # defaults to Studio
+gnd deploy my-subgraph  # defaults to Studio; prompts for version label in interactive terminals
 ```
 
 ## Command Mapping
@@ -25,7 +25,7 @@ gnd deploy my-subgraph  # defaults to Studio
 | `graph init` | `gnd init` | Identical flags |
 | `graph codegen` | `gnd codegen` | Identical flags |
 | `graph build` | `gnd build` | Identical flags |
-| `graph deploy` | `gnd deploy` | Defaults to Studio if `--node` not provided |
+| `graph deploy` | `gnd deploy` | Defaults to Studio if `--node` not provided; pass `--version-label` in non-interactive mode |
 | `graph create` | `gnd create` | Identical flags |
 | `graph remove` | `gnd remove` | Identical flags |
 | `graph auth` | `gnd auth` | Identical flags |
@@ -208,12 +208,12 @@ Replace `graph` with `gnd` in your CI configuration:
 # Before
 - run: graph codegen
 - run: graph build
-- run: graph deploy --studio ${{ secrets.SUBGRAPH_NAME }}
+- run: graph deploy --studio -l ${{ github.sha }} ${{ secrets.SUBGRAPH_NAME }}
 
 # After
 - run: gnd codegen
 - run: gnd build
-- run: gnd deploy ${{ secrets.SUBGRAPH_NAME }}
+- run: gnd deploy -l ${{ github.sha }} ${{ secrets.SUBGRAPH_NAME }}
 ```
 
 ### Step 5: Update package.json Scripts (Optional)
@@ -225,10 +225,12 @@ If you have npm scripts calling graph-cli:
   "scripts": {
     "codegen": "gnd codegen",
     "build": "gnd build",
-    "deploy": "gnd deploy"
+    "deploy": "gnd deploy -l $VERSION_LABEL"
   }
 }
 ```
+
+Set `VERSION_LABEL` in your environment (for example, from a git tag or commit SHA).
 
 ## Troubleshooting
 

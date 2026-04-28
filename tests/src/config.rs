@@ -140,11 +140,17 @@ impl GraphNodeConfig {
         let bin = fs::canonicalize("../target/debug/gnd")
             .expect("failed to infer `graph-node` program location. (Was it built already?)");
 
+        // Allow overriding IPFS port via environment variable
+        let ipfs_port = std::env::var("IPFS_TEST_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3001);
+        let ipfs_uri = format!("http://localhost:{}", ipfs_port);
+
         Self {
             bin,
             ports: GraphNodePorts::default(),
-            ipfs_uri: std::env::var("GRAPH_NODE_TEST_IPFS_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:3001".to_string()),
+            ipfs_uri,
             log_file: TestFile::new("integration-tests/graph-node.log"),
         }
     }
@@ -155,11 +161,17 @@ impl Default for GraphNodeConfig {
         let bin = fs::canonicalize("../target/debug/graph-node")
             .expect("failed to infer `graph-node` program location. (Was it built already?)");
 
+        // Allow overriding IPFS port via environment variable
+        let ipfs_port = std::env::var("IPFS_TEST_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3001);
+        let ipfs_uri = format!("http://localhost:{}", ipfs_port);
+
         Self {
             bin,
             ports: GraphNodePorts::default(),
-            ipfs_uri: std::env::var("GRAPH_NODE_TEST_IPFS_URL")
-                .unwrap_or_else(|_| "http://127.0.0.1:3001".to_string()),
+            ipfs_uri,
             log_file: TestFile::new("integration-tests/graph-node.log"),
         }
     }
@@ -186,21 +198,61 @@ impl Config {
     ) -> anyhow::Result<Child> {
         let ports = &self.graph_node.ports;
 
+        // Generate a TOML config file so we can include [log_store]
+        let log_dir = "/tmp/integration-test-logs";
+        std::fs::create_dir_all(log_dir).ok();
+        let config_content = format!(
+            r#"
+[store]
+[store.primary]
+connection = "{db_url}"
+pool_size = 10
+
+[deployment]
+[[deployment.rule]]
+store = "primary"
+indexers = ["default"]
+
+[chains]
+ingestor = "default"
+
+[chains.test]
+shard = "primary"
+provider = [
+  {{ label = "test", url = "{eth_url}", features = ["archive", "traces"] }}
+]
+
+[log_store]
+backend = "file"
+directory = "{log_dir}"
+retention_hours = 0
+"#,
+            db_url = self.db.url(),
+            eth_url = self.eth.url(),
+            log_dir = log_dir,
+        );
+        let config_path = std::env::temp_dir().join("graph-node-integration-test.toml");
+        std::fs::write(&config_path, &config_content)?;
+
+        let config_path_str = config_path.to_string_lossy().to_string();
+        let http_port = ports.http.to_string();
+        let index_port = ports.index.to_string();
+        let admin_port = ports.admin.to_string();
+        let metrics_port = ports.metrics.to_string();
+
         let args = [
-            "--postgres-url",
-            &self.db.url(),
-            "--ethereum-rpc",
-            &self.eth.network_url(),
+            "--config",
+            &config_path_str,
             "--ipfs",
             &self.graph_node.ipfs_uri,
             "--http-port",
-            &ports.http.to_string(),
+            &http_port,
             "--index-node-port",
-            &ports.index.to_string(),
+            &index_port,
             "--admin-port",
-            &ports.admin.to_string(),
+            &admin_port,
             "--metrics-port",
-            &ports.metrics.to_string(),
+            &metrics_port,
         ];
 
         let args = args
@@ -290,17 +342,28 @@ impl Default for Config {
         let num_parallel_tests = std::env::var("N_CONCURRENT_TESTS")
             .map(|x| x.parse().expect("N_CONCURRENT_TESTS must be a number"))
             .unwrap_or(1000);
+
+        // Allow overriding ports via environment variables
+        let postgres_port = std::env::var("POSTGRES_TEST_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3011);
+        let eth_port = std::env::var("ETHEREUM_TEST_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(3021);
+
         Config {
             db: DbConfig {
                 host: "localhost".to_string(),
-                port: 3011,
+                port: postgres_port,
                 user: "graph-node".to_string(),
                 password: "let-me-in".to_string(),
                 name: "graph-node".to_string(),
             },
             eth: EthConfig {
                 network: "test".to_string(),
-                port: 3021,
+                port: eth_port,
                 host: "localhost".to_string(),
             },
             graph_node: GraphNodeConfig::from_env(),

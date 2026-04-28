@@ -771,6 +771,7 @@ async fn setup_context(
         stores.network_store.clone(),
         Arc::new(load_manager),
         mock_registry.clone(),
+        Arc::new(graph::components::log_store::NoOpLogStore),
     ));
 
     // Uses PanicSubscriptionManager — tests don't need GraphQL subscriptions.

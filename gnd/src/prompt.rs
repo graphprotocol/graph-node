@@ -7,8 +7,9 @@ use std::path::Path;
 
 use anyhow::Result;
 use console::{Term, style};
+use inquire::parser::CustomTypeParser;
 use inquire::validator::Validation;
-use inquire::{Autocomplete, Confirm, CustomUserError, Select, Text};
+use inquire::{Autocomplete, Confirm, CustomType, CustomUserError, Select, Text};
 
 use crate::output::{Step, step};
 use crate::services::{ContractInfo, ContractService, Network, NetworksRegistry};
@@ -387,6 +388,32 @@ pub fn get_subgraph_basename(name: &str) -> String {
     name.split('/').next_back().unwrap_or(name).to_string()
 }
 
+/// Normalize a version label from either a flag or interactive prompt.
+pub fn normalize_version_label(label: &str) -> String {
+    label.trim_matches(|c| c == '"' || c == ' ').to_string()
+}
+
+/// Prompt for a version label for deployment.
+/// Uses CustomType instead of Text to normalize the input before validation
+pub fn prompt_version_label() -> Result<String> {
+    let parser: CustomTypeParser<String> = &|val| {
+        let normalized = normalize_version_label(val);
+        Ok(normalized)
+    };
+    let label = CustomType::<String>::new("Which version label to use? (e.g. v0.0.1):")
+        .with_parser(parser)
+        .with_validator(|input: &String| {
+            if input.is_empty() {
+                Ok(Validation::Invalid("Version label cannot be empty".into()))
+            } else {
+                Ok(Validation::Valid)
+            }
+        })
+        .prompt()?;
+
+    Ok(label)
+}
+
 /// Interactive init form for when options are not fully provided.
 pub struct InitForm {
     pub network: String,
@@ -647,6 +674,16 @@ mod tests {
         assert_eq!(get_subgraph_basename("org/my-subgraph"), "my-subgraph");
         assert_eq!(get_subgraph_basename("a/b/c"), "c");
         assert_eq!(get_subgraph_basename(""), "");
+    }
+
+    #[test]
+    fn test_normalize_version_label() {
+        assert_eq!(normalize_version_label("v1.0.0"), "v1.0.0");
+        assert_eq!(normalize_version_label("  v1.0.0  "), "v1.0.0");
+        assert_eq!(normalize_version_label("\"v1.0.0\""), "v1.0.0");
+        assert_eq!(normalize_version_label(" \"v1.0.0\" "), "v1.0.0");
+        assert_eq!(normalize_version_label("v1.0.0-beta"), "v1.0.0-beta");
+        assert_eq!(normalize_version_label(" my version "), "my version");
     }
 
     #[test]

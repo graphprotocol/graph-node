@@ -1303,12 +1303,14 @@ where
                         .unfail_non_deterministic_error(&block_ptr)
                         .await?;
 
-                    // Stop trying to unfail.
-                    self.state.should_try_unfail_non_deterministic = false;
+                    // Stop trying unless we're still behind the error block.
+                    if outcome != UnfailOutcome::BehindErrorBlock {
+                        self.state.should_try_unfail_non_deterministic = false;
 
-                    if let UnfailOutcome::Unfailed = outcome {
-                        self.metrics.subgraph.deployment_status.running();
-                        self.state.backoff.reset();
+                        if outcome == UnfailOutcome::Unfailed {
+                            self.metrics.subgraph.deployment_status.running();
+                            self.state.backoff.reset();
+                        }
                     }
                 }
 

@@ -26,11 +26,11 @@ gnd build
 
 # Deploy to a local Graph Node
 gnd create --node http://localhost:8020 my-name/my-subgraph
-gnd deploy --node http://localhost:8020 --ipfs http://localhost:5001 my-name/my-subgraph
+gnd deploy --node http://localhost:8020 --ipfs http://localhost:5001 -l v0.0.1 my-name/my-subgraph
 
 # Or deploy to Subgraph Studio
 gnd auth YOUR_DEPLOY_KEY
-gnd deploy my-name/my-subgraph
+gnd deploy -l v0.0.1 my-name/my-subgraph
 ```
 
 ## Commands
@@ -165,7 +165,7 @@ gnd deploy <SUBGRAPH_NAME> [MANIFEST]
 | `--node` | `-g` | Graph Node URL (defaults to Subgraph Studio) |
 | `--ipfs` | `-i` | IPFS node URL |
 | `--deploy-key` | | Deploy key for authentication |
-| `--version-label` | `-l` | Version label for the deployment |
+| `--version-label` | `-l` | Version label for the deployment (required in non-interactive mode) |
 | `--ipfs-hash` | | IPFS hash of already-uploaded manifest |
 | `--output-dir` | `-o` | Build output directory (default: `build/`) |
 | `--skip-migrations` | | Skip manifest migrations |
@@ -173,17 +173,20 @@ gnd deploy <SUBGRAPH_NAME> [MANIFEST]
 | `--network-file` | | Path to networks config |
 | `--debug-fork` | | Fork subgraph ID for debugging |
 
+If `--version-label` is omitted in an interactive terminal, `gnd deploy` prompts for it.
+In non-interactive environments (CI/scripts), you must pass `--version-label`.
+
 **Examples:**
 
 ```bash
 # Deploy to Subgraph Studio (uses saved auth key)
-gnd deploy my-name/my-subgraph
+gnd deploy -l v1.0.0 my-name/my-subgraph
 
 # Deploy to local Graph Node
-gnd deploy --node http://localhost:8020 --ipfs http://localhost:5001 my-name/my-subgraph
+gnd deploy --node http://localhost:8020 --ipfs http://localhost:5001 -l v1.0.0 my-name/my-subgraph
 
-# Deploy with version label
-gnd deploy -l v1.0.0 my-name/my-subgraph
+# Deploy without --version-label in an interactive terminal (prompts)
+gnd deploy my-name/my-subgraph
 ```
 
 ### `gnd publish`

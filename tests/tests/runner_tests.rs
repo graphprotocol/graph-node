@@ -1418,3 +1418,77 @@ async fn skip_duplicates() {
         })
     );
 }
+
+/// Test that the unfail mechanism retries until the deployment head reaches
+/// the error block. This is a regression test for issue #6205.
+///
+/// Scenario:
+/// 1. Sync to block 1
+/// 2. Inject non-deterministic error at block 3 (ahead of head)
+/// 3. Run runner to block 3
+/// 4. At blocks 1-2: unfail returns BehindErrorBlock, keeps trying
+/// 5. At block 3: unfail succeeds, health → Healthy
+#[graph::test]
+async fn non_deterministic_unfail_retries_until_error_block() -> anyhow::Result<()> {
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("non_deterministic_unfail_retries", "end-block").await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let mut block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        let mut block_3 = empty_block(block_2.ptr(), test_ptr(3));
+
+        // Add triggers to exercise normal block processing.
+        push_test_log(&mut block_1, "a");
+        push_test_log(&mut block_2, "b");
+        push_test_log(&mut block_3, "c");
+
+        vec![block_0, block_1, block_2, block_3]
+    };
+
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
+
+    // Advance head to block 1.
+    ctx.start_and_sync_to(test_ptr(1)).await;
+
+    // Inject non-deterministic fatal error at block 3 (ahead of current head).
+    let writable = ctx
+        .store
+        .clone()
+        .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(vec![]))
+        .await
+        .unwrap();
+
+    writable
+        .fail_subgraph(SubgraphError {
+            subgraph_id: ctx.deployment.hash.clone(),
+            message: "injected transient error".to_string(),
+            block_ptr: Some(test_ptr(3)),
+            handler: None,
+            deterministic: false,
+        })
+        .await
+        .unwrap();
+
+    writable.flush().await.unwrap();
+
+    // Precondition: deployment is failed with non-deterministic error.
+    let status = ctx.indexing_status().await;
+    assert!(status.health == SubgraphHealth::Failed);
+    assert!(!status.fatal_error.as_ref().unwrap().deterministic);
+
+    // Run runner to block 3. The unfail mechanism should:
+    // - Return BehindErrorBlock at blocks 1-2 (keep trying)
+    // - Return Unfailed at block 3 (success)
+    let stop_block = test_ptr(3);
+    let _runner = ctx.runner(stop_block).await.run_for_test(false).await?;
+
+    // Postcondition: deployment is healthy, no fatal error.
+    let status = ctx.indexing_status().await;
+    assert!(status.health == SubgraphHealth::Healthy);
+    assert!(status.fatal_error.is_none());
+
+    Ok(())
+}

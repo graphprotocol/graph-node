@@ -1073,31 +1073,16 @@ impl EthereumAdapter {
                 + '_,
         >,
     > {
-        // Create a HashMap of block numbers to Vec<EthereumBlockTriggerType>
+        // Create a HashMap of block numbers to Vec<EthereumBlockTriggerType>.
         let matching_blocks = (from..=to)
             .filter_map(|block_number| {
-                filter
-                    .polling_intervals
-                    .iter()
-                    .find_map(|(start_block, interval)| {
-                        let has_once_trigger = (*interval == 0) && (block_number == *start_block);
-                        let has_polling_trigger = block_number >= *start_block
-                            && *interval > 0
-                            && ((block_number - start_block) % *interval) == 0;
-
-                        if has_once_trigger || has_polling_trigger {
-                            let mut triggers = Vec::new();
-                            if has_once_trigger {
-                                triggers.push(EthereumBlockTriggerType::Start);
-                            }
-                            if has_polling_trigger {
-                                triggers.push(EthereumBlockTriggerType::End);
-                            }
-                            Some((block_number, triggers))
-                        } else {
-                            None
-                        }
-                    })
+                let triggers =
+                    block_trigger_types_from_intervals(block_number, &filter.polling_intervals);
+                if triggers.is_empty() {
+                    None
+                } else {
+                    Some((block_number, triggers))
+                }
             })
             .collect::<HashMap<_, _>>();
 
@@ -2066,6 +2051,36 @@ pub(crate) fn parse_call_triggers(
     }
 }
 
+/// For a given `block_number`, return the block trigger types that fire
+/// based on the rules in `polling_intervals`. Each entry is `(start_block,
+/// interval)` where `interval == 0` encodes a `once` rule and `interval > 0`
+/// encodes a `polling every interval` rule. Both rule kinds can fire at the
+/// same block (e.g. a once and polling rule sharing a `start_block`), so the
+/// returned Vec may contain `Start`, `End`, both, or neither.
+pub(crate) fn block_trigger_types_from_intervals(
+    block_number: i32,
+    polling_intervals: &HashSet<(i32, i32)>,
+) -> Vec<EthereumBlockTriggerType> {
+    let has_once_trigger = polling_intervals
+        .iter()
+        .any(|(start_block, interval)| *interval == 0 && block_number == *start_block);
+
+    let has_polling_trigger = polling_intervals.iter().any(|(start_block, interval)| {
+        *interval > 0
+            && block_number >= *start_block
+            && (block_number - start_block) % *interval == 0
+    });
+
+    let mut triggers = Vec::new();
+    if has_once_trigger {
+        triggers.push(EthereumBlockTriggerType::Start);
+    }
+    if has_polling_trigger {
+        triggers.push(EthereumBlockTriggerType::End);
+    }
+    triggers
+}
+
 /// This method does not parse block triggers with `once` filters.
 /// This is because it is to be run before any other triggers are run.
 /// So we have `parse_initialization_triggers` for that.
@@ -2107,38 +2122,12 @@ pub(crate) fn parse_block_triggers(
             EthereumBlockTriggerType::End,
         ));
     } else if !block_filter.polling_intervals.is_empty() {
-        let has_polling_trigger =
-            &block_filter
-                .polling_intervals
-                .iter()
-                .any(|(start_block, interval)| match interval {
-                    0 => false,
-                    _ => {
-                        block_number >= *start_block
-                            && (block_number - *start_block) % *interval == 0
-                    }
-                });
-
-        let has_once_trigger =
-            &block_filter
-                .polling_intervals
-                .iter()
-                .any(|(start_block, interval)| match interval {
-                    0 => block_number == *start_block,
-                    _ => false,
-                });
-
-        if *has_once_trigger {
+        for trigger_type in
+            block_trigger_types_from_intervals(block_number, &block_filter.polling_intervals)
+        {
             triggers.push(EthereumTrigger::Block(
-                block_ptr3.clone(),
-                EthereumBlockTriggerType::Start,
-            ));
-        }
-
-        if *has_polling_trigger {
-            triggers.push(EthereumTrigger::Block(
-                block_ptr3,
-                EthereumBlockTriggerType::End,
+                block_ptr3.cheap_clone(),
+                trigger_type,
             ));
         }
     }
@@ -2761,8 +2750,8 @@ mod tests {
     use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
 
     use super::{
-        EthereumBlock, EthereumBlockFilter, EthereumBlockWithCalls, check_block_receipt_support,
-        parse_block_triggers,
+        EthereumBlock, EthereumBlockFilter, EthereumBlockWithCalls,
+        block_trigger_types_from_intervals, check_block_receipt_support, parse_block_triggers,
     };
     use graph::blockchain::BlockPtr;
     use graph::components::ethereum::AnyNetworkBare;
@@ -3031,6 +3020,115 @@ mod tests {
                 &block
             ),
             "block filter specifies address 4 and block has call to it"
+        );
+    }
+
+    #[test]
+    fn block_trigger_types_once_only() {
+        let intervals = HashSet::from_iter(vec![(100, 0)]);
+
+        assert_eq!(
+            vec![EthereumBlockTriggerType::Start],
+            block_trigger_types_from_intervals(100, &intervals),
+            "once rule fires Start at start_block"
+        );
+        assert_eq!(
+            Vec::<EthereumBlockTriggerType>::new(),
+            block_trigger_types_from_intervals(99, &intervals),
+            "once rule does not fire before start_block"
+        );
+        assert_eq!(
+            Vec::<EthereumBlockTriggerType>::new(),
+            block_trigger_types_from_intervals(101, &intervals),
+            "once rule does not fire after start_block"
+        );
+    }
+
+    #[test]
+    fn block_trigger_types_polling_only() {
+        let intervals = HashSet::from_iter(vec![(100, 10)]);
+
+        assert_eq!(
+            vec![EthereumBlockTriggerType::End],
+            block_trigger_types_from_intervals(100, &intervals),
+            "polling rule fires End at start_block"
+        );
+        assert_eq!(
+            vec![EthereumBlockTriggerType::End],
+            block_trigger_types_from_intervals(110, &intervals),
+            "polling rule fires End at start_block + interval"
+        );
+        assert_eq!(
+            Vec::<EthereumBlockTriggerType>::new(),
+            block_trigger_types_from_intervals(105, &intervals),
+            "polling rule does not fire off-interval"
+        );
+        assert_eq!(
+            Vec::<EthereumBlockTriggerType>::new(),
+            block_trigger_types_from_intervals(90, &intervals),
+            "polling rule does not fire before start_block"
+        );
+    }
+
+    #[test]
+    fn block_trigger_types_once_and_polling_same_start_block() {
+        // A single data source with both a `once` handler and a `polling` handler
+        // contributes both entries at its start_block. Both must fire at start_block.
+        let intervals = HashSet::from_iter(vec![(100, 0), (100, 10)]);
+
+        assert_eq!(
+            vec![
+                EthereumBlockTriggerType::Start,
+                EthereumBlockTriggerType::End,
+            ],
+            block_trigger_types_from_intervals(100, &intervals),
+            "both Start and End should fire when once and polling rules share start_block"
+        );
+        assert_eq!(
+            vec![EthereumBlockTriggerType::End],
+            block_trigger_types_from_intervals(110, &intervals),
+            "only polling fires at later interval matches"
+        );
+    }
+
+    #[test]
+    fn block_trigger_types_cross_datasource_collision() {
+        // Two data sources: DS-A with once at 100, DS-B with polling every 10 from 50.
+        // Block 100 satisfies DS-A's once rule and also (100-50) % 10 == 0, so both fire.
+        let intervals = HashSet::from_iter(vec![(100, 0), (50, 10)]);
+
+        assert_eq!(
+            vec![
+                EthereumBlockTriggerType::Start,
+                EthereumBlockTriggerType::End,
+            ],
+            block_trigger_types_from_intervals(100, &intervals),
+            "both triggers fire when a once rule and an unrelated polling rule collide"
+        );
+        assert_eq!(
+            vec![EthereumBlockTriggerType::End],
+            block_trigger_types_from_intervals(60, &intervals),
+            "only polling fires at a block where only the polling rule matches"
+        );
+    }
+
+    #[test]
+    fn block_trigger_types_no_match() {
+        let intervals = HashSet::from_iter(vec![(100, 0), (100, 10)]);
+        assert_eq!(
+            Vec::<EthereumBlockTriggerType>::new(),
+            block_trigger_types_from_intervals(99, &intervals),
+            "no triggers when block matches neither rule"
+        );
+    }
+
+    #[test]
+    fn block_trigger_types_empty_intervals() {
+        let intervals: HashSet<(i32, i32)> = HashSet::new();
+        assert_eq!(
+            Vec::<EthereumBlockTriggerType>::new(),
+            block_trigger_types_from_intervals(100, &intervals),
+            "empty intervals yields no triggers"
         );
     }
 

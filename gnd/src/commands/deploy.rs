@@ -3,7 +3,10 @@
 //! This command builds a subgraph (unless an IPFS hash is provided),
 //! uploads it to IPFS, and deploys it to a Graph Node.
 
-use std::path::PathBuf;
+use std::{
+    io::{self, IsTerminal},
+    path::PathBuf,
+};
 
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
@@ -12,6 +15,7 @@ use url::Url;
 use crate::commands::auth::get_deploy_key;
 use crate::commands::build::{BuildOpt, run_build};
 use crate::output::{Step, step};
+use crate::prompt::{normalize_version_label, prompt_version_label};
 use crate::services::GraphNodeClient;
 
 /// Default IPFS URL used by The Graph
@@ -91,6 +95,12 @@ pub async fn run_deploy(opt: DeployOpt) -> Result<()> {
         None => get_deploy_key(node)?,
     };
 
+    let version_label =
+        match resolve_version_label(opt.version_label.as_deref(), io::stdin().is_terminal())? {
+            Some(label) => label,
+            None => prompt_version_label()?,
+        };
+
     // Get or build the IPFS hash
     let ipfs_hash = match &opt.ipfs_hash {
         Some(hash) => {
@@ -104,7 +114,14 @@ pub async fn run_deploy(opt: DeployOpt) -> Result<()> {
     };
 
     // Deploy to Graph Node
-    deploy_to_node(&opt, node, &ipfs_hash, deploy_key.as_deref()).await
+    deploy_to_node(
+        &opt,
+        node,
+        &ipfs_hash,
+        &version_label,
+        deploy_key.as_deref(),
+    )
+    .await
 }
 
 /// Validate that a URL is well-formed.
@@ -125,6 +142,32 @@ fn validate_url(url: &str, name: &str) -> Result<()> {
             Ok(())
         })??;
     Ok(())
+}
+
+/// Parse and validate a normalized version label.
+fn parse_version_label(label: &str) -> Result<String> {
+    let normalized = normalize_version_label(label);
+    if normalized.is_empty() {
+        return Err(anyhow!("Version label cannot be empty"));
+    }
+    Ok(normalized)
+}
+
+/// Resolve version label from flag or interactive prompt mode.
+fn resolve_version_label(
+    version_label: Option<&str>,
+    stdin_is_terminal: bool,
+) -> Result<Option<String>> {
+    match version_label {
+        Some(label) => parse_version_label(label)
+            .context("Invalid --version-label value")
+            .map(Some),
+        None if stdin_is_terminal => Ok(None),
+        None => Err(anyhow!(
+            "--version-label is required in non-interactive mode. \
+             Pass --version-label <LABEL>."
+        )),
+    }
 }
 
 /// Build the subgraph and upload to IPFS.
@@ -155,6 +198,7 @@ async fn deploy_to_node(
     opt: &DeployOpt,
     node: &str,
     ipfs_hash: &str,
+    version_label: &str,
     deploy_key: Option<&str>,
 ) -> Result<()> {
     step(Step::Deploy, &format!("Deploying to {}", node));
@@ -165,7 +209,7 @@ async fn deploy_to_node(
         .deploy_subgraph(
             &opt.subgraph_name,
             ipfs_hash,
-            opt.version_label.as_deref(),
+            Some(version_label),
             opt.debug_fork.as_deref(),
         )
         .await
@@ -239,5 +283,36 @@ mod tests {
     fn test_default_ipfs_url() {
         // Verify the default IPFS URL is valid
         assert!(validate_url(DEFAULT_IPFS_URL, "IPFS").is_ok());
+    }
+
+    #[test]
+    fn test_parse_version_label_rejects_empty_after_normalize() {
+        assert!(parse_version_label("").is_err());
+        assert!(parse_version_label("   ").is_err());
+        assert!(parse_version_label("\"\"").is_err());
+        assert!(parse_version_label(" \"\" ").is_err());
+        assert!(parse_version_label("\"   \"").is_err());
+    }
+
+    #[test]
+    fn test_resolve_version_label_from_flag() {
+        assert_eq!(
+            resolve_version_label(Some(" \"v1.0.0\" "), false).unwrap(),
+            Some("v1.0.0".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_version_label_interactive_without_flag() {
+        assert_eq!(resolve_version_label(None, true).unwrap(), None);
+    }
+
+    #[test]
+    fn test_resolve_version_label_non_interactive_requires_flag() {
+        let err = resolve_version_label(None, false).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("--version-label is required in non-interactive mode")
+        );
     }
 }

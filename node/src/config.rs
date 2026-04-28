@@ -83,6 +83,7 @@ pub struct Config {
     pub stores: BTreeMap<String, Shard>,
     pub chains: ChainSection,
     pub deployment: Deployment,
+    pub log_store: Option<LogStoreSection>,
 }
 
 fn validate_name(s: &str) -> Result<()> {
@@ -235,6 +236,7 @@ impl Config {
             stores,
             chains,
             deployment,
+            log_store: None,
         })
     }
 
@@ -269,6 +271,79 @@ impl Config {
 pub struct GeneralSection {
     #[serde(with = "serde_regex", default = "no_name")]
     query: Regex,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LogStoreSection {
+    pub backend: String,
+
+    // File backend
+    pub directory: Option<String>,
+    pub retention_hours: Option<u32>,
+
+    // Elasticsearch backend
+    pub url: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub index: Option<String>,
+    pub timeout_secs: Option<u64>,
+
+    // Loki backend (url shared with elasticsearch, differentiated by backend)
+    pub tenant_id: Option<String>,
+}
+
+impl LogStoreSection {
+    pub fn to_log_store_config(&self) -> Result<graph::components::log_store::LogStoreConfig> {
+        use graph::components::log_store::LogStoreConfig;
+
+        match self.backend.to_lowercase().as_str() {
+            "disabled" | "none" => Ok(LogStoreConfig::Disabled),
+
+            "elasticsearch" | "elastic" | "es" => {
+                let endpoint = self.url.clone().ok_or_else(|| {
+                    anyhow!("log_store: 'url' is required for elasticsearch backend")
+                })?;
+
+                Ok(LogStoreConfig::Elasticsearch {
+                    endpoint,
+                    username: self.username.clone(),
+                    password: self.password.clone(),
+                    index: self.index.clone().unwrap_or_else(|| "subgraph".to_string()),
+                    timeout_secs: self.timeout_secs.unwrap_or(10),
+                })
+            }
+
+            "loki" => {
+                let endpoint = self
+                    .url
+                    .clone()
+                    .ok_or_else(|| anyhow!("log_store: 'url' is required for loki backend"))?;
+
+                Ok(LogStoreConfig::Loki {
+                    endpoint,
+                    tenant_id: self.tenant_id.clone(),
+                    username: self.username.clone(),
+                    password: self.password.clone(),
+                })
+            }
+
+            "file" | "files" => {
+                let directory = self.directory.clone().ok_or_else(|| {
+                    anyhow!("log_store: 'directory' is required for file backend")
+                })?;
+
+                Ok(LogStoreConfig::File {
+                    directory: std::path::PathBuf::from(directory),
+                    retention_hours: self.retention_hours.unwrap_or(0),
+                })
+            }
+
+            other => Err(anyhow!(
+                "log_store: unknown backend '{}'. Valid options: disabled, elasticsearch, loki, file",
+                other
+            )),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -2343,6 +2418,7 @@ fdw_pool_size = [
             chains: section,
             deployment: toml::from_str("[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]")
                 .unwrap(),
+            log_store: None,
         };
 
         let amp = config.amp_chain_names();
@@ -2385,6 +2461,7 @@ fdw_pool_size = [
                     "[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]",
                 )
                 .unwrap(),
+                log_store: None,
             }
         };
 

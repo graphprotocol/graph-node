@@ -668,8 +668,12 @@ pub enum EntityOperation {
 
 #[derive(Debug, PartialEq)]
 pub enum UnfailOutcome {
+    /// Nothing to do - no error exists, or error is of wrong type (e.g., deterministic).
     Noop,
+    /// Successfully unfailed the subgraph.
     Unfailed,
+    /// The deployment head is still behind the error block, retry on subsequent blocks.
+    BehindErrorBlock,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]

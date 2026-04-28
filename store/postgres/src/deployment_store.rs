@@ -1872,7 +1872,8 @@ impl DeploymentStore {
 
                         Ok(UnfailOutcome::Unfailed)
                     }
-                // NOOP, the deployment head is still before where non-deterministic error happened.
+                // The deployment head is still before where non-deterministic error happened.
+                // Return BehindErrorBlock so the caller knows to retry on subsequent blocks.
                 block_range => {
                     info!(
                         self.logger,
@@ -1884,7 +1885,7 @@ impl DeploymentStore {
                         "error_block_hash" => subgraph_error.block_hash.as_ref().map(|hash| format!("0x{}", hex::encode(hash))),
                     );
 
-                    Ok(UnfailOutcome::Noop)
+                    Ok(UnfailOutcome::BehindErrorBlock)
                 }
             }
         }.scope_boxed()).await

@@ -615,6 +615,7 @@ async fn execute_query_document_with_variables(
         STORE.clone(),
         LOAD_MANAGER.clone(),
         METRICS_REGISTRY.clone(),
+        Arc::new(graph::components::log_store::NoOpLogStore),
     ));
     let target = QueryTarget::Deployment(id.clone(), Default::default());
     let query = Query::new(query, variables, false);
@@ -725,6 +726,7 @@ where
                     STORE.clone(),
                     LOAD_MANAGER.clone(),
                     METRICS_REGISTRY.clone(),
+                    Arc::new(graph::components::log_store::NoOpLogStore),
                 ));
                 let target = QueryTarget::Deployment(id.clone(), Default::default());
                 let query = Query::new(query, variables, false);
