@@ -11,10 +11,7 @@ use graph::runtime::{
     AscIndexId, AscPtr, AscType, AscValue, HostExportError, ToAscObj, asc_get, asc_new,
 };
 use graph::{data::store, runtime::DeterministicHostError};
-use graph::{
-    prelude::{alloy::primitives::U256, serde_json},
-    runtime::FromAscObj,
-};
+use graph::{prelude::serde_json, runtime::FromAscObj};
 
 use crate::asc_abi::class::*;
 
@@ -235,8 +232,7 @@ impl FromAscObj<AscEnum<EthereumValueKind>> for abi::DynSolValue {
             EthereumValueKind::Int => {
                 let ptr: AscPtr<AscBigInt> = AscPtr::from(payload);
                 let n: BigInt = asc_get(heap, ptr, gas, depth)?;
-                let x =
-                    abi::I256::from_le_bytes(n.to_signed_u256().to_le_bytes::<{ U256::BYTES }>());
+                let x = n.to_i256().map_err(DeterministicHostError::Other)?;
 
                 Self::Int(x, x.bits() as usize)
             }
