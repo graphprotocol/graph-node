@@ -1849,7 +1849,7 @@ fn log_filter_require_transacion_receipt_method() {
     .into_iter()
     .collect();
 
-    let events_with_topic_filters = HashMap::new(); // TODO(krishna): Test events with topic filters
+    let events_with_topic_filters = HashMap::new();
 
     let alien_event_signature = b256(8); // those will not be inserted in the graph
     let alien_contract_address = address(9);
@@ -1981,4 +1981,269 @@ fn log_filter_require_transacion_receipt_method() {
         Some(&alien_contract_address),
         &empty_vec
     ));
+}
+
+// Tests that `EthereumLogFilter` OR-merges per-handler `receipt` flags across
+// every insertion site (`from_data_sources`, `from_mapping`, `extend`).
+
+#[cfg(test)]
+fn receipt_merge_test_addr(n: u64) -> Address {
+    Address::left_padding_from(&n.to_be_bytes())
+}
+
+#[cfg(test)]
+fn receipt_merge_test_sig(n: u64) -> B256 {
+    B256::left_padding_from(&n.to_be_bytes())
+}
+
+#[cfg(test)]
+fn receipt_merge_test_mock_abi() -> std::sync::Arc<graph::data_source::common::MappingABI> {
+    std::sync::Arc::new(graph::data_source::common::MappingABI {
+        name: "mock_abi".to_string(),
+        contract: abi::JsonAbi::new(),
+    })
+}
+
+#[cfg(test)]
+fn receipt_merge_test_event_handler(
+    sig: B256,
+    topic1: Option<Vec<B256>>,
+    topic2: Option<Vec<B256>>,
+    topic3: Option<Vec<B256>>,
+    receipt: bool,
+) -> crate::data_source::MappingEventHandler {
+    crate::data_source::MappingEventHandler {
+        event: "Event()".to_string(),
+        topic0: Some(sig),
+        topic1,
+        topic2,
+        topic3,
+        handler: "handleEvent".to_string(),
+        receipt,
+        calls: graph::data_source::common::CallDecls::default(),
+    }
+}
+
+#[cfg(test)]
+fn receipt_merge_test_mapping(
+    handlers: Vec<crate::data_source::MappingEventHandler>,
+) -> crate::Mapping {
+    crate::Mapping {
+        kind: "ethereum/events".to_string(),
+        api_version: semver::Version::new(0, 0, 7),
+        language: "wasm/assemblyscript".to_string(),
+        entities: vec![],
+        abis: vec![receipt_merge_test_mock_abi()],
+        block_handlers: vec![],
+        call_handlers: vec![],
+        event_handlers: handlers,
+        runtime: std::sync::Arc::new(vec![]),
+        link: graph::prelude::Link {
+            link: "test".to_string(),
+        },
+    }
+}
+
+#[cfg(test)]
+fn receipt_merge_test_data_source(
+    address: Option<Address>,
+    handlers: Vec<crate::data_source::MappingEventHandler>,
+) -> crate::data_source::DataSource {
+    crate::data_source::DataSource {
+        kind: "ethereum/contract".to_string(),
+        network: Some("test".to_string()),
+        name: "Test".to_string(),
+        manifest_idx: 0,
+        address,
+        start_block: 0,
+        end_block: None,
+        mapping: receipt_merge_test_mapping(handlers),
+        context: std::sync::Arc::new(None),
+        creation_block: None,
+        contract_abi: receipt_merge_test_mock_abi(),
+    }
+}
+
+/// Run two data sources with `receipt: true` and `receipt: false` at the
+/// same effective filter key through `from_data_sources` and assert the
+/// merged filter still requires a transaction receipt. Runs both
+/// declaration orders so order-independence is verified per variant.
+#[cfg(test)]
+fn assert_from_data_sources_or_merges(
+    label: &str,
+    address: Option<Address>,
+    topic1: Option<Vec<B256>>,
+    log_topics: &[B256],
+) {
+    let event_sig = receipt_merge_test_sig(100);
+    let ds_yes = receipt_merge_test_data_source(
+        address,
+        vec![receipt_merge_test_event_handler(
+            event_sig,
+            topic1.clone(),
+            None,
+            None,
+            true,
+        )],
+    );
+    let ds_no = receipt_merge_test_data_source(
+        address,
+        vec![receipt_merge_test_event_handler(
+            event_sig,
+            topic1.clone(),
+            None,
+            None,
+            false,
+        )],
+    );
+
+    for (order, dss) in [("yes,no", [&ds_yes, &ds_no]), ("no,yes", [&ds_no, &ds_yes])] {
+        let filter = EthereumLogFilter::from_data_sources(dss);
+        assert!(
+            filter.requires_transaction_receipt(&event_sig, address.as_ref(), log_topics),
+            "{label} ({order}): receipt:true must survive a later receipt:false",
+        );
+    }
+}
+
+/// Build two filters via `from_data_sources`, each with one handler at the
+/// same effective key but with opposite receipt flags, then merge them via
+/// `extend` and assert the merged filter still requires a transaction
+/// receipt. Runs both extend directions so order-independence is verified
+/// per variant.
+#[cfg(test)]
+fn assert_extend_or_merges(
+    label: &str,
+    address: Option<Address>,
+    topic1: Option<Vec<B256>>,
+    log_topics: &[B256],
+) {
+    let event_sig = receipt_merge_test_sig(105);
+    let ds_yes = receipt_merge_test_data_source(
+        address,
+        vec![receipt_merge_test_event_handler(
+            event_sig,
+            topic1.clone(),
+            None,
+            None,
+            true,
+        )],
+    );
+    let ds_no = receipt_merge_test_data_source(
+        address,
+        vec![receipt_merge_test_event_handler(
+            event_sig,
+            topic1.clone(),
+            None,
+            None,
+            false,
+        )],
+    );
+
+    for (order, base, ext) in [
+        ("yes.extend(no)", &ds_yes, &ds_no),
+        ("no.extend(yes)", &ds_no, &ds_yes),
+    ] {
+        let mut filter = EthereumLogFilter::from_data_sources([base]);
+        filter.extend(EthereumLogFilter::from_data_sources([ext]));
+        assert!(
+            filter.requires_transaction_receipt(&event_sig, address.as_ref(), log_topics),
+            "{label} ({order}): extend must OR-merge",
+        );
+    }
+}
+
+#[test]
+fn from_data_sources_or_merges_at_every_insertion_site() {
+    let contract = receipt_merge_test_addr(1);
+    let event_sig = receipt_merge_test_sig(100);
+    let topic = receipt_merge_test_sig(200);
+    let with_topic = vec![event_sig, topic];
+
+    // Each case maps to one arm of the `match ds.address` in `from_data_sources`.
+    assert_from_data_sources_or_merges("graph edge", Some(contract), None, &[]);
+    assert_from_data_sources_or_merges(
+        "addressed topics",
+        Some(contract),
+        Some(vec![topic]),
+        &with_topic,
+    );
+    assert_from_data_sources_or_merges("wildcard", None, None, &[]);
+    assert_from_data_sources_or_merges("wildcard topics", None, Some(vec![topic]), &with_topic);
+}
+
+#[test]
+fn from_mapping_or_merges_via_extend() {
+    // Two templates handling the same event signature with different receipt
+    // flags merged via `from_mapping` + `extend`.
+    let event_sig = receipt_merge_test_sig(104);
+
+    let mapping_yes = receipt_merge_test_mapping(vec![receipt_merge_test_event_handler(
+        event_sig, None, None, None, true,
+    )]);
+    let mapping_no = receipt_merge_test_mapping(vec![receipt_merge_test_event_handler(
+        event_sig, None, None, None, false,
+    )]);
+
+    let mut filter = EthereumLogFilter::from_mapping(&mapping_yes);
+    filter.extend(EthereumLogFilter::from_mapping(&mapping_no));
+
+    assert!(filter.requires_transaction_receipt(&event_sig, None, &[]));
+}
+
+#[test]
+fn extend_or_merges_at_every_collection() {
+    let contract = receipt_merge_test_addr(5);
+    let event_sig = receipt_merge_test_sig(105);
+    let topic = receipt_merge_test_sig(203);
+    let with_topic = vec![event_sig, topic];
+
+    assert_extend_or_merges("graph edge", Some(contract), None, &[]);
+    assert_extend_or_merges(
+        "addressed topics",
+        Some(contract),
+        Some(vec![topic]),
+        &with_topic,
+    );
+    assert_extend_or_merges("wildcard", None, None, &[]);
+    assert_extend_or_merges("wildcard topics", None, Some(vec![topic]), &with_topic);
+}
+
+#[test]
+fn requires_transaction_receipt_has_or_semantics_across_handlers() {
+    // `requires_transaction_receipt` must return true iff at least one handler
+    // at the key declared `receipt: true`, regardless of declaration order.
+    let event_sig = receipt_merge_test_sig(108);
+
+    for flags in [
+        vec![false],
+        vec![true],
+        vec![true, false],
+        vec![false, true],
+        vec![false, false, true],
+        vec![true, false, false],
+        vec![false, true, false],
+        vec![true, true, false],
+        vec![false, false, false],
+    ] {
+        let dss: Vec<_> = flags
+            .iter()
+            .map(|&r| {
+                receipt_merge_test_data_source(
+                    None,
+                    vec![receipt_merge_test_event_handler(
+                        event_sig, None, None, None, r,
+                    )],
+                )
+            })
+            .collect();
+        let filter = EthereumLogFilter::from_data_sources(dss.iter());
+
+        let any_requires_receipt = flags.iter().any(|&r| r);
+        assert_eq!(
+            filter.requires_transaction_receipt(&event_sig, None, &[]),
+            any_requires_receipt,
+            "flag sequence {flags:?}",
+        );
+    }
 }
