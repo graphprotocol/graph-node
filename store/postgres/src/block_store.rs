@@ -5,7 +5,7 @@ use graph::{components::store::BLOCK_CACHE_SIZE, parking_lot::RwLock};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use diesel::{ExpressionMethods as _, QueryDsl, sql_query};
-use diesel_async::{RunQueryDsl, scoped_futures::ScopedFutureExt};
+use diesel_async::RunQueryDsl;
 use graph::{
     blockchain::ChainIdentifier,
     components::store::{BlockStore as BlockStoreTrait, QueryPermit},
@@ -253,9 +253,7 @@ impl BlockStore {
         const CHAIN_HEAD_CACHE_TTL: Duration = Duration::from_secs(2);
 
         let mirror = PrimaryMirror::new(&pools);
-        let existing_chains = mirror
-            .read_async(|conn| primary::load_chains(conn).scope_boxed())
-            .await?;
+        let existing_chains = mirror.read_async(primary::load_chains).await?;
         let chain_head_cache = TimedCache::new(CHAIN_HEAD_CACHE_TTL);
         let chains = shards.clone();
 
@@ -437,18 +435,15 @@ impl BlockStore {
         let chain = chain.to_string();
         let this = self.cheap_clone();
         self.mirror
-            .read_async(|conn| {
-                async {
-                    match primary::find_chain(conn, &chain).await? {
-                        Some(chain) => {
-                            let chain_store = this.add_chain_store(&chain, false).await?;
-                            Ok(Some(chain_store))
-                        }
-                        None => Ok(None),
+            .read_async(
+                async |conn| match primary::find_chain(conn, &chain).await? {
+                    Some(chain) => {
+                        let chain_store = this.add_chain_store(&chain, false).await?;
+                        Ok(Some(chain_store))
                     }
-                }
-                .scope_boxed()
-            })
+                    None => Ok(None),
+                },
+            )
             .await
     }
 

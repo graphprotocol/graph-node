@@ -5,7 +5,6 @@ use diesel::{
     serialize::{Output, ToSql},
     sql_types::{self, Text},
 };
-use diesel_async::scoped_futures::ScopedFutureExt;
 use std::fmt;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -423,26 +422,23 @@ impl SubgraphStore {
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
         // potentially deadlock.
         let mut pconn = self.primary_conn().await?;
+        let subgraph_store = self.cheap_clone();
+        let site_clone = site.cheap_clone();
         pconn
-            .transaction(|pconn| {
-                let subgraph_store = self.cheap_clone();
-                let site = site.cheap_clone();
-                async move {
-                    let exists_and_synced = async move |id: &DeploymentHash| {
-                        let (store, _) = subgraph_store.store(id).await?;
-                        store.deployment_exists_and_synced(id).await
-                    };
+            .transaction(async move |pconn| {
+                let exists_and_synced = async move |id: &DeploymentHash| {
+                    let (store, _) = subgraph_store.store(id).await?;
+                    store.deployment_exists_and_synced(id).await
+                };
 
-                    // Create subgraph, subgraph version, and assignment
-                    let changes = pconn
-                        .create_subgraph_version(name, &site, node_id, mode, exists_and_synced)
-                        .await?;
+                // Create subgraph, subgraph version, and assignment
+                let changes = pconn
+                    .create_subgraph_version(name, &site_clone, node_id, mode, exists_and_synced)
+                    .await?;
 
-                    let event = StoreEvent::new(changes);
-                    pconn.send_store_event(&self.sender, &event).await?;
-                    Ok(())
-                }
-                .scope_boxed()
+                let event = StoreEvent::new(changes);
+                pconn.send_store_event(&self.sender, &event).await?;
+                Ok(())
             })
             .await?;
         Ok(site.as_ref().into())
@@ -915,18 +911,17 @@ impl Inner {
             .await?;
 
         let mut pconn = self.primary_conn().await?;
+        let sender = self.sender.clone();
+        let dst_clone = dst.cheap_clone();
         pconn
-            .transaction(|pconn| {
-                async {
-                    // Create subgraph, subgraph version, and assignment. We use the
-                    // existence of an assignment as a signal that we already set up
-                    // the copy
-                    let changes = pconn.assign_subgraph(dst.as_ref(), &node).await?;
-                    let event = StoreEvent::new(changes);
-                    pconn.send_store_event(&self.sender, &event).await?;
-                    Ok(())
-                }
-                .scope_boxed()
+            .transaction(async move |pconn| {
+                // Create subgraph, subgraph version, and assignment. We use the
+                // existence of an assignment as a signal that we already set up
+                // the copy
+                let changes = pconn.assign_subgraph(dst_clone.as_ref(), &node).await?;
+                let event = StoreEvent::new(changes);
+                pconn.send_store_event(&sender, &event).await?;
+                Ok(())
             })
             .await?;
         Ok(dst.as_ref().into())
@@ -1649,7 +1644,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError> {
         let mut pconn = self.primary_conn().await?;
         pconn
-            .transaction(|pconn| pconn.create_subgraph(&name).scope_boxed())
+            .transaction(async move |pconn| pconn.create_subgraph(&name).await)
             .await
     }
 
@@ -1659,7 +1654,7 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<(), StoreError> {
         let mut pconn = self.primary_conn().await?;
         pconn
-            .transaction(|pconn| pconn.create_subgraph_features(features).scope_boxed())
+            .transaction(async move |pconn| pconn.create_subgraph_features(features).await)
             .await
     }
 
@@ -1672,15 +1667,13 @@ impl SubgraphStoreTrait for SubgraphStore {
             .collect::<Vec<_>>();
 
         let mut pconn = self.primary_conn().await?;
+        let sender = self.sender.clone();
         pconn
-            .transaction(|pconn| {
-                async {
-                    let changes = pconn.remove_subgraph(name).await?;
-                    pconn
-                        .send_store_event(&self.sender, &StoreEvent::new(changes))
-                        .await
-                }
-                .scope_boxed()
+            .transaction(async move |pconn| {
+                let changes = pconn.remove_subgraph(name).await?;
+                pconn
+                    .send_store_event(&sender, &StoreEvent::new(changes))
+                    .await
             })
             .await?;
         Ok(deployments)
@@ -1693,15 +1686,13 @@ impl SubgraphStoreTrait for SubgraphStore {
     ) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
         let mut pconn = self.primary_conn().await?;
+        let sender = self.sender.clone();
         pconn
-            .transaction(|pconn| {
-                async {
-                    let changes = pconn.reassign_subgraph(site.as_ref(), node_id).await?;
-                    pconn
-                        .send_store_event(&self.sender, &StoreEvent::new(changes))
-                        .await
-                }
-                .scope_boxed()
+            .transaction(async move |pconn| {
+                let changes = pconn.reassign_subgraph(site.as_ref(), node_id).await?;
+                pconn
+                    .send_store_event(&sender, &StoreEvent::new(changes))
+                    .await
             })
             .await
     }
@@ -1709,15 +1700,13 @@ impl SubgraphStoreTrait for SubgraphStore {
     async fn unassign_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
         let mut pconn = self.primary_conn().await?;
+        let sender = self.sender.clone();
         pconn
-            .transaction(|pconn| {
-                async {
-                    let changes = pconn.unassign_subgraph(site.as_ref()).await?;
-                    pconn
-                        .send_store_event(&self.sender, &StoreEvent::new(changes))
-                        .await
-                }
-                .scope_boxed()
+            .transaction(async move |pconn| {
+                let changes = pconn.unassign_subgraph(site.as_ref()).await?;
+                pconn
+                    .send_store_event(&sender, &StoreEvent::new(changes))
+                    .await
             })
             .await
     }
@@ -1725,15 +1714,13 @@ impl SubgraphStoreTrait for SubgraphStore {
     async fn pause_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
         let mut pconn = self.primary_conn().await?;
+        let sender = self.sender.clone();
         pconn
-            .transaction(|pconn| {
-                async {
-                    let changes = pconn.pause_subgraph(site.as_ref()).await?;
-                    pconn
-                        .send_store_event(&self.sender, &StoreEvent::new(changes))
-                        .await
-                }
-                .scope_boxed()
+            .transaction(async move |pconn| {
+                let changes = pconn.pause_subgraph(site.as_ref()).await?;
+                pconn
+                    .send_store_event(&sender, &StoreEvent::new(changes))
+                    .await
             })
             .await
     }
@@ -1741,15 +1728,13 @@ impl SubgraphStoreTrait for SubgraphStore {
     async fn resume_subgraph(&self, deployment: &DeploymentLocator) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
         let mut pconn = self.primary_conn().await?;
+        let sender = self.sender.clone();
         pconn
-            .transaction(|pconn| {
-                async {
-                    let changes = pconn.resume_subgraph(site.as_ref()).await?;
-                    pconn
-                        .send_store_event(&self.sender, &StoreEvent::new(changes))
-                        .await
-                }
-                .scope_boxed()
+            .transaction(async move |pconn| {
+                let changes = pconn.resume_subgraph(site.as_ref()).await?;
+                pconn
+                    .send_store_event(&sender, &StoreEvent::new(changes))
+                    .await
             })
             .await
     }

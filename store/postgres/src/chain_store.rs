@@ -2,8 +2,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use diesel::sql_types::Text;
 use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, insert_into, update};
-use diesel_async::AsyncConnection;
-use diesel_async::{RunQueryDsl, scoped_futures::ScopedFutureExt};
+use diesel_async::RunQueryDsl;
 
 use graph::components::store::ChainHeadStore;
 use graph::data::store::ethereum::call;
@@ -2420,24 +2419,21 @@ impl ChainStore {
         use public::ethereum_networks::dsl::*;
 
         let mut conn = self.pool.get_permitted().await?;
-        conn.transaction(|conn| {
-            async move {
-                insert_into(ethereum_networks)
-                    .values((
-                        name.eq(&self.chain),
-                        namespace.eq(&self.storage),
-                        head_block_hash.eq::<Option<String>>(None),
-                        head_block_number.eq::<Option<i64>>(None),
-                        net_version.eq(&ident.net_version),
-                        genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
-                    ))
-                    .on_conflict(name)
-                    .do_nothing()
-                    .execute(conn)
-                    .await?;
-                self.storage.create(conn).await
-            }
-            .scope_boxed()
+        conn.transaction(async move |conn| {
+            insert_into(ethereum_networks)
+                .values((
+                    name.eq(&self.chain),
+                    namespace.eq(&self.storage),
+                    head_block_hash.eq::<Option<String>>(None),
+                    head_block_number.eq::<Option<i64>>(None),
+                    net_version.eq(&ident.net_version),
+                    genesis_block_hash.eq(ident.genesis_block_hash.hash_hex()),
+                ))
+                .on_conflict(name)
+                .do_nothing()
+                .execute(conn)
+                .await?;
+            self.storage.create(conn).await
         })
         .await?;
 
@@ -2447,15 +2443,12 @@ impl ChainStore {
     pub async fn update_name(&self, name: &str) -> Result<(), Error> {
         use public::ethereum_networks as n;
         let mut conn = self.pool.get_permitted().await?;
-        conn.transaction(|conn| {
-            async {
-                update(n::table.filter(n::name.eq(&self.chain)))
-                    .set(n::name.eq(name))
-                    .execute(conn)
-                    .await?;
-                Ok(())
-            }
-            .scope_boxed()
+        conn.transaction(async |conn| {
+            update(n::table.filter(n::name.eq(&self.chain)))
+                .set(n::name.eq(name))
+                .execute(conn)
+                .await?;
+            Ok(())
         })
         .await
     }
@@ -2465,16 +2458,12 @@ impl ChainStore {
         use public::ethereum_networks as n;
 
         let mut conn = self.pool.get_permitted().await?;
-        conn.transaction(|conn| {
-            async {
-                self.storage.drop_storage(conn, &self.chain).await?;
-
-                delete(n::table.filter(n::name.eq(&self.chain)))
-                    .execute(conn)
-                    .await?;
-                Ok(())
-            }
-            .scope_boxed()
+        conn.transaction(async |conn| {
+            self.storage.drop_storage(conn, &self.chain).await?;
+            delete(n::table.filter(n::name.eq(&self.chain)))
+                .execute(conn)
+                .await?;
+            Ok(())
         })
         .await
     }
@@ -2694,8 +2683,8 @@ impl ChainStore {
 
         let hash = ptr.hash_hex();
         let number = ptr.number as i64;
-        conn.transaction::<(Option<B256>, Option<(String, i64)>), StoreError, _>(|conn| {
-            async move {
+        conn.transaction::<(Option<B256>, Option<(String, i64)>), StoreError, _>(
+            async move |conn| {
                 update(n::table.filter(n::name.eq(&self.chain)))
                     .set((
                         n::head_block_hash.eq(&hash),
@@ -2704,9 +2693,8 @@ impl ChainStore {
                     .execute(conn)
                     .await?;
                 Ok((None, Some((hash, number))))
-            }
-            .scope_boxed()
-        })
+            },
+        )
         .await
     }
 
@@ -2823,24 +2811,21 @@ impl ChainHeadStore for ChainStore {
         self.chain_head_update_sender.send(&hash, number).await?;
 
         let mut conn = self.pool.get_permitted().await?;
-        conn.transaction(|conn| {
-            async {
-                self.storage
-                    .upsert_block(conn, &self.chain, block.as_ref(), true)
-                    .await?;
+        conn.transaction(async |conn| {
+            self.storage
+                .upsert_block(conn, &self.chain, block.as_ref(), true)
+                .await?;
 
-                update(n::table.filter(n::name.eq(&self.chain)))
-                    .set((
-                        n::head_block_hash.eq(&hash),
-                        n::head_block_number.eq(number),
-                        n::head_block_cursor.eq(cursor),
-                    ))
-                    .execute(conn)
-                    .await?;
+            update(n::table.filter(n::name.eq(&self.chain)))
+                .set((
+                    n::head_block_hash.eq(&hash),
+                    n::head_block_number.eq(number),
+                    n::head_block_cursor.eq(cursor),
+                ))
+                .execute(conn)
+                .await?;
 
-                Ok::<(), StoreError>(())
-            }
-            .scope_boxed()
+            Ok::<(), StoreError>(())
         })
         .await?;
         Ok(())
@@ -2866,10 +2851,10 @@ impl ChainStoreTrait for ChainStore {
         }
 
         let mut conn = self.pool.get_permitted().await?;
-        conn.transaction(|conn| {
+        conn.transaction(async |conn| {
             self.storage
                 .upsert_block(conn, &self.chain, block.as_ref(), true)
-                .scope_boxed()
+                .await
         })
         .await
         .map_err(Error::from)
@@ -3658,22 +3643,19 @@ impl EthereumCallCache for ChainStore {
         let id = contract_call_id(req, &block);
         let conn = &mut self.pool.get_permitted().await?;
         let return_value = conn
-            .transaction::<_, Error, _>(|conn| {
-                async {
-                    if let Some((return_value, update_accessed_at)) =
-                        self.storage.get_call_and_access(conn, id.as_ref()).await?
-                    {
-                        if update_accessed_at {
-                            self.storage
-                                .update_accessed_at(conn, req.address.as_ref())
-                                .await?;
-                        }
-                        Ok(Some(return_value))
-                    } else {
-                        Ok(None)
+            .transaction::<_, Error, _>(async |conn| {
+                if let Some((return_value, update_accessed_at)) =
+                    self.storage.get_call_and_access(conn, id.as_ref()).await?
+                {
+                    if update_accessed_at {
+                        self.storage
+                            .update_accessed_at(conn, req.address.as_ref())
+                            .await?;
                     }
+                    Ok(Some(return_value))
+                } else {
+                    Ok(None)
                 }
-                .scope_boxed()
             })
             .await?;
         Ok(return_value.map(|return_value| {
@@ -3699,10 +3681,8 @@ impl EthereumCallCache for ChainStore {
 
         let conn = &mut self.pool.get_permitted().await?;
         let rows = conn
-            .transaction::<_, Error, _>(|conn| {
-                self.storage
-                    .get_calls_and_access(conn, &id_refs)
-                    .scope_boxed()
+            .transaction::<_, Error, _>(async |conn| {
+                self.storage.get_calls_and_access(conn, &id_refs).await
             })
             .await?;
 
@@ -3732,8 +3712,8 @@ impl EthereumCallCache for ChainStore {
 
     async fn get_calls_in_block(&self, block: BlockPtr) -> Result<Vec<CachedEthereumCall>, Error> {
         let conn = &mut self.pool.get_permitted().await?;
-        conn.transaction::<_, Error, _>(|conn| {
-            self.storage.get_calls_in_block(conn, block).scope_boxed()
+        conn.transaction::<_, Error, _>(async |conn| {
+            self.storage.get_calls_in_block(conn, block).await
         })
         .await
     }
@@ -3765,7 +3745,7 @@ impl EthereumCallCache for ChainStore {
 
         let id = contract_call_id(&call, &block);
         let conn = &mut self.pool.get_permitted().await?;
-        conn.transaction::<_, anyhow::Error, _>(|conn| {
+        conn.transaction::<_, anyhow::Error, _>(async |conn| {
             self.storage
                 .set_call(
                     conn,
@@ -3774,7 +3754,7 @@ impl EthereumCallCache for ChainStore {
                     block.number,
                     &return_value,
                 )
-                .scope_boxed()
+                .await
         })
         .await?;
         Ok(())

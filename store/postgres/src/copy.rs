@@ -26,25 +26,19 @@ use std::{
 use diesel::{
     ExpressionMethods, OptionalExtension, QueryDsl, dsl::sql, insert_into, select, update,
 };
-use diesel_async::{
-    AsyncConnection,
-    scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
-};
-use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
+use diesel_async::{AsyncConnection, RunQueryDsl, SimpleAsyncConnection};
 
 use crate::{
     AsyncPgConnection, ConnectionPool, advisory_lock, catalog, deployment,
     dynds::DataSourcesTable,
+    pool::TxnCallback,
     primary::{DeploymentId, Primary, Site},
     relational::{Layout, Table, index::IndexList},
     relational_queries as rq,
     vid_batcher::{VidBatcher, VidRange},
 };
 use graph::{
-    futures03::{
-        FutureExt as _,
-        future::{BoxFuture, select_all},
-    },
+    futures03::{FutureExt as _, future::select_all},
     internal_error,
     prelude::{
         BlockNumber, BlockPtr, CheapClone, ENV_VARS, Logger, StoreError, info, lazy_static, o, warn,
@@ -820,14 +814,11 @@ impl CopyTableWorker {
                     }
 
                     match conn
-                        .transaction(|conn| {
-                            async {
-                                if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
-                                    conn.batch_execute(timeout).await?;
-                                }
-                                self.table.copy_batch(conn).await
+                        .transaction(async |conn| {
+                            if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
+                                conn.batch_execute(timeout).await?;
                             }
-                            .scope_boxed()
+                            self.table.copy_batch(conn).await
                         })
                         .await
                     {
@@ -866,7 +857,7 @@ impl CopyTableWorker {
                     // that is hard to predict. This mechanism ensures
                     // that if our estimation is wrong, the consequences
                     // aren't too severe.
-                    conn.transaction(|conn| self.table.set_batch_size(conn, 1).scope_boxed())
+                    conn.transaction(async |conn| self.table.set_batch_size(conn, 1).await)
                         .await?;
                 }
             };
@@ -1033,18 +1024,14 @@ impl Connection {
     fn transaction<'a, 'conn, R, F>(
         &'conn mut self,
         callback: F,
-    ) -> Result<BoxFuture<'conn, Result<R, StoreError>>, StoreError>
+    ) -> Result<impl Future<Output = Result<R, StoreError>> + Send + 'conn, StoreError>
     where
-        F: for<'r> FnOnce(
-                &'r mut AsyncPgConnection,
-            ) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
-            + Send
-            + 'a,
+        F: TxnCallback<R, StoreError> + 'a,
         R: Send + 'a,
         'a: 'conn,
     {
         let conn = self.get_conn()?;
-        Ok(conn.transaction(|conn| callback(conn).scope_boxed()))
+        Ok(conn.transaction(callback))
     }
 
     /// Copy private data sources if the source uses a schema version that
@@ -1054,19 +1041,19 @@ impl Connection {
         let src_manifest_idx_and_name = self.src_manifest_idx_and_name.cheap_clone();
         let dst_manifest_idx_and_name = self.dst_manifest_idx_and_name.cheap_clone();
         if state.src.site.schema_version.private_data_sources() {
-            self.transaction(|conn| {
-                async {
-                    DataSourcesTable::new(state.src.site.namespace.clone())
-                        .copy_to(
-                            conn,
-                            &DataSourcesTable::new(state.dst.site.namespace.clone()),
-                            state.target_block.number,
-                            &src_manifest_idx_and_name,
-                            &dst_manifest_idx_and_name,
-                        )
-                        .await
-                }
-                .scope_boxed()
+            let src_ns = state.src.site.namespace.clone();
+            let dst_ns = state.dst.site.namespace.clone();
+            let target_block = state.target_block.number;
+            self.transaction(async move |conn| {
+                DataSourcesTable::new(src_ns)
+                    .copy_to(
+                        conn,
+                        &DataSourcesTable::new(dst_ns),
+                        target_block,
+                        &src_manifest_idx_and_name,
+                        &dst_manifest_idx_and_name,
+                    )
+                    .await
             })?
             .await?;
         }
@@ -1165,8 +1152,8 @@ impl Connection {
         let target_block = self.target_block.clone();
         let primary = self.primary.cheap_clone();
         let mut state = self
-            .transaction(|conn| {
-                CopyState::new(conn, primary, src, dst, target_block).scope_boxed()
+            .transaction(async move |conn| {
+                CopyState::new(conn, primary, src, dst, target_block).await
             })?
             .await?;
 
@@ -1284,7 +1271,7 @@ impl Connection {
 
         self.copy_private_data_sources(&state).await?;
 
-        self.transaction(|conn| state.finished(conn).scope_boxed())?
+        self.transaction(async |conn| state.finished(conn).await)?
             .await?;
         progress.finished();
 

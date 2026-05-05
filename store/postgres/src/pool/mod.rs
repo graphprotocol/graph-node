@@ -19,9 +19,9 @@ use graph::slog::warn;
 use graph::util::timed_rw_lock::TimedMutex;
 use tokio::sync::OwnedSemaphorePermit;
 
-use diesel_async::scoped_futures::ScopedBoxFuture;
 use std::collections::HashMap;
 use std::fmt::{self};
+use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,11 +31,65 @@ use crate::pool::manager::{ConnectionManager, WaitMeter};
 use crate::primary::{self, Mirror, Namespace};
 use crate::{PRIMARY_SHARD, Shard};
 
+/// A helper trait that names the future type returned by an async closure.
+/// This is the local equivalent of `diesel_async::transaction_manager::AsyncFunc`,
+/// which is not a public API. Adding the `Fut: Send` bound on this trait in
+/// function signatures allows the compiler to prove that the futures produced
+/// by async closures are `Send`, preventing "Send not general enough" errors
+/// that arise when using plain `for<'r> F: AsyncFnOnce(...)` bounds.
+pub trait AsyncFunc<T, R>:
+    AsyncFnOnce(T) -> R + FnOnce(T) -> <Self as AsyncFunc<T, R>>::Fut
+{
+    type Fut: Future<Output = R>;
+}
+
+impl<F, T, Fut, R> AsyncFunc<T, R> for F
+where
+    F: AsyncFnOnce(T) -> R + FnOnce(T) -> Fut,
+    Fut: Future<Output = R>,
+{
+    type Fut = Fut;
+}
+
+pub trait AsyncMutFunc<T, R>:
+    AsyncFnMut(T) -> R + FnMut(T) -> <Self as AsyncMutFunc<T, R>>::Fut
+{
+    type Fut: Future<Output = R>;
+}
+
+impl<F, T, Fut, R> AsyncMutFunc<T, R> for F
+where
+    F: AsyncFnMut(T) -> R + FnMut(T) -> Fut,
+    Fut: Future<Output = R>,
+{
+    type Fut = Fut;
+}
+
+/// Shorthand for an async closure that may be used as a transaction
+/// callback in our own `fn transaction` implementations in a few places.
+pub(crate) trait TxnCallback<R, E, C = AsyncPgConnection>:
+    for<'r> AsyncFunc<&'r mut C, Result<R, E>, Fut: Send> + Send
+{
+}
+
+impl<F, C, R, E> TxnCallback<R, E, C> for F where
+    F: for<'r> AsyncFunc<&'r mut C, Result<R, E>, Fut: Send> + Send
+{
+}
+
+pub(crate) trait TxnMutCallback<R, E, C = AsyncPgConnection>:
+    for<'r> AsyncMutFunc<&'r mut C, Result<R, E>, Fut: Send> + Send
+{
+}
+
+impl<F, C, R, E> TxnMutCallback<R, E, C> for F where
+    F: for<'r> AsyncMutFunc<&'r mut C, Result<R, E>, Fut: Send> + Send
+{
+}
+
 mod coordinator;
 mod foreign_server;
 mod manager;
-
-pub use diesel_async::scoped_futures::ScopedFutureExt;
 
 pub use coordinator::PoolCoordinator;
 pub use foreign_server::ForeignServer;
@@ -71,11 +125,26 @@ impl PermittedConnection {
     ///
     /// This is analogous to `diesel_async::pg::TransactionBuilder` but
     /// works with the pool-wrapped connection type. The closure receives
-    /// `&mut PermittedConnection`, keeping the full wrapper type available
-    /// so callers can pass it to functions that expect `&mut AsyncPgConnection`
-    /// (the pool alias, not the raw diesel type).
-    pub fn build_transaction(&mut self) -> TransactionBuilder<'_> {
+    /// `&mut AsyncPgConnection`, the inner connection, so it can be passed
+    /// directly to functions that take `&mut AsyncPgConnection`.
+    pub(crate) fn build_transaction(&mut self) -> TransactionBuilder<'_> {
         TransactionBuilder::new(self)
+    }
+
+    /// Run `callback` inside a transaction on this connection. Commits on
+    /// `Ok`, rolls back on `Err`. The callback receives `&mut PermittedConnection`;
+    /// pass it to functions needing `&mut AsyncPgConnection` via deref coercion.
+    pub(crate) fn transaction<'a, 'conn, R, E, F>(
+        &'conn mut self,
+        callback: F,
+    ) -> impl Future<Output = Result<R, E>> + Send + 'conn
+    where
+        F: TxnCallback<R, E> + 'a,
+        E: From<diesel::result::Error> + Send + 'a,
+        R: Send + 'a,
+        'a: 'conn,
+    {
+        self.conn.transaction(callback)
     }
 }
 
@@ -91,7 +160,7 @@ impl PermittedConnection {
 /// `PoolTransactionManager<PoolTransactionManager<AnsiTransactionManager>>`.
 /// Neither matches `AnsiTransactionManager`.
 #[must_use = "Transaction builder does nothing unless you call `run` on it"]
-pub struct TransactionBuilder<'a> {
+pub(crate) struct TransactionBuilder<'a> {
     conn: &'a mut PermittedConnection,
     isolation_level: Option<&'static str>,
     read_only: bool,
@@ -107,35 +176,24 @@ impl<'a> TransactionBuilder<'a> {
     }
 
     /// Set the transaction isolation level to `REPEATABLE READ`.
-    pub fn repeatable_read(mut self) -> Self {
+    pub(crate) fn repeatable_read(mut self) -> Self {
         self.isolation_level = Some("REPEATABLE READ");
         self
     }
 
-    /// Set the transaction isolation level to `SERIALIZABLE`.
-    pub fn serializable(mut self) -> Self {
-        self.isolation_level = Some("SERIALIZABLE");
-        self
-    }
-
     /// Make the transaction `READ ONLY`.
-    pub fn read_only(mut self) -> Self {
+    pub(crate) fn read_only(mut self) -> Self {
         self.read_only = true;
         self
     }
 
     /// Execute `f` inside the configured transaction. Commits on `Ok`,
-    /// rolls back on `Err`.
-    ///
-    /// The closure must return a `ScopedBoxFuture` (use `.scope_boxed()`
-    /// from `ScopedFutureExt`).
-    pub async fn run<'b, T, E, F>(self, f: F) -> Result<T, E>
+    /// rolls back on `Err`. The callback receives `&mut PermittedConnection`;
+    /// pass it to functions needing `&mut AsyncPgConnection` via deref coercion.
+    pub(crate) async fn run<T, E, F>(self, f: F) -> Result<T, E>
     where
-        F: for<'r> FnOnce(&'r mut PermittedConnection) -> ScopedBoxFuture<'b, 'r, Result<T, E>>
-            + Send
-            + 'a,
-        T: 'b,
-        E: From<diesel::result::Error> + 'b,
+        F: TxnCallback<T, E>,
+        E: From<diesel::result::Error>,
     {
         let mut sql = String::from("BEGIN TRANSACTION");
         if let Some(level) = self.isolation_level {
@@ -864,19 +922,16 @@ impl PoolInner {
         let mut conn = self.get_for_setup().await?;
         conn.batch_execute("create extension if not exists postgres_fdw")
             .await?;
-        conn.transaction(|conn| {
-            async {
-                let current_servers: Vec<String> = crate::catalog::current_servers(conn).await?;
-                for server in servers.iter().filter(|server| server.shard != self.shard) {
-                    if current_servers.contains(&server.name) {
-                        server.update(conn).await?;
-                    } else {
-                        server.create(conn).await?;
-                    }
+        conn.transaction(async |conn| {
+            let current_servers: Vec<String> = crate::catalog::current_servers(conn).await?;
+            for server in servers.iter().filter(|server| server.shard != self.shard) {
+                if current_servers.contains(&server.name) {
+                    server.update(conn).await?;
+                } else {
+                    server.create(conn).await?;
                 }
-                Ok(())
             }
-            .scope_boxed()
+            Ok(())
         })
         .await
     }
@@ -922,13 +977,10 @@ impl PoolInner {
 
         info!(&self.logger, "Dropping cross-shard views");
         let mut conn = self.get_for_setup().await?;
-        conn.transaction(|conn| {
-            async {
-                let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
-                conn.batch_execute(&query).await?;
-                Ok(())
-            }
-            .scope_boxed()
+        conn.transaction(async move |conn| {
+            let query = format!("drop schema if exists {} cascade", CROSS_SHARD_NSP);
+            conn.batch_execute(&query).await?;
+            Ok(())
         })
         .await
     }
@@ -967,28 +1019,25 @@ impl PoolInner {
         }
 
         info!(&self.logger, "Creating cross-shard views");
-        conn.transaction(|conn| {
-            async {
-                let query = format!("create schema {}", CROSS_SHARD_NSP);
-                conn.batch_execute(&query).await?;
-                for (src_nsp, src_tables) in SHARDED_TABLES {
-                    // Pairs of (shard, nsp) for all servers
-                    let nsps = shard_nsp_pairs(&self.shard, src_nsp, servers);
-                    for src_table in src_tables {
-                        let create_view = catalog::create_cross_shard_view(
-                            conn,
-                            src_nsp,
-                            src_table,
-                            CROSS_SHARD_NSP,
-                            &nsps,
-                        )
-                        .await?;
-                        conn.batch_execute(&create_view).await?;
-                    }
+        conn.transaction(async |conn| {
+            let query = format!("create schema {}", CROSS_SHARD_NSP);
+            conn.batch_execute(&query).await?;
+            for (src_nsp, src_tables) in SHARDED_TABLES {
+                // Pairs of (shard, nsp) for all servers
+                let nsps = shard_nsp_pairs(&self.shard, src_nsp, servers);
+                for src_table in src_tables {
+                    let create_view = catalog::create_cross_shard_view(
+                        conn,
+                        src_nsp,
+                        src_table,
+                        CROSS_SHARD_NSP,
+                        &nsps,
+                    )
+                    .await?;
+                    conn.batch_execute(&create_view).await?;
                 }
-                Ok(())
             }
-            .scope_boxed()
+            Ok(())
         })
         .await
     }
@@ -1000,7 +1049,7 @@ impl PoolInner {
             return Ok(());
         }
         let mut conn = self.get().await?;
-        conn.transaction(|conn| primary::Mirror::refresh_tables(conn).scope_boxed())
+        conn.transaction(async |conn| primary::Mirror::refresh_tables(conn).await)
             .await
     }
 
@@ -1011,7 +1060,7 @@ impl PoolInner {
         if server.shard == *PRIMARY_SHARD {
             info!(&self.logger, "Mapping primary");
             let mut conn = self.get_for_setup().await?;
-            conn.transaction(|conn| ForeignServer::map_primary(conn, &self.shard).scope_boxed())
+            conn.transaction(async |conn| ForeignServer::map_primary(conn, &self.shard).await)
                 .await?;
         }
         if server.shard != self.shard {
@@ -1021,7 +1070,7 @@ impl PoolInner {
                 server.shard.as_str()
             );
             let mut conn = self.get_for_setup().await?;
-            conn.transaction(|conn| server.map_metadata(conn).scope_boxed())
+            conn.transaction(async |conn| server.map_metadata(conn).await)
                 .await?;
         }
         Ok(())

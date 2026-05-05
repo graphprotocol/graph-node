@@ -25,7 +25,6 @@ use graph_chain_ethereum::chain::BlockFinality;
 use graph_store_postgres::BlockStore;
 use graph_store_postgres::ChainStore;
 use graph_store_postgres::PoolCoordinator;
-use graph_store_postgres::ScopedFutureExt;
 use graph_store_postgres::Shard;
 use graph_store_postgres::add_chain;
 use graph_store_postgres::find_chain;
@@ -260,34 +259,35 @@ pub async fn change_block_cache_shard(
     let new_name = format!("{}-old", &chain_name);
     let ident = chain_store.chain_identifier().await?;
 
-    conn.transaction::<(), StoreError, _>(|conn|  {
-        async {
-            let shard = Shard::new(shard.to_string())?;
+    conn.transaction::<(), StoreError, _>(async |conn| {
+        let shard = Shard::new(shard.to_string())?;
 
-            let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident).await?;
+        let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident).await?;
 
-            store.add_chain_store(&chain, true).await?;
+        store.add_chain_store(&chain, true).await?;
 
-            // Drop the foreign key constraint on deployment_schemas
-            sql_query(
-                "alter table deployment_schemas drop constraint deployment_schemas_network_fkey;",
-            )
-            .execute(conn).await?;
+        // Drop the foreign key constraint on deployment_schemas
+        sql_query(
+            "alter table deployment_schemas drop constraint deployment_schemas_network_fkey;",
+        )
+        .execute(conn)
+        .await?;
 
-            // Update the current chain name to chain-old
-            update_chain_name(conn, &chain_name, &new_name).await?;
+        // Update the current chain name to chain-old
+        update_chain_name(conn, &chain_name, &new_name).await?;
 
-            // Create a new chain with the name in the destination shard
-            let _ = add_chain(conn, &chain_name, &shard, ident).await?;
+        // Create a new chain with the name in the destination shard
+        let _ = add_chain(conn, &chain_name, &shard, ident).await?;
 
-            // Re-add the foreign key constraint
-            sql_query(
-                "alter table deployment_schemas add constraint deployment_schemas_network_fkey foreign key (network) references chains(name);",
-            )
-            .execute(conn).await?;
-            Ok(())
-        }.scope_boxed()
-    }).await?;
+        // Re-add the foreign key constraint
+        sql_query(
+            "alter table deployment_schemas add constraint deployment_schemas_network_fkey foreign key (network) references chains(name);",
+        )
+        .execute(conn)
+        .await?;
+        Ok(())
+    })
+    .await?;
 
     chain_store.update_name(&new_name).await?;
 

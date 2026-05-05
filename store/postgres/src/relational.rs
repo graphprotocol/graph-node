@@ -27,7 +27,6 @@ use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
 use diesel::{OptionalExtension, QueryDsl, QueryResult, debug_query, sql_query};
-use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection, RunQueryDsl, SimpleAsyncConnection};
 
 use graph::blockchain::BlockTime;
@@ -906,14 +905,11 @@ impl Layout {
 
         let start = Instant::now();
         let values = conn
-            .transaction(|conn| {
-                async {
-                    if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
-                        conn.batch_execute(timeout_sql).await?;
-                    }
-                    query.load::<EntityData>(conn).await
+            .transaction(async |conn| {
+                if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
+                    conn.batch_execute(timeout_sql).await?;
                 }
-                .scope_boxed()
+                query.load::<EntityData>(conn).await
             })
             .await
             .map_err(|e| {

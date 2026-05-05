@@ -5,7 +5,7 @@ use crate::{
     AsyncPgConnection, ConnectionPool, ForeignServer, NotificationSender,
     block_range::UNVERSIONED_RANGE,
     detail::DeploymentDetail,
-    pool::{PRIMARY_PUBLIC, PermittedConnection},
+    pool::{PRIMARY_PUBLIC, PermittedConnection, TxnCallback, TxnMutCallback},
     subgraph_store::{PRIMARY_SHARD, Shard, unused},
 };
 use diesel::dsl::{delete, insert_into, sql, update};
@@ -21,10 +21,7 @@ use diesel::{
     serialize::{Output, ToSql},
     sql_types::{Array, BigInt, Bool, Integer, Text},
 };
-use diesel_async::{
-    RunQueryDsl, SimpleAsyncConnection as _, TransactionManager,
-    scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
-};
+use diesel_async::{RunQueryDsl, SimpleAsyncConnection as _, TransactionManager};
 use graph::{
     components::store::DeploymentLocator,
     data::{
@@ -32,7 +29,6 @@ use graph::{
         subgraph::{DeploymentFeatures, status},
     },
     derive::CheapClone,
-    futures03::{FutureExt, future::BoxFuture},
     internal_error,
     prelude::{
         AssignmentChange, DeploymentHash, NodeId, StoreError, SubgraphName,
@@ -816,38 +812,29 @@ impl Connection {
     /// returns `Err(E)`, the transaction is rolled back and `Err(E)` is
     /// returned. If committing or rolling back the transaction fails,
     /// return an error
-    pub(crate) fn transaction<'a, 'conn, R, F>(
-        &'conn mut self,
-        callback: F,
-    ) -> BoxFuture<'conn, Result<R, StoreError>>
+    pub(crate) async fn transaction<R, F>(&mut self, callback: F) -> Result<R, StoreError>
     where
-        F: for<'r> FnOnce(&'r mut Self) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
-            + Send
-            + 'a,
-        R: Send + 'a,
-        'a: 'conn,
+        F: TxnCallback<R, StoreError, Self>,
+        R: Send,
     {
         type TM = <AsyncPgConnection as diesel_async::AsyncConnection>::TransactionManager;
 
-        async move {
-            TM::begin_transaction(&mut *self.conn).await?;
-            match callback(self).await {
-                Ok(value) => {
-                    TM::commit_transaction(&mut *self.conn).await?;
-                    Ok(value)
-                }
-                Err(user_error) => match TM::rollback_transaction(&mut *self.conn).await {
-                    Ok(()) => Err(user_error),
-                    Err(diesel::result::Error::BrokenTransactionManager) => {
-                        // In this case we are probably more interested by the
-                        // original error, which likely caused this
-                        Err(user_error)
-                    }
-                    Err(rollback_error) => Err(rollback_error.into()),
-                },
+        TM::begin_transaction(&mut *self.conn).await?;
+        match callback(self).await {
+            Ok(value) => {
+                TM::commit_transaction(&mut *self.conn).await?;
+                Ok(value)
             }
+            Err(user_error) => match TM::rollback_transaction(&mut *self.conn).await {
+                Ok(()) => Err(user_error),
+                Err(diesel::result::Error::BrokenTransactionManager) => {
+                    // In this case we are probably more interested by the
+                    // original error, which likely caused this
+                    Err(user_error)
+                }
+                Err(rollback_error) => Err(rollback_error.into()),
+            },
         }
-        .boxed()
     }
 
     /// Signal any copy process that might be copying into one of these
@@ -1539,39 +1526,36 @@ impl Connection {
         use subgraph_version as v;
         use unused_deployments as u;
 
-        self.transaction(|pconn| {
-            async {
-                let conn = &mut pconn.conn;
+        self.transaction(async |pconn| {
+            let conn = &mut pconn.conn;
 
-                delete(ds::table.filter(ds::id.eq(site.id)))
-                    .execute(conn)
-                    .await?;
-
-                // If there is no site for this deployment any more, we can get
-                // rid of versions pointing to it
-                let exists = select(exists(
-                    ds::table.filter(ds::subgraph.eq(site.deployment.as_str())),
-                ))
-                .get_result::<bool>(conn)
+            delete(ds::table.filter(ds::id.eq(site.id)))
+                .execute(conn)
                 .await?;
-                if !exists {
-                    delete(v::table.filter(v::deployment.eq(site.deployment.as_str())))
-                        .execute(conn)
-                        .await?;
 
-                    // Remove the entry in `subgraph_features`
-                    delete(f::table.filter(f::id.eq(site.deployment.as_str())))
-                        .execute(conn)
-                        .await?;
-                }
-
-                update(u::table.filter(u::id.eq(site.id)))
-                    .set(u::removed_at.eq(sql("now()")))
+            // If there is no site for this deployment any more, we can get
+            // rid of versions pointing to it
+            let exists = select(exists(
+                ds::table.filter(ds::subgraph.eq(site.deployment.as_str())),
+            ))
+            .get_result::<bool>(conn)
+            .await?;
+            if !exists {
+                delete(v::table.filter(v::deployment.eq(site.deployment.as_str())))
                     .execute(conn)
                     .await?;
-                Ok(())
+
+                // Remove the entry in `subgraph_features`
+                delete(f::table.filter(f::id.eq(site.deployment.as_str())))
+                    .execute(conn)
+                    .await?;
             }
-            .scope_boxed()
+
+            update(u::table.filter(u::id.eq(site.id)))
+                .set(u::removed_at.eq(sql("now()")))
+                .execute(conn)
+                .await?;
+            Ok(())
         })
         .await
     }
@@ -2164,33 +2148,24 @@ impl Mirror {
     /// must only access tables that are mirrored through `refresh_tables`
     ///
     /// The function `callback` must not do any blocking work itself
-    pub(crate) fn read_async<'a, 's, R, F>(
-        &'s self,
-        callback: F,
-    ) -> BoxFuture<'s, Result<R, StoreError>>
+    pub(crate) async fn read_async<R, F>(&self, mut callback: F) -> Result<R, StoreError>
     where
-        F: for<'r> Fn(&'r mut AsyncPgConnection) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
-            + Send
-            + 'a,
-        R: Send + 'a,
-        'a: 's,
+        F: TxnMutCallback<R, StoreError> + Send,
+        R: Send,
     {
-        async move {
-            for pool in self.pools.as_ref() {
-                let mut conn = match pool.get_permitted().await {
-                    Ok(conn) => conn,
-                    Err(StoreError::DatabaseUnavailable) => continue,
-                    Err(e) => return Err(e),
-                };
-                match callback(&mut conn).await {
-                    Ok(v) => return Ok(v),
-                    Err(StoreError::DatabaseUnavailable) => continue,
-                    Err(e) => return Err(e),
-                }
+        for pool in self.pools.as_ref() {
+            let mut conn = match pool.get_permitted().await {
+                Ok(conn) => conn,
+                Err(StoreError::DatabaseUnavailable) => continue,
+                Err(e) => return Err(e),
+            };
+            match callback(&mut conn).await {
+                Ok(v) => return Ok(v),
+                Err(StoreError::DatabaseUnavailable) => continue,
+                Err(e) => return Err(e),
             }
-            Err(StoreError::DatabaseUnavailable)
         }
-        .boxed()
+        Err(StoreError::DatabaseUnavailable)
     }
 
     /// Refresh the contents of mirrored tables from the primary (through
@@ -2283,17 +2258,17 @@ impl Mirror {
     }
 
     pub async fn assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| queries::assignments(conn, node).scope_boxed())
+        self.read_async(async |conn| queries::assignments(conn, node).await)
             .await
     }
 
     pub async fn active_assignments(&self, node: &NodeId) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| queries::active_assignments(conn, node).scope_boxed())
+        self.read_async(async |conn| queries::active_assignments(conn, node).await)
             .await
     }
 
     pub async fn assigned_node(&self, site: &Site) -> Result<Option<NodeId>, StoreError> {
-        self.read_async(|conn| queries::assigned_node(conn, site).scope_boxed())
+        self.read_async(async |conn| queries::assigned_node(conn, site).await)
             .await
     }
 
@@ -2305,7 +2280,7 @@ impl Mirror {
         &self,
         site: Arc<Site>,
     ) -> Result<Option<(NodeId, bool)>, StoreError> {
-        self.read_async(|conn| queries::assignment_status(conn, &site).scope_boxed())
+        self.read_async(async |conn| queries::assignment_status(conn, &site).await)
             .await
     }
 
@@ -2313,12 +2288,12 @@ impl Mirror {
         &self,
         subgraph: &DeploymentHash,
     ) -> Result<Option<Site>, StoreError> {
-        self.read_async(|conn| queries::find_active_site(conn, subgraph).scope_boxed())
+        self.read_async(async |conn| queries::find_active_site(conn, subgraph).await)
             .await
     }
 
     pub async fn find_site_by_ref(&self, id: DeploymentId) -> Result<Option<Site>, StoreError> {
-        self.read_async(|conn| queries::find_site_by_ref(conn, id).scope_boxed())
+        self.read_async(async |conn| queries::find_site_by_ref(conn, id).await)
             .await
     }
 
@@ -2326,17 +2301,17 @@ impl Mirror {
         &self,
         name: &SubgraphName,
     ) -> Result<DeploymentHash, StoreError> {
-        self.read_async(|conn| queries::current_deployment_for_subgraph(conn, name).scope_boxed())
+        self.read_async(async |conn| queries::current_deployment_for_subgraph(conn, name).await)
             .await
     }
 
     pub async fn deployments_for_subgraph(&self, name: &str) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| queries::deployments_for_subgraph(conn, name).scope_boxed())
+        self.read_async(async |conn| queries::deployments_for_subgraph(conn, name).await)
             .await
     }
 
     pub async fn subgraph_exists(&self, name: &SubgraphName) -> Result<bool, StoreError> {
-        self.read_async(|conn| queries::subgraph_exists(conn, name).scope_boxed())
+        self.read_async(async |conn| queries::subgraph_exists(conn, name).await)
             .await
     }
 
@@ -2345,7 +2320,7 @@ impl Mirror {
         name: &str,
         use_current: bool,
     ) -> Result<Option<Site>, StoreError> {
-        self.read_async(|conn| queries::subgraph_version(conn, name, use_current).scope_boxed())
+        self.read_async(async |conn| queries::subgraph_version(conn, name, use_current).await)
             .await
     }
 
@@ -2356,14 +2331,14 @@ impl Mirror {
         ids: &[String],
         only_active: bool,
     ) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| queries::find_sites(conn, ids, only_active).scope_boxed())
+        self.read_async(async |conn| queries::find_sites(conn, ids, only_active).await)
             .await
     }
 
     /// Find sites by their subgraph deployment ids. If `ids` is empty,
     /// return no sites
     pub async fn find_sites_by_id(&self, ids: &[DeploymentId]) -> Result<Vec<Site>, StoreError> {
-        self.read_async(|conn| queries::find_sites_by_id(conn, ids).scope_boxed())
+        self.read_async(async |conn| queries::find_sites_by_id(conn, ids).await)
             .await
     }
 
@@ -2371,7 +2346,7 @@ impl Mirror {
         &self,
         infos: &[status::Info],
     ) -> Result<HashMap<GraphDeploymentId, (String, bool)>, StoreError> {
-        self.read_async(|conn| queries::fill_assignments(conn, infos).scope_boxed())
+        self.read_async(async |conn| queries::fill_assignments(conn, infos).await)
             .await
     }
 
@@ -2379,7 +2354,7 @@ impl Mirror {
         &self,
         version: &str,
     ) -> Result<Option<(String, String)>, StoreError> {
-        self.read_async(|conn| queries::version_info(conn, version).scope_boxed())
+        self.read_async(async |conn| queries::version_info(conn, version).await)
             .await
     }
 
@@ -2387,7 +2362,7 @@ impl Mirror {
         &self,
         subgraph_id: &str,
     ) -> Result<(Option<String>, Option<String>), StoreError> {
-        self.read_async(|conn| queries::versions_for_subgraph_id(conn, subgraph_id).scope_boxed())
+        self.read_async(async |conn| queries::versions_for_subgraph_id(conn, subgraph_id).await)
             .await
     }
 
@@ -2396,8 +2371,8 @@ impl Mirror {
         &self,
         deployment_hash: &str,
     ) -> Result<Vec<(String, String)>, StoreError> {
-        self.read_async(|conn| {
-            queries::subgraphs_by_deployment_hash(conn, deployment_hash).scope_boxed()
+        self.read_async(async |conn| {
+            queries::subgraphs_by_deployment_hash(conn, deployment_hash).await
         })
         .await
     }
@@ -2407,7 +2382,7 @@ impl Mirror {
         subgraph: &DeploymentHash,
         shard: &Shard,
     ) -> Result<Option<Site>, StoreError> {
-        self.read_async(|conn| queries::find_site_in_shard(conn, subgraph, shard).scope_boxed())
+        self.read_async(async |conn| queries::find_site_in_shard(conn, subgraph, shard).await)
             .await
     }
 }
