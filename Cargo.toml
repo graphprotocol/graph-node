@@ -35,7 +35,7 @@ repository = "https://github.com/graphprotocol/graph-node"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-alloy = { version = "2.0.1", features = ["dyn-abi", "json-abi", "full", "arbitrary", "json-rpc", "serde"] }
+alloy = { version = "2.0.4", features = ["dyn-abi", "json-abi", "full", "arbitrary", "json-rpc", "serde"] }
 alloy-rpc-types = "2.0.0"
 # rustls is pulled in transitively by alloy (aws_lc_rs) and object_store via
 # reqwest (ring). With both providers linked, rustls 0.23 requires an explicit
