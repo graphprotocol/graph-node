@@ -306,12 +306,12 @@ impl EntityCache {
         // region are compatible with the query. The latter catches
         // entities an in-block write has moved into the matching set or
         // created fresh in this block.
-        let mut candidates: BTreeSet<EntityKey> = stored.keys().cloned().collect();
+        let mut candidates: BTreeSet<&EntityKey> = stored.keys().collect();
         for key in self.updates.keys().chain(self.handler_updates.keys()) {
             if key.entity_type == query.entity_type
                 && key.causality_region == query.causality_region
             {
-                candidates.insert(key.clone());
+                candidates.insert(key);
             }
         }
 
@@ -320,17 +320,17 @@ impl EntityCache {
             // Resolve the entity's final in-block state by layering
             // store baseline, then self.updates, then self.handler_updates.
             // Each layer's op may mutate, replace, or remove the entity.
-            let mut entity: Option<Entity> = stored.get(&key).cloned();
-            if let Some(op) = self.updates.get(&key).cloned() {
+            let mut entity: Option<Entity> = stored.get(key).cloned();
+            if let Some(op) = self.updates.get(key).cloned() {
                 entity = op.apply_to(&entity).map_err(|e| key.unknown_attribute(e))?;
             }
-            if let Some(op) = self.handler_updates.get(&key).cloned() {
+            if let Some(op) = self.handler_updates.get(key).cloned() {
                 entity = op.apply_to(&entity).map_err(|e| key.unknown_attribute(e))?;
             }
 
             // Include the entity only if its final state still matches the query.
             if let Some(entity) = entity
-                && query.matches(&key, &entity)
+                && query.matches(key, &entity)
             {
                 result.push(entity);
             }
