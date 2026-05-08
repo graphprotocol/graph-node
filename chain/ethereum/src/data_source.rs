@@ -804,7 +804,24 @@ impl DataSource {
                     // and is not a special zero hash, implying a real transaction associated with this log.
                     block
                         .transaction_for_log(&log)
-                        .context("Found no transaction for event")?
+                        .with_context(|| {
+                            let (tx_format, tx_count) = match block.transactions() {
+                                Some(txs) => ("full", txs.len()),
+                                None => ("hashes_or_empty", 0),
+                            };
+                            let first_tx = block.transactions().and_then(|t| t.first()).map(|t| t.tx_hash());
+                            let last_tx = block.transactions().and_then(|t| t.last()).map(|t| t.tx_hash());
+                            format!(
+                                "Found no transaction for event. \
+                                 log_tx_hash={:?}, log_block_hash={:?}, \
+                                 block_hash={:?}, block_number={}, \
+                                 block_tx_format={}, block_tx_count={}, \
+                                 first_tx={:?}, last_tx={:?}",
+                                log.transaction_hash, log.block_hash,
+                                block.hash(), block.number_u64(),
+                                tx_format, tx_count, first_tx, last_tx
+                            )
+                        })?
                 };
 
                 let logging_extras = Arc::new(o! {
