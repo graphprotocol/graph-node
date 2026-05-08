@@ -755,6 +755,7 @@ impl EthereumAdapter {
                     .timeout_secs(json_rpc_timeout_secs)
                     .run(move || {
                         let alloy = alloy.cheap_clone();
+                        let logger = logger.clone();
                         async move {
                             alloy
                                 .get_block_by_hash(hash)
@@ -763,7 +764,24 @@ impl EthereumAdapter {
                                 .map_err(Error::from)
                                 .and_then(|block| {
                                     block
-                                        .map(|b| Arc::new(LightEthereumBlock::new(b)))
+                                        .map(|b| {
+                                            let tx_count = b.transactions.len();
+                                            if tx_count == 0 {
+                                                warn!(
+                                                    &logger,
+                                                    "load_blocks_rpc: block {} has 0 transactions from RPC. \
+                                                     block_hash={}, tx_variant={}",
+                                                    b.header.number,
+                                                    b.header.hash,
+                                                    match &b.transactions {
+                                                        alloy::rpc::types::BlockTransactions::Full(_) => "Full",
+                                                        alloy::rpc::types::BlockTransactions::Hashes(_) => "Hashes",
+                                                        alloy::rpc::types::BlockTransactions::Uncle => "Uncle",
+                                                    };
+                                                );
+                                            }
+                                            Arc::new(LightEthereumBlock::new(b))
+                                        })
                                         .ok_or_else(|| {
                                             anyhow::anyhow!(
                                                 "Ethereum node did not find block {:?}",
