@@ -794,7 +794,20 @@ impl DataSource {
                     // and is not a special zero hash, implying a real transaction associated with this log.
                     block
                         .transaction_for_log(&log)
-                        .context("Found no transaction for event")?
+                        .with_context(|| {
+                            let tx_count = block.transactions.len();
+                            let first_tx = block.transactions.first().map(|t| t.hash);
+                            let last_tx = block.transactions.last().map(|t| t.hash);
+                            format!(
+                                "Found no transaction for event. \
+                                 log_tx_hash={:?}, log_block_hash={:?}, \
+                                 block_hash={:?}, block_number={:?}, \
+                                 block_tx_count={}, first_tx={:?}, last_tx={:?}",
+                                log.transaction_hash, log.block_hash,
+                                block.hash, block.number,
+                                tx_count, first_tx, last_tx
+                            )
+                        })?
                 };
 
                 let logging_extras = Arc::new(o! {
