@@ -3949,7 +3949,7 @@ dependencies = [
  "slog-envlogger",
  "slog-term",
  "sqlparser 0.57.0",
- "sqlparser 0.61.0",
+ "sqlparser 0.62.0",
  "stable-hash 0.3.4",
  "stable-hash 0.4.4",
  "strum_macros 0.28.0",
@@ -4224,7 +4224,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sqlparser 0.61.0",
+ "sqlparser 0.62.0",
  "stable-hash 0.3.4",
  "thiserror 2.0.18",
  "tokio",
@@ -7860,9 +7860,9 @@ dependencies = [
 
 [[package]]
 name = "sqlparser"
-version = "0.61.0"
+version = "0.62.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbf5ea8d4d7c808e1af1cbabebca9a2abe603bcefc22294c5b95018d53200cb7"
+checksum = "13c6d1b651dc4edf07eead2a0c6c78016ce971bc2c10da5266861b13f25e7cec"
 dependencies = [
  "log",
  "recursive",

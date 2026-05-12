@@ -263,7 +263,8 @@ impl<'a> VisitExpr<'a> {
                                 self.visit_expr(expr)?;
                             }
                             p::FunctionArgExpr::QualifiedWildcard(_)
-                            | p::FunctionArgExpr::Wildcard => {
+                            | p::FunctionArgExpr::Wildcard
+                            | p::FunctionArgExpr::WildcardWithOptions(_) => {
                                 return self.illegal_function(format!(
                                     "call to {name} uses a wildcard argument"
                                 ));
