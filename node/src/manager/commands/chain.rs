@@ -253,7 +253,6 @@ pub async fn change_block_cache_shard(
     let canonical_backup_name = format!("{chain_name}-old");
 
     let existing_backup = find_chain(&mut conn, &canonical_backup_name).await?;
-    let existing_backup_store = store.chain_store(&canonical_backup_name).await;
 
     println!("Current shard: {}", old_shard);
 
