@@ -381,7 +381,7 @@ impl AscHeap for WasmInstanceContext<'_> {
             .await
             .map_err(|trap| {
                 host_export_error_from_trap(
-                    trap,
+                    trap.into(),
                     format!("Failed to call 'asc_type_id' with '{:?}'", type_id_index),
                 )
             })?;

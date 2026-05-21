@@ -322,7 +322,6 @@ impl ValidModule {
             graph::env::WasmOptLevel::SpeedAndSize => wasmtime::OptLevel::SpeedAndSize,
         });
         config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
-        config.async_support(true);
 
         let engine = &wasmtime::Engine::new(&config)?;
         let module = wasmtime::Module::from_binary(engine, &raw_module)?;

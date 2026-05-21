@@ -71,8 +71,9 @@ where
     T: IntoWasmRet,
     T::Ret: wasmtime::WasmTy,
 {
-    type Ret = Result<T::Ret, Error>;
+    type Ret = Result<T::Ret, wasmtime::Error>;
     fn into_wasm_ret(self) -> Self::Ret {
         self.map(|x| x.into_wasm_ret())
+            .map_err(wasmtime::Error::from_anyhow)
     }
 }
