@@ -12,12 +12,12 @@ use graph::{
     data::subgraph::status,
     internal_error,
     prelude::{
-        alloy::primitives::Address, BlockNumber, BlockPtr, CheapClone, DeploymentHash,
-        PartialBlockPtr, QueryExecutionError, StoreError,
+        BlockNumber, BlockPtr, CheapClone, DeploymentHash, PartialBlockPtr, QueryExecutionError,
+        StoreError, alloy::primitives::Address,
     },
 };
 
-use crate::{block_store::BlockStore, query_store::QueryStore, SubgraphStore};
+use crate::{SubgraphStore, block_store::BlockStore, query_store::QueryStore};
 
 /// The overall store of the system, consisting of a [`SubgraphStore`] and a
 /// [`BlockStore`], each of which multiplex across multiple database shards.

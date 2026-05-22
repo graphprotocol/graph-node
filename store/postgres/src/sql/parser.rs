@@ -1,6 +1,6 @@
 use super::{constants::SQL_DIALECT, validation::Validator};
 use crate::relational::Layout;
-use anyhow::{anyhow, Ok, Result};
+use anyhow::{Ok, Result, anyhow};
 use graph::{env::ENV_VARS, prelude::BlockNumber};
 use std::sync::Arc;
 
@@ -36,7 +36,7 @@ mod test {
     use std::sync::Arc;
 
     use crate::sql::{parser::SQL_DIALECT, test::make_layout};
-    use graph::prelude::{lazy_static, serde_yaml, BLOCK_NUMBER_MAX};
+    use graph::prelude::{BLOCK_NUMBER_MAX, lazy_static, serde_yaml};
     use serde::{Deserialize, Serialize};
 
     use pretty_assertions::assert_eq;

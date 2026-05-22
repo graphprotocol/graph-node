@@ -1,0 +1,14 @@
+type Block @entity(immutable: true) {
+  id: Bytes!
+  number: BigInt!
+}
+
+type OnceBlock @entity(immutable: true) {
+  id: Bytes!
+  msg: String!
+}
+
+type PollingBlock @entity(immutable: true) {
+  id: Bytes!
+  number: BigInt!
+}

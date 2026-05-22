@@ -5,7 +5,7 @@ use graph::prelude::{
         json_abi::JsonAbi,
         network::{Ethereum, TransactionBuilder},
         primitives::{Address, Bytes, U256},
-        providers::{ext::AnvilApi, Provider, ProviderBuilder, WalletProvider},
+        providers::{Provider, ProviderBuilder, WalletProvider, ext::AnvilApi},
         rpc::types::{Block, TransactionReceipt, TransactionRequest},
         signers::local::PrivateKeySigner,
     },
@@ -13,7 +13,7 @@ use graph::prelude::{
     serde_json::{self, Value},
 };
 
-use crate::{error, helpers::TestFile, status, CONFIG};
+use crate::{CONFIG, error, helpers::TestFile, status};
 
 // `FROM` and `FROM_KEY` are the address and private key of the first
 // account that anvil prints on startup

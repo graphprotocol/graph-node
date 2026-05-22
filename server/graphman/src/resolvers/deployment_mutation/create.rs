@@ -20,7 +20,7 @@ pub async fn run(ctx: &GraphmanContext, name: &String) -> Result<()> {
             return Err(GraphmanError::Store(anyhow!(
                 "Subgraph name must contain only a-z, A-Z, 0-9, '-' and '_'"
             ))
-            .into())
+            .into());
         }
     };
 

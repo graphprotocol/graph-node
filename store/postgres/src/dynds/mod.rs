@@ -3,9 +3,9 @@ pub(crate) mod shared;
 
 pub(crate) use private::DataSourcesTable;
 
-use crate::{primary::Site, AsyncPgConnection};
+use crate::{AsyncPgConnection, primary::Site};
 use graph::{
-    components::store::{write, StoredDynamicDataSource},
+    components::store::{StoredDynamicDataSource, write},
     data_source::CausalityRegion,
     internal_error,
     prelude::{BlockNumber, StoreError},

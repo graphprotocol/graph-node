@@ -2,11 +2,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use slog::Logger;
 use slog::error;
 use slog::warn;
-use slog::Logger;
 
-use crate::components::network_provider::chain_id_validator;
 use crate::components::network_provider::ChainIdentifierValidationError;
 use crate::components::network_provider::ChainIdentifierValidator;
 use crate::components::network_provider::ChainName;
@@ -14,6 +13,7 @@ use crate::components::network_provider::NetworkDetails;
 use crate::components::network_provider::ProviderCheck;
 use crate::components::network_provider::ProviderCheckStatus;
 use crate::components::network_provider::ProviderName;
+use crate::components::network_provider::chain_id_validator;
 use crate::components::store::ChainIdStore;
 
 /// Requires providers to have the same network version and genesis hash as one
@@ -155,8 +155,8 @@ mod tests {
     use std::sync::Arc;
     use std::sync::Mutex;
 
-    use anyhow::anyhow;
     use anyhow::Result;
+    use anyhow::anyhow;
 
     use super::*;
     use crate::blockchain::ChainIdentifier;

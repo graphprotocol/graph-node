@@ -1,5 +1,5 @@
 use alloy::primitives::{BlockHash, BlockNumber};
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use arrow::array::RecordBatch;
 
 use crate::amp::codec::{

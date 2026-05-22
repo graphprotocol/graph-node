@@ -1,11 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
-use serde::{ser::SerializeMap, Serialize};
+use serde::{Serialize, ser::SerializeMap};
 
 use crate::{
     components::store::{BlockNumber, QueryPermit},
     derive::CacheWeight,
-    prelude::{lazy_static, CheapClone},
+    prelude::{CheapClone, lazy_static},
 };
 
 use super::{CacheStatus, QueryExecutionError};

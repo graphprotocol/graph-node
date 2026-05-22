@@ -2,9 +2,10 @@ use async_trait::async_trait;
 use graph::blockchain::BlockTime;
 use graph::components::metrics::gas::GasMetrics;
 use graph::components::store::*;
-use graph::data::store::{scalar, Id, IdType};
+use graph::data::store::{Id, IdType, scalar};
 use graph::data::subgraph::*;
 use graph::data::value::Word;
+use graph::futures03::future::BoxFuture;
 use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
 use graph::prelude::alloy::primitives::U256;
 use graph::runtime::gas::GasCounter;
@@ -15,12 +16,12 @@ use graph::{entity, prelude::*};
 use graph_chain_ethereum::DataSource;
 use graph_runtime_wasm::asc_abi::class::{Array, AscBigInt, AscEntity, AscString, Uint8Array};
 use graph_runtime_wasm::{
-    host_exports, ExperimentalFeatures, MappingContext, ValidModule, WasmInstance,
+    ExperimentalFeatures, MappingContext, ValidModule, WasmInstance, host_exports,
 };
 use semver::Version;
 use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
-use test_store::{LOGGER, STORE};
+use test_store::{LOGGER, STOPWATCH, STORE, SUBGRAPH_STORE};
 use wasmtime::{AsContext, AsContextMut};
 
 use crate::common::{mock_context, mock_data_source};
@@ -44,78 +45,82 @@ fn subgraph_id_with_api_version(subgraph_id: &str, api_version: Version) -> Stri
     )
 }
 
-async fn test_valid_module_and_store(
+async fn test_module_and_deployment(
     subgraph_id: &str,
     data_source: DataSource,
     api_version: Version,
-) -> (WasmInstance, Arc<impl SubgraphStore>, DeploymentLocator) {
-    test_valid_module_and_store_with_timeout(subgraph_id, data_source, api_version, None).await
+) -> (WasmInstance, DeploymentLocator) {
+    test_module_and_deployment_with_timeout(subgraph_id, data_source, api_version, None).await
 }
 
-async fn test_valid_module_and_store_with_timeout(
-    subgraph_id: &str,
+fn test_module_and_deployment_with_timeout<'a>(
+    subgraph_id: &'a str,
     data_source: DataSource,
     api_version: Version,
     timeout: Option<Duration>,
-) -> (WasmInstance, Arc<impl SubgraphStore>, DeploymentLocator) {
-    let logger = Logger::root(slog::Discard, o!());
-    let subgraph_id_with_api_version =
-        subgraph_id_with_api_version(subgraph_id, api_version.clone());
+) -> BoxFuture<'a, (WasmInstance, DeploymentLocator)> {
+    Box::pin(async move {
+        let logger = Logger::root(slog::Discard, o!());
+        let subgraph_id_with_api_version =
+            subgraph_id_with_api_version(subgraph_id, api_version.clone());
 
-    let store = STORE.clone();
-    let metrics_registry = Arc::new(MetricsRegistry::mock());
-    let deployment_id = DeploymentHash::new(&subgraph_id_with_api_version).unwrap();
-    let deployment = test_store::create_test_subgraph(
-        &deployment_id,
-        "type User @entity {
-            id: ID!,
-            name: String,
-            count: BigInt,
-        }
+        let store = STORE.clone();
+        let metrics_registry = Arc::new(MetricsRegistry::mock());
+        let deployment_id = DeploymentHash::new(&subgraph_id_with_api_version).unwrap();
+        let deployment = test_store::create_test_subgraph(
+            &deployment_id,
+            "type User @entity {
+                id: ID!,
+                name: String,
+                count: BigInt,
+            }
 
-        type Thing @entity {
-            id: ID!,
-            value: String,
-            extra: String
-        }",
-    )
-    .await;
-    let stopwatch_metrics = StopwatchMetrics::new(
-        logger.clone(),
-        deployment_id.clone(),
-        "test",
-        metrics_registry.clone(),
-        "test_shard".to_string(),
-    );
+            type Thing @entity {
+                id: ID!,
+                value: String,
+                extra: String
+            }",
+        )
+        .await;
+        let stopwatch = StopwatchMetrics::new(
+            logger.clone(),
+            deployment_id.clone(),
+            "test",
+            metrics_registry.clone(),
+            "test_shard".to_string(),
+        );
 
-    let gas_metrics = GasMetrics::new(deployment_id.clone(), metrics_registry.clone());
+        let gas_metrics = GasMetrics::new(deployment_id.clone(), metrics_registry.clone());
 
-    let host_metrics = Arc::new(HostMetrics::new(
-        metrics_registry,
-        deployment_id.as_str(),
-        stopwatch_metrics,
-        gas_metrics,
-    ));
+        let host_metrics = Arc::new(HostMetrics::new(
+            metrics_registry,
+            deployment_id.as_str(),
+            stopwatch.cheap_clone(),
+            gas_metrics,
+        ));
 
-    let experimental_features = ExperimentalFeatures {
-        allow_non_deterministic_ipfs: true,
-    };
+        let experimental_features = ExperimentalFeatures {
+            allow_non_deterministic_ipfs: true,
+        };
 
-    let module = WasmInstance::from_valid_module_with_ctx(
-        Arc::new(ValidModule::new(&logger, data_source.mapping.runtime.as_ref(), timeout).unwrap()),
-        mock_context(
-            deployment.clone(),
-            data_source,
-            store.subgraph_store(),
-            api_version,
-        ),
-        host_metrics,
-        experimental_features,
-    )
-    .await
-    .unwrap();
+        let module = WasmInstance::from_valid_module_with_ctx(
+            Arc::new(
+                ValidModule::new(&logger, data_source.mapping.runtime.as_ref(), timeout).unwrap(),
+            ),
+            mock_context(
+                deployment.clone(),
+                data_source,
+                store.subgraph_store(),
+                api_version,
+            ),
+            host_metrics,
+            experimental_features,
+        )
+        .await
+        .unwrap();
 
-    (module, store.subgraph_store(), deployment)
+        (module, deployment)
+    })
 }
 
 pub async fn test_module(
@@ -123,7 +128,7 @@ pub async fn test_module(
     data_source: DataSource,
     api_version: Version,
 ) -> WasmInstance {
-    test_valid_module_and_store(subgraph_id, data_source, api_version)
+    test_module_and_deployment(subgraph_id, data_source, api_version)
         .await
         .0
 }
@@ -135,9 +140,7 @@ pub async fn test_module_latest(subgraph_id: &str, wasm_file: &str) -> WasmInsta
         &wasm_file_path(wasm_file, API_VERSION_0_0_5),
         version.clone(),
     );
-    test_valid_module_and_store(subgraph_id, ds, version)
-        .await
-        .0
+    test_module_and_deployment(subgraph_id, ds, version).await.0
 }
 
 pub trait SyncWasmTy: wasmtime::WasmTy + Sync {}
@@ -401,7 +404,7 @@ async fn json_conversions_v0_0_4() {
 
 #[graph::test]
 async fn json_conversions_v0_0_5() {
-    test_json_conversions(API_VERSION_0_0_5, 2289897).await;
+    test_json_conversions(API_VERSION_0_0_5, 2214813).await;
 }
 
 async fn test_json_parsing(api_version: Version, gas_used: u64) {
@@ -529,7 +532,7 @@ async fn run_ipfs_map(
             .to_owned()
     };
 
-    let (mut instance, _, _) = test_valid_module_and_store(
+    let mut instance = test_module(
         subgraph_id,
         mock_data_source(
             &wasm_file_path("ipfs_map.wasm", api_version.clone()),
@@ -557,7 +560,7 @@ async fn run_ipfs_map(
         .take_ctx()
         .take_state()
         .entity_cache
-        .as_modifications(0)
+        .as_modifications(0, &STOPWATCH)
         .await?
         .modifications;
 
@@ -766,7 +769,7 @@ async fn big_int_to_hex_v0_0_4() {
 
 #[graph::test]
 async fn big_int_to_hex_v0_0_5() {
-    test_big_int_to_hex(API_VERSION_0_0_5, 2858580).await;
+    test_big_int_to_hex(API_VERSION_0_0_5, 2565990).await;
 }
 
 async fn test_big_int_arithmetic(api_version: Version, gas_used: u64) {
@@ -832,7 +835,7 @@ async fn big_int_arithmetic_v0_0_4() {
 
 #[graph::test]
 async fn big_int_arithmetic_v0_0_5() {
-    test_big_int_arithmetic(API_VERSION_0_0_5, 7318364).await;
+    test_big_int_arithmetic(API_VERSION_0_0_5, 5256825).await;
 }
 
 async fn test_abort(api_version: Version, error_msg: &str) {
@@ -970,7 +973,7 @@ async fn data_source_create_v0_0_4() {
 
 #[graph::test]
 async fn data_source_create_v0_0_5() {
-    test_data_source_create(API_VERSION_0_0_5, 101450079).await;
+    test_data_source_create(API_VERSION_0_0_5, 101425051).await;
 }
 
 async fn test_ens_name_by_hash(api_version: Version) {
@@ -991,10 +994,12 @@ async fn test_ens_name_by_hash(api_version: Version) {
     let data: String = module.asc_get(converted).unwrap();
     assert_eq!(data, name);
 
-    assert!(module
-        .invoke_export1::<_, _, AscString>("nameByHash", "impossible keccak hash")
-        .await
-        .is_null());
+    assert!(
+        module
+            .invoke_export1::<_, _, AscString>("nameByHash", "impossible keccak hash")
+            .await
+            .is_null()
+    );
 }
 
 #[graph::test]
@@ -1008,7 +1013,8 @@ async fn ens_name_by_hash_v0_0_5() {
 }
 
 async fn test_entity_store(api_version: Version) {
-    let (mut instance, store, deployment) = test_valid_module_and_store(
+    let store = SUBGRAPH_STORE.clone();
+    let (mut instance, deployment) = test_module_and_deployment(
         "entityStore",
         mock_data_source(
             &wasm_file_path("store.wasm", api_version.clone()),
@@ -1071,9 +1077,13 @@ async fn test_entity_store(api_version: Version) {
     let ctx = instance.store.data_mut();
     let cache = std::mem::replace(
         &mut ctx.ctx.state.entity_cache,
-        EntityCache::new(Arc::new(writable.clone())),
+        EntityCache::new(Arc::new(writable.clone()), SeqGenerator::new(12)),
     );
-    let mut mods = cache.as_modifications(0).await.unwrap().modifications;
+    let mut mods = cache
+        .as_modifications(0, &STOPWATCH)
+        .await
+        .unwrap()
+        .modifications;
     assert_eq!(1, mods.len());
     match mods.pop().unwrap() {
         EntityModification::Overwrite { data, .. } => {
@@ -1093,7 +1103,7 @@ async fn test_entity_store(api_version: Version) {
         .take_ctx()
         .take_state()
         .entity_cache
-        .as_modifications(0)
+        .as_modifications(0, &STOPWATCH)
         .await
         .unwrap()
         .modifications;
@@ -1122,10 +1132,12 @@ fn test_detect_contract_calls(api_version: Version) {
         &wasm_file_path("abi_store_value.wasm", api_version.clone()),
         api_version.clone(),
     );
-    assert!(!data_source_without_calls
-        .mapping
-        .requires_archive()
-        .unwrap());
+    assert!(
+        !data_source_without_calls
+            .mapping
+            .requires_archive()
+            .unwrap()
+    );
 
     let data_source_with_calls = mock_data_source(
         &wasm_file_path("contract_calls.wasm", api_version.clone()),
@@ -1242,30 +1254,38 @@ async fn test_boolean() {
 
     // non-zero values are true
     for x in (-10i32..10).filter(|&x| x != 0) {
-        assert!(module
-            .invoke_export1_val_void("testReceiveTrue", x)
-            .await
-            .is_ok(),);
+        assert!(
+            module
+                .invoke_export1_val_void("testReceiveTrue", x)
+                .await
+                .is_ok(),
+        );
     }
 
     // zero is not true
-    assert!(module
-        .invoke_export1_val_void("testReceiveTrue", 0i32)
-        .await
-        .is_err());
+    assert!(
+        module
+            .invoke_export1_val_void("testReceiveTrue", 0i32)
+            .await
+            .is_err()
+    );
 
     // zero is false
-    assert!(module
-        .invoke_export1_val_void("testReceiveFalse", 0i32)
-        .await
-        .is_ok());
+    assert!(
+        module
+            .invoke_export1_val_void("testReceiveFalse", 0i32)
+            .await
+            .is_ok()
+    );
 
     // non-zero values are not false
     for x in (-10i32..10).filter(|&x| x != 0) {
-        assert!(module
-            .invoke_export1_val_void("testReceiveFalse", x)
-            .await
-            .is_err());
+        assert!(
+            module
+                .invoke_export1_val_void("testReceiveFalse", x)
+                .await
+                .is_err()
+        );
     }
 }
 
@@ -1358,7 +1378,6 @@ impl Host {
         self.host_exports
             .store_set(
                 &self.ctx.logger,
-                12, // Arbitrary block number
                 &mut self.ctx.state,
                 &self.ctx.proof_of_indexing,
                 entity_type.to_string(),
@@ -1559,7 +1578,10 @@ async fn test_store_set_invalid_fields() {
         .err()
         .unwrap();
 
-    err_says(err, "Attempted to set undefined fields [test3] for the entity type `User`. Make sure those fields are defined in the schema.");
+    err_says(
+        err,
+        "Attempted to set undefined fields [test3] for the entity type `User`. Make sure those fields are defined in the schema.",
+    );
 
     // For apiVersion below 0.0.8, we should not error out
     let mut host2 = Host::new(
@@ -1626,7 +1648,7 @@ async fn generate_id() {
 
     let entity_cache = host.ctx.state.entity_cache;
     let mods = entity_cache
-        .as_modifications(12)
+        .as_modifications(12, &STOPWATCH)
         .await
         .unwrap()
         .modifications;
@@ -1822,10 +1844,10 @@ async fn test_yaml_parsing(api_version: Version, gas_used: u64) {
 
 #[graph::test]
 async fn yaml_parsing_v0_0_4() {
-    test_yaml_parsing(API_VERSION_0_0_4, 1053927678771).await;
+    test_yaml_parsing(API_VERSION_0_0_4, 1066812580659).await;
 }
 
 #[graph::test]
 async fn yaml_parsing_v0_0_5() {
-    test_yaml_parsing(API_VERSION_0_0_5, 1053955992265).await;
+    test_yaml_parsing(API_VERSION_0_0_5, 1066831062419).await;
 }

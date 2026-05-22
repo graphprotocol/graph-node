@@ -1,0 +1,18 @@
+type Token @entity(immutable: true) {
+  id: Bytes! # Address
+  name: String!
+  symbol: String!
+  decimals: Int!
+}
+
+type Account @entity(immutable: false) {
+  id: Bytes! # Address
+  balances: [Balance!]! @derivedFrom(field: "account")
+}
+
+type Balance @entity(immutable: false) {
+  id: Bytes! # Account address + token address
+  token: Token!
+  account: Account!
+  amount: BigInt
+}

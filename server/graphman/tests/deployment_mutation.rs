@@ -6,8 +6,8 @@ use graph::components::store::SubgraphStore;
 use graph::prelude::DeploymentHash;
 use serde::Deserialize;
 use serde_json::json;
-use test_store::create_test_subgraph;
 use test_store::SUBGRAPH_STORE;
+use test_store::create_test_subgraph;
 use tokio::time::sleep;
 
 use self::util::client::send_graphql_request;

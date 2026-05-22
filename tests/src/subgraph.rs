@@ -12,9 +12,9 @@ use serde_yaml;
 use tokio::{process::Command, time::sleep};
 
 use crate::{
-    contract::Contract,
-    helpers::{graphql_query, graphql_query_with_vars, run_checked, TestFile},
     CONFIG,
+    contract::Contract,
+    helpers::{TestFile, graphql_query, graphql_query_with_vars, run_checked},
 };
 
 #[derive(Clone, Debug)]
@@ -155,10 +155,10 @@ impl Subgraph {
     pub async fn wait_ready(name: &str) -> anyhow::Result<Subgraph> {
         let start = Instant::now();
         while start.elapsed() <= CONFIG.timeout {
-            if let Some(subgraph) = Self::status(name).await? {
-                if subgraph.synced || !subgraph.healthy {
-                    return Ok(subgraph);
-                }
+            if let Some(subgraph) = Self::status(name).await?
+                && (subgraph.synced || !subgraph.healthy)
+            {
+                return Ok(subgraph);
             }
             sleep(Duration::from_millis(2000)).await;
         }

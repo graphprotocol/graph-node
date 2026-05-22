@@ -6,8 +6,8 @@ use std::sync::Mutex;
 
 use graph::TEST_RUNTIME;
 use lazy_static::lazy_static;
-use test_store::store::remove_subgraphs;
 use test_store::store::PRIMARY_POOL;
+use test_store::store::remove_subgraphs;
 
 lazy_static! {
     // Used to make sure tests will run sequentially.

@@ -1,6 +1,6 @@
 use std::ops::ControlFlow;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use itertools::Itertools;
 use sqlparser_latest::{
     ast::{self, Visit, Visitor},

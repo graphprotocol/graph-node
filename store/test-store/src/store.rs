@@ -1,13 +1,13 @@
 use diesel;
-use graph::blockchain::mock::MockDataSource;
 use graph::blockchain::BlockTime;
 use graph::blockchain::ChainIdentifier;
-use graph::components::store::BlockStore;
+use graph::blockchain::mock::MockDataSource;
+use graph::components::store::{BlockStore, SeqGenerator};
 use graph::data::graphql::load_manager::LoadManager;
 use graph::data::query::QueryResults;
 use graph::data::query::QueryTarget;
-use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::data::subgraph::SubgraphFeature;
+use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::data_source::DataSource;
 use graph::log;
 use graph::prelude::alloy::primitives::B256;
@@ -21,16 +21,16 @@ use graph::{
     data::subgraph::status, prelude::NodeId,
 };
 use graph_graphql::prelude::{
-    execute_query, Query as PreparedQuery, QueryExecutionOptions, StoreResolver,
+    Query as PreparedQuery, QueryExecutionOptions, StoreResolver, execute_query,
 };
 use graph_graphql::test_support::GraphQLMetrics;
 use graph_node::config::{Config, Opt};
 use graph_node::store_builder::StoreBuilder;
 use graph_store_postgres::AsyncPgConnection;
 use graph_store_postgres::{
-    layout_for_tests::FAKE_NETWORK_SHARED, BlockStore as DieselBlockStore, ConnectionPool,
-    DeploymentPlacer, Shard, SubgraphStore as DieselSubgraphStore, SubscriptionManager,
-    PRIMARY_SHARD,
+    BlockStore as DieselBlockStore, ConnectionPool, DeploymentPlacer, PRIMARY_SHARD, Shard,
+    SubgraphStore as DieselSubgraphStore, SubscriptionManager,
+    layout_for_tests::FAKE_NETWORK_SHARED,
 };
 use hex_literal::hex;
 use lazy_static::lazy_static;
@@ -68,6 +68,13 @@ lazy_static! {
     pub static ref NODE_ID: NodeId = NodeId::new("test").unwrap();
     pub static ref SUBGRAPH_STORE: Arc<DieselSubgraphStore> = STORE.subgraph_store();
     static ref BLOCK_STORE: DieselBlockStore = STORE.block_store();
+    pub static ref STOPWATCH: StopwatchMetrics = StopwatchMetrics::new(
+        Logger::root(slog::Discard, o!()),
+        DeploymentHash::new("test").unwrap(),
+        "test",
+        METRICS_REGISTRY.clone(),
+        "dummy".to_string(),
+    );
     pub static ref GENESIS_PTR: BlockPtr = (
         B256::from(hex!(
             "bd34884280958002c51d3f7b5f853e6febeba33de0f40d15b0363006533c924f"
@@ -362,13 +369,6 @@ pub async fn transact_entities_and_dynamic_data_sources(
         Arc::new(manifest_idx_and_name),
     ))?;
 
-    let mut entity_cache = EntityCache::new(Arc::new(store.clone()));
-    entity_cache.append(ops);
-    let mods = entity_cache
-        .as_modifications(block_ptr_to.number)
-        .await
-        .expect("failed to convert to modifications")
-        .modifications;
     let metrics_registry = Arc::new(MetricsRegistry::mock());
     let stopwatch_metrics = StopwatchMetrics::new(
         Logger::root(slog::Discard, o!()),
@@ -377,6 +377,17 @@ pub async fn transact_entities_and_dynamic_data_sources(
         metrics_registry.clone(),
         store.shard().to_string(),
     );
+
+    let mut entity_cache = EntityCache::new(
+        Arc::new(store.clone()),
+        SeqGenerator::new(block_ptr_to.number),
+    );
+    entity_cache.append(ops);
+    let mods = entity_cache
+        .as_modifications(block_ptr_to.number, &stopwatch_metrics)
+        .await
+        .expect("failed to convert to modifications")
+        .modifications;
     let block_time = BlockTime::for_test(&block_ptr_to);
     store
         .transact_block_operations(
@@ -408,8 +419,8 @@ pub async fn revert_block(store: &Arc<Store>, deployment: &DeploymentLocator, pt
 }
 
 pub async fn insert_ens_name(hash: &str, name: &str) {
-    use diesel::insert_into;
     use diesel::ExpressionMethods;
+    use diesel::insert_into;
     use diesel_async::RunQueryDsl;
     use graph_store_postgres::command_support::catalog::ens_names;
 
@@ -559,7 +570,7 @@ async fn execute_subgraph_query_internal(
                 error_policy,
                 query.schema.id().clone(),
                 graphql_metrics(),
-                LOAD_MANAGER.clone()
+                LOAD_MANAGER.clone(),
             )
             .await
         );
@@ -573,6 +584,7 @@ async fn execute_subgraph_query_internal(
                 max_first: u32::MAX,
                 max_skip: u32::MAX,
                 trace,
+                log_store: std::sync::Arc::new(graph::components::log_store::NoOpLogStore),
             },
         )
         .await;
@@ -608,6 +620,7 @@ pub fn all_shards() -> Vec<Shard> {
 }
 
 fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager>) {
+    graph::tls::install_default_crypto_provider();
     let mut opt = Opt::default();
     let url = std::env::var_os("THEGRAPH_STORE_POSTGRES_DIESEL_URL").filter(|s| !s.is_empty());
     let file = std::env::var_os("GRAPH_NODE_TEST_CONFIG").filter(|s| !s.is_empty());
@@ -615,13 +628,17 @@ fn build_store() -> (Arc<Store>, ConnectionPool, Config, Arc<SubscriptionManager
         let file = file.into_string().unwrap();
         opt.config = Some(file);
         if url.is_some() {
-            eprintln!("WARNING: ignoring THEGRAPH_STORE_POSTGRES_DIESEL_URL because GRAPH_NODE_TEST_CONFIG is set");
+            eprintln!(
+                "WARNING: ignoring THEGRAPH_STORE_POSTGRES_DIESEL_URL because GRAPH_NODE_TEST_CONFIG is set"
+            );
         }
     } else if let Some(url) = url {
         let url = url.into_string().unwrap();
         opt.postgres_url = Some(url);
     } else {
-        panic!("You must set either THEGRAPH_STORE_POSTGRES_DIESEL_URL or GRAPH_NODE_TEST_CONFIG (see ./CONTRIBUTING.md).");
+        panic!(
+            "You must set either THEGRAPH_STORE_POSTGRES_DIESEL_URL or GRAPH_NODE_TEST_CONFIG (see ./CONTRIBUTING.md)."
+        );
     }
     opt.store_connection_pool_size = CONN_POOL_SIZE;
 

@@ -9,12 +9,12 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use graph_derive::CheapClone;
 use lru_time_cache::LruCache;
-use object_store::{local::LocalFileSystem, path::Path, ObjectStore, ObjectStoreExt as _};
+use object_store::{ObjectStore, ObjectStoreExt as _, local::LocalFileSystem, path::Path};
 use redis::{
-    aio::{ConnectionManager, ConnectionManagerConfig},
     AsyncCommands as _, RedisResult, Value,
+    aio::{ConnectionManager, ConnectionManagerConfig},
 };
-use slog::{debug, info, warn, Logger};
+use slog::{Logger, debug, info, warn};
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::{env::ENV_VARS, prelude::CheapClone};

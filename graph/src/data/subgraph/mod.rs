@@ -6,13 +6,16 @@ pub mod api_version;
 use alloy::primitives::Address;
 pub use api_version::*;
 
+/// Pure manifest validation functions for use by external tools.
+pub mod manifest_validation;
+
 pub mod features;
 pub mod status;
 
 pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 use crate::{cheap_clone::CheapClone, components::store::BLOCK_NUMBER_MAX, object};
-use anyhow::{anyhow, Context, Error};
+use anyhow::{Context, Error, anyhow};
 use futures03::future::try_join_all;
 use itertools::Itertools;
 use semver::Version;
@@ -43,16 +46,16 @@ use crate::{
         subgraph::features::validate_subgraph_features,
     },
     data_source::{
-        offchain::OFFCHAIN_KINDS, DataSource, DataSourceTemplate, UnresolvedDataSource,
-        UnresolvedDataSourceTemplate,
+        DataSource, DataSourceTemplate, UnresolvedDataSource, UnresolvedDataSourceTemplate,
+        offchain::OFFCHAIN_KINDS,
     },
     derive::CacheWeight,
     ensure,
-    prelude::{r, Value, ENV_VARS},
+    prelude::{ENV_VARS, Value, r},
     schema::{InputSchema, SchemaValidationError},
 };
 
-use crate::prelude::{impl_slog_value, BlockNumber, Deserialize, Serialize};
+use crate::prelude::{BlockNumber, Deserialize, Serialize, impl_slog_value};
 
 use std::fmt;
 use std::ops::Deref;
@@ -577,10 +580,15 @@ impl Graft {
             // The graft point must be at least `reorg_threshold` blocks
             // behind the subgraph head so that a reorg can not affect the
             // data that we copy for grafting
-            (Some(ptr), true) if self.block + ENV_VARS.reorg_threshold() > ptr.number => Err(GraftBaseInvalid(format!(
-                "failed to graft onto `{}` at block {} since it's only at block {} which is within the reorg threshold of {} blocks",
-                self.base, self.block, ptr.number, ENV_VARS.reorg_threshold()
-            ))),
+            (Some(ptr), true) if self.block + ENV_VARS.reorg_threshold() > ptr.number => {
+                Err(GraftBaseInvalid(format!(
+                    "failed to graft onto `{}` at block {} since it's only at block {} which is within the reorg threshold of {} blocks",
+                    self.base,
+                    self.block,
+                    ptr.number,
+                    ENV_VARS.reorg_threshold()
+                )))
+            }
             // If the base deployment is failed *and* the `graft.block` is not
             // less than the `base.block`, the graft shouldn't be permitted.
             //
@@ -588,7 +596,9 @@ impl Graft {
             // to `base.block - 1` or less.
             (Some(ptr), false) if self.block >= ptr.number => Err(GraftBaseInvalid(format!(
                 "failed to graft onto `{}` at block {} since it's not healthy. You can graft it starting at block {} backwards",
-                self.base, self.block, ptr.number - 1
+                self.base,
+                self.block,
+                ptr.number - 1
             ))),
             (Some(_), _) => Ok(()),
         }
@@ -843,11 +853,13 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
         store: Arc<S>,
         validate_graft_base: bool,
     ) -> Result<SubgraphManifest<C>, Vec<SubgraphManifestValidationError>> {
+        use manifest_validation::{validate_has_data_sources, validate_single_network};
+
         let mut errors: Vec<SubgraphManifestValidationError> = vec![];
 
         // Validate that the manifest has at least one data source
-        if self.0.data_sources.is_empty() {
-            errors.push(SubgraphManifestValidationError::NoDataSources);
+        if let Err(e) = validate_has_data_sources(self.0.data_sources.len()) {
+            errors.push(e);
         }
 
         for ds in &self.0.data_sources {
@@ -861,33 +873,24 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             errors.push(different_api_versions.into());
         };
 
-        let mut networks = self
-            .0
-            .data_sources
-            .iter()
-            .filter_map(|d| Some(d.network()?.to_string()))
-            .collect::<Vec<String>>();
-        networks.sort();
-        networks.dedup();
-        match networks.len() {
-            0 => errors.push(SubgraphManifestValidationError::EthereumNetworkRequired),
-            1 => (),
-            _ => errors.push(SubgraphManifestValidationError::MultipleEthereumNetworks),
+        // Validate single network using shared validation
+        let networks: Vec<Option<&str>> = self.0.data_sources.iter().map(|d| d.network()).collect();
+        if let Err(e) = validate_single_network(&networks) {
+            errors.push(e);
         }
 
-        if let Some(graft) = &self.0.graft {
-            if validate_graft_base {
-                if let Err(graft_err) = graft.validate(store).await {
-                    errors.push(graft_err);
-                }
-            }
+        if let Some(graft) = &self.0.graft
+            && validate_graft_base
+            && let Err(graft_err) = graft.validate(store).await
+        {
+            errors.push(graft_err);
         }
 
         // Validate subgraph feature usage and declaration.
-        if self.0.spec_version >= SPEC_VERSION_0_0_4 {
-            if let Err(feature_validation_error) = validate_subgraph_features(&self.0) {
-                errors.push(feature_validation_error.into())
-            }
+        if self.0.spec_version >= SPEC_VERSION_0_0_4
+            && let Err(feature_validation_error) = validate_subgraph_features(&self.0)
+        {
+            errors.push(feature_validation_error.into())
         }
 
         // Validate subgraph datasource constraints

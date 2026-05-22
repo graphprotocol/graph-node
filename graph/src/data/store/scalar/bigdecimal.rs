@@ -304,7 +304,7 @@ mod pg {
                     ref digits,
                 } => (Sign::Minus, weight, scale, digits),
                 PgNumeric::NaN => {
-                    return Err(Box::from("NaN is not (yet) supported in BigDecimal"))
+                    return Err(Box::from("NaN is not (yet) supported in BigDecimal"));
                 }
             };
 
@@ -604,8 +604,8 @@ mod pg {
 #[cfg(test)]
 mod test {
     use super::{
-        super::test::{crypto_stable_hash, same_stable_hash},
         super::Bytes,
+        super::test::{crypto_stable_hash, same_stable_hash},
         BigDecimal, BigInt, OldBigDecimal,
     };
     use std::str::FromStr;

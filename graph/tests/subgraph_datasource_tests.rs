@@ -2,12 +2,12 @@ use std::{collections::BTreeMap, ops::Range, sync::Arc};
 
 use graph::{
     blockchain::{
+        Block, SubgraphFilter, Trigger,
         block_stream::{
             EntityOperationKind, EntitySourceOperation, SubgraphTriggerScanRange,
             TriggersAdapterWrapper,
         },
         mock::MockTriggersAdapter,
-        Block, SubgraphFilter, Trigger,
     },
     components::store::SourceableStore,
     data_source::CausalityRegion,

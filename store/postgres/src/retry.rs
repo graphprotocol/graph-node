@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use graph::{
     prelude::StoreError,
-    slog::{warn, Logger},
+    slog::{Logger, warn},
     util::backoff::ExponentialBackoff,
 };
 

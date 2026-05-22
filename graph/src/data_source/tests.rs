@@ -51,10 +51,12 @@ fn data_source_helpers() {
     let offchain = new_datasource();
     let offchain_ds = DataSource::<MockBlockchain>::Offchain(offchain.clone());
     assert!(offchain_ds.causality_region() == offchain.causality_region);
-    assert!(offchain_ds
-        .as_offchain()
-        .unwrap()
-        .is_duplicate_of(&offchain));
+    assert!(
+        offchain_ds
+            .as_offchain()
+            .unwrap()
+            .is_duplicate_of(&offchain)
+    );
 
     let onchain = DataSource::<MockBlockchain>::Onchain(MockDataSource {
         api_version: Version::new(1, 0, 0),

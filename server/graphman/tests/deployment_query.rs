@@ -5,10 +5,10 @@ use graph::data::subgraph::DeploymentHash;
 use graph::prelude::QueryTarget;
 
 use serde_json::json;
-use test_store::store::create_test_subgraph;
-use test_store::store::NETWORK_NAME;
 use test_store::STORE;
 use test_store::SUBGRAPH_STORE;
+use test_store::store::NETWORK_NAME;
+use test_store::store::create_test_subgraph;
 
 use self::util::client::send_graphql_request;
 use self::util::run_test;

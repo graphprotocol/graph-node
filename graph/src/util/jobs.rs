@@ -3,9 +3,9 @@
 //! to be done on a tight deadline, solely for work that needs to be done
 //! at reasonably long intervals (like a few hours)
 
-use slog::{debug, info, o, trace, warn, Logger};
-use std::sync::atomic::{AtomicBool, Ordering};
+use slog::{Logger, debug, info, o, trace, warn};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;

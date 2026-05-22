@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use std::cmp;
 use std::collections::VecDeque;
 use std::pin::Pin;
@@ -7,13 +7,13 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use graph::blockchain::block_stream::{
-    BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers, ChainHeadUpdateStream,
-    FirehoseCursor, TriggersAdapterWrapper, BUFFERED_BLOCK_STREAM_SIZE,
+    BUFFERED_BLOCK_STREAM_SIZE, BlockStream, BlockStreamError, BlockStreamEvent, BlockWithTriggers,
+    ChainHeadUpdateStream, FirehoseCursor, TriggersAdapterWrapper,
 };
 use graph::blockchain::{Block, BlockPtr, TriggerFilterWrapper};
-use graph::futures03::{stream::Stream, Future, FutureExt};
-use graph::prelude::{DeploymentHash, BLOCK_NUMBER_MAX};
-use graph::slog::{info, trace, warn, Logger};
+use graph::futures03::{Future, FutureExt, stream::Stream};
+use graph::prelude::{BLOCK_NUMBER_MAX, DeploymentHash};
+use graph::slog::{Logger, info, trace, warn};
 
 use graph::components::store::BlockNumber;
 use graph::data::subgraph::UnifiedMappingApiVersion;
@@ -182,7 +182,7 @@ impl PollingBlockStreamContext {
                     return Ok(NextBlocks::Done);
                 }
                 ReconciliationStep::Revert(parent_ptr) => {
-                    return Ok(NextBlocks::Revert(parent_ptr))
+                    return Ok(NextBlocks::Revert(parent_ptr));
                 }
             }
         }
@@ -224,10 +224,10 @@ impl PollingBlockStreamContext {
 
         // Only continue if the subgraph block ptr is behind the head block ptr.
         // subgraph_ptr > head_ptr shouldn't happen, but if it does, it's safest to just stop.
-        if let Some(ptr) = &subgraph_ptr {
-            if ptr.number >= head_ptr.number {
-                return Ok(ReconciliationStep::Done);
-            }
+        if let Some(ptr) = &subgraph_ptr
+            && ptr.number >= head_ptr.number
+        {
+            return Ok(ReconciliationStep::Done);
         }
 
         // Subgraph ptr is behind head ptr.
@@ -366,10 +366,6 @@ impl PollingBlockStreamContext {
             // greater than or equal to `to`, we retry later. This deferment allows the chain head to advance,
             // ensuring the target block range becomes finalized. It effectively minimizes the risk of chain reorg
             // affecting the processing by waiting for a more stable set of blocks.
-            if to > head_ptr.number - reorg_threshold {
-                return Ok(ReconciliationStep::Retry);
-            }
-
             if to > head_ptr.number - reorg_threshold {
                 return Ok(ReconciliationStep::Retry);
             }
@@ -573,7 +569,7 @@ impl Stream for PollingBlockStream {
                 }
 
                 // Yielding blocks from reconciliation process
-                BlockStreamState::YieldingBlocks(ref mut next_blocks) => {
+                BlockStreamState::YieldingBlocks(next_blocks) => {
                     match next_blocks.pop_front() {
                         // Yield one block
                         Some(next_block) => {
@@ -593,7 +589,7 @@ impl Stream for PollingBlockStream {
                 }
 
                 // Pausing after an error, before looking for more blocks
-                BlockStreamState::RetryAfterDelay(ref mut delay) => match delay.as_mut().poll(cx) {
+                BlockStreamState::RetryAfterDelay(delay) => match delay.as_mut().poll(cx) {
                     Poll::Ready(Ok(..)) | Poll::Ready(Err(_)) => {
                         self.state = BlockStreamState::BeginReconciliation;
                     }

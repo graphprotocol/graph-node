@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use futures03::future::join_all;
-use object_store::{gcp::GoogleCloudStorageBuilder, path::Path, ObjectStoreExt as _};
+use object_store::{ObjectStoreExt as _, gcp::GoogleCloudStorageBuilder, path::Path};
 use serde::Serialize;
-use slog::{error, info, Logger};
+use slog::{Logger, error, info};
 use url::Url;
 
 use crate::{

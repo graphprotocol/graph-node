@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::quote;
 use syn::{
-    parse_macro_input, Data, DeriveInput, Fields, Generics, Ident, Index, ItemFn, TypeParamBound,
+    Data, DeriveInput, Fields, Generics, Ident, Index, ItemFn, TypeParamBound, parse_macro_input,
 };
 
 #[proc_macro_derive(CheapClone)]

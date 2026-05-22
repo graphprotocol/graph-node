@@ -11,10 +11,10 @@ use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::Store;
 use itertools::Itertools;
 
+use crate::GraphmanError;
 use crate::deployment::Deployment;
 use crate::deployment::DeploymentSelector;
 use crate::deployment::DeploymentVersionSelector;
-use crate::GraphmanError;
 
 #[derive(Clone, Debug)]
 pub struct DeploymentStatus {

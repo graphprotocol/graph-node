@@ -3,11 +3,11 @@ use graph::blockchain::Block;
 use graph::blockchain::MappingTriggerTrait;
 use graph::blockchain::TriggerData;
 use graph::derive::CheapClone;
+use graph::prelude::BlockNumber;
 use graph::prelude::alloy::primitives::B256;
 use graph::prelude::hex;
-use graph::prelude::BlockNumber;
 use graph::runtime::HostExportError;
-use graph::runtime::{asc_new, gas::GasCounter, AscHeap, AscPtr};
+use graph::runtime::{AscHeap, AscPtr, asc_new, gas::GasCounter};
 use graph_runtime_wasm::module::ToAscPtr;
 use std::{cmp::Ordering, sync::Arc};
 
@@ -158,8 +158,8 @@ mod tests {
         anyhow::anyhow,
         components::metrics::gas::GasMetrics,
         data::subgraph::API_VERSION_0_0_5,
-        prelude::{hex, BigInt},
-        runtime::{gas::GasCounter, DeterministicHostError, HostExportError},
+        prelude::{BigInt, hex},
+        runtime::{DeterministicHostError, HostExportError, gas::GasCounter},
         util::mem::init_slice,
     };
 

@@ -1,26 +1,26 @@
 use crate::{
     bail,
     components::{
+        ethereum::CachedBlock,
         link_resolver::LinkResolver,
         network_provider::ChainName,
         store::{
             BlockNumber, ChainHeadStore, ChainIdStore, DeploymentCursorTracker, DeploymentLocator,
-            SourceableStore,
+            SourceableStore, StaleCallCacheResult,
         },
         subgraph::InstanceDSTemplateInfo,
     },
     data::subgraph::{DeploymentHash, UnifiedMappingApiVersion},
     data_source,
     prelude::{
-        transaction_receipt::LightTransactionReceipt, BlockHash, ChainStore,
-        DataSourceTemplateInfo, StoreError,
+        BlockHash, ChainStore, DataSourceTemplateInfo, StoreError,
+        transaction_receipt::LightTransactionReceipt,
     },
 };
 use alloy::primitives::{B256, U256};
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use serde::Deserialize;
-use serde_json::Value;
 use slog::Logger;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet},
@@ -29,17 +29,17 @@ use std::{
 };
 
 use super::{
-    block_stream::{self, BlockStream, FirehoseCursor},
-    client::ChainClient,
     BlockIngestor, BlockTime, ChainIdentifier, EmptyNodeCapabilities, ExtendedBlockPtr, HostFn,
     IngestorError, MappingTriggerTrait, NoopDecoderHook, Trigger, TriggerFilterWrapper,
     TriggerWithHandler,
+    block_stream::{self, BlockStream, FirehoseCursor},
+    client::ChainClient,
 };
 
 use super::{
-    block_stream::BlockWithTriggers, Block, BlockPtr, Blockchain, BlockchainKind, DataSource,
-    DataSourceTemplate, RuntimeAdapter, TriggerData, TriggerFilter, TriggersAdapter,
-    UnresolvedDataSource, UnresolvedDataSourceTemplate,
+    Block, BlockPtr, Blockchain, BlockchainKind, DataSource, DataSourceTemplate, RuntimeAdapter,
+    TriggerData, TriggerFilter, TriggersAdapter, UnresolvedDataSource,
+    UnresolvedDataSourceTemplate, block_stream::BlockWithTriggers,
 };
 
 #[derive(Debug)]
@@ -527,7 +527,13 @@ impl ChainStore for MockChainStore {
     ) -> Result<Option<B256>, Error> {
         unimplemented!()
     }
-    async fn blocks(self: Arc<Self>, _hashes: Vec<BlockHash>) -> Result<Vec<Value>, Error> {
+    async fn blocks(self: Arc<Self>, _hashes: Vec<BlockHash>) -> Result<Vec<CachedBlock>, Error> {
+        unimplemented!()
+    }
+    async fn block_parent_ptr(
+        self: Arc<Self>,
+        _hash: &BlockHash,
+    ) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
     async fn ancestor_block(
@@ -535,7 +541,15 @@ impl ChainStore for MockChainStore {
         _block_ptr: BlockPtr,
         _offset: BlockNumber,
         _root: Option<BlockHash>,
-    ) -> Result<Option<(Value, BlockPtr)>, Error> {
+    ) -> Result<Option<(CachedBlock, BlockPtr)>, Error> {
+        unimplemented!()
+    }
+    async fn ancestor_block_ptr(
+        self: Arc<Self>,
+        _block_ptr: BlockPtr,
+        _offset: BlockNumber,
+        _root: Option<BlockHash>,
+    ) -> Result<Option<BlockPtr>, Error> {
         unimplemented!()
     }
     async fn cleanup_cached_blocks(
@@ -580,9 +594,9 @@ impl ChainStore for MockChainStore {
     }
     async fn clear_stale_call_cache(
         &self,
-        _ttl_days: i32,
-        _ttl_max_contracts: Option<i64>,
-    ) -> Result<(), Error> {
+        _ttl_days: usize,
+        _max_contracts: Option<usize>,
+    ) -> Result<StaleCallCacheResult, Error> {
         unimplemented!()
     }
     async fn chain_identifier(&self) -> Result<ChainIdentifier, Error> {

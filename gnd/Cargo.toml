@@ -7,25 +7,86 @@ edition.workspace = true
 name = "gnd"
 path = "src/main.rs"
 
+[[test]]
+name = "cli_commands"
+path = "tests/cli_commands.rs"
+
+[[test]]
+name = "codegen_verification"
+path = "tests/codegen_verification.rs"
+
+[[test]]
+name = "gnd_test"
+path = "tests/gnd_test.rs"
+
 [dependencies]
 # Core graph dependencies
 graph = { path = "../graph" }
+graph-chain-ethereum = { path = "../chain/ethereum" }
 graph-core = { path = "../core" }
 graph-node = { path = "../node" }
+graph-graphql = { path = "../graphql" }
+graph-store-postgres = { path = "../store/postgres" }
+
+# Test command dependencies
+hex = "0.4"
+async-trait = { workspace = true }
+tower = { workspace = true }
 
 # Direct dependencies from current dev.rs
 anyhow = { workspace = true }
 clap = { workspace = true }
-env_logger = "0.11.8"
-git-testament = "0.2"
-lazy_static = "1.5.0"
+clap_complete = { workspace = true }
+env_logger = { workspace = true }
+git-testament = { workspace = true }
+lazy_static = { workspace = true }
+serde = { workspace = true }
 tokio = { workspace = true }
-tokio-util.workspace = true
+tokio-util = { workspace = true }
 
 # File watching
 notify = "8.2.0"
 globset = "0.4.18"
+
+# Config and auth
+url = { workspace = true }
+serde_json = { workspace = true }
 pq-sys = { version = "0.7.5", features = ["bundled"] }
+
+# HTTP client for Graph Node API
+reqwest = { workspace = true }
+thiserror = { workspace = true }
+
+# Console output
+similar = "3"
+indicatif = { workspace = true }
+console = { workspace = true }
+
+# Code generation
+graphql-tools = { workspace = true }
+regex = { workspace = true }
+serde_yaml = { workspace = true }
+Inflector = { workspace = true }
+
+# Migrations
+semver = { workspace = true }
+
+# Build command
+sha1 = "0.11"
+wasmparser = { workspace = true }
+
+# Interactive prompts
+inquire = "0.9"
+
+# Temp directories for init
+tempfile = "3"
+
+# Browser opening for publish command
+open = "5"
 
 [target.'cfg(unix)'.dependencies]
 pgtemp = { git = "https://github.com/graphprotocol/pgtemp", branch = "initdb-args" }
+
+[dev-dependencies]
+tempfile = "3"
+walkdir = "2"

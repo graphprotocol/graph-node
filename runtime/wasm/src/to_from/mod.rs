@@ -9,8 +9,8 @@ use std::iter::FromIterator;
 use graph::{
     data::value::Word,
     runtime::{
-        asc_get, asc_new, gas::GasCounter, AscHeap, AscIndexId, AscPtr, AscType, AscValue,
-        DeterministicHostError, FromAscObj, HostExportError, ToAscObj,
+        AscHeap, AscIndexId, AscPtr, AscType, AscValue, DeterministicHostError, FromAscObj,
+        HostExportError, ToAscObj, asc_get, asc_new, gas::GasCounter,
     },
 };
 
@@ -207,11 +207,11 @@ where
 }
 
 impl<
-        K: AscType + AscIndexId,
-        V: AscType + AscIndexId,
-        T: FromAscObj<K> + Hash + Eq,
-        U: FromAscObj<V>,
-    > FromAscObj<AscTypedMap<K, V>> for HashMap<T, U>
+    K: AscType + AscIndexId,
+    V: AscType + AscIndexId,
+    T: FromAscObj<K> + Hash + Eq,
+    U: FromAscObj<V>,
+> FromAscObj<AscTypedMap<K, V>> for HashMap<T, U>
 where
     Array<AscPtr<AscTypedMapEntry<K, V>>>: AscIndexId,
     AscTypedMapEntry<K, V>: AscIndexId,

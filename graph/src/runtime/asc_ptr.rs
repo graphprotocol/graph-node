@@ -1,7 +1,7 @@
 use crate::data::subgraph::API_VERSION_0_0_4;
 
 use super::gas::GasCounter;
-use super::{padding_to_16, DeterministicHostError, HostExportError};
+use super::{DeterministicHostError, HostExportError, padding_to_16};
 
 use super::{AscHeap, AscIndexId, AscType, IndexForAscTypeId};
 use semver::Version;

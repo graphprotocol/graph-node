@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use anyhow::anyhow;
 use graph::data::query::QueryExecutionError;
-use graph::prelude::{q, r, BlockNumber, Error};
+use graph::prelude::{BlockNumber, Error, q, r};
 
 pub trait ValueExt: Sized {
     fn as_object(&self) -> &BTreeMap<String, q::Value>;

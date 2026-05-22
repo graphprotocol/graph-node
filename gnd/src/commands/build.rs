@@ -1,0 +1,930 @@
+//! Build command for compiling subgraph mappings to WebAssembly.
+//!
+//! This command compiles AssemblyScript mappings to WASM using the asc compiler,
+//! copies all required files to the build directory, and optionally uploads
+//! the result to IPFS.
+
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result, anyhow};
+use clap::Parser;
+use sha1::{Digest, Sha1};
+
+use crate::abi::normalize_abi_json;
+use crate::compiler::{AscCompileOptions, compile_mapping, find_graph_ts};
+use crate::config::{apply_network_config, get_network_config, load_networks_config};
+use crate::manifest::{DataSource, Manifest, Template, load_manifest, resolve_path};
+use crate::migrations;
+use crate::output::{Step, step};
+use crate::services::IpfsClient;
+use crate::validation::{
+    collect_handler_names, collect_template_handler_names, format_manifest_errors,
+    format_schema_errors, validate_manifest, validate_schema, validate_wasm_handlers,
+};
+use crate::watch::watch_and_run;
+
+#[derive(Clone, Debug, Parser)]
+#[clap(about = "Build a subgraph and (optionally) upload it to IPFS")]
+pub struct BuildOpt {
+    /// Path to the subgraph manifest
+    #[clap(default_value = "subgraph.yaml")]
+    pub manifest: PathBuf,
+
+    /// Output directory for build results
+    #[clap(short = 'o', long, default_value = "build/")]
+    pub output_dir: PathBuf,
+
+    /// Output format for mappings (wasm or wast)
+    #[clap(short = 't', long, default_value = "wasm")]
+    pub output_format: String,
+
+    /// Skip subgraph migrations
+    #[clap(long)]
+    pub skip_migrations: bool,
+
+    /// Rebuild when subgraph files change
+    #[clap(short = 'w', long)]
+    pub watch: bool,
+
+    /// IPFS node URL to upload build results to
+    #[clap(short = 'i', long)]
+    pub ipfs: Option<String>,
+
+    /// Network configuration to use from the networks config file
+    #[clap(long)]
+    pub network: Option<String>,
+
+    /// Networks config file path
+    #[clap(long, default_value = "networks.json")]
+    pub network_file: PathBuf,
+
+    /// Skip the asc version check (use with caution)
+    #[clap(long, env = "GND_SKIP_ASC_VERSION_CHECK")]
+    pub skip_asc_version_check: bool,
+}
+
+/// Result of a build operation.
+#[derive(Debug)]
+pub struct BuildResult {
+    /// IPFS hash of the uploaded manifest (if IPFS upload was requested)
+    pub ipfs_hash: Option<String>,
+}
+
+/// Run the build command.
+pub async fn run_build(opt: BuildOpt) -> Result<Option<String>> {
+    // Validate output format
+    if opt.output_format != "wasm" && opt.output_format != "wast" {
+        return Err(anyhow!(
+            "Invalid output format '{}'. Must be 'wasm' or 'wast'",
+            opt.output_format
+        ));
+    }
+
+    if opt.watch {
+        watch_and_build(&opt).await?;
+        Ok(None)
+    } else {
+        let result = build_subgraph(&opt).await?;
+        Ok(result.ipfs_hash)
+    }
+}
+
+/// Watch subgraph files and rebuild on changes.
+async fn watch_and_build(opt: &BuildOpt) -> Result<()> {
+    // Get files to watch (need to load manifest first)
+    let manifest = load_manifest(&opt.manifest)?;
+    let files_to_watch = get_files_to_watch(&opt.manifest, &manifest);
+
+    watch_and_run(
+        files_to_watch,
+        "Watching subgraph files for changes...",
+        || async { build_subgraph(opt).await.map(|_| ()) },
+    )
+    .await
+}
+
+/// Get the list of files to watch for changes.
+fn get_files_to_watch(manifest_path: &Path, manifest: &Manifest) -> Vec<PathBuf> {
+    let mut files = vec![manifest_path.to_path_buf()];
+
+    // Add schema file
+    if let Some(schema_path) = &manifest.schema {
+        files.push(resolve_path(manifest_path, schema_path));
+    }
+
+    // Add mapping files
+    for ds in &manifest.data_sources {
+        if let Some(mapping) = &ds.mapping_file {
+            files.push(resolve_path(manifest_path, mapping));
+        }
+        for abi in &ds.abis {
+            files.push(resolve_path(manifest_path, &abi.file));
+        }
+    }
+
+    // Add template mapping files
+    for template in &manifest.templates {
+        if let Some(mapping) = &template.mapping_file {
+            files.push(resolve_path(manifest_path, mapping));
+        }
+    }
+
+    files
+}
+
+/// Build the subgraph.
+async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
+    // Apply migrations unless skipped
+    if !opt.skip_migrations {
+        migrations::apply_migrations(&opt.manifest)?;
+    }
+
+    // Apply network configuration if specified
+    if let Some(network) = &opt.network {
+        apply_network_to_manifest(&opt.manifest, network, &opt.network_file)?;
+    }
+
+    // Load the manifest
+    let manifest = load_manifest(&opt.manifest)?;
+    let source_dir = crate::manifest::manifest_dir(&opt.manifest).to_path_buf();
+
+    // Validate manifest structure
+    let manifest_errors = validate_manifest(&manifest, &source_dir);
+    if !manifest_errors.is_empty() {
+        eprintln!(
+            "Manifest validation errors:\n{}",
+            format_manifest_errors(&manifest_errors)
+        );
+        return Err(anyhow!(
+            "Manifest validation failed with {} error(s)",
+            manifest_errors.len()
+        ));
+    }
+
+    // Validate schema before compilation
+    if let Some(schema_path) = &manifest.schema {
+        let schema_path = resolve_path(&opt.manifest, schema_path);
+        let validation_errors = validate_schema(&schema_path, &manifest.spec_version)?;
+
+        if !validation_errors.is_empty() {
+            eprintln!(
+                "Schema validation errors:\n{}",
+                format_schema_errors(&validation_errors)
+            );
+            return Err(anyhow!(
+                "Schema validation failed with {} error(s)",
+                validation_errors.len()
+            ));
+        }
+    }
+
+    // Find graph-ts and node_modules
+    let (lib_dirs, global_file) = find_graph_ts(&source_dir)?;
+    let libs = lib_dirs
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    // Create output directory
+    fs::create_dir_all(&opt.output_dir)
+        .with_context(|| format!("Failed to create output directory: {:?}", opt.output_dir))?;
+
+    // Compile data source mappings
+    // Track compiled files: source hash -> compiled output path
+    let mut compiled_files: HashMap<String, PathBuf> = HashMap::new();
+
+    for ds in &manifest.data_sources {
+        if let Some(mapping) = &ds.mapping_file {
+            let mapping_path = resolve_path(&opt.manifest, mapping);
+            let output_subdir = opt.output_dir.join(&ds.name);
+            compile_mapping_to_dir(
+                &ds.name,
+                &mapping_path,
+                &source_dir,
+                &output_subdir,
+                &libs,
+                &global_file,
+                &opt.output_format,
+                &mut compiled_files,
+                opt.skip_asc_version_check,
+                "data source",
+            )?;
+        }
+    }
+
+    // Compile template mappings
+    for template in &manifest.templates {
+        if let Some(mapping) = &template.mapping_file {
+            let mapping_path = resolve_path(&opt.manifest, mapping);
+            let output_subdir = opt.output_dir.join("templates").join(&template.name);
+            compile_mapping_to_dir(
+                &template.name,
+                &mapping_path,
+                &source_dir,
+                &output_subdir,
+                &libs,
+                &global_file,
+                &opt.output_format,
+                &mut compiled_files,
+                opt.skip_asc_version_check,
+                "data source template",
+            )?;
+        }
+    }
+
+    // Validate compiled WASM handler exports (only for binary WASM output)
+    if opt.output_format == "wasm" {
+        let mut wasm_errors = Vec::new();
+
+        for ds in &manifest.data_sources {
+            let handler_names = collect_handler_names(ds);
+            if handler_names.is_empty() {
+                continue;
+            }
+            let wasm_path = opt
+                .output_dir
+                .join(&ds.name)
+                .join(format!("{}.wasm", ds.name));
+            if wasm_path.exists() {
+                wasm_errors.extend(validate_wasm_handlers(&wasm_path, &ds.name, &handler_names));
+            }
+        }
+
+        for template in &manifest.templates {
+            let handler_names = collect_template_handler_names(template);
+            if handler_names.is_empty() {
+                continue;
+            }
+            let wasm_path = opt
+                .output_dir
+                .join("templates")
+                .join(&template.name)
+                .join(format!("{}.wasm", template.name));
+            if wasm_path.exists() {
+                wasm_errors.extend(validate_wasm_handlers(
+                    &wasm_path,
+                    &template.name,
+                    &handler_names,
+                ));
+            }
+        }
+
+        if !wasm_errors.is_empty() {
+            eprintln!(
+                "WASM handler validation errors:\n{}",
+                format_manifest_errors(&wasm_errors)
+            );
+            return Err(anyhow!(
+                "WASM handler validation failed with {} error(s)",
+                wasm_errors.len()
+            ));
+        }
+    }
+
+    // Copy schema file
+    if let Some(schema_path) = &manifest.schema {
+        let schema_path = resolve_path(&opt.manifest, schema_path);
+        copy_schema(&schema_path, &opt.output_dir)?;
+    }
+
+    // Copy ABI files for data sources
+    for ds in &manifest.data_sources {
+        for abi in &ds.abis {
+            let abi_path = resolve_path(&opt.manifest, &abi.file);
+            let output_subdir = opt.output_dir.join(&ds.name);
+            copy_abi_to_dir(&abi.name, &abi_path, &output_subdir)?;
+        }
+    }
+
+    // Copy ABI files for templates
+    for template in &manifest.templates {
+        for abi in &template.abis {
+            let abi_path = resolve_path(&opt.manifest, &abi.file);
+            let output_subdir = opt.output_dir.join("templates").join(&template.name);
+            copy_abi_to_dir(&abi.name, &abi_path, &output_subdir)?;
+        }
+    }
+
+    // Write output manifest
+    write_output_manifest(
+        &opt.manifest,
+        &manifest,
+        &opt.output_dir,
+        &opt.output_format,
+    )?;
+
+    // Upload to IPFS if requested
+    let ipfs_hash = if let Some(ipfs_url) = &opt.ipfs {
+        let hash = upload_to_ipfs(ipfs_url, &opt.output_dir, &manifest).await?;
+        step(Step::Done, &format!("Build completed: {}", hash));
+        Some(hash)
+    } else {
+        let manifest_path = opt.output_dir.join("subgraph.yaml");
+
+        step(
+            Step::Done,
+            &format!("Build completed: {}", manifest_path.display()),
+        );
+        None
+    };
+
+    Ok(BuildResult { ipfs_hash })
+}
+
+/// Tracks both content hash to IPFS hash (for deduplication) and path to IPFS hash (for lookups).
+#[derive(Default)]
+struct UploadedFiles {
+    /// Content hash -> IPFS hash (for deduplication)
+    content_to_ipfs: HashMap<String, String>,
+    /// Relative path -> IPFS hash (for manifest updates)
+    path_to_ipfs: HashMap<String, String>,
+}
+
+/// Upload build artifacts to IPFS and return the manifest hash.
+async fn upload_to_ipfs(ipfs_url: &str, output_dir: &Path, manifest: &Manifest) -> Result<String> {
+    step(Step::Generate, "Upload subgraph to IPFS");
+
+    let client = IpfsClient::new(ipfs_url)?;
+
+    // Track uploaded files
+    let mut uploaded = UploadedFiles::default();
+
+    // Upload schema file
+    if let Some(schema_path) = &manifest.schema {
+        let schema_name = Path::new(schema_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("schema.graphql");
+        let schema_file = output_dir.join(schema_name);
+        let content = fs::read(&schema_file)
+            .with_context(|| format!("Failed to read schema file: {}", schema_file.display()))?;
+        let hash = upload_file_to_ipfs(&client, schema_name, content, &mut uploaded).await?;
+        step(Step::Write, &format!("  {} => {}", schema_name, hash));
+    }
+
+    // Upload ABI files for data sources
+    for ds in &manifest.data_sources {
+        for abi in &ds.abis {
+            let abi_filename = format!("{}.json", abi.name);
+            let abi_file = output_dir.join(&ds.name).join(&abi_filename);
+            if abi_file.exists() {
+                let content = fs::read(&abi_file)
+                    .with_context(|| format!("Failed to read ABI file: {}", abi_file.display()))?;
+                let rel_path = format!("{}/{}", ds.name, abi_filename);
+                let hash = upload_file_to_ipfs(&client, &rel_path, content, &mut uploaded).await?;
+                step(Step::Write, &format!("  {} => {}", rel_path, hash));
+            }
+        }
+    }
+
+    // Upload ABI files for templates
+    for template in &manifest.templates {
+        for abi in &template.abis {
+            let abi_filename = format!("{}.json", abi.name);
+            let abi_file = output_dir
+                .join("templates")
+                .join(&template.name)
+                .join(&abi_filename);
+            if abi_file.exists() {
+                let content = fs::read(&abi_file)
+                    .with_context(|| format!("Failed to read ABI file: {}", abi_file.display()))?;
+                let rel_path = format!("templates/{}/{}", template.name, abi_filename);
+                let hash = upload_file_to_ipfs(&client, &rel_path, content, &mut uploaded).await?;
+                step(Step::Write, &format!("  {} => {}", rel_path, hash));
+            }
+        }
+    }
+
+    // Upload mapping files
+    for ds in &manifest.data_sources {
+        let mapping_filename = format!("{}.wasm", ds.name);
+        let mapping_file = output_dir.join(&ds.name).join(&mapping_filename);
+        if mapping_file.exists() {
+            let content = fs::read(&mapping_file).with_context(|| {
+                format!("Failed to read mapping file: {}", mapping_file.display())
+            })?;
+            let rel_path = format!("{}/{}", ds.name, mapping_filename);
+            let hash = upload_file_to_ipfs(&client, &rel_path, content, &mut uploaded).await?;
+            step(Step::Write, &format!("  {} => {}", rel_path, hash));
+        }
+    }
+
+    // Upload template mapping files
+    for template in &manifest.templates {
+        let mapping_filename = format!("{}.wasm", template.name);
+        let mapping_file = output_dir
+            .join("templates")
+            .join(&template.name)
+            .join(&mapping_filename);
+        if mapping_file.exists() {
+            let content = fs::read(&mapping_file).with_context(|| {
+                format!(
+                    "Failed to read template mapping: {}",
+                    mapping_file.display()
+                )
+            })?;
+            let rel_path = format!("templates/{}/{}", template.name, mapping_filename);
+            let hash = upload_file_to_ipfs(&client, &rel_path, content, &mut uploaded).await?;
+            step(Step::Write, &format!("  {} => {}", rel_path, hash));
+        }
+    }
+
+    // Now we need to update the manifest with IPFS hashes and upload it
+    let manifest_content = create_ipfs_manifest(output_dir, manifest, &uploaded)?;
+    let manifest_hash = client
+        .add("subgraph.yaml", manifest_content.into_bytes())
+        .await?;
+    step(
+        Step::Write,
+        &format!("  subgraph.yaml => {}", manifest_hash),
+    );
+
+    Ok(manifest_hash)
+}
+
+/// Upload a file to IPFS, using cache to avoid duplicates.
+async fn upload_file_to_ipfs(
+    client: &IpfsClient,
+    path: &str,
+    content: Vec<u8>,
+    uploaded: &mut UploadedFiles,
+) -> Result<String> {
+    // Check if we already uploaded this content
+    let content_hash = {
+        let mut hasher = Sha1::new();
+        hasher.update(&content);
+        hex::encode(hasher.finalize())
+    };
+
+    let ipfs_hash = if let Some(hash) = uploaded.content_to_ipfs.get(&content_hash) {
+        hash.clone()
+    } else {
+        let hash = client.add(path, content).await?;
+        uploaded.content_to_ipfs.insert(content_hash, hash.clone());
+        hash
+    };
+
+    // Also track by path for manifest lookups
+    uploaded
+        .path_to_ipfs
+        .insert(path.to_string(), ipfs_hash.clone());
+
+    Ok(ipfs_hash)
+}
+
+/// Create the IPFS manifest with file paths replaced by IPFS hashes.
+fn create_ipfs_manifest(
+    output_dir: &Path,
+    manifest: &Manifest,
+    uploaded: &UploadedFiles,
+) -> Result<String> {
+    // Read the original manifest
+    let manifest_path = output_dir.join("subgraph.yaml");
+    let manifest_str = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read manifest: {}", manifest_path.display()))?;
+
+    let mut value: serde_yaml::Value = serde_yaml::from_str(&manifest_str)?;
+
+    // Update schema path to IPFS reference
+    if let Some(schema_path) = &manifest.schema {
+        let schema_name = Path::new(schema_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("schema.graphql");
+
+        // Find the hash for this file
+        if let Some(hash) = uploaded.path_to_ipfs.get(schema_name)
+            && let Some(schema) = value.get_mut("schema")
+            && let Some(file) = schema.get_mut("file")
+        {
+            *file = create_ipfs_link(hash);
+        }
+    }
+
+    // Update data source paths
+    if let Some(data_sources) = value.get_mut("dataSources")
+        && let Some(arr) = data_sources.as_sequence_mut()
+    {
+        for (i, ds_value) in arr.iter_mut().enumerate() {
+            if i < manifest.data_sources.len() {
+                let ds = &manifest.data_sources[i];
+                update_data_source_ipfs_paths(ds_value, ds, uploaded);
+            }
+        }
+    }
+
+    // Update template paths
+    if let Some(templates) = value.get_mut("templates")
+        && let Some(arr) = templates.as_sequence_mut()
+    {
+        for (i, template_value) in arr.iter_mut().enumerate() {
+            if i < manifest.templates.len() {
+                let template = &manifest.templates[i];
+                update_template_ipfs_paths(template_value, template, uploaded);
+            }
+        }
+    }
+
+    serde_yaml::to_string(&value).context("Failed to serialize IPFS manifest")
+}
+
+/// Create an IPFS link value.
+fn create_ipfs_link(hash: &str) -> serde_yaml::Value {
+    let mut map = serde_yaml::Mapping::new();
+    map.insert(
+        serde_yaml::Value::String("/".to_string()),
+        serde_yaml::Value::String(format!("/ipfs/{}", hash)),
+    );
+    serde_yaml::Value::Mapping(map)
+}
+
+/// Update data source paths in the manifest to IPFS references.
+fn update_data_source_ipfs_paths(
+    ds_value: &mut serde_yaml::Value,
+    ds: &DataSource,
+    uploaded: &UploadedFiles,
+) {
+    if let Some(mapping) = ds_value.get_mut("mapping") {
+        // Update mapping file
+        if let Some(file) = mapping.get_mut("file") {
+            let mapping_path = format!("{}/{}.wasm", ds.name, ds.name);
+            if let Some(hash) = uploaded.path_to_ipfs.get(&mapping_path) {
+                *file = create_ipfs_link(hash);
+            }
+        }
+
+        // Update ABIs
+        if let Some(abis) = mapping.get_mut("abis")
+            && let Some(arr) = abis.as_sequence_mut()
+        {
+            for (j, abi_value) in arr.iter_mut().enumerate() {
+                if j < ds.abis.len() {
+                    let abi = &ds.abis[j];
+                    if let Some(file) = abi_value.get_mut("file") {
+                        let abi_path = format!("{}/{}.json", ds.name, abi.name);
+                        if let Some(hash) = uploaded.path_to_ipfs.get(&abi_path) {
+                            *file = create_ipfs_link(hash);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Update template paths in the manifest to IPFS references.
+fn update_template_ipfs_paths(
+    template_value: &mut serde_yaml::Value,
+    template: &Template,
+    uploaded: &UploadedFiles,
+) {
+    if let Some(mapping) = template_value.get_mut("mapping") {
+        // Update mapping file
+        if let Some(file) = mapping.get_mut("file") {
+            let mapping_path = format!("templates/{}/{}.wasm", template.name, template.name);
+            if let Some(hash) = uploaded.path_to_ipfs.get(&mapping_path) {
+                *file = create_ipfs_link(hash);
+            }
+        }
+
+        // Update ABIs
+        if let Some(abis) = mapping.get_mut("abis")
+            && let Some(arr) = abis.as_sequence_mut()
+        {
+            for (j, abi_value) in arr.iter_mut().enumerate() {
+                if j < template.abis.len() {
+                    let abi = &template.abis[j];
+                    if let Some(file) = abi_value.get_mut("file") {
+                        let abi_path = format!("templates/{}/{}.json", template.name, abi.name);
+                        if let Some(hash) = uploaded.path_to_ipfs.get(&abi_path) {
+                            *file = create_ipfs_link(hash);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Get the file extension for the output format.
+fn output_extension(output_format: &str) -> &'static str {
+    if output_format == "wasm" {
+        "wasm"
+    } else {
+        "wast"
+    }
+}
+
+/// Compile a mapping to a specific output directory.
+///
+/// This unified function handles both data source and template mappings.
+/// The caller specifies the output directory and display name.
+#[allow(clippy::too_many_arguments)]
+fn compile_mapping_to_dir(
+    name: &str,
+    mapping_path: &Path,
+    source_dir: &Path,
+    output_subdir: &Path,
+    libs: &str,
+    global_file: &Path,
+    output_format: &str,
+    compiled_files: &mut HashMap<String, PathBuf>,
+    skip_version_check: bool,
+    item_type: &str, // "data source" or "data source template"
+) -> Result<()> {
+    let cache_key = file_hash(mapping_path)?;
+
+    fs::create_dir_all(output_subdir)?;
+
+    let extension = output_extension(output_format);
+    let output_file = output_subdir.join(format!("{}.{}", name, extension));
+
+    // Check if already compiled - copy existing WASM file if so
+    if let Some(existing_wasm) = compiled_files.get(&cache_key) {
+        step(
+            Step::Skip,
+            &format!("Compile {}: {} (already compiled)", item_type, name),
+        );
+        fs::copy(existing_wasm, &output_file).with_context(|| {
+            format!(
+                "Failed to copy WASM from {} to {}",
+                existing_wasm.display(),
+                output_file.display()
+            )
+        })?;
+        return Ok(());
+    }
+
+    step(Step::Generate, &format!("Compile {}: {}", item_type, name));
+
+    let options = AscCompileOptions {
+        input_file: mapping_path.to_path_buf(),
+        base_dir: source_dir.to_path_buf(),
+        libs: libs.to_string(),
+        global_file: global_file.to_path_buf(),
+        output_file: output_file.clone(),
+        output_format: output_format.to_string(),
+        skip_version_check,
+    };
+
+    compile_mapping(&options)?;
+    compiled_files.insert(cache_key, output_file);
+
+    Ok(())
+}
+
+/// Copy the schema file to the output directory.
+fn copy_schema(schema_path: &Path, output_dir: &Path) -> Result<()> {
+    let schema_name = schema_path
+        .file_name()
+        .ok_or_else(|| anyhow!("Invalid schema path"))?;
+    let output_path = output_dir.join(schema_name);
+
+    step(
+        Step::Write,
+        &format!("Copy schema file to {}", output_path.display()),
+    );
+
+    fs::copy(schema_path, &output_path).with_context(|| {
+        format!(
+            "Failed to copy schema from {} to {}",
+            schema_path.display(),
+            output_path.display()
+        )
+    })?;
+
+    Ok(())
+}
+
+/// Copy an ABI file to the specified output directory, normalizing it to a bare
+/// ABI array. This handles Hardhat/Foundry artifacts (`{"abi": [...]}`) and
+/// Truffle artifacts (`{"compilerOutput": {"abi": [...]}}`) in addition to raw
+/// ABI arrays.
+fn copy_abi_to_dir(abi_name: &str, abi_path: &Path, output_subdir: &Path) -> Result<()> {
+    fs::create_dir_all(output_subdir)?;
+
+    let abi_filename = format!("{}.json", abi_name);
+    let output_path = output_subdir.join(&abi_filename);
+
+    step(
+        Step::Write,
+        &format!("Copy ABI {} to {}", abi_name, output_path.display()),
+    );
+
+    let abi_str = fs::read_to_string(abi_path)
+        .with_context(|| format!("Failed to read ABI file: {}", abi_path.display()))?;
+
+    let normalized = normalize_abi_json(&abi_str)
+        .with_context(|| format!("Failed to normalize ABI: {}", abi_path.display()))?;
+
+    let output_str =
+        serde_json::to_string_pretty(&normalized).context("Failed to serialize normalized ABI")?;
+
+    fs::write(&output_path, output_str)
+        .with_context(|| format!("Failed to write ABI to {}", output_path.display()))?;
+
+    Ok(())
+}
+
+/// Write the output manifest file.
+fn write_output_manifest(
+    manifest_path: &Path,
+    manifest: &Manifest,
+    output_dir: &Path,
+    output_format: &str,
+) -> Result<()> {
+    let output_path = output_dir.join("subgraph.yaml");
+
+    step(
+        Step::Write,
+        &format!("Write subgraph manifest to {}", output_path.display()),
+    );
+
+    // Load original manifest
+    let manifest_str = fs::read_to_string(manifest_path)
+        .with_context(|| format!("Failed to read manifest: {:?}", manifest_path))?;
+
+    let mut value: serde_yaml::Value = serde_yaml::from_str(&manifest_str)?;
+
+    // Update schema path
+    if let Some(schema) = value.get_mut("schema")
+        && let Some(file) = schema.get_mut("file")
+        && let Some(schema_path) = manifest.schema.as_ref()
+    {
+        let schema_name = Path::new(schema_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("schema.graphql");
+        *file = serde_yaml::Value::String(schema_name.to_string());
+    }
+
+    // Update data source paths
+    if let Some(data_sources) = value.get_mut("dataSources")
+        && let Some(arr) = data_sources.as_sequence_mut()
+    {
+        for (i, ds) in arr.iter_mut().enumerate() {
+            if i < manifest.data_sources.len() {
+                let ds_name = &manifest.data_sources[i].name;
+                update_data_source_paths(ds, ds_name, output_format);
+            }
+        }
+    }
+
+    // Update template paths
+    if let Some(templates) = value.get_mut("templates")
+        && let Some(arr) = templates.as_sequence_mut()
+    {
+        for (i, template) in arr.iter_mut().enumerate() {
+            if i < manifest.templates.len() {
+                let template_name = &manifest.templates[i].name;
+                update_template_paths(template, template_name, output_format);
+            }
+        }
+    }
+
+    // Write output manifest
+    let output_str = serde_yaml::to_string(&value)?;
+    fs::write(&output_path, output_str)?;
+
+    Ok(())
+}
+
+/// Update paths in a data source for the output manifest.
+fn update_data_source_paths(ds: &mut serde_yaml::Value, ds_name: &str, output_format: &str) {
+    // Update mapping file path
+    if let Some(mapping) = ds.get_mut("mapping") {
+        if let Some(file) = mapping.get_mut("file") {
+            let extension = output_extension(output_format);
+            *file = serde_yaml::Value::String(format!("{}/{}.{}", ds_name, ds_name, extension));
+        }
+
+        // Update ABI paths
+        if let Some(abis) = mapping.get_mut("abis")
+            && let Some(arr) = abis.as_sequence_mut()
+        {
+            for abi in arr.iter_mut() {
+                // Extract name first to avoid borrow conflicts
+                let abi_name = abi
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|s| s.to_string());
+                if let Some(name) = abi_name
+                    && let Some(file) = abi.get_mut("file")
+                {
+                    *file = serde_yaml::Value::String(format!("{}/{}.json", ds_name, name));
+                }
+            }
+        }
+    }
+}
+
+/// Update paths in a template for the output manifest.
+fn update_template_paths(
+    template: &mut serde_yaml::Value,
+    template_name: &str,
+    output_format: &str,
+) {
+    // Update mapping file path
+    if let Some(mapping) = template.get_mut("mapping") {
+        if let Some(file) = mapping.get_mut("file") {
+            let extension = output_extension(output_format);
+            *file = serde_yaml::Value::String(format!(
+                "templates/{}/{}.{}",
+                template_name, template_name, extension
+            ));
+        }
+
+        // Update ABI paths
+        if let Some(abis) = mapping.get_mut("abis")
+            && let Some(arr) = abis.as_sequence_mut()
+        {
+            for abi in arr.iter_mut() {
+                // Extract name first to avoid borrow conflicts
+                let abi_name = abi
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|s| s.to_string());
+                if let Some(name) = abi_name
+                    && let Some(file) = abi.get_mut("file")
+                {
+                    *file = serde_yaml::Value::String(format!(
+                        "templates/{}/{}.json",
+                        template_name, name
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// Apply network configuration to the manifest file.
+///
+/// This modifies the manifest file in place, updating data source addresses
+/// and start blocks based on the networks.json configuration.
+fn apply_network_to_manifest(
+    manifest_path: &Path,
+    network: &str,
+    network_file: &Path,
+) -> Result<()> {
+    // Check if network file exists
+    if !network_file.exists() {
+        return Err(anyhow!(
+            "Network file '{}' does not exist. Create it or remove --network flag.",
+            network_file.display()
+        ));
+    }
+
+    step(
+        Step::Generate,
+        &format!("Apply network configuration: {}", network),
+    );
+
+    // Load network config
+    let networks_config = load_networks_config(network_file)?;
+    let network_config = get_network_config(&networks_config, network)?;
+
+    // Load manifest
+    let manifest_str = fs::read_to_string(manifest_path)
+        .with_context(|| format!("Failed to read manifest: {}", manifest_path.display()))?;
+
+    let mut manifest: serde_yaml::Value = serde_yaml::from_str(&manifest_str)
+        .with_context(|| format!("Failed to parse manifest: {}", manifest_path.display()))?;
+
+    // Apply network config
+    apply_network_config(&mut manifest, network, network_config)?;
+
+    // Write back to manifest
+    let updated_str = serde_yaml::to_string(&manifest)?;
+    fs::write(manifest_path, updated_str)
+        .with_context(|| format!("Failed to write manifest: {}", manifest_path.display()))?;
+
+    Ok(())
+}
+
+/// Calculate SHA1 hash of a file for caching.
+fn file_hash(path: &Path) -> Result<String> {
+    let content = fs::read(path).with_context(|| format!("Failed to read file: {:?}", path))?;
+    let mut hasher = Sha1::new();
+    hasher.update(&content);
+    Ok(hex::encode(hasher.finalize()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_file_hash() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.txt");
+        fs::write(&file_path, "hello world").unwrap();
+
+        let hash = file_hash(&file_path).unwrap();
+        // SHA1 of "hello world"
+        assert_eq!(hash, "2aae6c35c94fcfb415dbe95f408b9ce91ee846ed");
+    }
+}

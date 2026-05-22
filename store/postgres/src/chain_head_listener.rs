@@ -1,7 +1,7 @@
 use graph::futures03::{self, FutureExt};
 use graph::{
     blockchain::ChainHeadUpdateStream,
-    prelude::{tokio, MetricsRegistry, StoreError},
+    prelude::{MetricsRegistry, StoreError, tokio},
     prometheus::{CounterVec, GaugeVec},
     util::timed_rw_lock::TimedRwLock,
 };
@@ -11,15 +11,15 @@ use std::sync::Arc;
 use lazy_static::lazy_static;
 
 use crate::{
+    NotificationSender,
     notification_listener::{JsonNotification, NotificationListener, SafeChannelName},
     pool::ConnectionPool,
-    NotificationSender,
 };
 use graph::blockchain::ChainHeadUpdateListener as ChainHeadUpdateListenerTrait;
 use graph::prelude::serde::{Deserialize, Serialize};
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::tokio::sync::{mpsc::Receiver, watch};
-use graph::prelude::{crit, debug, o, CheapClone, Logger, ENV_VARS};
+use graph::prelude::{CheapClone, ENV_VARS, Logger, crit, debug, o};
 
 lazy_static! {
     pub static ref CHANNEL_NAME: SafeChannelName =

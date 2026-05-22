@@ -68,6 +68,10 @@ impl EntityType {
         self.schema.is_immutable(self.atom)
     }
 
+    pub fn skip_duplicates(&self) -> bool {
+        self.schema.skip_duplicates(self.atom)
+    }
+
     pub fn id_type(&self) -> Result<IdType, Error> {
         self.schema.id_type(self.atom)
     }

@@ -1,6 +1,4 @@
 use anyhow::anyhow;
-use diesel::dsl::sql;
-use diesel::sql_types::Text;
 use diesel::BoolExpressionMethods;
 use diesel::ExpressionMethods;
 use diesel::JoinOnDsl;
@@ -8,12 +6,14 @@ use diesel::NullableExpressionMethods;
 use diesel::PgTextExpressionMethods;
 use diesel::QueryDsl;
 use diesel::Queryable;
+use diesel::dsl::sql;
+use diesel::sql_types::Text;
 use diesel_async::RunQueryDsl;
 use graph::components::store::DeploymentId;
 use graph::components::store::DeploymentLocator;
 use graph::data::subgraph::DeploymentHash;
-use graph_store_postgres::command_support::catalog;
 use graph_store_postgres::AsyncPgConnection;
+use graph_store_postgres::command_support::catalog;
 use itertools::Itertools;
 
 use crate::GraphmanError;

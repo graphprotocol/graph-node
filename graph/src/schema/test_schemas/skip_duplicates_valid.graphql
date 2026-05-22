@@ -1,0 +1,5 @@
+# valid: Minimal example
+
+type Data @entity(immutable: true, skipDuplicates: true) {
+  id: Bytes!
+}

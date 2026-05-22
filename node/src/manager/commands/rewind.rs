@@ -8,7 +8,7 @@ use crate::manager::deployment::DeploymentSearch;
 use graph::anyhow::bail;
 use graph::components::store::{BlockStore as _, ChainStore as _, DeploymentLocator};
 use graph::env::ENV_VARS;
-use graph::prelude::{anyhow, BlockNumber, BlockPtr};
+use graph::prelude::{BlockNumber, BlockPtr, anyhow};
 use graph_store_postgres::command_support::catalog::{self as store_catalog};
 use graph_store_postgres::{BlockStore, NotificationSender};
 use graph_store_postgres::{ConnectionPool, Store};

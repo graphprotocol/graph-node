@@ -11,16 +11,16 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 
 use graph::{
-    components::store::{write, StoredDynamicDataSource},
+    components::store::{StoredDynamicDataSource, write},
     data::store::scalar::ToPrimitive,
     data_source::CausalityRegion,
     internal_error,
-    prelude::{serde_json, BigDecimal, BlockNumber, DeploymentHash, StoreError},
+    prelude::{BigDecimal, BlockNumber, DeploymentHash, StoreError, serde_json},
 };
 
-use crate::primary::Site;
 use crate::AsyncPgConnection;
 use crate::ForeignServer;
+use crate::primary::Site;
 
 table! {
     subgraphs.dynamic_ethereum_contract_data_source (vid) {
@@ -67,9 +67,10 @@ pub(super) async fn load(
         if address.len() != 20 {
             return Err(internal_error!(
                 "Data source address `0x{:?}` for dynamic data source {} should be 20 bytes long but is {} bytes long",
-                address, vid,
-            address.len()
-        ));
+                address,
+                vid,
+                address.len()
+            ));
         }
 
         let manifest_idx = manifest_idx_and_name

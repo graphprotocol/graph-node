@@ -172,9 +172,10 @@ mod tests {
     fn fails_on_an_invalid_cid() {
         let err = ContentPath::new("not_a_cid").unwrap_err();
 
-        assert!(err
-            .to_string()
-            .starts_with("'not_a_cid' is not a valid IPFS content path: invalid CID: "));
+        assert!(
+            err.to_string()
+                .starts_with("'not_a_cid' is not a valid IPFS content path: invalid CID: ")
+        );
     }
 
     #[test]
@@ -217,9 +218,11 @@ mod tests {
     fn fails_on_an_invalid_cid_followed_by_a_path() {
         let err = ContentPath::new("not_a_cid/readme.md").unwrap_err();
 
-        assert!(err
-            .to_string()
-            .starts_with("'not_a_cid/readme.md' is not a valid IPFS content path: invalid CID: "));
+        assert!(
+            err.to_string().starts_with(
+                "'not_a_cid/readme.md' is not a valid IPFS content path: invalid CID: "
+            )
+        );
     }
 
     #[test]

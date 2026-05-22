@@ -2,10 +2,10 @@ use std::{sync::Arc, time::Instant};
 
 use crate::adapter::EthereumRpcError;
 use crate::{
-    capabilities::NodeCapabilities, network::EthereumNetworkAdapters, Chain, ContractCallError,
-    EthereumAdapter, EthereumAdapterTrait, ENV_VARS,
+    Chain, ContractCallError, ENV_VARS, EthereumAdapter, EthereumAdapterTrait,
+    capabilities::NodeCapabilities, network::EthereumNetworkAdapters,
 };
-use anyhow::{anyhow, Context, Error};
+use anyhow::{Context, Error, anyhow};
 use blockchain::HostFn;
 use graph::abi;
 use graph::abi::DynSolValueExt;
@@ -23,8 +23,8 @@ use graph::{
     blockchain::{self, BlockPtr, HostFnCtx},
     cheap_clone::CheapClone,
     futures03::FutureExt,
-    prelude::{alloy::primitives::Address, EthereumCallCache},
-    runtime::{asc_get, asc_new, AscPtr, HostExportError},
+    prelude::{EthereumCallCache, alloy::primitives::Address},
+    runtime::{AscPtr, HostExportError, asc_get, asc_new},
     slog::Logger,
 };
 use graph_runtime_wasm::asc_abi::class::{AscBigInt, AscEnumArray, AscWrapped, EthereumValueKind};
@@ -346,32 +346,34 @@ async fn eth_call(
         Err(e) => (Err(e), call::Source::Rpc),
     };
     let result = match result {
-            Ok(res) => Ok(res),
+        Ok(res) => Ok(res),
 
-            // Any error reported by the Ethereum node could be due to the block no longer being on
-            // the main chain. This is very unespecific but we don't want to risk failing a
-            // subgraph due to a transient error such as a reorg.
-            Err(ContractCallError::AlloyError(e)) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
+        // Any error reported by the Ethereum node could be due to the block no longer being on
+        // the main chain. This is very unespecific but we don't want to risk failing a
+        // subgraph due to a transient error such as a reorg.
+        Err(ContractCallError::AlloyError(e)) => {
+            Err(HostExportError::PossibleReorg(anyhow::anyhow!(
                 "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
                 unresolved_call.function_name,
                 unresolved_call.contract_name,
                 e
-            ))),
+            )))
+        }
 
-            // Also retry on timeouts.
-            Err(ContractCallError::Timeout) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
-                "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
-                unresolved_call.function_name,
-                unresolved_call.contract_name,
-            ))),
+        // Also retry on timeouts.
+        Err(ContractCallError::Timeout) => Err(HostExportError::PossibleReorg(anyhow::anyhow!(
+            "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
+            unresolved_call.function_name,
+            unresolved_call.contract_name,
+        ))),
 
-            Err(e) => Err(HostExportError::Unknown(anyhow::anyhow!(
-                "Failed to call function \"{}\" of contract \"{}\": {}",
-                unresolved_call.function_name,
-                unresolved_call.contract_name,
-                e
-            ))),
-        };
+        Err(e) => Err(HostExportError::Unknown(anyhow::anyhow!(
+            "Failed to call function \"{}\" of contract \"{}\": {}",
+            unresolved_call.function_name,
+            unresolved_call.contract_name,
+            e
+        ))),
+    };
 
     let elapsed = start_time.elapsed();
 

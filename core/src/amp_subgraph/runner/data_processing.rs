@@ -6,27 +6,27 @@ use arrow::array::RecordBatch;
 use chrono::{DateTime, Utc};
 use graph::{
     amp::{
-        codec::{utils::auto_block_timestamp_decoder, DecodeOutput, DecodedEntity, Decoder},
+        codec::{DecodeOutput, DecodedEntity, Decoder, utils::auto_block_timestamp_decoder},
         stream_aggregator::{RecordBatchGroup, RecordBatchGroups, StreamRecordBatch},
     },
     blockchain::block_stream::FirehoseCursor,
     cheap_clone::CheapClone,
-    components::store::{EntityCache, ModificationsAndCache},
+    components::store::{EntityCache, EntityLfuCache, ModificationsAndCache, SeqGenerator},
 };
 use slog::{debug, trace};
 
-use super::{data_stream::TablePtr, Compat, Context, Error};
+use super::{Compat, Context, Error, data_stream::TablePtr};
 
 pub(super) async fn process_record_batch_groups<AC>(
     cx: &mut Context<AC>,
-    mut entity_cache: EntityCache,
+    mut entity_lfu_cache: EntityLfuCache,
     record_batch_groups: RecordBatchGroups,
     stream_table_ptr: Arc<[TablePtr]>,
     latest_block: BlockNumber,
-) -> Result<EntityCache, Error> {
+) -> Result<EntityLfuCache, Error> {
     if record_batch_groups.is_empty() {
         debug!(cx.logger, "Received no record batch groups");
-        return Ok(entity_cache);
+        return Ok(entity_lfu_cache);
     }
 
     let from_block = record_batch_groups
@@ -50,9 +50,9 @@ pub(super) async fn process_record_batch_groups<AC>(
             "record_batches_count" => record_batch_group.record_batches.len()
         );
 
-        entity_cache = process_record_batch_group(
+        entity_lfu_cache = process_record_batch_group(
             cx,
-            entity_cache,
+            entity_lfu_cache,
             block_number,
             block_hash,
             record_batch_group,
@@ -79,18 +79,18 @@ pub(super) async fn process_record_batch_groups<AC>(
         "to_block" => to_block
     );
 
-    Ok(entity_cache)
+    Ok(entity_lfu_cache)
 }
 
 async fn process_record_batch_group<AC>(
     cx: &mut Context<AC>,
-    mut entity_cache: EntityCache,
+    entity_lfu_cache: EntityLfuCache,
     block_number: BlockNumber,
     block_hash: BlockHash,
     record_batch_group: RecordBatchGroup,
     stream_table_ptr: &[TablePtr],
     latest_block: BlockNumber,
-) -> Result<EntityCache, Error> {
+) -> Result<EntityLfuCache, Error> {
     let _section = cx
         .metrics
         .stopwatch
@@ -100,8 +100,14 @@ async fn process_record_batch_group<AC>(
 
     if record_batches.is_empty() {
         debug!(cx.logger, "Record batch group is empty");
-        return Ok(entity_cache);
+        return Ok(entity_lfu_cache);
     }
+
+    let mut entity_cache = EntityCache::with_current(
+        cx.store.cheap_clone(),
+        entity_lfu_cache,
+        SeqGenerator::new(block_number.compat()),
+    );
 
     let block_timestamp = if cx.manifest.schema.has_aggregations() {
         decode_block_timestamp(&record_batches)
@@ -121,7 +127,6 @@ async fn process_record_batch_group<AC>(
         process_record_batch(
             cx,
             &mut entity_cache,
-            block_number,
             record_batch,
             stream_table_ptr[stream_index],
         )
@@ -139,7 +144,7 @@ async fn process_record_batch_group<AC>(
         entity_lfu_cache,
         evict_stats: _,
     } = entity_cache
-        .as_modifications(block_number.compat())
+        .as_modifications(block_number.compat(), &cx.metrics.stopwatch)
         .await
         .map_err(Error::from)
         .map_err(|e| e.context("failed to extract entity modifications from the state"))?;
@@ -169,16 +174,12 @@ async fn process_record_batch_group<AC>(
         cx.metrics.deployment_synced.record(true);
     }
 
-    Ok(EntityCache::with_current(
-        cx.store.cheap_clone(),
-        entity_lfu_cache,
-    ))
+    Ok(entity_lfu_cache)
 }
 
 async fn process_record_batch<AC>(
     cx: &mut Context<AC>,
     entity_cache: &mut EntityCache,
-    block_number: BlockNumber,
     record_batch: RecordBatch,
     (i, j): TablePtr,
 ) -> Result<(), Error> {
@@ -209,13 +210,11 @@ async fn process_record_batch<AC>(
         let key = match key {
             Some(key) => key,
             None => {
-                let entity_id = entity_cache
-                    .generate_id(id_type, block_number.compat())
-                    .map_err(|e| {
-                        Error::Deterministic(e.context(format!(
-                            "failed to generate a new id for an entity of type '{entity_name}'"
-                        )))
-                    })?;
+                let entity_id = entity_cache.seq_gen.id(id_type).map_err(|e| {
+                    Error::Deterministic(e.context(format!(
+                        "failed to generate a new id for an entity of type '{entity_name}'"
+                    )))
+                })?;
 
                 entity_data.push(("id".into(), entity_id.clone().into()));
                 entity_type.key(entity_id)
@@ -229,14 +228,11 @@ async fn process_record_batch<AC>(
             )))
         })?;
 
-        entity_cache
-            .set(key, entity, block_number.compat(), None)
-            .await
-            .map_err(|e| {
-                Error::Deterministic(e.context(format!(
-                    "failed to store a new entity of type '{entity_name}' with id '{entity_id}'"
-                )))
-            })?;
+        entity_cache.set(key, entity, None).await.map_err(|e| {
+            Error::Deterministic(e.context(format!(
+                "failed to store a new entity of type '{entity_name}' with id '{entity_id}'"
+            )))
+        })?;
     }
 
     Ok(())

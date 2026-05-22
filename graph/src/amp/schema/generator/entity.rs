@@ -1,6 +1,6 @@
 use std::fmt;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use inflector::Inflector;
 
 use crate::data::store::ValueType;

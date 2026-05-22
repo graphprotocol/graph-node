@@ -5,9 +5,9 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use bytes::Bytes;
 use bytes::BytesMut;
-use futures03::stream::BoxStream;
 use futures03::StreamExt;
 use futures03::TryStreamExt;
+use futures03::stream::BoxStream;
 use slog::Logger;
 
 use crate::cheap_clone::CheapClone as _;
@@ -196,6 +196,16 @@ pub struct IpfsResponse {
 }
 
 impl IpfsResponse {
+    /// Construct an `IpfsResponse` from pre-buffered bytes.
+    ///
+    /// Intended for mock `IpfsClient` implementations in tests.
+    pub fn for_test(path: ContentPath, bytes: Bytes) -> Self {
+        Self {
+            path,
+            response: reqwest::Response::from(http::Response::new(bytes)),
+        }
+    }
+
     /// Reads and returns the response body.
     ///
     /// If the max size is specified and the response body is larger than the max size,

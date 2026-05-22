@@ -3,7 +3,7 @@ use std::fs::read_to_string;
 
 use crate::{
     anyhow,
-    prelude::{regex::Regex, SubgraphName},
+    prelude::{SubgraphName, regex::Regex},
 };
 use serde::{Deserialize, Serialize};
 

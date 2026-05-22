@@ -1,0 +1,8 @@
+type Something @entity(immutable: true) {
+  id: ID!
+}
+
+type MyEntity @entity(immutable: true) {
+  id: ID!
+  invalidField: [Something]!
+}

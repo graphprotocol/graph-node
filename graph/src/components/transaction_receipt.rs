@@ -16,8 +16,8 @@ pub struct LightTransactionReceipt {
     pub status: bool,
 }
 
-impl From<alloy::network::AnyTransactionReceipt> for LightTransactionReceipt {
-    fn from(receipt: alloy::network::AnyTransactionReceipt) -> Self {
+impl From<super::ethereum::AnyTransactionReceiptBare> for LightTransactionReceipt {
+    fn from(receipt: super::ethereum::AnyTransactionReceiptBare) -> Self {
         LightTransactionReceipt {
             transaction_hash: receipt.transaction_hash,
             transaction_index: receipt.transaction_index.unwrap(), // unwrap is safe because its None only for pending transactions, graph-node does not ingest pending transactions

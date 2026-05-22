@@ -1,11 +1,11 @@
 use crate::{
     derive::CacheWeight,
-    prelude::{lazy_static, q, r, s, CacheWeight, QueryExecutionError},
+    prelude::{CacheWeight, QueryExecutionError, lazy_static, q, r, s},
     runtime::gas::{Gas, GasSizeOf},
-    schema::{input::VID_FIELD, EntityKey},
+    schema::{EntityKey, input::VID_FIELD},
     util::intern::{self, AtomPool, Error as InternError, NullValue, Object},
 };
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use itertools::Itertools;
 use serde::de;
 use serde::{Deserialize, Serialize};
@@ -32,6 +32,12 @@ pub mod ethereum;
 
 /// Conversion of values to/from SQL
 pub mod sql;
+
+lazy_static! {
+    /// The name of the default node is `"default"`. This is used when no
+    /// node is specified for a deployment.
+    pub static ref DEFAULT_NODE_ID: NodeId = NodeId::new("default").unwrap();
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(String);
@@ -222,8 +228,8 @@ impl stable_hash_legacy::StableHash for Value {
         mut sequence_number: H::Seq,
         state: &mut H,
     ) {
-        use stable_hash_legacy::prelude::*;
         use Value::*;
+        use stable_hash_legacy::prelude::*;
 
         // This is the default, so write nothing.
         if self == &Null {
@@ -365,7 +371,7 @@ impl Value {
                         Value::Timestamp(scalar::Timestamp::parse_timestamp(s).map_err(|_| {
                             QueryExecutionError::ValueParseError(
                                 "Timestamp".to_string(),
-                                format!("xxx{}", s),
+                                s.to_string(),
                             )
                         })?)
                     }
@@ -519,10 +525,10 @@ impl fmt::Display for Value {
                 Value::BigDecimal(d) => d.to_string(),
                 Value::Bool(b) => b.to_string(),
                 Value::Null => "null".to_string(),
-                Value::List(ref values) =>
+                Value::List(values) =>
                     format!("[{}]", values.iter().map(ToString::to_string).join(", ")),
-                Value::Bytes(ref bytes) => bytes.to_string(),
-                Value::BigInt(ref number) => number.to_string(),
+                Value::Bytes(bytes) => bytes.to_string(),
+                Value::BigInt(number) => number.to_string(),
             }
         )
     }
@@ -827,7 +833,9 @@ pub enum EntityValidationErrorInner {
     #[error("Entity {entity}[{id}]: unknown entity type `{entity}`")]
     UnknownEntityType { entity: String, id: String },
 
-    #[error("Entity {entity}[{entity_id}]: field `{field}` is of type {expected_type}, but the value `{value}` contains a {actual_type} at index {index}")]
+    #[error(
+        "Entity {entity}[{entity_id}]: field `{field}` is of type {expected_type}, but the value `{value}` contains a {actual_type} at index {index}"
+    )]
     MismatchedElementTypeInList {
         entity: String,
         entity_id: String,
@@ -838,7 +846,9 @@ pub enum EntityValidationErrorInner {
         index: usize,
     },
 
-    #[error("Entity {entity}[{entity_id}]: the value `{value}` for field `{field}` must have type {expected_type} but has type {actual_type}")]
+    #[error(
+        "Entity {entity}[{entity_id}]: the value `{value}` for field `{field}` must have type {expected_type} but has type {actual_type}"
+    )]
     InvalidFieldType {
         entity: String,
         entity_id: String,
@@ -962,7 +972,7 @@ impl Entity {
 
     pub fn sorted_ref(&self) -> Vec<(&str, &Value)> {
         let mut v: Vec<_> = self.0.iter().filter(|(k, _)| !k.eq(&VID_FIELD)).collect();
-        v.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+        v.sort_by_key(|(k1, _)| *k1);
         v
     }
 
@@ -1014,14 +1024,29 @@ impl Entity {
     /// If a key exists in both entities, the value from `update` is chosen.
     /// If a key only exists on one entity, the value from that entity is chosen.
     /// If a key is set to `Value::Null` in `update`, the key/value pair is removed.
-    pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<(), InternError> {
+    pub fn merge_remove_null_fields(&mut self, update: Entity) -> Result<bool, InternError> {
+        let mut changed = false;
         for (key, value) in update.0.into_iter() {
+            // A change in VID, which changes on every save, does not count
+            // as a change to the entity's data; this avoids spurious
+            // `Overwrite` modifications.
+            let is_vid = key.as_str() == VID_FIELD;
             match value {
-                Value::Null => self.0.remove(&key),
-                _ => self.0.insert(&key, value)?,
-            };
+                Value::Null => {
+                    if self.0.remove(&key).is_some() && !is_vid {
+                        changed = true;
+                    }
+                }
+                _ => {
+                    let different = self.0.get(key.as_str()).is_none_or(|old| *old != value);
+                    self.0.insert(&key, value)?;
+                    if different && !is_vid {
+                        changed = true;
+                    }
+                }
+            }
         }
-        Ok(())
+        Ok(changed)
     }
 
     /// Remove all entries with value `Value::Null` from `self`
@@ -1187,7 +1212,9 @@ fn value_bytes() {
     assert_eq!(
         from_query,
         Value::Bytes(scalar::Bytes::from(
-            &[143, 73, 76, 102, 175, 193, 211, 248, 172, 27, 69, 223, 33, 240, 42, 70][..]
+            &[
+                143, 73, 76, 102, 175, 193, 211, 248, 172, 27, 69, 223, 33, 240, 42, 70
+            ][..]
         ))
     );
     assert_eq!(r::Value::from(from_query), graphql_value);
@@ -1376,4 +1403,33 @@ fn entity_hidden_vid() {
     // set again
     _ = entity2.set_vid(7i64);
     assert_eq!(entity2.vid(), 7i64);
+}
+
+#[test]
+fn merge_remove_null_fields_ignores_vid() {
+    use crate::schema::InputSchema;
+    let schema = InputSchema::raw("type Thing @entity {id: ID!, name: String!}", "test");
+
+    let mut current = entity! { schema => id: "1", name: "alice", vid: 3i64 };
+    let update = entity! { schema => id: "1", name: "alice", vid: 99i64 };
+
+    // Merging an identical entity with a different VID must report no change.
+    let changed = current.merge_remove_null_fields(update).unwrap();
+    assert!(!changed, "VID-only difference must not count as a change");
+    // The VID must still be updated to the new value.
+    assert_eq!(current.vid(), 99i64);
+}
+
+#[test]
+fn merge_remove_null_fields_detects_real_change() {
+    use crate::schema::InputSchema;
+    let schema = InputSchema::raw("type Thing @entity {id: ID!, name: String!}", "test");
+
+    let mut current = entity! { schema => id: "1", name: "alice", vid: 3i64 };
+    let update = entity! { schema => id: "1", name: "bob", vid: 99i64 };
+
+    let changed = current.merge_remove_null_fields(update).unwrap();
+    assert!(changed, "data change must be detected");
+    assert_eq!(current.get("name"), Some(&Value::String("bob".to_string())));
+    assert_eq!(current.vid(), 99i64);
 }

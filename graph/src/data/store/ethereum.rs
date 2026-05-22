@@ -1,7 +1,7 @@
 use super::scalar;
 use crate::derive::CheapClone;
 use crate::prelude::*;
-use alloy::primitives::{aliases::B2048, Address, Bytes, B256, B64, U64};
+use alloy::primitives::{Address, B64, B256, Bytes, U64, aliases::B2048};
 
 impl From<Address> for Value {
     fn from(address: Address) -> Value {

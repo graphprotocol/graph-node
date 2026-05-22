@@ -4,8 +4,10 @@ use std::{
     sync::Arc,
 };
 
+use slog::Logger;
+
 use crate::{
-    blockchain::{block_stream::FirehoseCursor, BlockPtr, BlockTime},
+    blockchain::{BlockPtr, BlockTime, block_stream::FirehoseCursor},
     cheap_clone::CheapClone,
     components::subgraph::Entity,
     data::{store::Id, subgraph::schema::SubgraphError},
@@ -200,7 +202,7 @@ impl EntityModification {
                     "can not clamp block range for removal of {:?} to {}",
                     self,
                     block
-                ))
+                ));
             }
         }
         Ok(())
@@ -338,12 +340,11 @@ impl LastMod {
 #[derive(Debug, CacheWeight)]
 pub struct RowGroup {
     pub entity_type: EntityType,
+
     /// All changes for this entity type, ordered by block; i.e., if `i < j`
     /// then `rows[i].block() <= rows[j].block()`. Several methods on this
     /// struct rely on the fact that this ordering is observed.
     rows: Vec<EntityModification>,
-
-    immutable: bool,
 
     /// Map the `key.entity_id` of all entries in `rows` to the index with
     /// the most recent entry for that id to speed up lookups.
@@ -351,11 +352,10 @@ pub struct RowGroup {
 }
 
 impl RowGroup {
-    pub fn new(entity_type: EntityType, immutable: bool) -> Self {
+    pub fn new(entity_type: EntityType) -> Self {
         Self {
             entity_type,
             rows: Vec::new(),
-            immutable,
             last_mod: LastMod::new(),
         }
     }
@@ -415,16 +415,16 @@ impl RowGroup {
     pub fn last_op(&self, key: &EntityKey, at: BlockNumber) -> Option<EntityOp<'_>> {
         // If we have `key` in `last_mod`, use that and return the
         // corresponding op. If not, fall through to a more expensive search
-        if let Some(&idx) = self.last_mod.get(&key.entity_id) {
-            if let Some(op) = self.rows.get(idx).and_then(|emod| {
+        if let Some(&idx) = self.last_mod.get(&key.entity_id)
+            && let Some(op) = self.rows.get(idx).and_then(|emod| {
                 if emod.block() <= at {
                     Some(emod.as_entity_op(at))
                 } else {
                     None
                 }
-            }) {
-                return Some(op);
-            }
+            })
+        {
+            return Some(op);
         }
         // We are looking for the change at a block `at` that is before the
         // change we remember in `last_mod`, and therefore have to scan
@@ -471,12 +471,42 @@ impl RowGroup {
     /// Append `row` to `self.rows` by combining it with a previously
     /// existing row, if that is possible
     fn append_row(&mut self, row: EntityModification) -> Result<(), StoreError> {
-        if self.immutable {
+        if self.entity_type.is_immutable() {
             match row {
                 EntityModification::Insert { .. } => {
+                    // Check if this is an attempt to overwrite an immutable
+                    // entity. We allow overwriting immutable entities in
+                    // the same block, but not across blocks; if such an
+                    // attempt happens across two batches, it would result
+                    // in a database constraint violation. This check is
+                    // simply here to provide a friendlier error message and
+                    // to raise the error earlier, before we actually write
+                    // to the database
+                    match self
+                        .last_mod
+                        .get(row.id())
+                        .and_then(|&idx| self.rows.get(idx))
+                    {
+                        Some(prev) if prev.block() != row.block() => {
+                            if self.entity_type.skip_duplicates() {
+                                return Ok(());
+                            }
+                            return Err(StoreError::Input(format!(
+                                "entity {} is immutable; inserting it at block {} is not possible as it was already inserted at block {}",
+                                row.key(),
+                                row.block(),
+                                prev.block()
+                            )));
+                        }
+                        _ => { /* nothing to check */ }
+                    }
+
                     self.push_row(row);
                 }
                 EntityModification::Overwrite { .. } | EntityModification::Remove { .. } => {
+                    if self.entity_type.skip_duplicates() {
+                        return Ok(());
+                    }
                     return Err(internal_error!(
                         "immutable entity type {} only allows inserts, not {:?}",
                         self.entity_type,
@@ -521,7 +551,7 @@ impl RowGroup {
                         "impossible combination of entity operations: {:?} and then {:?}",
                         prev_row,
                         row
-                    ))
+                    ));
                 }
                 (Remove { .. }, Remove { .. }) => {
                     // Ignore the new row, since prev_row is already a
@@ -583,8 +613,8 @@ impl RowGroup {
 pub struct RowGroupForPerfTest(RowGroup);
 
 impl RowGroupForPerfTest {
-    pub fn new(entity_type: EntityType, immutable: bool) -> Self {
-        Self(RowGroup::new(entity_type, immutable))
+    pub fn new(entity_type: EntityType) -> Self {
+        Self(RowGroup::new(entity_type))
     }
 
     pub fn push(&mut self, emod: EntityModification, block: BlockNumber) -> Result<(), StoreError> {
@@ -640,11 +670,15 @@ impl<'a> Iterator for ClampsByBlockIterator<'a> {
 #[derive(Debug, CacheWeight)]
 pub struct RowGroups {
     pub groups: Vec<RowGroup>,
+    logger: Logger,
 }
 
 impl RowGroups {
-    fn new() -> Self {
-        Self { groups: Vec::new() }
+    fn new(logger: Logger) -> Self {
+        Self {
+            groups: Vec::new(),
+            logger,
+        }
     }
 
     fn group(&self, entity_type: &EntityType) -> Option<&RowGroup> {
@@ -663,9 +697,7 @@ impl RowGroups {
         match pos {
             Some(pos) => &mut self.groups[pos],
             None => {
-                let immutable = entity_type.is_immutable();
-                self.groups
-                    .push(RowGroup::new(entity_type.clone(), immutable));
+                self.groups.push(RowGroup::new(entity_type.clone()));
                 // unwrap: we just pushed an entry
                 self.groups.last_mut().unwrap()
             }
@@ -763,6 +795,7 @@ impl Batch {
         deterministic_errors: Vec<SubgraphError>,
         offchain_to_remove: Vec<StoredDynamicDataSource>,
         is_non_fatal_errors_active: bool,
+        logger: Logger,
     ) -> Result<Self, StoreError> {
         let block = block_ptr.number;
 
@@ -776,7 +809,7 @@ impl Batch {
             EntityModification::Remove { .. } => 0,
         });
 
-        let mut mods = RowGroups::new();
+        let mut mods = RowGroups::new(logger);
 
         for m in raw_mods {
             mods.group_entry(&m.key().entity_type).push(m, block)?;
@@ -805,7 +838,11 @@ impl Batch {
 
     fn append_inner(&mut self, mut batch: Batch) -> Result<(), StoreError> {
         if batch.block_ptr.number <= self.block_ptr.number {
-            return Err(internal_error!("Batches must go forward. Can't append a batch with block pointer {} to one with block pointer {}", batch.block_ptr, self.block_ptr));
+            return Err(internal_error!(
+                "Batches must go forward. Can't append a batch with block pointer {} to one with block pointer {}",
+                batch.block_ptr,
+                self.block_ptr
+            ));
         }
 
         self.block_ptr = batch.block_ptr;
@@ -1018,7 +1055,7 @@ mod test {
 
     use crate::{
         components::store::{
-            write::EntityModification, write::EntityOp, BlockNumber, EntityType, StoreError,
+            BlockNumber, EntityType, StoreError, write::EntityModification, write::EntityOp,
         },
         data::{store::Id, value::Word},
         entity,
@@ -1058,7 +1095,6 @@ mod test {
         let group = RowGroup {
             entity_type: ENTRY_TYPE.clone(),
             rows,
-            immutable: false,
             last_mod,
         };
         let act = group
@@ -1099,6 +1135,8 @@ mod test {
       type Thing @entity { id: ID!, count: Int! }
       type RowGroup @entity { id: ID! }
       type Entry @entity { id: ID! }
+      type ImmThing @entity(immutable: true) { id: ID!, count: Int! }
+      type SkipDupThing @entity(immutable: true, skipDuplicates: true) { id: ID!, count: Int! }
     "#;
     lazy_static! {
         static ref DEPLOYMENT: DeploymentHash = DeploymentHash::new("batchAppend").unwrap();
@@ -1107,6 +1145,8 @@ mod test {
         static ref THING_TYPE: EntityType = SCHEMA.entity_type("Thing").unwrap();
         static ref ROW_GROUP_TYPE: EntityType = SCHEMA.entity_type("RowGroup").unwrap();
         static ref ENTRY_TYPE: EntityType = SCHEMA.entity_type("Entry").unwrap();
+        static ref IMM_THING_TYPE: EntityType = SCHEMA.entity_type("ImmThing").unwrap();
+        static ref SKIP_DUP_THING_TYPE: EntityType = SCHEMA.entity_type("SkipDupThing").unwrap();
     }
 
     /// Convenient notation for changes to a fixed entity
@@ -1166,7 +1206,7 @@ mod test {
     impl Group {
         fn new() -> Self {
             Self {
-                group: RowGroup::new(THING_TYPE.clone(), false),
+                group: RowGroup::new(THING_TYPE.clone()),
             }
         }
 
@@ -1270,5 +1310,77 @@ mod test {
 
         let op = group.last_op(&key, 0);
         assert_eq!(None, op);
+    }
+
+    fn make_insert(entity_type: &EntityType, id: &str, block: BlockNumber) -> EntityModification {
+        EntityModification::Insert {
+            key: entity_type.parse_key(id).unwrap(),
+            data: Arc::new(entity! { SCHEMA => id: id, count: block }),
+            block,
+            end: None,
+        }
+    }
+
+    fn make_overwrite(
+        entity_type: &EntityType,
+        id: &str,
+        block: BlockNumber,
+    ) -> EntityModification {
+        EntityModification::Overwrite {
+            key: entity_type.parse_key(id).unwrap(),
+            data: Arc::new(entity! { SCHEMA => id: id, count: block }),
+            block,
+            end: None,
+        }
+    }
+
+    fn make_remove(entity_type: &EntityType, id: &str, block: BlockNumber) -> EntityModification {
+        EntityModification::Remove {
+            key: entity_type.parse_key(id).unwrap(),
+            block,
+        }
+    }
+
+    #[test]
+    fn append_row_immutable_default_rejects_cross_block_duplicate() {
+        let mut group = RowGroup::new(IMM_THING_TYPE.clone());
+        let res = group.push(make_insert(&IMM_THING_TYPE, "one", 1), 1);
+        assert!(res.is_ok());
+        let res = group.push(make_insert(&IMM_THING_TYPE, "one", 2), 2);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn append_row_skip_duplicates_allows_cross_block_duplicate() {
+        let mut group = RowGroup::new(SKIP_DUP_THING_TYPE.clone());
+        let res = group.push(make_insert(&SKIP_DUP_THING_TYPE, "one", 1), 1);
+        assert!(res.is_ok());
+        let res = group.push(make_insert(&SKIP_DUP_THING_TYPE, "one", 2), 2);
+        assert!(res.is_ok());
+        assert_eq!(group.row_count(), 1);
+    }
+
+    #[test]
+    fn append_row_skip_duplicates_allows_overwrite() {
+        let mut group = RowGroup::new(SKIP_DUP_THING_TYPE.clone());
+        let res = group.append_row(make_overwrite(&SKIP_DUP_THING_TYPE, "one", 1));
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn append_row_skip_duplicates_allows_remove() {
+        let mut group = RowGroup::new(SKIP_DUP_THING_TYPE.clone());
+        let res = group.append_row(make_remove(&SKIP_DUP_THING_TYPE, "one", 1));
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn append_row_skip_duplicates_same_block_still_pushes() {
+        let mut group = RowGroup::new(SKIP_DUP_THING_TYPE.clone());
+        let res = group.push(make_insert(&SKIP_DUP_THING_TYPE, "one", 1), 1);
+        assert!(res.is_ok());
+        let res = group.push(make_insert(&SKIP_DUP_THING_TYPE, "one", 1), 1);
+        assert!(res.is_ok());
+        assert_eq!(group.row_count(), 2);
     }
 }

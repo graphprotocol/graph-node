@@ -15,7 +15,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use arrow::array::{Array, RecordBatch};
 
 use self::{list_decoder::ListDecoder, mapping_decoder::MappingDecoder, name_cache::NameCache};
@@ -244,7 +244,7 @@ impl Codec {
 mod tests {
     use std::sync::LazyLock;
 
-    use arrow::array::{BinaryArray, BooleanArray, Int64Array, Int8Array};
+    use arrow::array::{BinaryArray, BooleanArray, Int8Array, Int64Array};
     use arrow::datatypes::{DataType, Field, Schema};
 
     use crate::data::subgraph::DeploymentHash;

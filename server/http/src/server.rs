@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use graph::anyhow;
 use graph::cheap_clone::CheapClone;
-use graph::components::server::server::{start, ServerHandle};
+use graph::components::server::server::{ServerHandle, start};
 use graph::log::factory::{ComponentLoggerConfig, ElasticComponentLoggerConfig};
 use graph::slog::info;
 

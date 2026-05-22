@@ -7,7 +7,7 @@ use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectOrInterface};
 use crate::derive::CheapClone;
 use crate::prelude::anyhow::anyhow;
-use crate::prelude::{s, Error, ValueType};
+use crate::prelude::{Error, ValueType, s};
 
 use super::AsEntityTypeName;
 
@@ -211,7 +211,7 @@ pub fn get_field<'a>(
 /// Returns the value type for a GraphQL field type.
 pub fn get_field_value_type(field_type: &s::Type) -> Result<ValueType, Error> {
     match field_type {
-        s::Type::NamedType(ref name) => ValueType::from_str(name),
+        s::Type::NamedType(name) => ValueType::from_str(name),
         s::Type::NonNullType(inner) => get_field_value_type(inner),
         s::Type::ListType(_) => Err(anyhow!("Only scalar values are supported in this context")),
     }

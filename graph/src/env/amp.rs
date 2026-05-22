@@ -7,13 +7,13 @@ pub struct AmpEnv {
     /// This is the maximum number of record batches that can be output by a single block.
     ///
     /// Defaults to `1,000`.
-    pub max_buffer_size: usize,
+    pub buffer_size: usize,
 
     /// Maximum number of blocks to request per stream for each SQL query.
     /// Limiting this value reduces load on the Amp server when processing heavy queries.
     ///
-    /// Defaults to `2,000,000`.
-    pub max_block_range: usize,
+    /// Defaults to `100,000`.
+    pub block_range: usize,
 
     /// Minimum time to wait before retrying a failed SQL query to the Amp server.
     ///
@@ -32,31 +32,31 @@ pub struct AmpEnv {
 }
 
 impl AmpEnv {
-    const DEFAULT_MAX_BUFFER_SIZE: usize = 1_000;
-    const DEFAULT_MAX_BLOCK_RANGE: usize = 2_000_000;
+    const DEFAULT_BUFFER_SIZE: usize = 1_000;
+    const DEFAULT_BLOCK_RANGE: usize = 100_000;
     const DEFAULT_QUERY_RETRY_MIN_DELAY: Duration = Duration::from_secs(1);
     const DEFAULT_QUERY_RETRY_MAX_DELAY: Duration = Duration::from_secs(600);
 
     pub(super) fn new(raw_env: &super::Inner) -> Self {
         Self {
-            max_buffer_size: raw_env
-                .amp_max_buffer_size
+            buffer_size: raw_env
+                .amp_buffer_size
                 .and_then(|value| {
                     if value == 0 {
                         return None;
                     }
                     Some(value)
                 })
-                .unwrap_or(Self::DEFAULT_MAX_BUFFER_SIZE),
-            max_block_range: raw_env
-                .amp_max_block_range
+                .unwrap_or(Self::DEFAULT_BUFFER_SIZE),
+            block_range: raw_env
+                .amp_block_range
                 .map(|mut value| {
                     if value == 0 {
                         value = usize::MAX;
                     }
                     value
                 })
-                .unwrap_or(Self::DEFAULT_MAX_BLOCK_RANGE),
+                .unwrap_or(Self::DEFAULT_BLOCK_RANGE),
             query_retry_min_delay: raw_env
                 .amp_query_retry_min_delay_seconds
                 .map(Duration::from_secs)

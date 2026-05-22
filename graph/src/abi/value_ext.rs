@@ -1,7 +1,7 @@
 use alloy::dyn_abi::DynSolType;
 use alloy::dyn_abi::DynSolValue;
-use anyhow::anyhow;
 use anyhow::Result;
+use anyhow::anyhow;
 use itertools::Itertools;
 
 pub trait DynSolValueExt {
@@ -258,16 +258,26 @@ mod tests {
         assert!(!Array(vec![Bool(true)]).type_check(&T::Array(Box::new(T::String))));
         assert!(!Array(vec![Bool(true)]).type_check(&T::FixedArray(Box::new(T::Bool), 1)));
 
-        assert!(!FixedArray(vec![String("".to_owned())])
-            .type_check(&T::FixedArray(Box::new(T::Bool), 1)));
-        assert!(!FixedArray(vec![Bool(true), Bool(false)])
-            .type_check(&T::FixedArray(Box::new(T::Bool), 1)));
-        assert!(FixedArray(vec![Bool(true), Bool(false)])
-            .type_check(&T::FixedArray(Box::new(T::Bool), 2)));
-        assert!(!FixedArray(vec![Bool(true), Bool(false)])
-            .type_check(&T::FixedArray(Box::new(T::Bool), 3)));
-        assert!(!FixedArray(vec![Bool(true), Bool(false)])
-            .type_check(&T::Tuple(vec![T::Bool, T::Bool])));
+        assert!(
+            !FixedArray(vec![String("".to_owned())])
+                .type_check(&T::FixedArray(Box::new(T::Bool), 1))
+        );
+        assert!(
+            !FixedArray(vec![Bool(true), Bool(false)])
+                .type_check(&T::FixedArray(Box::new(T::Bool), 1))
+        );
+        assert!(
+            FixedArray(vec![Bool(true), Bool(false)])
+                .type_check(&T::FixedArray(Box::new(T::Bool), 2))
+        );
+        assert!(
+            !FixedArray(vec![Bool(true), Bool(false)])
+                .type_check(&T::FixedArray(Box::new(T::Bool), 3))
+        );
+        assert!(
+            !FixedArray(vec![Bool(true), Bool(false)])
+                .type_check(&T::Tuple(vec![T::Bool, T::Bool]))
+        );
 
         assert!(!Tuple(vec![Bool(true), Bool(false)]).type_check(&T::Tuple(vec![T::Bool])));
         assert!(Tuple(vec![Bool(true), Bool(false)]).type_check(&T::Tuple(vec![T::Bool, T::Bool])));

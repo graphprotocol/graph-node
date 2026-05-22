@@ -4,7 +4,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use semver::Version;
 use store::Entity;
 
@@ -15,18 +15,18 @@ use crate::components::store::LoadRelatedRequest;
 use crate::data::graphql::ext::DirectiveFinder;
 use crate::data::graphql::{DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt};
 use crate::data::store::{
-    self, EntityValidationError, IdType, IntoEntityIterator, TryIntoEntityIterator, ValueType, ID,
+    self, EntityValidationError, ID, IdType, IntoEntityIterator, TryIntoEntityIterator, ValueType,
 };
 use crate::data::subgraph::SPEC_VERSION_1_3_0;
 use crate::data::value::Word;
 use crate::derive::CheapClone;
 use crate::prelude::q::Value;
-use crate::prelude::{s, DeploymentHash};
+use crate::prelude::{DeploymentHash, s};
 use crate::schema::api::api_schema;
 use crate::util::intern::{Atom, AtomPool};
 
 use crate::schema::fulltext::FulltextDefinition;
-use crate::schema::{ApiSchema, AsEntityTypeName, EntityType, Schema};
+use crate::schema::{ApiSchema, AsEntityTypeName, EntityType, Schema, SchemaValidationError};
 
 pub mod sqlexpr;
 
@@ -42,6 +42,7 @@ pub mod kw {
     pub const ENTITY: &str = "entity";
     pub const IMMUTABLE: &str = "immutable";
     pub const TIMESERIES: &str = "timeseries";
+    pub const SKIP_DUPLICATES: &str = "skipDuplicates";
     pub const TIMESTAMP: &str = "timestamp";
     pub const AGGREGATE: &str = "aggregate";
     pub const AGGREGATION: &str = "aggregation";
@@ -51,6 +52,7 @@ pub mod kw {
     pub const INTERVALS: &str = "intervals";
     pub const INTERVAL: &str = "interval";
     pub const CUMULATIVE: &str = "cumulative";
+    pub const CURRENT: &str = "current";
 }
 
 /// The internal representation of a subgraph schema, i.e., the
@@ -124,9 +126,24 @@ impl TypeInfo {
 
     fn is_immutable(&self) -> bool {
         match self {
-            TypeInfo::Object(obj_type) => obj_type.immutable,
+            TypeInfo::Object(obj_type) => {
+                matches!(obj_type.mutability, ObjectMutability::Immutable { .. })
+            }
             TypeInfo::Interface(_) => false,
             TypeInfo::Aggregation(_) => true,
+        }
+    }
+
+    fn skip_duplicates(&self) -> bool {
+        match self {
+            TypeInfo::Object(obj_type) => matches!(
+                obj_type.mutability,
+                ObjectMutability::Immutable {
+                    skip_duplicates: true
+                }
+            ),
+            TypeInfo::Interface(_) => false,
+            TypeInfo::Aggregation(_) => false,
         }
     }
 
@@ -408,7 +425,7 @@ pub struct ObjectType {
     pub name: Atom,
     pub id_type: IdType,
     pub fields: Box<[Field]>,
-    pub immutable: bool,
+    pub mutability: ObjectMutability,
     /// The name of the aggregation to which this object type belongs if it
     /// is part of an aggregation
     aggregation: Option<Atom>,
@@ -447,16 +464,28 @@ impl ObjectType {
             None => false,
             _ => unreachable!("validations ensure we don't get here"),
         };
-        let immutable = match dir.argument("immutable") {
+        let immutable = match dir.argument(kw::IMMUTABLE) {
             Some(Value::Boolean(im)) => *im,
             None => timeseries,
             _ => unreachable!("validations ensure we don't get here"),
         };
+
+        let mutability = if immutable {
+            let skip_duplicates = match dir.argument(kw::SKIP_DUPLICATES) {
+                Some(Value::Boolean(sd)) => *sd,
+                _ => false,
+            };
+
+            ObjectMutability::Immutable { skip_duplicates }
+        } else {
+            ObjectMutability::Mutable
+        };
+
         Self {
             name,
             fields,
             id_type,
-            immutable,
+            mutability,
             aggregation: None,
             timeseries,
             interfaces,
@@ -487,7 +516,7 @@ impl ObjectType {
             name,
             interfaces: Box::new([]),
             id_type: IdType::String,
-            immutable: false,
+            mutability: ObjectMutability::Mutable,
             aggregation: None,
             timeseries: false,
             fields,
@@ -503,6 +532,12 @@ impl ObjectType {
     pub fn is_aggregation(&self) -> bool {
         self.aggregation.is_some()
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ObjectMutability {
+    Mutable,
+    Immutable { skip_duplicates: bool },
 }
 
 #[derive(PartialEq, Debug)]
@@ -885,7 +920,9 @@ impl Aggregation {
                         .cloned()
                         .chain(aggregates.iter().map(Aggregate::as_agg_field))
                         .collect(),
-                    immutable: true,
+                    mutability: ObjectMutability::Immutable {
+                        skip_duplicates: false,
+                    },
                     aggregation: Some(name),
                     timeseries: false,
                     interfaces: Box::new([]),
@@ -1053,6 +1090,21 @@ impl InputSchema {
         Self::parse(LATEST_VERSION, raw, id)
     }
 
+    pub fn validate(
+        spec_version: &Version,
+        raw: &str,
+        id: DeploymentHash,
+    ) -> Vec<SchemaValidationError> {
+        let schema = match Schema::parse(raw, id.clone()) {
+            Ok(schema) => schema,
+            Err(err) => return vec![SchemaValidationError::InvalidSchema(err.to_string())],
+        };
+        match validations::validate(spec_version, &schema) {
+            Ok(_) => vec![],
+            Err(errors) => errors,
+        }
+    }
+
     /// Convenience for tests to construct an `InputSchema`
     ///
     /// # Panics
@@ -1187,6 +1239,13 @@ impl InputSchema {
             .unwrap_or(false)
     }
 
+    pub(in crate::schema) fn skip_duplicates(&self, entity_type: Atom) -> bool {
+        self.type_info(entity_type)
+            .ok()
+            .map(|ti| ti.skip_duplicates())
+            .unwrap_or(false)
+    }
+
     /// Return true if `type_name` is the name of an object or interface type
     pub fn is_reference(&self, type_name: &str) -> bool {
         self.inner
@@ -1206,7 +1265,7 @@ impl InputSchema {
         obj_type.interfaces().map(|intf| {
             let atom = self.inner.pool.lookup(intf).unwrap();
             match self.type_info(atom).unwrap() {
-                TypeInfo::Interface(ref intf_type) => intf_type,
+                TypeInfo::Interface(intf_type) => intf_type,
                 _ => unreachable!("expected `{intf}` to refer to an interface"),
             }
         })
@@ -1328,7 +1387,7 @@ impl InputSchema {
                 TypeInfo::Object(obj_type) => Some(obj_type),
                 TypeInfo::Interface(_) | TypeInfo::Aggregation(_) => None,
             })
-            .filter(|obj_type| obj_type.immutable)
+            .filter(|obj_type| matches!(obj_type.mutability, ObjectMutability::Immutable { .. }))
             .map(|obj_type| EntityType::new(self.cheap_clone(), obj_type.name))
     }
 
@@ -1686,17 +1745,17 @@ mod validations {
     use crate::{
         data::{
             graphql::{
-                ext::{DirectiveFinder, FieldExt},
                 DirectiveExt, DocumentExt, ObjectTypeExt, TypeExt, ValueExt,
+                ext::{DirectiveFinder, FieldExt},
             },
-            store::{IdType, ValueType, ID},
+            store::{ID, IdType, ValueType},
             subgraph::SPEC_VERSION_1_1_0,
         },
         prelude::s,
         schema::{
-            input::{kw, sqlexpr, AggregateFn, AggregationInterval},
-            FulltextAlgorithm, FulltextLanguage, Schema as BaseSchema, SchemaValidationError,
-            SchemaValidationError as Err, Strings, SCHEMA_TYPE_NAME,
+            FulltextAlgorithm, FulltextLanguage, SCHEMA_TYPE_NAME, Schema as BaseSchema,
+            SchemaValidationError, SchemaValidationError as Err, Strings,
+            input::{AggregateFn, AggregationInterval, kw, sqlexpr},
         },
     };
 
@@ -1916,7 +1975,7 @@ mod validations {
                             .find(|typ| typ.name[..].eq(entity))
                         {
                             None => {
-                                return vec![SchemaValidationError::FulltextIncludedEntityNotFound]
+                                return vec![SchemaValidationError::FulltextIncludedEntityNotFound];
                             }
                             Some(t) => t,
                         };
@@ -2034,6 +2093,15 @@ mod validations {
                         Ok(b) => b.unwrap_or(timeseries),
                         Err(e) => return Some(e),
                     };
+                    let skip_duplicates = match bool_arg(dir, kw::SKIP_DUPLICATES) {
+                        Ok(b) => b.unwrap_or(false),
+                        Err(e) => return Some(e),
+                    };
+                    if skip_duplicates && !immutable {
+                        return Some(SchemaValidationError::SkipDuplicatesRequiresImmutable(
+                            object_type.name.clone(),
+                        ));
+                    }
                     if timeseries {
                         if !immutable {
                             Some(SchemaValidationError::MutableTimeseries(
@@ -2236,7 +2304,7 @@ mod validations {
                             object_type,
                             &field.name,
                             "the @derivedFrom `field` argument must be a string",
-                        ))
+                        ));
                     }
                 };
 
@@ -2294,11 +2362,11 @@ mod validations {
                     let valid_types = valid_types.join(", ");
 
                     let msg = format!(
-                    "field `{tf}` on type `{tt}` must have one of the following types: {valid_types}",
-                    tf = target_field.name,
-                    tt = target_type_name,
-                    valid_types = valid_types,
-                );
+                        "field `{tf}` on type `{tt}` must have one of the following types: {valid_types}",
+                        tf = target_field.name,
+                        tt = target_type_name,
+                        valid_types = valid_types,
+                    );
                     return Err(invalid(object_type, &field.name, &msg));
                 }
             }
@@ -3147,8 +3215,8 @@ mod tests {
         data::store::ID,
         prelude::DeploymentHash,
         schema::{
-            input::{POI_DIGEST, POI_OBJECT},
             EntityType,
+            input::{POI_DIGEST, POI_OBJECT},
         },
     };
 

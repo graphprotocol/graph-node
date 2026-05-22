@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use graph::prelude::{
-    anyhow::{anyhow, bail, Result},
-    reqwest,
-    serde_json::{json, Value},
     SubgraphName, SubgraphStore,
+    anyhow::{Result, anyhow, bail},
+    reqwest,
+    serde_json::{Value, json},
 };
 
 use crate::manager::deployment::DeploymentSearch;

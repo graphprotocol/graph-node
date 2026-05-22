@@ -4,15 +4,15 @@
 use graph::components::store::QueryStoreManager;
 use graph::data::query::QueryTarget;
 use graph::data::store::SqlQueryObject;
-use graph::prelude::{r, QueryExecutionError};
+use graph::prelude::{QueryExecutionError, r};
 use std::collections::BTreeSet;
-use test_store::{run_test_sequentially, STORE};
+use test_store::{STORE, run_test_sequentially};
 
 #[cfg(debug_assertions)]
 use graph::env::ENV_VARS;
 
 // Import test setup from query.rs module
-use super::query::{setup, IdType};
+use super::query::{IdType, setup};
 
 /// Synchronous wrapper for SQL query execution
 fn run_sql_query<F>(sql: &str, test: F)
@@ -52,12 +52,11 @@ fn sql_can_query_simple_select() {
         assert_eq!(results.len(), 5, "Should return 5 musicians");
 
         // Check first musician
-        if let Some(first) = results.first() {
-            if let r::Value::Object(ref obj) = first.0 {
-                if let Some(r::Value::String(name)) = obj.get("name") {
-                    assert_eq!(name, "John", "First musician should be John");
-                }
-            }
+        if let Some(first) = results.first()
+            && let r::Value::Object(ref obj) = first.0
+            && let Some(r::Value::String(name)) = obj.get("name")
+        {
+            assert_eq!(name, "John", "First musician should be John");
         }
     });
 }
@@ -70,12 +69,11 @@ fn sql_can_query_with_where_clause() {
         let results = result.expect("SQL query should succeed");
         assert_eq!(results.len(), 1, "Should return 1 musician named John");
 
-        if let Some(first) = results.first() {
-            if let r::Value::Object(ref obj) = first.0 {
-                if let Some(r::Value::String(name)) = obj.get("name") {
-                    assert_eq!(name, "John", "Should return John");
-                }
-            }
+        if let Some(first) = results.first()
+            && let r::Value::Object(ref obj) = first.0
+            && let Some(r::Value::String(name)) = obj.get("name")
+        {
+            assert_eq!(name, "John", "Should return John");
         }
     });
 }
@@ -88,16 +86,15 @@ fn sql_can_query_with_aggregation() {
         let results = result.expect("SQL query should succeed");
         assert_eq!(results.len(), 1, "Should return 1 row with count");
 
-        if let Some(first) = results.first() {
-            if let r::Value::Object(ref obj) = first.0 {
-                if let Some(total) = obj.get("total") {
-                    // The count should be a number (could be various forms)
-                    match total {
-                        r::Value::Int(n) => assert_eq!(*n, 5),
-                        r::Value::String(s) => assert_eq!(s, "5"),
-                        _ => panic!("Total should be a number: {:?}", total),
-                    }
-                }
+        if let Some(first) = results.first()
+            && let r::Value::Object(ref obj) = first.0
+            && let Some(total) = obj.get("total")
+        {
+            // The count should be a number (could be various forms)
+            match total {
+                r::Value::Int(n) => assert_eq!(*n, 5),
+                r::Value::String(s) => assert_eq!(s, "5"),
+                _ => panic!("Total should be a number: {:?}", total),
             }
         }
     });
@@ -112,13 +109,12 @@ fn sql_can_query_with_limit_offset() {
         assert_eq!(results.len(), 2, "Should return 2 musicians with offset");
 
         // Should skip first musician (order may vary by id type)
-        if let Some(first) = results.first() {
-            if let r::Value::Object(ref obj) = first.0 {
-                if let Some(r::Value::String(name)) = obj.get("name") {
-                    // Just check we got a valid musician name
-                    assert!(["John", "Lisa", "Tom", "Valerie", "Paul"].contains(&name.as_str()));
-                }
-            }
+        if let Some(first) = results.first()
+            && let r::Value::Object(ref obj) = first.0
+            && let Some(r::Value::String(name)) = obj.get("name")
+        {
+            // Just check we got a valid musician name
+            assert!(["John", "Lisa", "Tom", "Valerie", "Paul"].contains(&name.as_str()));
         }
     });
 }
@@ -253,13 +249,13 @@ fn sql_can_query_with_case_expression() {
         );
 
         // Check that popularity field exists in first result
-        if let Some(first) = results.first() {
-            if let r::Value::Object(ref obj) = first.0 {
-                assert!(
-                    obj.get("popularity").is_some(),
-                    "Should have popularity field"
-                );
-            }
+        if let Some(first) = results.first()
+            && let r::Value::Object(ref obj) = first.0
+        {
+            assert!(
+                obj.get("popularity").is_some(),
+                "Should have popularity field"
+            );
         }
     });
 }
@@ -279,11 +275,11 @@ fn sql_can_query_with_subquery() {
         let results = result.expect("SQL query with CTE should succeed");
         assert_eq!(results.len(), 1, "Should return one count result");
 
-        if let Some(first) = results.first() {
-            if let r::Value::Object(ref obj) = first.0 {
-                let count = obj.get("active_count");
-                assert!(count.is_some(), "Should have active_count field");
-            }
+        if let Some(first) = results.first()
+            && let r::Value::Object(ref obj) = first.0
+        {
+            let count = obj.get("active_count");
+            assert!(count.is_some(), "Should have active_count field");
         }
     });
 }

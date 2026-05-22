@@ -9,11 +9,11 @@ use crate::query::execute_query;
 use graph::data::query::{CacheStatus, SqlQueryReq};
 use graph::data::store::SqlQueryObject;
 use graph::futures03::future;
-use graph::prelude::{
-    o, CheapClone, DeploymentState, GraphQLMetrics as GraphQLMetricsTrait,
-    GraphQlRunner as GraphQlRunnerTrait, Logger, Query, QueryExecutionError, ENV_VARS,
-};
 use graph::prelude::{ApiVersion, MetricsRegistry};
+use graph::prelude::{
+    CheapClone, DeploymentState, ENV_VARS, GraphQLMetrics as GraphQLMetricsTrait,
+    GraphQlRunner as GraphQlRunnerTrait, Logger, Query, QueryExecutionError, o,
+};
 use graph::{data::graphql::load_manager::LoadManager, prelude::QueryStoreManager};
 use graph::{
     data::query::{LatestBlockInfo, QueryResults, QueryTarget},
@@ -26,6 +26,7 @@ pub struct GraphQlRunner<S> {
     store: Arc<S>,
     load_manager: Arc<LoadManager>,
     graphql_metrics: Arc<GraphQLMetrics>,
+    log_store: Arc<dyn graph::components::log_store::LogStore>,
 }
 
 #[cfg(debug_assertions)]
@@ -44,6 +45,7 @@ where
         store: Arc<S>,
         load_manager: Arc<LoadManager>,
         registry: Arc<MetricsRegistry>,
+        log_store: Arc<dyn graph::components::log_store::LogStore>,
     ) -> Self {
         let logger = logger.new(o!("component" => "GraphQlRunner"));
         let graphql_metrics = Arc::new(GraphQLMetrics::new(registry));
@@ -52,6 +54,7 @@ where
             store,
             load_manager,
             graphql_metrics,
+            log_store,
         }
     }
 
@@ -186,6 +189,7 @@ where
                     max_first: max_first.unwrap_or(ENV_VARS.graphql.max_first),
                     max_skip: max_skip.unwrap_or(ENV_VARS.graphql.max_skip),
                     trace: do_trace,
+                    log_store: self.log_store.cheap_clone(),
                 },
             ));
         }

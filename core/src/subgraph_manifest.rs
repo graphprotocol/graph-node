@@ -6,7 +6,7 @@ use graph::{
     },
     data::subgraph::DeploymentHash,
 };
-use slog::{debug, Logger};
+use slog::{Logger, debug};
 
 pub(super) async fn load_raw_subgraph_manifest(
     logger: &Logger,

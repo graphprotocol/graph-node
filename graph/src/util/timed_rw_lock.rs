@@ -1,5 +1,5 @@
 use parking_lot::{Mutex, RwLock};
-use slog::{warn, Logger};
+use slog::{Logger, warn};
 use std::time::{Duration, Instant};
 
 use crate::prelude::ENV_VARS;

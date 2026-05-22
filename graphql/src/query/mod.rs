@@ -29,6 +29,9 @@ pub struct QueryExecutionOptions<R> {
 
     /// Whether to include an execution trace in the result
     pub trace: bool,
+
+    /// The log store to use for querying logs.
+    pub log_store: Arc<dyn graph::components::log_store::LogStore>,
 }
 
 /// Executes a query and returns a result.
@@ -52,6 +55,7 @@ where
         max_skip: options.max_skip,
         cache_status: Default::default(),
         trace: options.trace,
+        log_store: options.log_store,
     });
 
     let selection_set = selection_set

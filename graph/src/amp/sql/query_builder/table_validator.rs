@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use sqlparser_latest::ast;
 
-use super::{extract_tables, TableReference};
+use super::{TableReference, extract_tables};
 
 /// Validates that SQL query references only allowed dataset and tables.
 ///

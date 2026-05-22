@@ -1,13 +1,13 @@
 use alloy::primitives::BlockNumber;
 use anyhow::anyhow;
 use arrow::array::RecordBatch;
-use futures::{future::try_join_all, stream::BoxStream, StreamExt, TryFutureExt};
+use futures::{StreamExt, TryFutureExt, future::try_join_all, stream::BoxStream};
 use graph::amp::{
+    Client,
     client::ResponseBatch,
-    codec::{utils::block_number_decoder, Decoder},
+    codec::{Decoder, utils::block_number_decoder},
     error::IsDeterministic,
     manifest::DataSource,
-    Client,
 };
 use itertools::Itertools;
 use slog::debug;
@@ -152,7 +152,9 @@ async fn latest_block_changed<AC>(
 where
     AC: Client,
 {
-    let query = format!("SELECT _block_num FROM {dataset}.{table} WHERE _block_num > {latest_block} SETTINGS stream = true");
+    let query = format!(
+        "SELECT _block_num FROM {dataset}.{table} WHERE _block_num > {latest_block} SETTINGS stream = true"
+    );
     let stream = cx.client.query(&cx.logger, query, None);
     let _record_batch = read_once(stream).await?;
 

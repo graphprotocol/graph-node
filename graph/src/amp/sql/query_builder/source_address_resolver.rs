@@ -1,7 +1,7 @@
 use std::ops::ControlFlow;
 
 use alloy::primitives::Address;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use sqlparser_latest::ast::{self, visit_expressions_mut};
 
 static FUNCTION_NAME: &str = "sg_source_address";

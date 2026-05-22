@@ -2,10 +2,13 @@ use crate::manager::prompt::prompt_for_confirmation;
 use graph::{
     anyhow::{bail, ensure},
     cheap_clone::CheapClone,
-    components::store::ChainStore as ChainStoreTrait,
+    components::{
+        ethereum::{CachedBlock, LightEthereumBlock},
+        store::ChainStore as ChainStoreTrait,
+    },
     prelude::{
         alloy::primitives::B256,
-        anyhow::{self, anyhow, Context},
+        anyhow::{self, Context, anyhow},
     },
     slog::Logger,
 };
@@ -114,7 +117,7 @@ async fn run(
         steps::fetch_single_cached_block(*block_hash, chain_store.cheap_clone()).await?;
     let provider_block =
         steps::fetch_single_provider_block(block_hash, ethereum_adapter, logger).await?;
-    let diff = steps::diff_block_pair(&cached_block, &provider_block);
+    let diff = steps::diff_block_pair(&cached_block, &provider_block)?;
     steps::report_difference(diff.as_deref(), block_hash);
     if diff.is_some() {
         steps::delete_block(block_hash, &chain_store).await?;
@@ -162,7 +165,7 @@ mod steps {
             serde_json::{self, Value},
         },
     };
-    use json_structural_diff::{colorize as diff_to_string, JsonDiff};
+    use json_structural_diff::{JsonDiff, colorize as diff_to_string};
 
     /// Queries the [`ChainStore`] about the block hash for the given block number.
     ///
@@ -186,18 +189,16 @@ mod steps {
     pub(super) async fn fetch_single_cached_block(
         block_hash: B256,
         chain_store: Arc<ChainStore>,
-    ) -> anyhow::Result<Value> {
-        let blocks = chain_store.blocks(vec![block_hash.into()]).await?;
+    ) -> anyhow::Result<CachedBlock> {
+        let mut blocks = chain_store.blocks(vec![block_hash.into()]).await?;
         match blocks.len() {
             0 => bail!("Failed to locate block with hash {} in store", block_hash),
-            1 => {}
+            1 => Ok(blocks.pop().unwrap()),
             _ => bail!("Found multiple blocks with hash {} in store", block_hash),
-        };
-        // Unwrap: We just checked that the vector has a single element
-        Ok(blocks.into_iter().next().unwrap())
+        }
     }
 
-    /// Fetches a block from a JRPC endpoint.
+    /// Fetches a block from an RPC endpoint.
     ///
     /// Errors on provider failure or if the returned block has a different hash than the one
     /// requested.
@@ -205,24 +206,38 @@ mod steps {
         block_hash: &B256,
         ethereum_adapter: &EthereumAdapter,
         logger: &Logger,
-    ) -> anyhow::Result<Value> {
+    ) -> anyhow::Result<LightEthereumBlock> {
         let provider_block = ethereum_adapter
             .block_by_hash(logger, *block_hash)
             .await
             .with_context(|| format!("failed to fetch block {block_hash}"))?
-            .ok_or_else(|| anyhow!("JRPC provider found no block with hash {block_hash:?}"))?;
+            .ok_or_else(|| anyhow!("RPC provider found no block with hash {block_hash:?}"))?;
         ensure!(
             provider_block.header.hash == *block_hash,
             "Provider responded with a different block hash"
         );
-        serde_json::to_value(provider_block)
-            .context("failed to parse provider block as a JSON value")
+        Ok(LightEthereumBlock::new(provider_block))
     }
 
-    /// Compares two [`serde_json::Value`] values.
+    /// Compares a cached block against a provider block.
     ///
+    /// Only compares the block data (without receipts) since the provider's
+    /// `eth_getBlockByHash` does not return receipts. Both sides are serialized
+    /// through the same alloy types for a fair comparison.
     /// If they are different, returns a user-friendly string ready to be displayed.
-    pub(super) fn diff_block_pair(a: &Value, b: &Value) -> Option<String> {
+    pub(super) fn diff_block_pair(
+        cached: &CachedBlock,
+        provider: &LightEthereumBlock,
+    ) -> anyhow::Result<Option<String>> {
+        let cached_json = serde_json::to_value(cached.light_block())
+            .context("failed to serialize cached block")?;
+        let provider_json =
+            serde_json::to_value(provider).context("failed to serialize provider block")?;
+
+        Ok(diff_json(&cached_json, &provider_json))
+    }
+
+    fn diff_json(a: &Value, b: &Value) -> Option<String> {
         if a == b {
             None
         } else {

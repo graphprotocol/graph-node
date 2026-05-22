@@ -12,7 +12,7 @@ use alloy::{
     json_abi::JsonAbi,
     primitives::{Address, BlockNumber},
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use itertools::Itertools;
 use sqlparser_latest::ast;
 
@@ -22,7 +22,7 @@ use self::{
     event_signature_resolver::resolve_event_signatures,
     parser::parse_query,
     source_address_resolver::resolve_source_address,
-    table_extractor::{extract_tables, TableReference},
+    table_extractor::{TableReference, extract_tables},
     table_validator::validate_tables,
 };
 

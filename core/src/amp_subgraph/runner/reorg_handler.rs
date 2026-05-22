@@ -1,10 +1,10 @@
 use alloy::primitives::{BlockHash, BlockNumber};
 use anyhow::anyhow;
-use futures::{future::try_join_all, StreamExt, TryFutureExt};
+use futures::{StreamExt, TryFutureExt, future::try_join_all};
 use graph::{
     amp::{
-        client::{LatestBlockBeforeReorg, RequestMetadata, ResponseBatch, ResumeStreamingQuery},
         Client,
+        client::{LatestBlockBeforeReorg, RequestMetadata, ResponseBatch, ResumeStreamingQuery},
     },
     blockchain::block_stream::FirehoseCursor,
 };

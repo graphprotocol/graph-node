@@ -1,5 +1,5 @@
 use graph::{
-    blockchain::{block_stream::TriggersAdapterWrapper, Blockchain},
+    blockchain::{Blockchain, block_stream::TriggersAdapterWrapper},
     components::{
         store::{DeploymentLocator, SourceableStore, SubgraphFork, WritableStore},
         subgraph::ProofOfIndexingVersion,

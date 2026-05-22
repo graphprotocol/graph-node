@@ -3,8 +3,9 @@ use graph::{
     abi,
     data::store::ethereum::call,
     prelude::{
+        Logger,
         alloy::transports::{RpcError, TransportErrorKind},
-        serde_json, Logger,
+        serde_json,
     },
     slog::info,
 };
@@ -36,10 +37,10 @@ const PARITY_REVERT_PREFIX: &str = "revert";
 
 const XDAI_REVERT: &str = "revert";
 
-// Deterministic Geth execution errors. We might need to expand this as
+// Deterministic RPC execution errors. We might need to expand this as
 // subgraphs come across other errors. See
 // https://github.com/ethereum/go-ethereum/blob/cd57d5cd38ef692de8fbedaa56598b4e9fbfbabc/core/vm/errors.go
-const GETH_EXECUTION_ERRORS: &[&str] = &[
+const RPC_EXECUTION_ERRORS: &[&str] = &[
     // The "revert" substring covers a few known error messages, including:
     // Hardhat: "error: transaction reverted",
     // Ganache and Moonbeam: "vm exception while processing transaction: revert",
@@ -53,12 +54,16 @@ const GETH_EXECUTION_ERRORS: &[&str] = &[
     // See f0af4ab0-6b7c-4b68-9141-5b79346a5f61 for why the gas limit is considered deterministic.
     "out of gas",
     "stack underflow",
+    "vm execution error",
+    "invalidjump",
+    "notactivated",
+    "invalidfeopcode",
 ];
 
 /// Helper that checks if a geth style RPC error message corresponds to a revert.
-fn is_geth_revert_message(message: &str) -> bool {
+fn is_rpc_revert_message(message: &str) -> bool {
     let env_geth_call_errors = ENV_VARS.geth_eth_call_errors.iter();
-    let mut execution_errors = GETH_EXECUTION_ERRORS
+    let mut execution_errors = RPC_EXECUTION_ERRORS
         .iter()
         .copied()
         .chain(env_geth_call_errors.map(|s| s.as_str()));
@@ -67,7 +72,7 @@ fn is_geth_revert_message(message: &str) -> bool {
 
 /// Decode a Solidity revert(reason) payload, returning the reason string when possible.
 fn as_solidity_revert_reason(bytes: &[u8]) -> Option<String> {
-    let selector = &tiny_keccak::keccak256(b"Error(string)")[..4];
+    let selector = &graph::prelude::alloy::primitives::keccak256(b"Error(string)")[..4];
     if bytes.len() >= 4 && &bytes[..4] == selector {
         abi::DynSolType::String
             .abi_decode(&bytes[4..])
@@ -89,10 +94,10 @@ pub fn interpret_eth_call_error(
         Ok(call::Retval::Null)
     }
 
-    if let RpcError::ErrorResp(rpc_error) = &err {
-        if is_geth_revert_message(&rpc_error.message) {
-            return reverted(logger, &rpc_error.message);
-        }
+    if let RpcError::ErrorResp(rpc_error) = &err
+        && is_rpc_revert_message(&rpc_error.message)
+    {
+        return reverted(logger, &rpc_error.message);
     }
 
     if let RpcError::ErrorResp(rpc_error) = &err {
@@ -102,12 +107,11 @@ pub fn interpret_eth_call_error(
             .as_ref()
             .and_then(|d| serde_json::from_str(d.get()).ok());
 
-        if code == PARITY_VM_EXECUTION_ERROR {
-            if let Some(data) = data {
-                if is_parity_revert(&data) {
-                    return reverted(logger, &parity_revert_reason(&data));
-                }
-            }
+        if code == PARITY_VM_EXECUTION_ERROR
+            && let Some(data) = data
+            && is_parity_revert(&data)
+        {
+            return reverted(logger, &parity_revert_reason(&data));
         }
     }
 

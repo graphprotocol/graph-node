@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use futures::StreamExt;
 use graph::{
-    amp::Client, cheap_clone::CheapClone, components::store::EntityCache,
-    data::subgraph::schema::SubgraphError,
+    amp::Client, cheap_clone::CheapClone, components::store::EntityLfuCache,
+    data::subgraph::schema::SubgraphError, util::lfu_cache::LfuCache,
 };
 use slog::{debug, error, warn};
 use tokio_util::sync::CancellationToken;
@@ -67,7 +67,7 @@ where
 
 async fn run_indexing<AC>(cx: &mut Context<AC>) -> Result<(), Error>
 where
-    AC: Client,
+    AC: Client + Send + Sync + 'static,
 {
     cx.metrics.deployment_status.starting();
 
@@ -101,30 +101,42 @@ where
 
         cx.metrics
             .deployment_target
-            .update(latest_block.min(cx.max_end_block()));
+            .update(latest_block.min(cx.end_block()));
 
         let mut deployment_is_failed = cx.store.health().await?.is_failed();
-        let mut entity_cache = EntityCache::new(cx.store.cheap_clone());
+        let mut entity_lfu_cache: EntityLfuCache = LfuCache::new();
         let mut stream = new_data_stream(cx, latest_block);
 
         while let Some(result) = stream.next().await {
             let (record_batch_groups, stream_table_ptr) = result?;
 
-            entity_cache = process_record_batch_groups(
+            entity_lfu_cache = process_record_batch_groups(
                 cx,
-                entity_cache,
+                entity_lfu_cache,
                 record_batch_groups,
                 stream_table_ptr,
                 latest_block,
             )
             .await?;
 
-            if deployment_is_failed {
-                if let Some(block_ptr) = cx.store.block_ptr() {
-                    cx.store.unfail_non_deterministic_error(&block_ptr).await?;
-                    deployment_is_failed = false;
-                }
+            if deployment_is_failed && let Some(block_ptr) = cx.store.block_ptr() {
+                cx.store.unfail_non_deterministic_error(&block_ptr).await?;
+                deployment_is_failed = false;
             }
+        }
+
+        // Check if the Amp Flight server has data covering through every data
+        // source's endBlock. This handles the case where endBlock has no entity
+        // data — the persisted block pointer never advances to endBlock, but the
+        // server's latest block confirms all queries have been served.
+        if latest_block >= cx.end_block() {
+            cx.metrics.deployment_synced.record(true);
+
+            debug!(cx.logger, "Indexing completed; endBlock reached via server latest block";
+                "latest_block" => latest_block,
+                "end_block" => cx.end_block()
+            );
+            return Ok(());
         }
 
         debug!(cx.logger, "Completed indexing iteration";
@@ -138,7 +150,7 @@ where
 
 async fn run_indexing_with_retries<AC>(cx: &mut Context<AC>) -> Result<()>
 where
-    AC: Client,
+    AC: Client + Send + Sync + 'static,
 {
     loop {
         match run_indexing(cx).await {

@@ -4,7 +4,7 @@ use anyhow::Result;
 use graph::prelude::{
     BlockPtr, DeploymentHash, NodeId, SubgraphRegistrarError, SubgraphStore as SubgraphStoreTrait,
 };
-use graph::slog::{error, info, Logger};
+use graph::slog::{Logger, error, info};
 use graph::{
     components::store::DeploymentLocator,
     prelude::{SubgraphName, SubgraphRegistrar},

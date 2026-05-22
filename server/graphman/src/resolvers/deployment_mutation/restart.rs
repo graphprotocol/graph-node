@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use async_graphql::Result;
 use graph_store_postgres::graphman::GraphmanStore;
-use graphman::deployment::DeploymentSelector;
 use graphman::GraphmanExecutionTracker;
+use graphman::deployment::DeploymentSelector;
 use graphman_store::CommandKind;
 use graphman_store::GraphmanStore as _;
 

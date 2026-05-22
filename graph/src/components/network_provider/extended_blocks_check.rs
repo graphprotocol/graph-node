@@ -2,9 +2,9 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use slog::Logger;
 use slog::error;
 use slog::warn;
-use slog::Logger;
 
 use crate::components::network_provider::ChainName;
 use crate::components::network_provider::NetworkDetails;
@@ -82,8 +82,8 @@ impl ProviderCheck for ExtendedBlocksCheck {
 mod tests {
     use std::sync::Mutex;
 
-    use anyhow::anyhow;
     use anyhow::Result;
+    use anyhow::anyhow;
 
     use super::*;
     use crate::blockchain::ChainIdentifier;
@@ -102,11 +102,12 @@ mod tests {
 
     impl Drop for TestAdapter {
         fn drop(&mut self) {
-            assert!(self
-                .provides_extended_blocks_calls
-                .lock()
-                .unwrap()
-                .is_empty());
+            assert!(
+                self.provides_extended_blocks_calls
+                    .lock()
+                    .unwrap()
+                    .is_empty()
+            );
         }
     }
 

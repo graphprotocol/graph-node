@@ -1,5 +1,5 @@
-use anyhow::{anyhow, bail, Result};
 use anyhow::{Context, Error};
+use anyhow::{Result, anyhow, bail};
 use async_trait::async_trait;
 use graph::blockchain::client::ChainClient;
 use graph::blockchain::firehose_block_ingestor::{FirehoseBlockIngestor, Transforms};
@@ -13,26 +13,27 @@ use graph::data::subgraph::UnifiedMappingApiVersion;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, ForkStep};
 use graph::futures03::TryStreamExt;
 use graph::prelude::{
-    retry, BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
+    BlockHash, ComponentLoggerConfig, ElasticComponentLoggerConfig, EthereumBlock,
     EthereumCallCache, LightEthereumBlock, LightEthereumBlockExt, MetricsRegistry, StoreError,
+    retry,
 };
 use graph::slog::{debug, error, trace, warn};
 use graph::{
     blockchain::{
+        Block, BlockPtr, Blockchain, ChainHeadUpdateListener, IngestorError,
+        RuntimeAdapter as RuntimeAdapterTrait, TriggerFilter as _,
         block_stream::{
             BlockRefetcher, BlockStreamEvent, BlockWithTriggers, FirehoseError,
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        Block, BlockPtr, Blockchain, ChainHeadUpdateListener, IngestorError,
-        RuntimeAdapter as RuntimeAdapterTrait, TriggerFilter as _,
     },
     cheap_clone::CheapClone,
     components::store::DeploymentLocator,
     firehose,
     prelude::{
-        o, serde_json as json, BlockNumber, ChainStore, EthereumBlockWithCalls, Logger,
-        LoggerFactory,
+        BlockNumber, ChainStore, EthereumBlockWithCalls, Logger, LoggerFactory, o,
+        serde_json as json,
     },
 };
 use prost::Message;
@@ -46,11 +47,12 @@ use crate::codec::HeaderOnlyBlock;
 use crate::data_source::DataSourceTemplate;
 use crate::data_source::UnresolvedDataSourceTemplate;
 use crate::ingestor::PollingBlockIngestor;
-use crate::json_block::EthereumJsonBlock;
 use crate::network::EthereumNetworkAdapters;
 use crate::polling_block_stream::PollingBlockStream;
 use crate::runtime::runtime_adapter::eth_call_gas;
+use crate::{BufferedCallCache, NodeCapabilities};
 use crate::{
+    ENV_VARS, SubgraphEthRpcMetrics, TriggerFilter,
     adapter::EthereumAdapter as _,
     codec,
     data_source::{DataSource, UnresolvedDataSource},
@@ -58,17 +60,52 @@ use crate::{
         blocks_with_triggers, get_calls, parse_block_triggers, parse_call_triggers,
         parse_log_triggers,
     },
-    SubgraphEthRpcMetrics, TriggerFilter, ENV_VARS,
 };
-use crate::{BufferedCallCache, NodeCapabilities};
 use crate::{EthereumAdapter, RuntimeAdapter};
 use graph::blockchain::block_stream::{
     BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamMapper, FirehoseCursor,
     TriggersAdapterWrapper,
 };
-
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
 const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
+
+/// Resolved per-chain settings. Populated at chain initialisation from the config file (with
+/// ENV_VAR fallbacks) and stored on [`Chain`] and [`crate::EthereumAdapter`].
+#[derive(Clone, Debug)]
+pub struct ChainSettings {
+    pub polling_interval: Duration,
+    pub json_rpc_timeout: Duration,
+    pub request_retries: usize,
+    pub max_block_range_size: BlockNumber,
+    pub block_batch_size: usize,
+    pub block_ptr_batch_size: usize,
+    pub max_event_only_range: BlockNumber,
+    pub target_triggers_per_block_range: u64,
+    pub get_logs_max_contracts: usize,
+    pub block_ingestor_max_concurrent_json_rpc_calls: usize,
+    pub genesis_block_number: u64,
+}
+
+impl ChainSettings {
+    /// Constructs a [`ChainSettings`] from environment variable defaults.
+    /// Used in tests and for firehose-only chains that have no RPC config.
+    pub fn from_env_defaults() -> Self {
+        ChainSettings {
+            polling_interval: graph::env::ENV_VARS.ingestor_polling_interval,
+            json_rpc_timeout: ENV_VARS.json_rpc_timeout,
+            request_retries: ENV_VARS.request_retries,
+            max_block_range_size: ENV_VARS.max_block_range_size,
+            block_batch_size: ENV_VARS.block_batch_size,
+            block_ptr_batch_size: ENV_VARS.block_ptr_batch_size,
+            max_event_only_range: ENV_VARS.max_event_only_range,
+            target_triggers_per_block_range: ENV_VARS.target_triggers_per_block_range,
+            get_logs_max_contracts: ENV_VARS.get_logs_max_contracts,
+            block_ingestor_max_concurrent_json_rpc_calls: ENV_VARS
+                .block_ingestor_max_concurrent_json_rpc_calls,
+            genesis_block_number: ENV_VARS.genesis_block_number,
+        }
+    }
+}
 
 pub struct EthereumStreamBuilder {}
 
@@ -194,9 +231,9 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
         };
 
         let max_block_range_size = if is_using_subgraph_composition {
-            ENV_VARS.max_block_range_size * 10
+            chain.settings.max_block_range_size * 10
         } else {
-            ENV_VARS.max_block_range_size
+            chain.settings.max_block_range_size
         };
 
         Ok(Box::new(PollingBlockStream::new(
@@ -208,7 +245,7 @@ impl BlockStreamBuilder<Chain> for EthereumStreamBuilder {
             reorg_threshold,
             logger,
             max_block_range_size,
-            ENV_VARS.target_triggers_per_block_range,
+            chain.settings.target_triggers_per_block_range,
             unified_api_version,
             subgraph_current_block,
         )))
@@ -327,13 +364,13 @@ pub struct Chain {
     call_cache: Arc<dyn EthereumCallCache>,
     chain_head_update_listener: Arc<dyn ChainHeadUpdateListener>,
     reorg_threshold: BlockNumber,
-    polling_ingestor_interval: Duration,
     pub is_ingestible: bool,
     block_stream_builder: Arc<dyn BlockStreamBuilder<Self>>,
     block_refetcher: Arc<dyn BlockRefetcher<Self>>,
     adapter_selector: Arc<dyn TriggersAdapterSelector<Self>>,
     runtime_adapter_builder: Arc<dyn RuntimeAdapterBuilder>,
     eth_adapters: Arc<EthereumNetworkAdapters>,
+    pub settings: Arc<ChainSettings>,
 }
 
 impl std::fmt::Debug for Chain {
@@ -360,10 +397,10 @@ where
     for _ in 0..offset {
         match parent_getter(current_ptr.clone()).await? {
             Some(parent) => {
-                if let Some(root_hash) = &root {
-                    if parent.hash == *root_hash {
-                        break;
-                    }
+                if let Some(root_hash) = &root
+                    && parent.hash == *root_hash
+                {
+                    break;
                 }
                 current_ptr = parent;
             }
@@ -390,8 +427,8 @@ impl Chain {
         runtime_adapter_builder: Arc<dyn RuntimeAdapterBuilder>,
         eth_adapters: Arc<EthereumNetworkAdapters>,
         reorg_threshold: BlockNumber,
-        polling_ingestor_interval: Duration,
         is_ingestible: bool,
+        settings: Arc<ChainSettings>,
     ) -> Self {
         Chain {
             logger_factory,
@@ -408,7 +445,7 @@ impl Chain {
             eth_adapters,
             reorg_threshold,
             is_ingestible,
-            polling_ingestor_interval,
+            settings,
         }
     }
 
@@ -545,6 +582,18 @@ impl Blockchain for Chain {
                 .await
                 .map_err(IngestorError::Unknown),
             ChainClient::Rpc(adapters) => {
+                let cached = self
+                    .chain_store
+                    .cheap_clone()
+                    .block_ptrs_by_numbers(vec![number])
+                    .await
+                    .unwrap_or_default();
+                if let Some(ptrs) = cached.get(&number)
+                    && ptrs.len() == 1
+                {
+                    return Ok(BlockPtr::new(ptrs[0].hash.clone(), ptrs[0].number));
+                }
+
                 let adapter = adapters
                     .cheapest()
                     .await
@@ -639,7 +688,7 @@ impl Blockchain for Chain {
                     graph::env::ENV_VARS.reorg_threshold(),
                     self.chain_client(),
                     self.chain_store.cheap_clone(),
-                    self.polling_ingestor_interval,
+                    self.settings.polling_interval,
                     self.name.clone(),
                 )?)
             }
@@ -779,8 +828,8 @@ async fn fetch_unique_blocks_from_cache(
 
     // Collect blocks and filter out ones with multiple entries
     let blocks: Vec<Arc<ExtendedBlockPtr>> = blocks_map
-        .into_iter()
-        .filter_map(|(_, values)| {
+        .into_values()
+        .filter_map(|values| {
             if values.len() == 1 {
                 Some(Arc::new(values[0].clone()))
             } else {
@@ -1026,6 +1075,12 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
     }
 
     async fn is_on_main_chain(&self, ptr: BlockPtr) -> Result<bool, Error> {
+        // It is tempting to use the block cache here; but that can go wrong
+        // when graph-node gets shut down and some of its nonfinal blocks
+        // then are reorged; when graph-node gets started again when those
+        // block numbers have become final, it might consider a reorged
+        // block as canonical; allowing the use of the block cache here
+        // would require us to also track the finality of blocks.
         match &*self.chain_client {
             ChainClient::Firehose(endpoints) => {
                 let endpoint = endpoints.endpoint().await?;
@@ -1076,55 +1131,26 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
             .ancestor_block(ptr.clone(), offset, root.clone())
             .await?;
 
-        // First check if we have the ancestor in cache and can deserialize it.
-        // The cached JSON can be in one of three formats:
-        // 1. Full RPC format: {"block": {...}, "transaction_receipts": [...]}
-        // 2. Shallow/header-only: {"timestamp": "...", "data": null} - only timestamp, no block data
-        // 3. Legacy direct: block fields at root level {hash, number, transactions, ...}
-        // We need full format with receipts for ancestor_block (used for trigger processing).
+        // Use full blocks (with receipts) directly from cache.
+        // Light blocks (no receipts) need to be fetched from Firehose/RPC.
         let block_ptr = match cached {
-            Some((json, ptr)) => {
-                let json_block = EthereumJsonBlock::new(json);
-                if json_block.is_shallow() {
-                    trace!(
-                        self.logger,
-                        "Cached block #{} {} is shallow (header-only). Falling back to Firehose/RPC.",
-                        ptr.number,
-                        ptr.hash_hex(),
-                    );
-                    ptr
-                } else if json_block.is_legacy_format() {
-                    trace!(
-                        self.logger,
-                        "Cached block #{} {} is legacy light format. Falling back to Firehose/RPC.",
-                        ptr.number,
-                        ptr.hash_hex(),
-                    );
-                    ptr
-                } else {
-                    match json_block.into_full_block() {
-                        Ok(block) => {
-                            return Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
-                                ethereum_block: block,
-                                calls: None,
-                            })));
-                        }
-                        Err(e) => {
-                            warn!(
-                                self.logger,
-                                "Failed to deserialize cached ancestor block #{} {} (offset {} from #{}): {}. \
-                                 Falling back to Firehose/RPC.",
-                                ptr.number,
-                                ptr.hash_hex(),
-                                offset,
-                                ptr_for_log.number,
-                                e
-                            );
-                            ptr
-                        }
-                    }
+            Some((cached_block, ptr)) => match cached_block.into_full_block() {
+                Some(block) => {
+                    return Ok(Some(BlockFinality::NonFinal(EthereumBlockWithCalls {
+                        ethereum_block: block,
+                        calls: None,
+                    })));
                 }
-            }
+                None => {
+                    trace!(
+                        self.logger,
+                        "Cached block #{} {} is light (no receipts). Falling back to Firehose/RPC.",
+                        ptr.number,
+                        ptr.hash_hex(),
+                    );
+                    ptr
+                }
+            },
             None => {
                 // Cache miss - fall back to walking the chain via parent_ptr() calls.
                 // This provides resilience when the block cache is empty (e.g., after truncation).
@@ -1179,36 +1205,9 @@ impl TriggersAdapterTrait<Chain> for TriggersAdapter {
         let block = match self.chain_client.as_ref() {
             ChainClient::Firehose(endpoints) => {
                 let chain_store = self.chain_store.cheap_clone();
-                // First try to get the block from the store
-                // See ancestor_block() for documentation of the 3 cached JSON formats.
-                if let Ok(blocks) = chain_store.blocks(vec![block.hash.clone()]).await {
-                    if let Some(cached_json) = blocks.into_iter().next() {
-                        let json_block = EthereumJsonBlock::new(cached_json);
-                        if json_block.is_shallow() {
-                            trace!(
-                                self.logger,
-                                "Cached block #{} {} is shallow. Falling back to Firehose.",
-                                block.number,
-                                block.hash_hex(),
-                            );
-                        } else {
-                            match json_block.into_light_block() {
-                                Ok(light_block) => {
-                                    return Ok(light_block.parent_ptr());
-                                }
-                                Err(e) => {
-                                    warn!(
-                                        self.logger,
-                                        "Failed to deserialize cached block #{} {}: {}. \
-                                         Falling back to Firehose.",
-                                        block.number,
-                                        block.hash_hex(),
-                                        e
-                                    );
-                                }
-                            }
-                        }
-                    }
+                // First try to get the parent pointer from the store header columns
+                if let Ok(Some(parent)) = chain_store.block_parent_ptr(&block.hash).await {
+                    return Ok(Some(parent));
                 }
 
                 // If not in store, fetch from Firehose
@@ -1280,16 +1279,14 @@ impl TriggersAdapter {
         adapters: &EthereumNetworkAdapters,
         block_ptr: &BlockPtr,
     ) -> Result<Option<EthereumBlock>, Error> {
-        let adapter = adapters.cheapest_with(&self.capabilities).await?;
-
-        let block = adapter
-            .block_by_hash(&self.logger, block_ptr.hash.as_b256())
-            .await?;
-
-        match block {
-            Some(block) => {
+        // Use the cache-aware light block fetch first; it checks recent_blocks_cache
+        // and the DB before falling back to eth_getBlockByHash.
+        let light_block = self.fetch_light_block_with_rpc(adapters, block_ptr).await?;
+        match light_block {
+            Some(light_block) => {
+                let adapter = adapters.cheapest_with(&self.capabilities).await?;
                 let ethereum_block = adapter
-                    .load_full_block(&self.logger, block)
+                    .load_full_block(&self.logger, light_block.inner().clone())
                     .await
                     .map_err(|e| anyhow!("Failed to load full block: {}", e))?;
                 Ok(Some(ethereum_block))
@@ -1392,7 +1389,9 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             }
 
             StepFinal => {
-                unreachable!("irreversible step is not handled and should not be requested in the Firehose request")
+                unreachable!(
+                    "irreversible step is not handled and should not be requested in the Firehose request"
+                )
             }
 
             StepUnset => {

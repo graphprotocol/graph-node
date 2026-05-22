@@ -7,8 +7,8 @@ use graph::{
         value::{Object, Word},
     },
     futures03::future::TryFutureExt,
-    prelude::{s, CheapClone},
-    schema::{is_introspection_field, INTROSPECTION_QUERY_TYPE, META_FIELD_NAME},
+    prelude::{CheapClone, s},
+    schema::{INTROSPECTION_QUERY_TYPE, LOGS_FIELD_NAME, META_FIELD_NAME, is_introspection_field},
     util::{herd_cache::HerdCache, lfu_cache::EvictStats, timed_rw_lock::TimedMutex},
 };
 use lazy_static::lazy_static;
@@ -39,11 +39,7 @@ lazy_static! {
 
     // We will not add entries to the cache that exceed this weight.
     static ref MAX_ENTRY_WEIGHT: usize = {
-        if ENV_VARS.graphql.query_cache_max_entry_ratio == 0 {
-            usize::MAX
-        } else {
-        *MAX_WEIGHT / ENV_VARS.graphql.query_cache_max_entry_ratio
-        }
+        MAX_WEIGHT.checked_div(ENV_VARS.graphql.query_cache_max_entry_ratio).unwrap_or(usize::MAX)
     };
 
     // Sharded query results cache for recent blocks by network.
@@ -168,8 +164,8 @@ fn log_lfu_evict_stats(
 ) {
     let total_shards = ENV_VARS.graphql.query_lfu_cache_shards as usize;
 
-    if total_shards > 0 {
-        if let Some(EvictStats {
+    if total_shards > 0
+        && let Some(EvictStats {
             new_weight,
             evicted_weight,
             new_count,
@@ -179,27 +175,26 @@ fn log_lfu_evict_stats(
             accesses,
             hits,
         }) = evict_stats
+    {
         {
-            {
-                let shard = (cache_key[0] as usize) % total_shards;
-                let network = network.to_string();
-                let logger = logger.clone();
+            let shard = (cache_key[0] as usize) % total_shards;
+            let network = network.to_string();
+            let logger = logger.clone();
 
-                graph::spawn(async move {
-                    debug!(logger, "Evicted LFU cache";
-                        "shard" => shard,
-                        "network" => network,
-                        "entries" => new_count,
-                        "entries_evicted" => evicted_count,
-                        "weight" => new_weight,
-                        "weight_evicted" => evicted_weight,
-                        "stale_update" => stale_update,
-                        "hit_rate" => format!("{:.0}%", hits as f64 / accesses as f64 * 100.0),
-                        "accesses" => accesses,
-                        "evict_time_ms" => evict_time.as_millis()
-                    )
-                });
-            }
+            graph::spawn(async move {
+                debug!(logger, "Evicted LFU cache";
+                    "shard" => shard,
+                    "network" => network,
+                    "entries" => new_count,
+                    "entries_evicted" => evicted_count,
+                    "weight" => new_weight,
+                    "weight_evicted" => evicted_weight,
+                    "stale_update" => stale_update,
+                    "hit_rate" => format!("{:.0}%", hits as f64 / accesses as f64 * 100.0),
+                    "accesses" => accesses,
+                    "evict_time_ms" => evict_time.as_millis()
+                )
+            });
         }
     }
 }
@@ -231,6 +226,9 @@ where
 
     /// Whether to include an execution trace in the result
     pub trace: bool,
+
+    /// The log store to use for querying logs.
+    pub log_store: Arc<dyn graph::components::log_store::LogStore>,
 }
 
 pub(crate) fn get_field<'a>(
@@ -264,6 +262,7 @@ where
             // `cache_status` is a dead value for the introspection context.
             cache_status: AtomicCell::new(CacheStatus::Miss),
             trace: ENV_VARS.log_sql_timing(),
+            log_store: self.log_store.cheap_clone(),
         }
     }
 }
@@ -273,11 +272,12 @@ pub(crate) async fn execute_root_selection_set_uncached(
     selection_set: &a::SelectionSet,
     root_type: &sast::ObjectType,
 ) -> Result<(Object, Trace), Vec<QueryExecutionError>> {
-    // Split the top-level fields into introspection fields and
-    // regular data fields
+    // Split the top-level fields into introspection fields,
+    // logs fields, meta fields, and regular data fields
     let mut data_set = a::SelectionSet::empty_from(selection_set);
     let mut intro_set = a::SelectionSet::empty_from(selection_set);
     let mut meta_items = Vec::new();
+    let mut logs_fields = Vec::new();
 
     for field in selection_set.fields_for(root_type)? {
         // See if this is an introspection or data field. We don't worry about
@@ -285,11 +285,22 @@ pub(crate) async fn execute_root_selection_set_uncached(
         // the data_set SelectionSet
         if is_introspection_field(&field.name) {
             intro_set.push(field)?
+        } else if field.name == LOGS_FIELD_NAME {
+            logs_fields.push(field)
         } else if field.name == META_FIELD_NAME || field.name == "__typename" {
             meta_items.push(field)
         } else {
             data_set.push(field)?
         }
+    }
+
+    // Validate that _logs queries cannot be combined with regular entity queries
+    if !logs_fields.is_empty() && !data_set.is_empty() {
+        return Err(vec![QueryExecutionError::ValidationError(
+            None,
+            "The _logs query cannot be combined with other entity queries in the same request"
+                .to_string(),
+        )]);
     }
 
     // If we are getting regular data, prefetch it from the database
@@ -314,6 +325,96 @@ pub(crate) async fn execute_root_selection_set_uncached(
         );
     }
 
+    // Resolve logs fields, if there are any
+    for field in logs_fields {
+        use graph::data::graphql::object;
+
+        // Build log query from field arguments
+        let log_query = crate::store::logs::build_log_query(field, ctx.query.schema.id())
+            .map_err(|e| vec![e])?;
+
+        // Query the log store
+        let log_entries = ctx.log_store.query_logs(log_query).await.map_err(|e| {
+            vec![QueryExecutionError::StoreError(
+                anyhow::Error::from(e).into(),
+            )]
+        })?;
+
+        // Get _Log_ type from schema for field selection
+        let log_type_def = ctx.query.schema.get_named_type("_Log_").ok_or_else(|| {
+            vec![QueryExecutionError::AbstractTypeError(
+                "_Log_ type not found in schema".to_string(),
+            )]
+        })?;
+        let log_object_type = match log_type_def {
+            s::TypeDefinition::Object(obj) => sast::ObjectType::from(Arc::new(obj.clone())),
+            _ => {
+                return Err(vec![QueryExecutionError::AbstractTypeError(
+                    "_Log_ is not an object type".to_string(),
+                )]);
+            }
+        };
+
+        // Convert log entries to GraphQL values, respecting field selection
+        let log_values: Vec<r::Value> = log_entries
+            .into_iter()
+            .map(|entry| {
+                // Convert log level to string (needed by multiple fields)
+                let level_str = entry.level.as_str().to_uppercase();
+                let mut results = Vec::new();
+
+                // Iterate over requested fields (same pattern as entity queries)
+                for log_field in field
+                    .selection_set
+                    .fields_for(&log_object_type)
+                    .map_err(|e| vec![e])?
+                {
+                    let response_key = log_field.response_key();
+
+                    // Map field name to LogEntry value (replaces prefetched_object lookup)
+                    let value = match log_field.name.as_str() {
+                        "id" => entry.id.clone().into_value(),
+                        "subgraphId" => entry.subgraph_id.to_string().into_value(),
+                        "timestamp" => entry.timestamp.clone().into_value(),
+                        "level" => level_str.clone().into_value(),
+                        "text" => entry.text.clone().into_value(),
+                        "arguments" => {
+                            // Convert arguments Vec<(String, String)> to GraphQL objects
+                            let args: Vec<r::Value> = entry
+                                .arguments
+                                .iter()
+                                .map(|(key, value)| {
+                                    object! {
+                                        key: key.clone(),
+                                        value: value.clone(),
+                                        __typename: "_LogArgument_"
+                                    }
+                                })
+                                .collect();
+                            r::Value::List(args)
+                        }
+                        "meta" => object! {
+                            module: entry.meta.module.clone(),
+                            line: r::Value::Int(entry.meta.line),
+                            column: r::Value::Int(entry.meta.column),
+                            __typename: "_LogMeta_"
+                        },
+                        "__typename" => "_Log_".into_value(),
+                        _ => continue, // Unknown field, skip it
+                    };
+
+                    results.push((Word::from(response_key), value));
+                }
+
+                Ok(r::Value::Object(Object::from_iter(results)))
+            })
+            .collect::<Result<Vec<_>, Vec<QueryExecutionError>>>()?;
+
+        let response_key = Word::from(field.response_key());
+        let logs_object = Object::from_iter(vec![(response_key, r::Value::List(log_values))]);
+        values.append(logs_object);
+    }
+
     Ok((values, trace))
 }
 
@@ -336,34 +437,34 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
             }
         };
 
-    if should_check_cache {
-        if let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network) {
-            // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
-            // - Metadata queries are not cacheable.
-            // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
-            if block_ptr.number != BLOCK_NUMBER_MAX {
-                // Calculate the hash outside of the lock
-                let cache_key = cache_key(&ctx, &selection_set, block_ptr);
-                let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
+    if should_check_cache
+        && let (Some(block_ptr), Some(network)) = (block_ptr.as_ref(), &ctx.query.network)
+    {
+        // JSONB and metadata queries use `BLOCK_NUMBER_MAX`. Ignore this case for two reasons:
+        // - Metadata queries are not cacheable.
+        // - Caching `BLOCK_NUMBER_MAX` would make this cache think all other blocks are old.
+        if block_ptr.number != BLOCK_NUMBER_MAX {
+            // Calculate the hash outside of the lock
+            let cache_key = cache_key(&ctx, &selection_set, block_ptr);
+            let shard = (cache_key[0] as usize) % QUERY_BLOCK_CACHE.len();
 
-                // Check if the response is cached, first in the recent blocks cache,
-                // and then in the LfuCache for historical queries
-                // The blocks are used to delimit how long locks need to be held
-                {
-                    let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
-                    if let Some(result) = cache.get(network, block_ptr, &cache_key) {
-                        ctx.cache_status.store(CacheStatus::Hit);
-                        return result;
-                    }
+            // Check if the response is cached, first in the recent blocks cache,
+            // and then in the LfuCache for historical queries
+            // The blocks are used to delimit how long locks need to be held
+            {
+                let cache = QUERY_BLOCK_CACHE[shard].lock(&ctx.logger);
+                if let Some(result) = cache.get(network, block_ptr, &cache_key) {
+                    ctx.cache_status.store(CacheStatus::Hit);
+                    return result;
                 }
-                if let Some(mut cache) = lfu_cache(&ctx.logger, &cache_key) {
-                    if let Some(weighted) = cache.get(&cache_key) {
-                        ctx.cache_status.store(CacheStatus::Hit);
-                        return weighted.result.cheap_clone();
-                    }
-                }
-                key = Some(cache_key);
             }
+            if let Some(mut cache) = lfu_cache(&ctx.logger, &cache_key)
+                && let Some(weighted) = cache.get(&cache_key)
+            {
+                ctx.cache_status.store(CacheStatus::Hit);
+                return weighted.result.cheap_clone();
+            }
+            key = Some(cache_key);
         }
     }
 
@@ -614,7 +715,7 @@ async fn resolve_field_value(
             .await
         }
 
-        s::Type::NamedType(ref name) => {
+        s::Type::NamedType(name) => {
             resolve_field_value_for_named_type(
                 ctx,
                 object_type,
@@ -702,7 +803,7 @@ async fn resolve_field_value_for_list_type(
                 .await
         }
 
-        s::Type::NamedType(ref type_name) => {
+        s::Type::NamedType(type_name) => {
             let named_type = ctx
                 .query
                 .schema

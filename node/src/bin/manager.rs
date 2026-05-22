@@ -8,12 +8,13 @@ use graph::components::network_provider::ChainName;
 use graph::endpoint::EndpointMetrics;
 use graph::env::ENV_VARS;
 use graph::log::logger_with_levels;
-use graph::prelude::{BlockNumber, MetricsRegistry, BLOCK_NUMBER_MAX};
+use graph::prelude::{BLOCK_NUMBER_MAX, BlockNumber, MetricsRegistry};
 use graph::{data::graphql::load_manager::LoadManager, prelude::chrono, prometheus::Registry};
 use graph::{
     prelude::{
-        anyhow::{self, anyhow, Context as AnyhowContextTrait},
-        info, tokio, Logger, NodeId,
+        Logger, NodeId,
+        anyhow::{self, Context as AnyhowContextTrait, anyhow},
+        info, tokio,
     },
     url::Url,
 };
@@ -24,11 +25,11 @@ use graph_node::manager::color::Terminal;
 use graph_node::manager::commands;
 use graph_node::network_setup::Networks;
 use graph_node::{
-    manager::deployment::DeploymentSearch, store_builder::StoreBuilder, MetricsContext,
+    MetricsContext, manager::deployment::DeploymentSearch, store_builder::StoreBuilder,
 };
 use graph_store_postgres::{
-    BlockStore, ChainStore, ConnectionPool, NotificationSender, PoolCoordinator, Shard, Store,
-    SubgraphStore, SubscriptionManager, PRIMARY_SHARD,
+    BlockStore, ChainStore, ConnectionPool, NotificationSender, PRIMARY_SHARD, PoolCoordinator,
+    Shard, Store, SubgraphStore, SubscriptionManager,
 };
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -327,6 +328,51 @@ pub enum Command {
         #[clap(long, short, default_value = "http://localhost:8020")]
         url: String,
     },
+
+    /// Dump a subgraph deployment into a directory
+    ///
+    /// EXPERIMENTAL - NOT FOR PRODUCTION USE
+    ///
+    /// This will create a dump of the subgraph deployment in the specified
+    /// directory. The dump includes the subgraph manifest, the mapping, and
+    /// the data in the database as parquet files. The dump can be used to
+    /// restore the subgraph deployment later with the `restore` command.
+    Dump {
+        /// The deployment (see `help info`)
+        deployment: DeploymentSearch,
+        /// The name of the directory to dump to
+        directory: String,
+    },
+
+    /// Restore a subgraph deployment from a dump directory
+    ///
+    /// EXPERIMENTAL - NOT FOR PRODUCTION USE
+    ///
+    /// Restore a subgraph deployment from a dump created with the `dump`
+    /// command.
+    Restore {
+        /// Path to the dump directory
+        directory: String,
+        /// The database shard to restore into. When not given, use the
+        /// deployment rules to determine the shard, or default to the
+        /// primary shard if no rules match. This option is required when
+        /// using `--add`
+        #[clap(long)]
+        shard: Option<String>,
+        /// Subgraph name for deployment rule matching and node assignment.
+        /// If omitted, uses an existing name from the database; errors if none found.
+        #[clap(long)]
+        name: Option<String>,
+        /// Drop and recreate if the deployment already exists in the target shard
+        #[clap(long, conflicts_with_all = ["add", "force"])]
+        replace: bool,
+        /// Create a copy in a shard that doesn't have this deployment (requires --shard)
+        #[clap(long, conflicts_with_all = ["replace", "force"])]
+        add: bool,
+        /// Restore no matter what: replace if exists in target shard, add if not
+        #[clap(long, conflicts_with_all = ["replace", "add"])]
+        force: bool,
+    },
 }
 
 impl Command {
@@ -574,11 +620,12 @@ pub enum CallCacheCommand {
         #[clap(long, conflicts_with_all = &["from", "to"])]
         remove_entire_cache: bool,
         /// Remove the cache for contracts that have not been accessed in the last <TTL_DAYS> days
-        #[clap(long, conflicts_with_all = &["from", "to", "remove-entire-cache"], value_parser = clap::value_parser!(i32).range(1..))]
-        ttl_days: Option<i32>,
-        /// Limits the number of contracts to consider for cache removal when using --ttl_days
-        #[clap(long, conflicts_with_all = &["remove-entire-cache", "to", "from"], requires = "ttl_days", value_parser = clap::value_parser!(i64).range(1..))]
-        ttl_max_contracts: Option<i64>,
+        #[clap(long, conflicts_with_all = &["from", "to", "remove-entire-cache"], value_parser = clap::value_parser!(u32).range(1..))]
+        ttl_days: Option<u32>,
+        /// Maximum number of contracts to evict. When set, the effective TTL
+        /// is increased so that at most this many contracts are deleted.
+        #[clap(long, requires = "ttl_days")]
+        max_contracts: Option<usize>,
         /// Starting block number
         #[clap(long, short, conflicts_with = "remove-entire-cache", requires = "to")]
         from: Option<i32>,
@@ -1033,7 +1080,13 @@ impl Context {
 
         let load_manager = Arc::new(LoadManager::new(&logger, vec![], vec![], registry.clone()));
 
-        Arc::new(GraphQlRunner::new(&logger, store, load_manager, registry))
+        Arc::new(GraphQlRunner::new(
+            &logger,
+            store,
+            load_manager,
+            registry,
+            Arc::new(graph::components::log_store::NoOpLogStore),
+        ))
     }
 
     async fn networks(&self) -> anyhow::Result<Networks> {
@@ -1086,8 +1139,11 @@ impl Context {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    graph::tls::install_default_crypto_provider();
     // Disable load management for graphman commands
-    env::set_var("GRAPH_LOAD_THRESHOLD", "0");
+    unsafe {
+        env::set_var("GRAPH_LOAD_THRESHOLD", "0");
+    }
 
     let opt = Opt::parse();
 
@@ -1105,11 +1161,6 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let mut config = Cfg::load(&logger, &opt.clone().into()).context("Configuration error")?;
-    config.stores.iter_mut().for_each(|(_, shard)| {
-        shard.pool_size = PoolSize::Fixed(5);
-        shard.fdw_pool_size = PoolSize::Fixed(5);
-    });
-
     if opt.pool_size > 0 && !opt.cmd.use_configured_pool_size() {
         // Override pool size from configuration
         for shard in config.stores.values_mut() {
@@ -1458,8 +1509,8 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 CheckBlocks { method, chain_name } => {
-                    use commands::check_blocks::{by_hash, by_number, by_range};
                     use CheckBlockMethod::*;
+                    use commands::check_blocks::{by_hash, by_number, by_range};
                     let logger = ctx.logger.clone();
                     let (chain_store, ethereum_adapter) =
                         ctx.chain_store_and_adapter(&chain_name).await?;
@@ -1509,20 +1560,22 @@ async fn main() -> anyhow::Result<()> {
                             to,
                             remove_entire_cache,
                             ttl_days,
-                            ttl_max_contracts,
+                            max_contracts,
                         } => {
                             let chain_store = ctx.chain_store(&chain_name).await?;
                             if let Some(ttl_days) = ttl_days {
                                 return commands::chain::clear_stale_call_cache(
                                     chain_store,
-                                    ttl_days,
-                                    ttl_max_contracts,
+                                    ttl_days as usize,
+                                    max_contracts,
                                 )
                                 .await;
                             }
 
                             if !remove_entire_cache && from.is_none() && to.is_none() {
-                                bail!("you must specify either --from and --to or --remove-entire-cache");
+                                bail!(
+                                    "you must specify either --from and --to or --remove-entire-cache"
+                                );
                             }
                             let (from, to) = if remove_entire_cache {
                                 (0, BLOCK_NUMBER_MAX)
@@ -1731,6 +1784,31 @@ async fn main() -> anyhow::Result<()> {
             let subgraph_store = store.subgraph_store();
 
             commands::deploy::run(subgraph_store, deployment, name, url).await
+        }
+
+        Dump {
+            deployment,
+            directory,
+        } => {
+            let (store, primary_pool) = ctx.store_and_primary().await;
+            let subgraph_store = store.subgraph_store();
+
+            commands::dump::run(subgraph_store, primary_pool, deployment, directory).await
+        }
+
+        Restore {
+            directory,
+            shard,
+            name,
+            replace,
+            add,
+            force,
+        } => {
+            let store = ctx.store().await;
+            let subgraph_store = store.subgraph_store();
+
+            commands::restore::run(subgraph_store, directory, shard, name, replace, add, force)
+                .await
         }
     }
 }

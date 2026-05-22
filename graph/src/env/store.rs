@@ -63,6 +63,10 @@ pub struct EnvVarsStore {
     /// Set by the environment variable `GRAPH_STORE_CONNECTION_TIMEOUT` (expressed
     /// in milliseconds). The default value is 5000ms.
     pub connection_timeout: Duration,
+    /// Set by `GRAPH_STORE_SETUP_TIMEOUT` (in milliseconds). Default: 30000ms.
+    /// Used during database setup (migrations, schema creation) which can
+    /// legitimately take longer than normal operations.
+    pub setup_timeout: Duration,
     /// Set by the environment variable `GRAPH_STORE_CONNECTION_MIN_IDLE`. No
     /// default value is provided.
     pub connection_min_idle: Option<u32>,
@@ -141,6 +145,10 @@ pub struct EnvVarsStore {
     pub use_brin_for_all_query_types: bool,
     /// Temporary env var to disable certain lookups in the chain store
     pub disable_block_cache_for_lookup: bool,
+    /// When set, block reads for blocks that are more than `cache_size`
+    /// blocks behind the chain head will act as if the data field in
+    /// the database was null. Set by `GRAPH_STORE_IGNORE_BLOCK_CACHE`.
+    pub ignore_block_cache: bool,
     /// Safety switch to increase the number of columns used when
     /// calculating the chunk size in `InsertQuery::chunk_size`. This can be
     /// used to work around Postgres errors complaining 'number of
@@ -214,6 +222,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             ),
             recent_blocks_cache_capacity: x.recent_blocks_cache_capacity,
             connection_timeout: Duration::from_millis(x.connection_timeout_in_millis),
+            setup_timeout: Duration::from_millis(x.setup_timeout_in_millis),
             connection_min_idle: x.connection_min_idle,
             connection_idle_timeout: Duration::from_secs(x.connection_idle_timeout_in_secs),
             write_queue_size: x.write_queue_size,
@@ -232,6 +241,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             create_gin_indexes: x.create_gin_indexes,
             use_brin_for_all_query_types: x.use_brin_for_all_query_types,
             disable_block_cache_for_lookup: x.disable_block_cache_for_lookup,
+            ignore_block_cache: x.ignore_block_cache,
             insert_extra_cols: x.insert_extra_cols,
             fdw_fetch_size: x.fdw_fetch_size,
             account_like_scan_interval_hours: x.account_like_scan_interval_hours,
@@ -244,12 +254,12 @@ impl TryFrom<InnerStore> for EnvVarsStore {
                 x.connection_unavailable_retry_in_secs,
             ),
         };
-        if let Some(timeout) = vars.batch_timeout {
-            if timeout < 2 * vars.batch_target_duration {
-                bail!(
-                    "GRAPH_STORE_BATCH_TIMEOUT must be greater than 2*GRAPH_STORE_BATCH_TARGET_DURATION"
-                );
-            }
+        if let Some(timeout) = vars.batch_timeout
+            && timeout < 2 * vars.batch_target_duration
+        {
+            bail!(
+                "GRAPH_STORE_BATCH_TIMEOUT must be greater than 2*GRAPH_STORE_BATCH_TARGET_DURATION"
+            );
         }
         if vars.batch_workers < 1 {
             bail!("GRAPH_STORE_BATCH_WORKERS must be at least 1");
@@ -299,6 +309,8 @@ pub struct InnerStore {
     // configured differently for each pool.
     #[envconfig(from = "GRAPH_STORE_CONNECTION_TIMEOUT", default = "5000")]
     connection_timeout_in_millis: u64,
+    #[envconfig(from = "GRAPH_STORE_SETUP_TIMEOUT", default = "30000")]
+    setup_timeout_in_millis: u64,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_MIN_IDLE")]
     connection_min_idle: Option<u32>,
     #[envconfig(from = "GRAPH_STORE_CONNECTION_IDLE_TIMEOUT", default = "600")]
@@ -338,6 +350,8 @@ pub struct InnerStore {
     use_brin_for_all_query_types: bool,
     #[envconfig(from = "GRAPH_STORE_DISABLE_BLOCK_CACHE_FOR_LOOKUP", default = "false")]
     disable_block_cache_for_lookup: bool,
+    #[envconfig(from = "GRAPH_STORE_IGNORE_BLOCK_CACHE", default = "false")]
+    ignore_block_cache: bool,
     #[envconfig(from = "GRAPH_STORE_INSERT_EXTRA_COLS", default = "0")]
     insert_extra_cols: usize,
     #[envconfig(from = "GRAPH_STORE_FDW_FETCH_SIZE", default = "1000")]

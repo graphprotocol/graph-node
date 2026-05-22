@@ -14,11 +14,11 @@ use graph::cheap_clone::CheapClone;
 use graph::env::ENV_VARS;
 use graph::futures03::future::BoxFuture;
 use graph::futures03::stream::StreamExt;
-use graph::futures03::{stream, Future, FutureExt, TryFutureExt};
+use graph::futures03::{Future, FutureExt, TryFutureExt, stream};
 use graph::parking_lot::Mutex;
 use graph::prelude::tokio;
 use graph::prometheus::{Counter, Gauge};
-use graph::slog::{debug, Logger};
+use graph::slog::{Logger, debug};
 use graph::util::monitored::MonitoredVecDeque as VecDeque;
 use tokio::sync::{mpsc, watch};
 use tower::retry::backoff::{Backoff, ExponentialBackoff, ExponentialBackoffMaker, MakeBackoff};
@@ -28,8 +28,8 @@ use tower::{Service, ServiceExt};
 use self::request::RequestId;
 
 pub use self::metrics::PollingMonitorMetrics;
-pub use arweave_service::{arweave_service, ArweaveService};
-pub use ipfs_service::{ipfs_service, IpfsRequest, IpfsService};
+pub use arweave_service::{ArweaveService, arweave_service};
+pub use ipfs_service::{IpfsRequest, IpfsService, ipfs_service};
 
 const MIN_BACKOFF: Duration = Duration::from_secs(5);
 
@@ -53,7 +53,7 @@ impl<ID: Eq + Hash> Backoffs<ID> {
         }
     }
 
-    fn next_backoff(&mut self, id: ID) -> impl Future<Output = ()> {
+    fn next_backoff(&mut self, id: ID) -> impl Future<Output = ()> + Send + use<ID> {
         self.backoffs
             .entry(id)
             .or_insert_with(|| self.backoff_maker.make_backoff())

@@ -1,6 +1,6 @@
 use envconfig::Envconfig;
 use graph::env::EnvVarBoolean;
-use graph::prelude::{envconfig, lazy_static, BlockNumber};
+use graph::prelude::{BlockNumber, envconfig, lazy_static};
 use std::fmt;
 use std::time::Duration;
 

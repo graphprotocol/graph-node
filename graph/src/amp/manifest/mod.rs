@@ -2,7 +2,7 @@ pub mod data_source;
 
 use std::sync::Arc;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use itertools::Itertools;
 use semver::Version;
 use slog::Logger;

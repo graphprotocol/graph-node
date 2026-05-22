@@ -1,21 +1,21 @@
 use graph::blockchain::{Block, BlockTime};
 use graph::data::query::Trace;
 use graph::data::store::scalar::Timestamp;
-use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data::subgraph::LATEST_VERSION;
+use graph::data::subgraph::schema::DeploymentCreate;
 use graph::entity;
 use graph::prelude::Value;
 use graph::schema::InputSchema;
 use std::iter::FromIterator;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use std::{
     collections::{BTreeSet, HashMap},
     marker::PhantomData,
 };
 use test_store::block_store::{
-    FakeBlock, BLOCK_FOUR, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, GENESIS_BLOCK,
+    BLOCK_FOUR, BLOCK_ONE, BLOCK_THREE, BLOCK_TWO, FakeBlock, GENESIS_BLOCK,
 };
 
 use graph::{
@@ -27,16 +27,15 @@ use graph::{
         subgraph::SubgraphFeature,
     },
     prelude::{
-        lazy_static, q, r, serde_json, BlockPtr, DeploymentHash, Entity, EntityOperation,
-        GraphQlRunner as _, NodeId, Query, QueryError, QueryExecutionError, QueryResult,
-        QueryVariables, SubgraphManifest, SubgraphName, SubgraphStore,
-        SubgraphVersionSwitchingMode,
+        BlockPtr, DeploymentHash, Entity, EntityOperation, GraphQlRunner as _, NodeId, Query,
+        QueryError, QueryExecutionError, QueryResult, QueryVariables, SubgraphManifest,
+        SubgraphName, SubgraphStore, SubgraphVersionSwitchingMode, lazy_static, q, r, serde_json,
     },
 };
 use graph_graphql::prelude::*;
 use test_store::{
-    deployment_state, execute_subgraph_query, execute_subgraph_query_with_deadline, revert_block,
-    run_test_sequentially, transact_errors, Store, LOAD_MANAGER, LOGGER, METRICS_REGISTRY, STORE,
+    LOAD_MANAGER, LOGGER, METRICS_REGISTRY, STORE, Store, deployment_state, execute_subgraph_query,
+    execute_subgraph_query_with_deadline, revert_block, run_test_sequentially, transact_errors,
 };
 
 /// Ids for the various entities that we create in `insert_entities` and
@@ -616,6 +615,7 @@ async fn execute_query_document_with_variables(
         STORE.clone(),
         LOAD_MANAGER.clone(),
         METRICS_REGISTRY.clone(),
+        Arc::new(graph::components::log_store::NoOpLogStore),
     ));
     let target = QueryTarget::Deployment(id.clone(), Default::default());
     let query = Query::new(query, variables, false);
@@ -726,6 +726,7 @@ where
                     STORE.clone(),
                     LOAD_MANAGER.clone(),
                     METRICS_REGISTRY.clone(),
+                    Arc::new(graph::components::log_store::NoOpLogStore),
                 ));
                 let target = QueryTarget::Deployment(id.clone(), Default::default());
                 let query = Query::new(query, variables, false);
@@ -2160,7 +2161,10 @@ fn leaf_selection_mismatch() {
                         _pos,
                         message,
                     )) => {
-                        assert_eq!(message, "Field \"name\" must not have a selection since type \"String!\" has no subfields.");
+                        assert_eq!(
+                            message,
+                            "Field \"name\" must not have a selection since type \"String!\" has no subfields."
+                        );
                     }
                     r => panic!("unexpexted query error: {:?}", r),
                 };
@@ -2196,7 +2200,10 @@ fn leaf_selection_mismatch() {
                         _pos,
                         message,
                     )) => {
-                        assert_eq!(message, "Field \"mainBand\" of type \"Band\" must have a selection of subfields. Did you mean \"mainBand { ... }\"?");
+                        assert_eq!(
+                            message,
+                            "Field \"mainBand\" of type \"Band\" must have a selection of subfields. Did you mean \"mainBand { ... }\"?"
+                        );
                     }
                     r => panic!("unexpexted query error: {:?}", r),
                 };

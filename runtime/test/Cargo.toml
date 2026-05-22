@@ -5,12 +5,12 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-semver = "1.0"
-wasmtime.workspace = true
+semver = { workspace = true }
+wasmtime = { workspace = true }
 graph = { path = "../../graph" }
 graph-chain-ethereum = { path = "../../chain/ethereum" }
 graph-runtime-wasm = { path = "../wasm" }
-rand.workspace = true
+rand = { workspace = true }
 
 
 [dev-dependencies]

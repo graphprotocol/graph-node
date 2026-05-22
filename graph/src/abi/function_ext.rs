@@ -5,8 +5,8 @@ use alloy::dyn_abi::DynSolValue;
 use alloy::dyn_abi::Specifier;
 use alloy::json_abi::Function;
 use alloy::json_abi::Param;
-use anyhow::anyhow;
 use anyhow::Result;
+use anyhow::anyhow;
 use itertools::Itertools;
 
 use crate::abi::DynSolValueExt;

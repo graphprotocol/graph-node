@@ -1,15 +1,15 @@
 use std::{fmt::Display, sync::LazyLock};
 
 use alloy::primitives::B256;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use arrow::{
     array::{
-        timezone::Tz, Array, ArrayAccessor, BinaryArray, BinaryViewArray, BooleanArray,
-        Decimal128Array, Decimal256Array, FixedSizeBinaryArray, Float16Array, Float32Array,
-        Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, LargeBinaryArray,
-        LargeStringArray, PrimitiveArray, StringArray, StringViewArray, TimestampMicrosecondArray,
-        TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt16Array,
-        UInt32Array, UInt64Array, UInt8Array,
+        Array, ArrayAccessor, BinaryArray, BinaryViewArray, BooleanArray, Decimal128Array,
+        Decimal256Array, FixedSizeBinaryArray, Float16Array, Float32Array, Float64Array, Int8Array,
+        Int16Array, Int32Array, Int64Array, LargeBinaryArray, LargeStringArray, PrimitiveArray,
+        StringArray, StringViewArray, TimestampMicrosecondArray, TimestampMillisecondArray,
+        TimestampNanosecondArray, TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array,
+        UInt64Array, timezone::Tz,
     },
     datatypes::ArrowTemporalType,
 };

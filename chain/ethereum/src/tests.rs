@@ -1,17 +1,17 @@
 use std::sync::Arc;
 
 use graph::{
-    blockchain::{block_stream::BlockWithTriggers, BlockPtr, Trigger},
+    blockchain::{BlockPtr, Trigger, block_stream::BlockWithTriggers},
     prelude::{
+        EthereumCall, LightEthereumBlock,
         alloy::{
             self,
-            primitives::{Address, Bytes, LogData, B256},
+            primitives::{Address, B256, Bytes, LogData},
             rpc::types::{Block, Log},
         },
         rand::{self, Rng},
-        EthereumCall, LightEthereumBlock,
     },
-    slog::{self, o, Logger},
+    slog::{self, Logger, o},
 };
 
 use crate::{

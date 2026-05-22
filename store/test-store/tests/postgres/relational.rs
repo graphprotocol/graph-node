@@ -5,15 +5,15 @@ use graph::data::store::scalar;
 use graph::entity;
 use graph::prelude::alloy::primitives::B256;
 use graph::prelude::{
-    o, slog, DeploymentHash, Entity, EntityCollection, EntityFilter, EntityOrder, EntityQuery,
-    Logger, StopwatchMetrics, Value, ValueType, BLOCK_NUMBER_MAX,
+    BLOCK_NUMBER_MAX, DeploymentHash, Entity, EntityCollection, EntityFilter, EntityOrder,
+    EntityQuery, Logger, StopwatchMetrics, Value, ValueType, o, slog,
 };
 use graph::prelude::{BlockNumber, MetricsRegistry};
 use graph::schema::{EntityKey, EntityType, InputSchema};
-use graph_store_postgres::layout_for_tests::set_account_like;
+use graph_store_postgres::AsyncPgConnection;
 use graph_store_postgres::layout_for_tests::LayoutCache;
 use graph_store_postgres::layout_for_tests::SqlName;
-use graph_store_postgres::AsyncPgConnection;
+use graph_store_postgres::layout_for_tests::set_account_like;
 use hex_literal::hex;
 use lazy_static::lazy_static;
 use std::collections::BTreeSet;
@@ -128,6 +128,11 @@ const THINGS_GQL: &str = r#"
         order: Int,
     }
 
+    type SkipDupMink @entity(immutable: true, skipDuplicates: true) {
+        id: ID!,
+        order: Int,
+    }
+
     type User @entity {
         id: ID!,
         name: String!,
@@ -228,6 +233,7 @@ lazy_static! {
     static ref CAT_TYPE: EntityType = THINGS_SCHEMA.entity_type("Cat").unwrap();
     static ref FERRET_TYPE: EntityType = THINGS_SCHEMA.entity_type("Ferret").unwrap();
     static ref MINK_TYPE: EntityType = THINGS_SCHEMA.entity_type("Mink").unwrap();
+    static ref SKIP_DUP_MINK_TYPE: EntityType = THINGS_SCHEMA.entity_type("SkipDupMink").unwrap();
     static ref CHAIR_TYPE: EntityType = THINGS_SCHEMA.entity_type("Chair").unwrap();
     static ref NULLABLE_STRINGS_TYPE: EntityType =
         THINGS_SCHEMA.entity_type("NullableStrings").unwrap();
@@ -508,7 +514,7 @@ async fn create_schema(conn: &mut AsyncPgConnection) -> Layout {
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&query).await.unwrap();
 
-    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), None)
+    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new())
         .await
         .expect("Failed to create relational schema")
 }
@@ -767,13 +773,11 @@ async fn serialize_bigdecimal() {
 
         // Update with overwrite
         let mut entity = SCALAR_ENTITY.clone();
-        let mut vid = 1i64;
 
-        for d in &["50", "50.00", "5000", "0.5000", "0.050", "0.5", "0.05"] {
+        for (vid, d) in (1i64..).zip(&["50", "50.00", "5000", "0.5000", "0.050", "0.5", "0.05"]) {
             let d = BigDecimal::from_str(d).unwrap();
             entity.set("bigDecimal", d).unwrap();
             entity.set("vid", vid).unwrap();
-            vid += 1;
 
             let key = SCALAR_TYPE.key(entity.id());
             let entity_type = layout.input_schema.entity_type("Scalar").unwrap();
@@ -996,7 +1000,7 @@ async fn conflicting_entity() {
             let fred = entity! { layout.input_schema => id: id.clone(), name: id.clone() };
             let fred = Arc::new(fred);
             let types: Vec<_> = types.into_iter().cloned().collect();
-            let mut group = RowGroup::new(entity_type.clone(), false);
+            let mut group = RowGroup::new(entity_type.clone());
             group
                 .push(
                     EntityModification::Insert {
@@ -2123,6 +2127,62 @@ async fn check_filters() {
             .await
             .check(vec![], filter_block_gte(BLOCK_NUMBER_MAX))
             .await;
+    })
+    .await;
+}
+
+fn store_layer_row_group_update(
+    entity_type: &EntityType,
+    block: BlockNumber,
+    data: impl IntoIterator<Item = (EntityKey, Entity)>,
+) -> RowGroup {
+    let mut group = RowGroup::new(entity_type.clone());
+    for (key, data) in data {
+        group
+            .push(EntityModification::overwrite(key, data, block), block)
+            .unwrap();
+    }
+    group
+}
+
+fn store_layer_row_group_delete(
+    entity_type: &EntityType,
+    block: BlockNumber,
+    data: impl IntoIterator<Item = EntityKey>,
+) -> RowGroup {
+    let mut group = RowGroup::new(entity_type.clone());
+    for key in data {
+        group
+            .push(EntityModification::remove(key, block), block)
+            .unwrap();
+    }
+    group
+}
+
+#[graph::test]
+async fn skip_duplicates_update_returns_ok() {
+    run_test(async |conn, layout| {
+        let entity = entity! { layout.input_schema =>
+            id: "sd1",
+            order: 1,
+            vid: 0i64
+        };
+        let key = SKIP_DUP_MINK_TYPE.key(entity.id());
+        let entities = vec![(key, entity)];
+        let group = store_layer_row_group_update(&SKIP_DUP_MINK_TYPE, 1, entities);
+        let result = layout.update(conn, &group, &MOCK_STOPWATCH).await;
+        assert_eq!(result.unwrap(), 0);
+    })
+    .await;
+}
+
+#[graph::test]
+async fn skip_duplicates_delete_returns_ok() {
+    run_test(async |conn, layout| {
+        let key = SKIP_DUP_MINK_TYPE.parse_key("sd1").unwrap();
+        let group = store_layer_row_group_delete(&SKIP_DUP_MINK_TYPE, 1, vec![key]);
+        let result = layout.delete(conn, &group, &MOCK_STOPWATCH).await;
+        assert_eq!(result.unwrap(), 0);
     })
     .await;
 }

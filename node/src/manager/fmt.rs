@@ -76,8 +76,8 @@ pub fn abbreviate(name: &str, size: usize) -> String {
         let last = name.len() - fragment;
         let mut name = name.to_string();
         name.replace_range(fragment..last, "..");
-        let table = name.trim().to_string();
-        table
+
+        name.trim().to_string()
     } else {
         name.to_string()
     }

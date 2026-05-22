@@ -16,4 +16,7 @@ pub struct IndexingState {
     pub skip_ptr_updates_timer: Instant,
     pub entity_lfu_cache: EntityLfuCache,
     pub cached_head_ptr: Option<BlockPtr>,
+    /// Set to `true` once postponed indexes have been created. This
+    /// ensures we only trigger index creation once per subgraph run.
+    pub postponed_indexes_created: bool,
 }

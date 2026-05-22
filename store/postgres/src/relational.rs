@@ -15,21 +15,22 @@ mod ddl_tests;
 mod query_tests;
 
 pub(crate) mod dsl;
+pub(crate) mod dump;
 pub(crate) mod index;
 pub(crate) mod prune;
-mod rollup;
+pub(crate) mod restore;
+pub(crate) mod rollup;
 pub(crate) mod value;
 
 use diesel::deserialize::FromSql;
 use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Text;
-use diesel::{debug_query, sql_query, OptionalExtension, QueryDsl, QueryResult};
-use diesel_async::scoped_futures::ScopedFutureExt;
+use diesel::{OptionalExtension, QueryDsl, QueryResult, debug_query, sql_query};
 use diesel_async::{AsyncConnection, RunQueryDsl, SimpleAsyncConnection};
 
-use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::blockchain::BlockTime;
+use graph::blockchain::block_stream::{EntityOperationKind, EntitySourceOperation};
 use graph::cheap_clone::CheapClone;
 use graph::components::store::write::{RowGroup, WriteChunk};
 use graph::data::graphql::TypeExt as _;
@@ -37,13 +38,12 @@ use graph::data::query::Trace;
 use graph::data::value::Word;
 use graph::data_source::CausalityRegion;
 use graph::internal_error;
-use graph::prelude::{q, EntityQuery, StopwatchMetrics, ENV_VARS};
+use graph::prelude::{ENV_VARS, EntityQuery, StopwatchMetrics, q};
 use graph::schema::{
     AggregationInterval, EntityKey, EntityType, Field, FulltextConfig, FulltextDefinition,
     InputSchema,
 };
-use graph::slog::warn;
-use index::IndexList;
+use graph::slog::{debug, warn};
 use inflector::Inflector;
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -69,17 +69,17 @@ use crate::{
     },
 };
 use graph::components::store::{AttributeNames, DerivedEntityQuery};
-use graph::data::store::{IdList, IdType, BYTES_SCALAR};
+use graph::data::store::{BYTES_SCALAR, IdList, IdType};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
-    anyhow, info, BlockNumber, DeploymentHash, Entity, EntityOperation, Logger,
-    QueryExecutionError, StoreError, ValueType,
+    BlockNumber, DeploymentHash, Entity, EntityOperation, Logger, QueryExecutionError, StoreError,
+    ValueType, anyhow, info,
 };
 
-use crate::block_range::{BoundSide, BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
-pub use crate::catalog::Catalog;
 use crate::ForeignServer;
-use crate::{catalog, deployment, AsyncPgConnection};
+use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BoundSide, CAUSALITY_REGION_COLUMN};
+pub use crate::catalog::Catalog;
+use crate::{AsyncPgConnection, catalog, deployment};
 
 use self::rollup::Rollup;
 
@@ -237,7 +237,7 @@ pub struct Layout {
     pub input_schema: InputSchema,
 
     /// The rollups for aggregations in this layout
-    rollups: Vec<Rollup>,
+    pub(crate) rollups: Vec<Rollup>,
 }
 
 impl Layout {
@@ -371,6 +371,7 @@ impl Layout {
             position: position as u32,
             is_account_like: false,
             immutable: false,
+            skip_duplicates: false,
             has_causality_region: false,
         }
     }
@@ -380,13 +381,12 @@ impl Layout {
         site: Arc<Site>,
         schema: &InputSchema,
         entities_with_causality_region: BTreeSet<EntityType>,
-        index_def: Option<IndexList>,
     ) -> Result<Layout, StoreError> {
         let catalog =
             Catalog::for_creation(conn, site.cheap_clone(), entities_with_causality_region).await?;
         let layout = Self::new(site, schema, catalog)?;
         let sql = layout
-            .as_ddl(index_def)
+            .as_ddl()
             .map_err(|_| StoreError::Unknown(anyhow!("failed to generate DDL for layout")))?;
         conn.batch_execute(&sql).await?;
         Ok(layout)
@@ -653,7 +653,7 @@ impl Layout {
 
         // sort the elements in each blocks bucket by vid
         for vec in entities.values_mut() {
-            vec.sort_by(|a, b| a.vid.cmp(&b.vid));
+            vec.sort_by_key(|a| a.vid);
         }
 
         Ok(entities)
@@ -767,43 +767,59 @@ impl Layout {
         // We insert the entities in chunks to make sure each operation does
         // not exceed the maximum number of bindings allowed in queries
         let chunk_size = InsertQuery::chunk_size(table);
+        let mut affected_rows: usize = 0;
+        let mut expected_rows: usize = 0;
         for chunk in group.write_chunks(chunk_size) {
             // Empty chunks would lead to invalid SQL
             if !chunk.is_empty() {
-                if let Err(e) = InsertQuery::new(table, &chunk)?.execute(conn).await {
-                    // We occasionally get these errors but it's entirely
-                    // unclear what causes them. We work around that by
-                    // switching to row-by-row inserts until we can figure
-                    // out what the underlying cause is
-                    let err_msg = e.to_string();
-                    if !err_msg.contains("value too large to transmit") {
-                        let (block, msg) = chunk_details(&chunk);
-                        return Err(StoreError::write_failure(
-                            e,
-                            table.object.as_str(),
-                            block,
-                            msg,
-                        ));
+                expected_rows += chunk.len();
+                match InsertQuery::new(table, &chunk)?.execute(conn).await {
+                    Ok(count) => {
+                        affected_rows += count;
                     }
-                    let (block, msg) = chunk_details(&chunk);
-                    warn!(logger, "Insert of entire chunk failed. Trying row by row insert.";
-                        "table" => table.object.as_str(),
-                        "block" => block,
-                        "error" => err_msg,
-                        "details" => msg
-                    );
-                    for single_chunk in chunk.as_single_writes() {
-                        InsertQuery::new(table, &single_chunk)?
-                            .execute(conn)
-                            .await
-                            .map_err(|e| {
-                                let (block, msg) = chunk_details(&single_chunk);
-                                let msg = format!("{}: offending row {:?}", msg, single_chunk);
-                                StoreError::write_failure(e, table.object.as_str(), block, msg)
-                            })?;
+                    Err(e) => {
+                        // We occasionally get these errors but it's entirely
+                        // unclear what causes them. We work around that by
+                        // switching to row-by-row inserts until we can figure
+                        // out what the underlying cause is
+                        let err_msg = e.to_string();
+                        if !err_msg.contains("value too large to transmit") {
+                            let (block, msg) = chunk_details(&chunk);
+                            return Err(StoreError::write_failure(
+                                e,
+                                table.object.as_str(),
+                                block,
+                                msg,
+                            ));
+                        }
+                        let (block, msg) = chunk_details(&chunk);
+                        warn!(logger, "Insert of entire chunk failed. Trying row by row insert.";
+                            "table" => table.object.as_str(),
+                            "block" => block,
+                            "error" => err_msg,
+                            "details" => msg
+                        );
+                        for single_chunk in chunk.as_single_writes() {
+                            let count = InsertQuery::new(table, &single_chunk)?
+                                .execute(conn)
+                                .await
+                                .map_err(|e| {
+                                    let (block, msg) = chunk_details(&single_chunk);
+                                    let msg = format!("{}: offending row {:?}", msg, single_chunk);
+                                    StoreError::write_failure(e, table.object.as_str(), block, msg)
+                                })?;
+                            affected_rows += count;
+                        }
                     }
                 }
             }
+        }
+        if affected_rows < expected_rows && table.immutable && table.skip_duplicates {
+            debug!(logger, "Cross-batch duplicate inserts skipped by ON CONFLICT DO NOTHING";
+                "entity_type" => table.object.as_str(),
+                "expected_rows" => expected_rows,
+                "affected_rows" => affected_rows,
+                "skipped" => expected_rows - affected_rows);
         }
         Ok(())
     }
@@ -882,20 +898,18 @@ impl Layout {
             query.block,
             query.query_id,
             &self.site,
+            query.aggregation_current,
         )?;
 
         let query_clone = query.clone();
 
         let start = Instant::now();
         let values = conn
-            .transaction(|conn| {
-                async {
-                    if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
-                        conn.batch_execute(timeout_sql).await?;
-                    }
-                    query.load::<EntityData>(conn).await
+            .transaction(async |conn| {
+                if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
+                    conn.batch_execute(timeout_sql).await?;
                 }
-                .scope_boxed()
+                query.load::<EntityData>(conn).await
             })
             .await
             .map_err(|e| {
@@ -946,6 +960,9 @@ impl Layout {
     ) -> Result<usize, StoreError> {
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable && group.has_clamps() {
+            if table.skip_duplicates {
+                return Ok(0);
+            }
             let ids = group
                 .ids()
                 .map(|id| id.to_string())
@@ -1011,9 +1028,13 @@ impl Layout {
 
         let table = self.table_for_entity(&group.entity_type)?;
         if table.immutable {
+            if table.skip_duplicates {
+                return Ok(0);
+            }
             return Err(internal_error!(
                 "entities of type `{}` can not be deleted since they are immutable. Entity ids are [{}]",
-                table.object, group.ids().join(", ")
+                table.object,
+                group.ids().join(", ")
             ));
         }
 
@@ -1659,6 +1680,8 @@ pub struct Table {
     /// deleted
     pub(crate) immutable: bool,
 
+    pub(crate) skip_duplicates: bool,
+
     /// Whether this table has an explicit `causality_region` column. If `false`, then the column is
     /// not present and the causality region for all rows is implicitly `0` (equivalent to CasualityRegion::ONCHAIN).
     pub(crate) has_causality_region: bool,
@@ -1689,6 +1712,7 @@ impl Table {
             .collect::<Result<Vec<Column>, StoreError>>()?;
         let qualified_name = SqlName::qualified_name(&catalog.site.namespace, &table_name);
         let immutable = defn.is_immutable();
+        let skip_duplicates = defn.skip_duplicates();
         let nsp = catalog.site.namespace.clone();
         let table = Table {
             object: defn.cheap_clone(),
@@ -1702,6 +1726,7 @@ impl Table {
             columns,
             position,
             immutable,
+            skip_duplicates,
             has_causality_region,
         };
         Ok(table)
@@ -1719,6 +1744,7 @@ impl Table {
             is_account_like: self.is_account_like,
             position: self.position,
             immutable: self.immutable,
+            skip_duplicates: self.skip_duplicates,
             has_causality_region: self.has_causality_region,
         };
 

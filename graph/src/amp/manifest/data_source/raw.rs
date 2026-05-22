@@ -11,7 +11,7 @@ use itertools::Itertools;
 use lazy_regex::regex_is_match;
 use semver::Version;
 use serde::Deserialize;
-use slog::{debug, error, Logger};
+use slog::{Logger, debug, error};
 use thiserror::Error;
 
 use super::{Abi, DataSource, Source, Table, Transformer};
@@ -698,9 +698,9 @@ impl IsDeterministic for Error {
 
 fn validate_ident(s: &str) -> Result<(), Error> {
     if !regex_is_match!("^[a-zA-Z_][a-zA-Z0-9_-]{0,100}$", s) {
-        return Err(Error::InvalidValue(
-            anyhow!("invalid identifier '{s}': must start with a letter or an underscore, and contain only letters, numbers, hyphens, and underscores")
-        ));
+        return Err(Error::InvalidValue(anyhow!(
+            "invalid identifier '{s}': must start with a letter or an underscore, and contain only letters, numbers, hyphens, and underscores"
+        )));
     }
     Ok(())
 }

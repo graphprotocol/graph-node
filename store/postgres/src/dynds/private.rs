@@ -1,23 +1,25 @@
 use std::{collections::HashMap, ops::Bound};
 
 use diesel::{
-    pg::{sql_types, Pg},
+    ExpressionMethods, OptionalExtension, QueryDsl, QueryResult,
+    pg::{Pg, sql_types},
     query_builder::{AstPass, QueryFragment, QueryId},
     sql_query,
-    sql_types::{Binary, Bool, Integer, Jsonb, Nullable},
-    ExpressionMethods, OptionalExtension, QueryDsl, QueryResult,
+    sql_types::{BigInt, Binary, Bool, Integer, Jsonb, Nullable, Text},
 };
 use diesel_async::RunQueryDsl;
 
 use graph::{
-    anyhow::{anyhow, Context},
-    components::store::{write, StoredDynamicDataSource},
+    anyhow::{Context, anyhow},
+    components::store::{StoredDynamicDataSource, write},
     data_source::CausalityRegion,
     internal_error,
-    prelude::{serde_json, BlockNumber, StoreError},
+    prelude::{BlockNumber, StoreError, serde_json},
 };
 
-use crate::{primary::Namespace, relational_queries::POSTGRES_MAX_PARAMETERS, AsyncPgConnection};
+use crate::parquet::convert::DataSourceRestoreRow;
+
+use crate::{AsyncPgConnection, primary::Namespace, relational_queries::POSTGRES_MAX_PARAMETERS};
 
 type DynTable = diesel_dynamic_schema::Table<String, Namespace>;
 type DynColumn<ST> = diesel_dynamic_schema::Column<DynTable, &'static str, ST>;
@@ -55,6 +57,10 @@ impl DataSourcesTable {
             done_at: table.column("done_at"),
             table,
         }
+    }
+
+    pub(crate) fn qualified_name(&self) -> &str {
+        &self.qname
     }
 
     pub(crate) fn as_ddl(&self) -> String {
@@ -175,10 +181,10 @@ impl DataSourcesTable {
                 // Offchain data sources have a unique causality region assigned from a sequence in the
                 // database, while onchain data sources always have causality region 0.
                 let query = format!(
-                "insert into {}(block_range, manifest_idx, param, context, causality_region, done_at) \
+                    "insert into {}(block_range, manifest_idx, param, context, causality_region, done_at) \
                             values (int4range($1, null), $2, $3, $4, $5, $6)",
-                self.qname
-            );
+                    self.qname
+                );
 
                 let query = sql_query(query)
                     .bind::<Nullable<Integer>, _>(creation_block)
@@ -305,10 +311,10 @@ impl DataSourcesTable {
 
                 if count > 1 {
                     return Err(internal_error!(
-                    "expected to remove at most one offchain data source but would remove {}, causality region: {}",
-                    count,
-                    ds.causality_region
-                ));
+                        "expected to remove at most one offchain data source but would remove {}, causality region: {}",
+                        count,
+                        ds.causality_region
+                    ));
                 }
             }
         }
@@ -331,6 +337,25 @@ impl DataSourcesTable {
             .first::<CausalityRegion>(conn)
             .await
             .optional()?)
+    }
+
+    /// Insert rows from a dump/restore into the `data_sources$` table.
+    /// Rows are batched to stay within PostgreSQL's bind parameter limit.
+    pub(crate) async fn insert_rows(
+        &self,
+        conn: &mut AsyncPgConnection,
+        rows: &[DataSourceRestoreRow],
+    ) -> Result<usize, StoreError> {
+        let chunk_size = POSTGRES_MAX_PARAMETERS / RestoreDsQuery::BIND_PARAMS;
+        let mut count = 0;
+        for chunk in rows.chunks(chunk_size) {
+            let query = RestoreDsQuery {
+                qname: &self.qname,
+                rows: chunk,
+            };
+            count += query.execute(conn).await?;
+        }
+        Ok(count)
     }
 }
 
@@ -465,6 +490,61 @@ impl<'a> QueryFragment<Pg> for CopyDsQuery<'a> {
 }
 
 impl<'a> QueryId for CopyDsQuery<'a> {
+    type QueryId = ();
+
+    const HAS_STATIC_QUERY_ID: bool = false;
+}
+
+struct RestoreDsQuery<'a> {
+    qname: &'a str,
+    rows: &'a [DataSourceRestoreRow],
+}
+
+impl<'a> RestoreDsQuery<'a> {
+    const BIND_PARAMS: usize = 10;
+}
+
+impl<'a> QueryFragment<Pg> for RestoreDsQuery<'a> {
+    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
+        out.unsafe_to_cache_prepared();
+        out.push_sql("insert into ");
+        out.push_sql(self.qname);
+        out.push_sql(
+            "(vid, block_range, causality_region, manifest_idx, \
+             parent, id, param, context, done_at) values ",
+        );
+        for (i, row) in self.rows.iter().enumerate() {
+            if i > 0 {
+                out.push_sql(", ");
+            }
+            out.push_sql("(");
+            out.push_bind_param::<BigInt, _>(&row.vid)?;
+            out.push_sql(", int4range(");
+            out.push_bind_param::<Integer, _>(&row.block_range_start)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Nullable<Integer>, _>(&row.block_range_end)?;
+            out.push_sql("), ");
+            out.push_bind_param::<Integer, _>(&row.causality_region)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Integer, _>(&row.manifest_idx)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Nullable<Integer>, _>(&row.parent)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Nullable<Binary>, _>(&row.id)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Nullable<Binary>, _>(&row.param)?;
+            out.push_sql(", ");
+            out.push_bind_param::<Nullable<Text>, _>(&row.context)?;
+            out.push_sql("::jsonb, ");
+            out.push_bind_param::<Nullable<Integer>, _>(&row.done_at)?;
+            out.push_sql(")");
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> QueryId for RestoreDsQuery<'a> {
     type QueryId = ();
 
     const HAS_STATIC_QUERY_ID: bool = false;

@@ -1,11 +1,11 @@
 use std::collections::{BTreeSet, HashSet};
 
 use graph::{
-    components::store::{AttributeNames, ChildMultiplicity, EntityOrder},
+    components::store::{AggregationCurrent, AttributeNames, ChildMultiplicity, EntityOrder},
     data::{graphql::ObjectOrInterface, store::ID},
     env::ENV_VARS,
-    prelude::{anyhow, q, r, s, QueryExecutionError, ValueMap},
-    schema::{ast::ObjectType, kw, AggregationInterval, ApiSchema, EntityType},
+    prelude::{QueryExecutionError, ValueMap, anyhow, q, r, s},
+    schema::{AggregationInterval, ApiSchema, EntityType, ast::ObjectType, kw},
 };
 
 /// A selection set is a table that maps object types to the fields that
@@ -363,6 +363,26 @@ impl Field {
                 )),
             })
             .transpose()
+    }
+
+    pub fn aggregation_current(&self) -> Result<Option<AggregationCurrent>, QueryExecutionError> {
+        let Some(value) = self.argument_value(kw::CURRENT) else {
+            return Ok(None);
+        };
+
+        if let r::Value::Enum(current) = value {
+            match current.as_str() {
+                "exclude" => return Ok(Some(AggregationCurrent::Exclude)),
+                "include" => return Ok(Some(AggregationCurrent::Include)),
+                _ => {}
+            }
+        }
+
+        Err(QueryExecutionError::InvalidArgumentError(
+            self.position,
+            kw::CURRENT.to_string(),
+            q::Value::from(value.clone()),
+        ))
     }
 }
 

@@ -1,18 +1,19 @@
 use std::iter::FromIterator;
 use std::{collections::HashMap, sync::Arc};
 
-use graph::prelude::{o, MetricsRegistry, NodeId};
+use graph::components::store::BLOCK_CACHE_SIZE;
+use graph::prelude::{MetricsRegistry, NodeId, o};
 use graph::slog::warn;
 use graph::url::Url;
 use graph::{
-    prelude::{info, CheapClone, Logger},
+    prelude::{CheapClone, Logger, info},
     util::security::SafeDisplay,
 };
 use graph_store_postgres::{
     BlockStore as DieselBlockStore, ChainHeadUpdateListener as PostgresChainHeadUpdateListener,
-    ChainStoreMetrics, ConnectionPool, ForeignServer, NotificationSender, PoolCoordinator,
-    PoolRole, Shard as ShardName, Store as DieselStore, SubgraphStore, SubscriptionManager,
-    PRIMARY_SHARD,
+    ChainStoreMetrics, ConnectionPool, ForeignServer, NotificationSender, PRIMARY_SHARD,
+    PoolCoordinator, PoolRole, Shard as ShardName, Store as DieselStore, SubgraphStore,
+    SubscriptionManager,
 };
 
 use crate::config::{Config, Shard};
@@ -24,7 +25,8 @@ pub struct StoreBuilder {
     subscription_manager: Arc<SubscriptionManager>,
     chain_head_update_listener: Arc<PostgresChainHeadUpdateListener>,
     /// Map network names to the shards where they are/should be stored
-    chains: HashMap<String, ShardName>,
+    /// and their cache_size setting
+    chains: HashMap<String, (ShardName, i32)>,
     pub coord: Arc<PoolCoordinator>,
     registry: Arc<MetricsRegistry>,
 }
@@ -65,7 +67,7 @@ impl StoreBuilder {
         let chains = HashMap::from_iter(config.chains.chains.iter().map(|(name, chain)| {
             let shard = ShardName::new(chain.shard.to_string())
                 .expect("config validation catches invalid names");
-            (name.to_string(), shard)
+            (name.to_string(), (shard, chain.cache_size))
         }));
 
         let chain_head_update_listener = Arc::new(PostgresChainHeadUpdateListener::new(
@@ -177,15 +179,18 @@ impl StoreBuilder {
         logger: &Logger,
         pools: HashMap<ShardName, ConnectionPool>,
         subgraph_store: Arc<SubgraphStore>,
-        chains: HashMap<String, ShardName>,
+        chains: HashMap<String, (ShardName, i32)>,
         networks: Vec<String>,
         registry: Arc<MetricsRegistry>,
     ) -> Arc<DieselStore> {
         let networks = networks
             .into_iter()
             .map(|name| {
-                let shard = chains.get(&name).unwrap_or(&*PRIMARY_SHARD).clone();
-                (name, shard)
+                let (shard, cache_size) = chains
+                    .get(&name)
+                    .cloned()
+                    .unwrap_or_else(|| (PRIMARY_SHARD.clone(), BLOCK_CACHE_SIZE));
+                (name, shard, cache_size)
             })
             .collect();
 

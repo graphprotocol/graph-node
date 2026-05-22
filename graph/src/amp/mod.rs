@@ -11,7 +11,7 @@ pub mod sql;
 pub mod stream_aggregator;
 
 pub use self::{
-    client::{flight_client::FlightClient, Client},
+    client::{Client, flight_client::FlightClient},
     codec::Codec,
     manifest::Manifest,
 };

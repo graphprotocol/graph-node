@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use semver::Version;
 
 use super::{
-    gas::GasCounter, AscIndexId, AscPtr, AscType, DeterministicHostError, HostExportError,
-    IndexForAscTypeId,
+    AscIndexId, AscPtr, AscType, DeterministicHostError, HostExportError, IndexForAscTypeId,
+    gas::GasCounter,
 };
 
 // A 128 limit is plenty for any subgraph, while the `fn recursion_limit` test ensures it is not

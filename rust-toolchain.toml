@@ -1,4 +1,9 @@
 [toolchain]
-channel = "stable"
+# Pinned to 1.94.0 because Rust 1.95.0 has a compiler regression where
+# the `core` crate hits a recursion limit resolving NonZero niche types
+# ("queries overflow the depth limit!" in niche_types.rs). See
+# https://github.com/rust-lang/rust/issues/152942 for details. Switch
+# back to "stable" once a fixed release (1.95.1+ or 1.96.0) is available.
+channel = "1.94.0"
 profile = "default"
 components = [ "rustfmt" ]

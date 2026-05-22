@@ -30,4 +30,4 @@ pub use object_or_interface::ObjectOrInterface;
 
 pub mod object_macro;
 pub use crate::object;
-pub use object_macro::{object_value, IntoValue};
+pub use object_macro::{IntoValue, object_value};

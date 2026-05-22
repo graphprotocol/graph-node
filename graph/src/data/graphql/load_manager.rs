@@ -14,7 +14,7 @@ use crate::components::store::{DeploymentId, PoolWaitStats};
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
 use crate::prelude::q;
-use crate::prelude::{debug, info, o, warn, Logger, ENV_VARS};
+use crate::prelude::{ENV_VARS, Logger, debug, info, o, warn};
 use crate::util::stats::MovingStats;
 
 const SHARD_LABEL: [&str; 1] = ["shard"];
@@ -417,24 +417,25 @@ impl LoadManager {
         let total_effort = total_effort.as_millis() as f64;
 
         // When this variable is not set, we never jail any queries.
-        if let Some(jail_threshold) = ENV_VARS.load_jail_threshold {
-            if known_query && query_effort / total_effort > jail_threshold {
-                // Any single query that causes at least JAIL_THRESHOLD of the
-                // effort in an overload situation gets killed
-                warn!(self.logger, "Jailing query";
+        if let Some(jail_threshold) = ENV_VARS.load_jail_threshold
+            && known_query
+            && query_effort / total_effort > jail_threshold
+        {
+            // Any single query that causes at least JAIL_THRESHOLD of the
+            // effort in an overload situation gets killed
+            warn!(self.logger, "Jailing query";
                 "query" => query,
                 "sgd" => format!("sgd{}", qref.id),
                 "wait_ms" => wait_ms.as_millis(),
                 "query_effort_ms" => query_effort,
                 "total_effort_ms" => total_effort,
                 "ratio" => format!("{:.4}", query_effort/total_effort));
-                self.jailed_queries.write().insert(qref);
-                return if ENV_VARS.load_simulate {
-                    Proceed
-                } else {
-                    TooExpensive
-                };
-            }
+            self.jailed_queries.write().insert(qref);
+            return if ENV_VARS.load_simulate {
+                Proceed
+            } else {
+                TooExpensive
+            };
         }
 
         // Kill random queries in case we have no queries, or not enough queries

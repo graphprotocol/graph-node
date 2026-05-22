@@ -1,8 +1,8 @@
 use diesel_async::SimpleAsyncConnection;
 use graph::{
     prelude::{
+        ENV_VARS, StoreError,
         anyhow::{self, anyhow, bail},
-        StoreError, ENV_VARS,
     },
     util::security::SafeDisplay,
 };
@@ -12,8 +12,8 @@ use std::fmt::Write;
 use postgres::config::{Config, Host};
 
 use crate::primary::NAMESPACE_PUBLIC;
-use crate::{catalog, AsyncPgConnection};
-use crate::{Shard, PRIMARY_SHARD};
+use crate::{AsyncPgConnection, catalog};
+use crate::{PRIMARY_SHARD, Shard};
 
 use super::{PRIMARY_PUBLIC, PRIMARY_TABLES, SHARDED_TABLES};
 

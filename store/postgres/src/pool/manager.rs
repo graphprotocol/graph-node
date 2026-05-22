@@ -9,20 +9,20 @@ use diesel::IntoSql;
 use diesel_async::pooled_connection::{PoolError as DieselPoolError, PoolableConnection};
 use diesel_async::{AsyncConnection, RunQueryDsl};
 use graph::env::ENV_VARS;
-use graph::prelude::error;
 use graph::prelude::AtomicMovingStats;
 use graph::prelude::Counter;
 use graph::prelude::Gauge;
 use graph::prelude::MetricsRegistry;
 use graph::prelude::PoolWaitStats;
-use graph::slog::info;
+use graph::prelude::error;
 use graph::slog::Logger;
+use graph::slog::info;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::pool::AsyncPool;

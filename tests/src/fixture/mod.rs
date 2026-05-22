@@ -20,7 +20,8 @@ use graph::blockchain::{
 };
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{
-    ArweaveClient, ArweaveResolver, FileLinkResolver, FileSizeLimit, LinkResolverContext,
+    ArweaveClient, ArweaveClientError, ArweaveResolver, FileLinkResolver, FileSizeLimit,
+    LinkResolverContext,
 };
 use graph::components::metrics::MetricsRegistry;
 use graph::components::network_provider::ChainName;
@@ -35,29 +36,30 @@ use graph::env::EnvVars;
 use graph::firehose::{FirehoseEndpoint, FirehoseEndpoints, SubgraphLimit};
 use graph::futures03::{Stream, StreamExt};
 use graph::http_body_util::Full;
-use graph::hyper::body::Bytes;
 use graph::hyper::Request;
+use graph::hyper::body::Bytes;
 use graph::ipfs::{IpfsClient, IpfsMetrics};
 use graph::prelude::alloy::primitives::B256;
 use graph::prelude::alloy::primitives::U256;
 use graph::prelude::serde_json::{self, json};
 use graph::prelude::{
-    lazy_static, q, r, ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _,
-    IpfsResolver, LinkResolver, LoggerFactory, NodeId, QueryError, SubgraphCountMetric,
-    SubgraphName, SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode,
-    TriggerProcessor,
+    ApiVersion, BigInt, BlockNumber, DeploymentHash, GraphQlRunner as _, IpfsResolver,
+    LinkResolver, LoggerFactory, NodeId, QueryError, SubgraphCountMetric, SubgraphName,
+    SubgraphRegistrar, SubgraphStore as _, SubgraphVersionSwitchingMode, TriggerProcessor,
+    lazy_static, q, r,
 };
+use graph_chain_ethereum::Chain;
 use graph_chain_ethereum::chain::RuntimeAdapterBuilder;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
-use graph_chain_ethereum::Chain;
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
+use graph_node::config::Opt;
 use graph_node::manager::PanicSubscriptionManager;
 use graph_node::{config::Config, store_builder::StoreBuilder};
 use graph_runtime_wasm::RuntimeHostBuilder;
 use graph_server_index_node::IndexNodeService;
 use graph_store_postgres::{ChainHeadUpdateListener, ChainStore, Store, SubgraphStore};
 use serde::Deserialize;
-use slog::{crit, debug, info, o, Discard, Logger};
+use slog::{Discard, Logger, crit, debug, info, o};
 use std::env::VarError;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -358,11 +360,12 @@ graph::prelude::lazy_static! {
 }
 
 fn test_logger(test_name: &str) -> Logger {
-    graph::log::logger(true).new(o!("test" => test_name.to_string()))
+    crate::output::test_logger(test_name)
 }
 
 #[allow(clippy::await_holding_lock)]
 pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
+    graph::tls::install_default_crypto_provider();
     let _mutex_guard = STORE_MUTEX.lock().unwrap();
 
     let config = {
@@ -376,7 +379,7 @@ pub async fn stores(test_name: &str, store_config_path: &str) -> Stores {
             Err(e) => panic!("{}", e.to_string()),
         };
         let config = config.replace("$THEGRAPH_STORE_POSTGRES_DIESEL_URL", &db_url);
-        Config::from_str(&config, "default").expect("failed to create configuration")
+        Config::from_str(&config, &Opt::default()).expect("failed to create configuration")
     };
 
     let logger = test_logger(test_name);
@@ -422,6 +425,38 @@ pub struct TestInfo {
     pub hash: DeploymentHash,
 }
 
+#[derive(Debug)]
+pub struct StaticArweaveResolver {
+    content: HashMap<String, Vec<u8>>,
+}
+
+impl StaticArweaveResolver {
+    pub fn new(content: HashMap<String, Vec<u8>>) -> Self {
+        Self { content }
+    }
+}
+
+#[async_trait]
+impl ArweaveResolver for StaticArweaveResolver {
+    async fn get(
+        &self,
+        file: &graph::data_source::offchain::Base64,
+    ) -> Result<Vec<u8>, ArweaveClientError> {
+        self.get_with_limit(file, &FileSizeLimit::Unlimited).await
+    }
+
+    async fn get_with_limit(
+        &self,
+        file: &graph::data_source::offchain::Base64,
+        _limit: &FileSizeLimit,
+    ) -> Result<Vec<u8>, ArweaveClientError> {
+        self.content
+            .get(file.as_str())
+            .cloned()
+            .ok_or(ArweaveClientError::UnableToCheckFileSize)
+    }
+}
+
 pub async fn setup<C: Blockchain>(
     test_info: &TestInfo,
     stores: &Stores,
@@ -429,7 +464,7 @@ pub async fn setup<C: Blockchain>(
     graft_block: Option<BlockPtr>,
     env_vars: Option<EnvVars>,
 ) -> TestContext {
-    setup_inner(test_info, stores, chain, graft_block, env_vars, None).await
+    setup_inner(test_info, stores, chain, graft_block, env_vars, None, None).await
 }
 
 pub async fn setup_with_file_link_resolver<C: Blockchain>(
@@ -449,6 +484,27 @@ pub async fn setup_with_file_link_resolver<C: Blockchain>(
         graft_block,
         env_vars,
         Some(link_resolver),
+        None,
+    )
+    .await
+}
+
+pub async fn setup_with_arweave_resolver<C: Blockchain>(
+    test_info: &TestInfo,
+    stores: &Stores,
+    chain: &impl TestChainTrait<C>,
+    graft_block: Option<BlockPtr>,
+    env_vars: Option<EnvVars>,
+    arweave_resolver: Arc<dyn ArweaveResolver>,
+) -> TestContext {
+    setup_inner(
+        test_info,
+        stores,
+        chain,
+        graft_block,
+        env_vars,
+        None,
+        Some(arweave_resolver),
     )
     .await
 }
@@ -460,6 +516,7 @@ pub async fn setup_inner<C: Blockchain>(
     graft_block: Option<BlockPtr>,
     env_vars: Option<EnvVars>,
     link_resolver: Option<Arc<dyn LinkResolver>>,
+    arweave_resolver: Option<Arc<dyn ArweaveResolver>>,
 ) -> TestContext {
     let env_vars = Arc::new(match env_vars {
         Some(ev) => ev,
@@ -484,7 +541,7 @@ pub async fn setup_inner<C: Blockchain>(
 
     let ipfs_client: Arc<dyn IpfsClient> = Arc::new(
         graph::ipfs::IpfsRpcClient::new_unchecked(
-            graph::ipfs::ServerAddress::local_rpc_api(),
+            graph::ipfs::ServerAddress::test_rpc_api(),
             IpfsMetrics::new(&mock_registry),
             &logger,
         )
@@ -506,7 +563,8 @@ pub async fn setup_inner<C: Blockchain>(
         env_vars.mappings.ipfs_request_limit,
     );
 
-    let arweave_resolver = Arc::new(ArweaveClient::default());
+    let arweave_resolver: Arc<dyn ArweaveResolver> =
+        arweave_resolver.unwrap_or_else(|| Arc::new(ArweaveClient::default()));
     let arweave_service = arweave_service(
         arweave_resolver.cheap_clone(),
         env_vars.mappings.ipfs_request_limit,
@@ -557,6 +615,7 @@ pub async fn setup_inner<C: Blockchain>(
         stores.network_store.clone(),
         Arc::new(load_manager),
         mock_registry.clone(),
+        Arc::new(graph::components::log_store::NoOpLogStore),
     ));
 
     let indexing_status_service = Arc::new(IndexNodeService::new(
@@ -580,6 +639,7 @@ pub async fn setup_inner<C: Blockchain>(
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
         Arc::new(Settings::default()),
+        Arc::new(graph::components::network_provider::AmpChainNames::default()),
     ));
 
     SubgraphRegistrar::create_subgraph(
@@ -602,8 +662,6 @@ pub async fn setup_inner<C: Blockchain>(
     )
     .await
     .expect("failed to create subgraph version");
-
-    let arweave_resolver = Arc::new(ArweaveClient::default());
 
     TestContext {
         logger: logger_factory.subgraph_logger(&deployment),

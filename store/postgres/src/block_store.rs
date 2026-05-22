@@ -1,16 +1,16 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use graph::parking_lot::RwLock;
+use graph::{components::store::BLOCK_CACHE_SIZE, parking_lot::RwLock};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use diesel::{sql_query, ExpressionMethods as _, QueryDsl};
-use diesel_async::{scoped_futures::ScopedFutureExt, RunQueryDsl};
+use diesel::{ExpressionMethods as _, QueryDsl, sql_query};
+use diesel_async::RunQueryDsl;
 use graph::{
     blockchain::ChainIdentifier,
     components::store::{BlockStore as BlockStoreTrait, QueryPermit},
     derive::CheapClone,
-    prelude::{error, info, BlockNumber, BlockPtr, Logger, ENV_VARS},
+    prelude::{BlockNumber, BlockPtr, ENV_VARS, Logger, error, info, warn},
     slog::o,
 };
 use graph::{
@@ -21,11 +21,11 @@ use graph::{internal_error, prelude::CheapClone};
 use graph::{prelude::StoreError, util::timed_cache::TimedCache};
 
 use crate::{
+    AsyncPgConnection, ChainStore, NotificationSender, PRIMARY_SHARD, Shard,
     chain_head_listener::ChainHeadUpdateSender,
     chain_store::{ChainStoreMetrics, Storage},
     pool::ConnectionPool,
     primary::Mirror as PrimaryMirror,
-    AsyncPgConnection, ChainStore, NotificationSender, Shard, PRIMARY_SHARD,
 };
 
 use self::primary::Chain;
@@ -37,18 +37,10 @@ pub const FAKE_NETWORK_SHARED: &str = "fake_network_shared";
 // To be incremented on each breaking change to the database.
 const SUPPORTED_DB_VERSION: i64 = 3;
 
-/// The status of a chain: whether we can only read from the chain, or
-/// whether it is ok to ingest from it, too
-#[derive(Copy, Clone)]
-pub enum ChainStatus {
-    ReadOnly,
-    Ingestible,
-}
-
 pub mod primary {
     use std::convert::TryFrom;
 
-    use diesel::{delete, insert_into, update, ExpressionMethods, OptionalExtension, QueryDsl};
+    use diesel::{ExpressionMethods, OptionalExtension, QueryDsl, delete, insert_into, update};
     use diesel_async::RunQueryDsl;
     use graph::{
         blockchain::{BlockHash, ChainIdentifier},
@@ -56,7 +48,7 @@ pub mod primary {
         prelude::StoreError,
     };
 
-    use crate::{chain_store::Storage, AsyncPgConnection};
+    use crate::{AsyncPgConnection, chain_store::Storage};
     use crate::{ConnectionPool, Shard};
 
     table! {
@@ -225,8 +217,9 @@ pub struct Inner {
     /// known to the system at startup, either from configuration or from
     /// previous state in the database.
     stores: RwLock<HashMap<String, Arc<ChainStore>>>,
-    // We keep this information so we can create chain stores during startup
-    shards: Vec<(String, Shard)>,
+    /// We keep this information so we can create chain stores during
+    /// startup. The triple is (network, shard, cache_size)
+    shards: Vec<(String, Shard, BlockNumber)>,
     pools: HashMap<Shard, ConnectionPool>,
     sender: Arc<NotificationSender>,
     mirror: PrimaryMirror,
@@ -248,8 +241,8 @@ impl BlockStore {
     /// a chain uses the pool from `pools` for the given shard.
     pub async fn new(
         logger: Logger,
-        // (network, shard)
-        shards: Vec<(String, Shard)>,
+        // (network, shard, cache_size)
+        shards: Vec<(String, Shard, BlockNumber)>,
         // shard -> pool
         pools: HashMap<Shard, ConnectionPool>,
         sender: Arc<NotificationSender>,
@@ -260,9 +253,7 @@ impl BlockStore {
         const CHAIN_HEAD_CACHE_TTL: Duration = Duration::from_secs(2);
 
         let mirror = PrimaryMirror::new(&pools);
-        let existing_chains = mirror
-            .read_async(|conn| primary::load_chains(conn).scope_boxed())
-            .await?;
+        let existing_chains = mirror.read_async(primary::load_chains).await?;
         let chain_head_cache = TimedCache::new(CHAIN_HEAD_CACHE_TTL);
         let chains = shards.clone();
 
@@ -278,39 +269,22 @@ impl BlockStore {
         });
         let block_store = Self { inner };
 
-        /// Check that the configuration for `chain` hasn't changed so that
-        /// it is ok to ingest from it
-        fn chain_ingestible(
-            logger: &Logger,
-            chain: &primary::Chain,
-            shard: &Shard,
-            // ident: &ChainIdentifier,
-        ) -> bool {
-            if &chain.shard != shard {
-                error!(
-                    logger,
-                    "the chain {} is stored in shard {} but is configured for shard {}",
-                    chain.name,
-                    chain.shard,
-                    shard
-                );
-                return false;
-            }
-            true
-        }
-
         // For each configured chain, add a chain store
-        for (chain_name, shard) in chains {
+        for (chain_name, shard, _cache_size) in chains {
             if let Some(chain) = existing_chains
                 .iter()
                 .find(|chain| chain.name == chain_name)
             {
-                let status = if chain_ingestible(&block_store.logger, chain, &shard) {
-                    ChainStatus::Ingestible
-                } else {
-                    ChainStatus::ReadOnly
-                };
-                block_store.add_chain_store(chain, status, false).await?;
+                if chain.shard != shard {
+                    warn!(
+                        &block_store.logger,
+                        "The chain `{0}` is stored in shard `{1}` but is configured for shard `{2}`; ignoring config and using shard `{1}`",
+                        chain.name,
+                        chain.shard,
+                        shard,
+                    );
+                }
+                block_store.add_chain_store(chain, false).await?;
             };
         }
 
@@ -326,9 +300,7 @@ impl BlockStore {
             .iter()
             .filter(|chain| !configured_chains.contains(&chain.name))
         {
-            block_store
-                .add_chain_store(chain, ChainStatus::ReadOnly, false)
-                .await?;
+            block_store.add_chain_store(chain, false).await?;
         }
         Ok(block_store)
     }
@@ -376,7 +348,6 @@ impl BlockStore {
     pub async fn add_chain_store(
         &self,
         chain: &primary::Chain,
-        status: ChainStatus,
         create: bool,
     ) -> Result<Arc<ChainStore>, StoreError> {
         let pool = self
@@ -391,15 +362,26 @@ impl BlockStore {
         );
         let ident = chain.network_identifier()?;
         let logger = self.logger.new(o!("network" => chain.name.clone()));
+        let cache_size = self
+            .shards
+            .iter()
+            .find_map(|(network, _, chain_size)| {
+                if network == &chain.name {
+                    Some(*chain_size)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(BLOCK_CACHE_SIZE);
         let store = ChainStore::new(
             logger,
             chain.name.clone(),
             chain.storage.clone(),
-            status,
             sender,
             pool,
             ENV_VARS.store.recent_blocks_cache_capacity,
             self.chain_store_metrics.clone(),
+            cache_size,
         );
         if create {
             store.create(&ident).await?;
@@ -453,20 +435,15 @@ impl BlockStore {
         let chain = chain.to_string();
         let this = self.cheap_clone();
         self.mirror
-            .read_async(|conn| {
-                async {
-                    match primary::find_chain(conn, &chain).await? {
-                        Some(chain) => {
-                            let chain_store = this
-                                .add_chain_store(&chain, ChainStatus::ReadOnly, false)
-                                .await?;
-                            Ok(Some(chain_store))
-                        }
-                        None => Ok(None),
+            .read_async(
+                async |conn| match primary::find_chain(conn, &chain).await? {
+                    Some(chain) => {
+                        let chain_store = this.add_chain_store(&chain, false).await?;
+                        Ok(Some(chain_store))
                     }
-                }
-                .scope_boxed()
-            })
+                    None => Ok(None),
+                },
+            )
             .await
     }
 
@@ -596,7 +573,7 @@ impl BlockStore {
         let shard = self
             .shards
             .iter()
-            .find_map(|(chain_id, shard)| {
+            .find_map(|(chain_id, shard, _cache_size)| {
                 if chain_id.as_str().eq(network) {
                     Some(shard)
                 } else {
@@ -605,7 +582,7 @@ impl BlockStore {
             })
             .ok_or_else(|| anyhow!("unable to find shard for network {}", network))?;
         let chain = primary::add_chain(&mut conn, network, shard, ident).await?;
-        self.add_chain_store(&chain, ChainStatus::Ingestible, true)
+        self.add_chain_store(&chain, true)
             .await
             .map_err(anyhow::Error::from)
     }

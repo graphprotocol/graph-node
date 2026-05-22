@@ -114,10 +114,10 @@ impl AtomPool {
     /// Get the atom for `word`. Return `None` if the word is not in this
     /// pool or any of its ancestors.
     pub fn lookup(&self, word: &str) -> Option<Atom> {
-        if let Some(base) = &self.base {
-            if let Some(atom) = base.lookup(word) {
-                return Some(atom);
-            }
+        if let Some(base) = &self.base
+            && let Some(atom) = base.lookup(word)
+        {
+            return Some(atom);
         }
 
         self.words.get(word).cloned()
@@ -510,9 +510,7 @@ impl<V: PartialEq> PartialEq for Object<V> {
     }
 }
 
-impl<V: Eq> Eq for Object<V> {
-    fn assert_receiver_is_total_eq(&self) {}
-}
+impl<V: Eq> Eq for Object<V> {}
 
 impl<V: Serialize> Serialize for Object<V> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

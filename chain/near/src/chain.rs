@@ -14,17 +14,17 @@ use graph::prelude::MetricsRegistry;
 use graph::{
     anyhow::Result,
     blockchain::{
+        BlockHash, BlockPtr, Blockchain, EmptyNodeCapabilities, IngestorError,
+        RuntimeAdapter as RuntimeAdapterTrait,
         block_stream::{
             BlockStreamEvent, BlockWithTriggers, FirehoseError,
             FirehoseMapper as FirehoseMapperTrait, TriggersAdapter as TriggersAdapterTrait,
         },
         firehose_block_stream::FirehoseBlockStream,
-        BlockHash, BlockPtr, Blockchain, EmptyNodeCapabilities, IngestorError,
-        RuntimeAdapter as RuntimeAdapterTrait,
     },
     components::store::DeploymentLocator,
     firehose::{self as firehose, ForkStep},
-    prelude::{o, BlockNumber, Error, Logger, LoggerFactory},
+    prelude::{BlockNumber, Error, Logger, LoggerFactory, o},
 };
 use prost::Message;
 use std::collections::BTreeSet;
@@ -197,7 +197,9 @@ impl Blockchain for Chain {
         _logger: &Logger,
         _cursor: FirehoseCursor,
     ) -> Result<codec::Block, Error> {
-        unimplemented!("This chain does not support Dynamic Data Sources. is_refetch_block_required always returns false, this shouldn't be called.")
+        unimplemented!(
+            "This chain does not support Dynamic Data Sources. is_refetch_block_required always returns false, this shouldn't be called."
+        )
     }
 
     async fn chain_head_ptr(&self) -> Result<Option<BlockPtr>, Error> {
@@ -367,7 +369,7 @@ impl BlockStreamMapper<Chain> for FirehoseMapper {
                 return Err(anyhow::anyhow!(
                     "near mapper is expected to always have a block"
                 ))
-                .map_err(BlockStreamError::from)
+                .map_err(BlockStreamError::from);
             }
         };
 
@@ -439,7 +441,9 @@ impl FirehoseMapperTrait<Chain> for FirehoseMapper {
             }
 
             StepFinal => {
-                panic!("irreversible step is not handled and should not be requested in the Firehose request")
+                panic!(
+                    "irreversible step is not handled and should not be requested in the Firehose request"
+                )
             }
 
             StepUnset => {
@@ -477,23 +481,23 @@ mod test {
     use std::{collections::HashSet, sync::Arc, vec};
 
     use graph::{
-        blockchain::{block_stream::BlockWithTriggers, DataSource as _, TriggersAdapter as _},
+        blockchain::{DataSource as _, TriggersAdapter as _, block_stream::BlockWithTriggers},
         data::subgraph::LATEST_VERSION,
         prelude::Link,
         semver::Version,
-        slog::{self, o, Logger},
+        slog::{self, Logger, o},
     };
 
     use crate::{
+        Chain,
         adapter::{NearReceiptFilter, TriggerFilter},
         codec::{
-            self, execution_outcome, receipt, Block, BlockHeader, DataReceiver, ExecutionOutcome,
-            ExecutionOutcomeWithId, IndexerExecutionOutcomeWithReceipt, IndexerShard,
-            ReceiptAction, SuccessValueExecutionStatus,
+            self, Block, BlockHeader, DataReceiver, ExecutionOutcome, ExecutionOutcomeWithId,
+            IndexerExecutionOutcomeWithReceipt, IndexerShard, ReceiptAction,
+            SuccessValueExecutionStatus, execution_outcome, receipt,
         },
-        data_source::{DataSource, Mapping, PartialAccounts, ReceiptHandler, NEAR_KIND},
+        data_source::{DataSource, Mapping, NEAR_KIND, PartialAccounts, ReceiptHandler},
         trigger::{NearTrigger, ReceiptWithOutcome},
-        Chain,
     };
 
     use super::TriggersAdapter;

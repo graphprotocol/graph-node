@@ -8,7 +8,7 @@ async-trait = { workspace = true }
 blake3 = "1.8"
 chrono = { workspace = true }
 deadpool = { workspace = true }
-derive_more = { version = "2.1.1", features = ["full"] }
+derive_more = { workspace = true, features = ["full"] }
 diesel = { workspace = true }
 diesel-async = { workspace = true }
 diesel-dynamic-schema = { workspace = true }
@@ -18,26 +18,28 @@ diesel_migrations = { workspace = true }
 fallible-iterator = "0.3.0"
 graph = { path = "../../graph" }
 graphman-store = { workspace = true }
-Inflector = "0.11.3"
-lazy_static = "1.5"
+Inflector = { workspace = true }
+lazy_static = { workspace = true }
 lru_time_cache = "0.11"
 postgres = "0.19.1"
-openssl = { version = "0.10.75", features = ["vendored"] }
-postgres-openssl = "0.5.2"
+openssl = { version = "0.10.80", features = ["vendored"] }
+postgres-openssl = "0.5.3"
 rand.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
-anyhow = "1.0.101"
-git-testament = "0.2.6"
+anyhow = "1.0.102"
+git-testament = { workspace = true }
 itertools = "0.14.0"
 hex = "0.4.3"
 pretty_assertions = "1.4.1"
 sqlparser = { workspace = true }
 thiserror = { workspace = true }
 serde_yaml.workspace = true
+arrow = { workspace = true }
+parquet = { workspace = true }
 
 [dev-dependencies]
 clap.workspace = true

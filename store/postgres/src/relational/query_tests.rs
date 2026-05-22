@@ -2,16 +2,18 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use diesel::{debug_query, pg::Pg};
 use graph::{
+    components::store::write::RowGroup,
     data_source::CausalityRegion,
-    prelude::{r, serde_json as json, DeploymentHash, EntityFilter},
+    entity,
+    prelude::{DeploymentHash, EntityFilter, r, serde_json as json},
     schema::InputSchema,
 };
 
 use crate::{
     block_range::BoundSide,
-    layout_for_tests::{make_dummy_site, Namespace},
+    layout_for_tests::{Namespace, make_dummy_site},
     relational::{Catalog, ColumnType, Layout},
-    relational_queries::{FindRangeQuery, FromColumnValue},
+    relational_queries::{FindRangeQuery, FromColumnValue, InsertQuery},
 };
 
 use crate::relational_queries::Filter;
@@ -194,6 +196,66 @@ fn test_id_type_casting(table: &crate::relational::Table, expected_cast: &str, t
         "{}: Expected '{}' in SQL, got: {}",
         test_name,
         expected_cast,
+        sql
+    );
+}
+
+fn insert_sql_for_schema(gql: &str, entity_type_name: &str) -> String {
+    use graph::components::store::write::EntityModification;
+
+    let layout = test_layout(gql);
+    let schema = &layout.input_schema;
+    let et = schema.entity_type(entity_type_name).unwrap();
+    let table = layout.table_for_entity(&et).unwrap();
+
+    let mut entity = entity! { schema => id: "test1" };
+    entity.set_vid(1).unwrap();
+    let key = et.key(graph::data::store::Id::String("test1".into()));
+    let emod = EntityModification::Insert {
+        key,
+        data: Arc::new(entity),
+        block: 1,
+        end: None,
+    };
+
+    let mut group = RowGroup::new(et);
+    group.push(emod, 1).unwrap();
+
+    let chunks: Vec<_> = group.write_chunks(100).collect();
+    let chunk = &chunks[0];
+    let query = InsertQuery::new(table.as_ref(), chunk).unwrap();
+    debug_query::<Pg, _>(&query).to_string()
+}
+
+#[test]
+fn skip_duplicates_insert_generates_on_conflict() {
+    let schema = "
+    type Thing @entity(immutable: true, skipDuplicates: true) {
+        id: String!
+    }";
+    let sql = insert_sql_for_schema(schema, "Thing");
+    assert!(
+        sql.contains("ON CONFLICT"),
+        "Expected ON CONFLICT in SQL for skip_duplicates immutable table, got: {}",
+        sql
+    );
+    assert!(
+        sql.contains("DO NOTHING"),
+        "Expected DO NOTHING in SQL for skip_duplicates immutable table, got: {}",
+        sql
+    );
+}
+
+#[test]
+fn default_immutable_insert_has_no_on_conflict_skip_duplicates() {
+    let schema = "
+    type Thing @entity(immutable: true) {
+        id: String!
+    }";
+    let sql = insert_sql_for_schema(schema, "Thing");
+    assert!(
+        !sql.contains("ON CONFLICT"),
+        "Default immutable table should NOT have ON CONFLICT, got: {}",
         sql
     );
 }

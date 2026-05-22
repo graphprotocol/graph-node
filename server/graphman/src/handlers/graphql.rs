@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use async_graphql::http::playground_source;
 use async_graphql::http::GraphQLPlaygroundConfig;
+use async_graphql::http::playground_source;
 use async_graphql_axum::GraphQLRequest;
 use async_graphql_axum::GraphQLResponse;
 use axum::extract::Extension;

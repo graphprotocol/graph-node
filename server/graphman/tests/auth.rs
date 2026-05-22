@@ -2,10 +2,10 @@ pub mod util;
 
 use serde_json::json;
 
-use self::util::client::send_graphql_request;
-use self::util::client::send_request;
 use self::util::client::BASE_URL;
 use self::util::client::CLIENT;
+use self::util::client::send_graphql_request;
+use self::util::client::send_request;
 use self::util::run_test;
 use self::util::server::INVALID_TOKEN;
 use self::util::server::VALID_TOKEN;

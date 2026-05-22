@@ -5,14 +5,14 @@ use graph::util::backoff::ExponentialBackoff;
 use lazy_static::lazy_static;
 use openssl::ssl::{SslConnector, SslMethod, SslVerifyMode};
 use postgres::Notification;
-use postgres::{fallible_iterator::FallibleIterator, Client};
+use postgres::{Client, fallible_iterator::FallibleIterator};
 use postgres_openssl::MakeTlsConnector;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc::{channel, Receiver};
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::{Receiver, channel};
 
 use graph::prelude::serde_json;
 use graph::prelude::*;
@@ -453,17 +453,17 @@ impl NotificationSender {
 
             // If we can't get the lock, another thread in this process is
             // already checking, and we can just skip checking
-            if let Ok(mut last_check) = LAST_CLEANUP_CHECK.try_lock() {
-                if last_check.elapsed() > ENV_VARS.store.large_notification_cleanup_interval {
-                    diesel::sql_query(format!(
-                        "delete from large_notifications
+            if let Ok(mut last_check) = LAST_CLEANUP_CHECK.try_lock()
+                && last_check.elapsed() > ENV_VARS.store.large_notification_cleanup_interval
+            {
+                diesel::sql_query(format!(
+                    "delete from large_notifications
                          where created_at < current_timestamp - interval '{}s'",
-                        ENV_VARS.store.large_notification_cleanup_interval.as_secs(),
-                    ))
-                    .execute(conn)
-                    .await?;
-                    *last_check = Instant::now();
-                }
+                    ENV_VARS.store.large_notification_cleanup_interval.as_secs(),
+                ))
+                .execute(conn)
+                .await?;
+                *last_check = Instant::now();
             }
         }
         self.sent_counter

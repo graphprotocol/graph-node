@@ -1,34 +1,26 @@
-use std::{collections::HashMap, fmt::Write, sync::Arc};
+use std::{fmt::Write, future::Future, pin::Pin, sync::Arc};
 
 use diesel::{
     sql_query,
     sql_types::{BigInt, Integer},
 };
-use diesel_async::{
-    scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
-    AsyncConnection, RunQueryDsl, SimpleAsyncConnection,
-};
+use diesel_async::{AsyncConnection, RunQueryDsl, SimpleAsyncConnection};
 use graph::{
     components::store::{PrunePhase, PruneReporter, PruneRequest, PruningStrategy, VersionStats},
-    prelude::{BlockNumber, CancelableError, CheapClone, StoreError, BLOCK_NUMBER_MAX},
-    schema::InputSchema,
-    slog::{warn, Logger},
+    prelude::{BLOCK_NUMBER_MAX, BlockNumber, CancelableError, CheapClone, StoreError},
+    slog::{Logger, warn},
 };
 use itertools::Itertools;
 
 use crate::{
-    catalog,
+    AsyncPgConnection, catalog,
     copy::BATCH_STATEMENT_TIMEOUT,
     deployment,
     relational::{Table, VID_COLUMN},
     vid_batcher::{VidBatcher, VidRange},
-    AsyncPgConnection,
 };
 
-use super::{
-    index::{load_indexes_from_table, CreateIndex, IndexList},
-    Catalog, Layout, Namespace,
-};
+use super::{Layout, Namespace};
 
 pub use status::{Phase, PruneState, PruneTableState, Viewer};
 
@@ -51,31 +43,21 @@ impl TablePair {
     /// different namespace so that the names of indexes etc. don't clash
     async fn create(
         conn: &mut AsyncPgConnection,
+        src_layout: &Layout,
         src: Arc<Table>,
-        src_nsp: Namespace,
         dst_nsp: Namespace,
-        schema: &InputSchema,
-        catalog: &Catalog,
     ) -> Result<Self, StoreError> {
+        let src_nsp = src_layout.site.namespace.clone();
         let dst = src.new_like(&dst_nsp, &src.name);
 
         let mut query = String::new();
         if catalog::table_exists(conn, dst_nsp.as_str(), &dst.name).await? {
             writeln!(query, "truncate table {};", dst.qualified_name)?;
         } else {
-            let mut list = IndexList {
-                indexes: HashMap::new(),
-            };
-            let indexes = load_indexes_from_table(conn, &src, src_nsp.as_str())
-                .await?
-                .into_iter()
-                .map(|index| index.with_nsp(dst_nsp.to_string()))
-                .collect::<Result<Vec<CreateIndex>, _>>()?;
-            list.indexes.insert(src.name.to_string(), indexes);
-
             // In case of pruning we don't do delayed creation of indexes,
             // as the asumption is that there is not that much data inserted.
-            dst.as_ddl(schema, catalog, Some(&list), &mut query)?;
+            let creat = src_layout.index_creator(false, false);
+            dst.as_ddl(&src_layout.input_schema, &creat, &mut query)?;
         }
         conn.batch_execute(&query).await?;
 
@@ -106,10 +88,14 @@ impl TablePair {
         let mut batcher = VidBatcher::load(conn, &self.src_nsp, &self.src, range).await?;
         tracker.start_copy_final(conn, &self.src, range).await?;
 
+        let src_name = self.src.qualified_name.clone();
+        let dst_name = self.dst.qualified_name.clone();
         while !batcher.finished() {
             let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
                 let column_list = column_list.cheap_clone();
-                async move {
+                let src_name = src_name.clone();
+                let dst_name = dst_name.clone();
+                Box::pin(async move {
                     // Page through all rows in `src` in batches of `batch_size`
                     // and copy the ones that are visible to queries at block
                     // heights between `earliest_block` and `final_block`, but
@@ -118,7 +104,7 @@ impl TablePair {
                     // The conditions on `block_range` are expressed redundantly
                     // to make more indexes useable
                     sql_query(format!(
-                    "/* controller=prune,phase=final,start_vid={start},batch_size={batch_size} */ \
+                        "/* controller=prune,phase=final,start_vid={start},batch_size={batch_size} */ \
                      insert into {dst}({column_list}) \
                      select {column_list} from {src} \
                       where lower(block_range) <= $2 \
@@ -127,10 +113,10 @@ impl TablePair {
                         and block_range && int4range($1, $2, '[]') \
                         and vid >= $3 and vid <= $4 \
                       order by vid",
-                    src = self.src.qualified_name,
-                    dst = self.dst.qualified_name,
-                    batch_size = end - start + 1,
-                ))
+                        src = src_name,
+                        dst = dst_name,
+                        batch_size = end - start + 1,
+                    ))
                     .bind::<Integer, _>(earliest_block)
                     .bind::<Integer, _>(final_block)
                     .bind::<BigInt, _>(start)
@@ -138,8 +124,7 @@ impl TablePair {
                     .execute(conn)
                     .await
                     .map_err(StoreError::from)
-                }
-                .scope_boxed()
+                })
             })
             .await?;
             let rows = rows.unwrap_or(0);
@@ -174,16 +159,20 @@ impl TablePair {
         let mut batcher = VidBatcher::load(conn, &self.src.nsp, &self.src, range).await?;
         tracker.start_copy_nonfinal(conn, &self.src, range).await?;
 
+        let src_name = self.src.qualified_name.clone();
+        let dst_name = self.dst.qualified_name.clone();
         while !batcher.finished() {
             let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
                 let column_list = column_list.cheap_clone();
-                async move {
-                // Page through all the rows in `src` in batches of
-                // `batch_size` that are visible to queries at block heights
-                // starting right after `final_block`. The conditions on
-                // `block_range` are expressed redundantly to make more
-                // indexes useable
-                sql_query(format!(
+                let src_name = src_name.clone();
+                let dst_name = dst_name.clone();
+                Box::pin(async move {
+                    // Page through all the rows in `src` in batches of
+                    // `batch_size` that are visible to queries at block heights
+                    // starting right after `final_block`. The conditions on
+                    // `block_range` are expressed redundantly to make more
+                    // indexes useable
+                    sql_query(format!(
                         "/* controller=prune,phase=nonfinal,start_vid={start},batch_size={batch_size} */ \
                      insert into {dst}({column_list}) \
                      select {column_list} from {src} \
@@ -191,8 +180,8 @@ impl TablePair {
                         and block_range && int4range($1, null) \
                         and vid >= $2 and vid <= $3 \
                       order by vid",
-                        dst = self.dst.qualified_name,
-                        src = self.src.qualified_name,
+                        dst = dst_name,
+                        src = src_name,
                         batch_size = end - start + 1,
                     ))
                     .bind::<Integer, _>(final_block)
@@ -201,7 +190,8 @@ impl TablePair {
                     .execute(conn)
                     .await
                     .map_err(StoreError::from)
-            }.scope_boxed()}).await?;
+                })
+            }).await?;
             let rows = rows.unwrap_or(0);
 
             tracker
@@ -248,8 +238,10 @@ impl TablePair {
 
         writeln!(query, "drop table {src_qname};")?;
         writeln!(query, "alter table {dst_qname} set schema {src_nsp}")?;
-        conn.transaction(|conn| conn.batch_execute(&query).scope_boxed())
-            .await?;
+        conn.transaction(async move |conn| {
+            conn.batch_execute(&query).await.map_err(StoreError::from)
+        })
+        .await?;
 
         Ok(())
     }
@@ -418,6 +410,17 @@ impl Layout {
         tracker.start(conn, req, &prunable_tables).await?;
         let dst_nsp = Namespace::prune(self.site.id);
         let mut recreate_dst_nsp = true;
+
+        // Go table by table; note that the subgraph writer can write in
+        // between the execution of the `with_lock` block below, and might
+        // therefore work with tables where some are pruned and some are not
+        // pruned yet. That does not affect correctness since we make no
+        // assumption about where the subgraph head is. If the subgraph
+        // advances during this loop, we might have an unnecessarily
+        // pessimistic but still safe value for `final_block`. We do assume
+        // that `final_block` is far enough from the subgraph head that it
+        // stays final even if a revert happens during this loop, but that
+        // is the definition of 'final'
         for (table, strat) in &prunable_tables {
             reporter.start_table(table.name.as_str());
             tracker.start_table(conn, table).await?;
@@ -427,15 +430,8 @@ impl Layout {
                         catalog::recreate_schema(conn, dst_nsp.as_str()).await?;
                         recreate_dst_nsp = false;
                     }
-                    let pair = TablePair::create(
-                        conn,
-                        table.cheap_clone(),
-                        self.site.namespace.clone(),
-                        dst_nsp.clone(),
-                        &self.input_schema,
-                        &self.catalog,
-                    )
-                    .await?;
+                    let pair = TablePair::create(conn, &self, table.cheap_clone(), dst_nsp.clone())
+                        .await?;
                     // Copy final entities. This can happen in parallel to indexing as
                     // that part of the table will not change
                     pair.copy_final_entities(
@@ -473,24 +469,27 @@ impl Layout {
                         VidBatcher::load(conn, &self.site.namespace, table, range).await?;
 
                     tracker.start_delete(conn, table, range, &batcher).await?;
+                    let qname = table.qualified_name.clone();
+                    let earliest_block = req.earliest_block;
                     while !batcher.finished() {
                         let rows = batch_with_timeout(conn, &mut batcher, |conn, start, end| {
-                            async move {
-                            sql_query(format!(
-                            "/* controller=prune,phase=delete,start_vid={start},batch_size={batch_size} */ \
-                             delete from {qname} \
-                                          where coalesce(upper(block_range), 2147483647) <= $1 \
-                                            and vid >= $2 and vid <= $3",
-                            qname = table.qualified_name,
-                            batch_size = end - start + 1
-                        ))
-                        .bind::<Integer, _>(req.earliest_block)
-                        .bind::<BigInt, _>(start)
-                        .bind::<BigInt, _>(end)
-                        .execute(conn)
-                        .await
-                        .map_err(StoreError::from)
-                        }.scope_boxed()}).await?;
+                            let qname = qname.clone();
+                            Box::pin(async move {
+                                sql_query(format!(
+                                "/* controller=prune,phase=delete,start_vid={start},batch_size={batch_size} */ \
+                                 delete from {qname} \
+                                              where coalesce(upper(block_range), 2147483647) <= $1 \
+                                                and vid >= $2 and vid <= $3",
+                                batch_size = end - start + 1
+                            ))
+                            .bind::<Integer, _>(earliest_block)
+                            .bind::<BigInt, _>(start)
+                            .bind::<BigInt, _>(end)
+                            .execute(conn)
+                            .await
+                            .map_err(StoreError::from)
+                            })
+                        }).await?;
                         let rows = rows.unwrap_or(0);
 
                         tracker
@@ -523,6 +522,14 @@ impl Layout {
     }
 }
 
+/// The type of per-batch query closure expected by `batch_with_timeout`.
+/// Callers wrap their async body in `Box::pin(async move { ... })` so that
+/// the future is type-erased and explicitly `Send`. This sidesteps the
+/// limitation that async closures don't implement `Fn`/`FnMut`, which
+/// would prevent us from calling the closure again on the timeout-retry
+/// path.
+type BatchQuery<'r, R> = Pin<Box<dyn Future<Output = Result<R, StoreError>> + Send + 'r>>;
+
 /// Perform a step with the `batcher`. If that step takes longer than
 /// `BATCH_STATEMENT_TIMEOUT`, kill the query and reset the batch size of
 /// the batcher to 1 and perform a step with that size which we assume takes
@@ -530,49 +537,48 @@ impl Layout {
 ///
 /// Doing this serves as a safeguard against very bad batch size estimations
 /// so that batches never take longer than `BATCH_SIZE_TIMEOUT`
-async fn batch_with_timeout<'a, 'conn, R, F>(
-    conn: &'conn mut AsyncPgConnection,
+async fn batch_with_timeout<R, F>(
+    conn: &mut AsyncPgConnection,
     batcher: &mut VidBatcher,
-    query: F,
+    mut query: F,
 ) -> Result<Option<R>, StoreError>
 where
     R: Send,
-    F: for<'r> Fn(
-            &'r mut AsyncPgConnection,
-            i64,
-            i64,
-        ) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
-        + Sync,
-    'a: 'conn,
+    F: for<'r> FnMut(&'r mut AsyncPgConnection, i64, i64) -> BatchQuery<'r, R> + Send,
 {
-    let res = batcher
-        .step(async |start, end| {
-            conn.transaction(|conn| {
-                async {
-                    if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
+    async fn run_attempt<R, F>(
+        conn: &mut AsyncPgConnection,
+        batcher: &mut VidBatcher,
+        query: &mut F,
+        with_timeout: bool,
+    ) -> Result<Option<R>, StoreError>
+    where
+        R: Send,
+        F: for<'r> FnMut(&'r mut AsyncPgConnection, i64, i64) -> BatchQuery<'r, R> + Send,
+    {
+        batcher
+            .step(async |start, end| {
+                conn.transaction(async |conn| {
+                    if with_timeout && let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
                         conn.batch_execute(timeout).await?;
                     }
                     query(conn, start, end).await
-                }
-                .scope_boxed()
+                })
+                .await
             })
             .await
-        })
-        .await
-        .map(|(_, res)| res);
-
-    if !matches!(res, Err(StoreError::StatementTimeout)) {
-        return res;
+            .map(|(_, res)| res)
     }
 
+    let res = run_attempt(conn, batcher, &mut query, true).await;
+    let Err(StoreError::StatementTimeout) = res else {
+        return res;
+    };
+
+    // Timeout fired. Shrink to one row and retry without the timeout — at
+    // this size we expect the query to complete.
     batcher.set_batch_size(1);
-    batcher
-        .step(async |start, end| {
-            conn.transaction(|conn| query(conn, start, end).scope_boxed())
-                .await
-        })
-        .await
-        .map(|(_, res)| res)
+    run_attempt(conn, batcher, &mut query, false).await
 }
 
 mod status {
@@ -580,16 +586,16 @@ mod status {
 
     use chrono::{DateTime, Utc};
     use diesel::{
+        AsChangeset, ExpressionMethods as _, OptionalExtension, QueryDsl as _,
         deserialize::FromSql,
         dsl::insert_into,
         pg::{Pg, PgValue},
         query_builder::QueryFragment,
         serialize::{Output, ToSql},
         sql_types::Text,
-        table, update, AsChangeset, ExpressionMethods as _, OptionalExtension, QueryDsl as _,
+        table, update,
     };
-    use diesel_async::RunQueryDsl as _;
-    use diesel_async::{scoped_futures::ScopedFutureExt, AsyncConnection};
+    use diesel_async::{AsyncConnection, RunQueryDsl as _};
     use graph::{
         components::store::{PruneRequest, PruningStrategy, StoreResult},
         env::ENV_VARS,
@@ -597,9 +603,9 @@ mod status {
     };
 
     use crate::{
+        AsyncPgConnection, ConnectionPool,
         relational::{Layout, Table},
         vid_batcher::{VidBatcher, VidRange},
-        AsyncPgConnection, ConnectionPool,
     };
 
     table! {
@@ -792,40 +798,50 @@ mod status {
             use prune_state as ps;
             use prune_table_state as pts;
 
-            conn.transaction(|conn| {
-                async move {
-                    insert_into(ps::table)
+            let site_id = self.layout.site.id;
+            let run = self.run;
+            let first_block = req.first_block;
+            let final_block = req.final_block;
+            let latest_block = req.latest_block;
+            let history_blocks = req.history_blocks;
+            let table_entries: Vec<(String, &'static str)> = prunable_tables
+                .iter()
+                .map(|(table, strat)| {
+                    let strat = match strat {
+                        PruningStrategy::Rebuild => "r",
+                        PruningStrategy::Delete => "d",
+                    };
+                    (table.name.to_string(), strat)
+                })
+                .collect();
+
+            conn.transaction(async move |conn| {
+                insert_into(ps::table)
+                    .values((
+                        ps::id.eq(site_id),
+                        ps::run.eq(run),
+                        ps::first_block.eq(first_block),
+                        ps::final_block.eq(final_block),
+                        ps::latest_block.eq(latest_block),
+                        ps::history_blocks.eq(history_blocks),
+                        ps::started_at.eq(diesel::dsl::now),
+                    ))
+                    .execute(conn)
+                    .await?;
+
+                for (table_name, strat) in &table_entries {
+                    insert_into(pts::table)
                         .values((
-                            ps::id.eq(self.layout.site.id),
-                            ps::run.eq(self.run),
-                            ps::first_block.eq(req.first_block),
-                            ps::final_block.eq(req.final_block),
-                            ps::latest_block.eq(req.latest_block),
-                            ps::history_blocks.eq(req.history_blocks),
-                            ps::started_at.eq(diesel::dsl::now),
+                            pts::id.eq(site_id),
+                            pts::run.eq(run),
+                            pts::table_name.eq(table_name.as_str()),
+                            pts::strategy.eq(*strat),
+                            pts::phase.eq(Phase::Queued),
                         ))
                         .execute(conn)
                         .await?;
-
-                    for (table, strat) in prunable_tables {
-                        let strat = match strat {
-                            PruningStrategy::Rebuild => "r",
-                            PruningStrategy::Delete => "d",
-                        };
-                        insert_into(pts::table)
-                            .values((
-                                pts::id.eq(self.layout.site.id),
-                                pts::run.eq(self.run),
-                                pts::table_name.eq(table.name.as_str()),
-                                pts::strategy.eq(strat),
-                                pts::phase.eq(Phase::Queued),
-                            ))
-                            .execute(conn)
-                            .await?;
-                    }
-                    Ok(())
                 }
-                .scope_boxed()
+                Ok(())
             })
             .await
         }

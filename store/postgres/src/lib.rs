@@ -24,6 +24,7 @@ mod fork;
 mod functions;
 mod jobs;
 mod notification_listener;
+mod parquet;
 mod pool;
 mod primary;
 pub mod query_store;
@@ -46,7 +47,7 @@ pub mod layout_for_tests {
     pub use crate::block_store::FAKE_NETWORK_SHARED;
     pub use crate::catalog::set_account_like;
     pub use crate::primary::{
-        make_dummy_site, Connection, Mirror, Namespace, EVENT_TAP, EVENT_TAP_ENABLED,
+        Connection, EVENT_TAP, EVENT_TAP_ENABLED, Mirror, Namespace, make_dummy_site,
     };
     pub use crate::relational::*;
     pub mod writable {
@@ -54,39 +55,36 @@ pub mod layout_for_tests {
     }
 }
 
-pub use self::block_store::primary::{add_chain, find_chain, update_chain_name};
 pub use self::block_store::BlockStore;
-pub use self::block_store::ChainStatus;
+pub use self::block_store::primary::{add_chain, find_chain, update_chain_name};
 pub use self::chain_head_listener::ChainHeadUpdateListener;
 pub use self::chain_store::{ChainStore, ChainStoreMetrics, Storage};
 pub use self::detail::DeploymentDetail;
 pub use self::jobs::register as register_jobs;
 pub use self::notification_listener::NotificationSender;
-pub use self::pool::{
-    AsyncPgConnection, ConnectionPool, ForeignServer, PoolCoordinator, PoolRole, ScopedFutureExt,
-};
-pub use self::primary::{db_version, UnusedDeployment};
+pub use self::pool::{AsyncPgConnection, ConnectionPool, ForeignServer, PoolCoordinator, PoolRole};
+pub use self::primary::{RestoreMode, UnusedDeployment, db_version};
 pub use self::store::Store;
 pub use self::store_events::SubscriptionManager;
-pub use self::subgraph_store::{unused, DeploymentPlacer, Shard, SubgraphStore, PRIMARY_SHARD};
+pub use self::subgraph_store::{DeploymentPlacer, PRIMARY_SHARD, Shard, SubgraphStore, unused};
 
 /// This module is only meant to support command line tooling. It must not
 /// be used in 'normal' graph-node code
 pub mod command_support {
     pub mod catalog {
         pub use crate::block_store::primary as block_store;
-        pub use crate::catalog::{account_like, Catalog};
+        pub use crate::catalog::{Catalog, account_like};
         pub use crate::copy::{copy_state, copy_table_state};
-        pub use crate::primary::{
-            active_copies, deployment_schemas, ens_names, subgraph, subgraph_deployment_assignment,
-            subgraph_version, Site,
-        };
         pub use crate::primary::{Connection, Mirror};
+        pub use crate::primary::{
+            Site, active_copies, deployment_schemas, ens_names, subgraph,
+            subgraph_deployment_assignment, subgraph_version,
+        };
     }
     pub mod index {
-        pub use crate::relational::index::{CreateIndex, Method};
+        pub use crate::relational::index::{CreateIndex, Expr, IndexCreator, Method};
     }
-    pub use crate::deployment::{on_sync, OnSync};
+    pub use crate::deployment::{OnSync, on_sync};
     pub use crate::primary::Namespace;
     pub use crate::relational::prune::{Phase, PruneState, PruneTableState, Viewer};
     pub use crate::relational::{Catalog, Column, ColumnType, Layout, SqlName};

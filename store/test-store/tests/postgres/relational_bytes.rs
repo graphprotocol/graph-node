@@ -15,12 +15,11 @@ use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::{collections::BTreeMap, sync::Arc};
 
-use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::data::store::IdList;
+use graph::data::store::scalar::{BigDecimal, BigInt};
 use graph::prelude::{
-    o, slog, AttributeNames, ChildMultiplicity, DeploymentHash, Entity, EntityCollection,
-    EntityLink, EntityWindow, Logger, ParentLink, StopwatchMetrics, WindowAttribute,
-    BLOCK_NUMBER_MAX,
+    AttributeNames, BLOCK_NUMBER_MAX, ChildMultiplicity, DeploymentHash, Entity, EntityCollection,
+    EntityLink, EntityWindow, Logger, ParentLink, StopwatchMetrics, WindowAttribute, o, slog,
 };
 use graph_store_postgres::{
     layout_for_tests::make_dummy_site,
@@ -85,7 +84,7 @@ pub fn row_group_update(
     block: BlockNumber,
     data: impl IntoIterator<Item = (EntityKey, Entity)>,
 ) -> RowGroup {
-    let mut group = RowGroup::new(entity_type.clone(), false);
+    let mut group = RowGroup::new(entity_type.clone());
     for (key, data) in data {
         group
             .push(EntityModification::overwrite(key, data, block), block)
@@ -99,7 +98,7 @@ pub fn row_group_insert(
     block: BlockNumber,
     data: impl IntoIterator<Item = (EntityKey, Entity)>,
 ) -> RowGroup {
-    let mut group = RowGroup::new(entity_type.clone(), false);
+    let mut group = RowGroup::new(entity_type.clone());
     for (key, data) in data {
         group
             .push(EntityModification::insert(key, data, block), block)
@@ -113,7 +112,7 @@ pub fn row_group_delete(
     block: BlockNumber,
     data: impl IntoIterator<Item = EntityKey>,
 ) -> RowGroup {
-    let mut group = RowGroup::new(entity_type.clone(), false);
+    let mut group = RowGroup::new(entity_type.clone());
     for key in data {
         group
             .push(EntityModification::remove(key, block), block)
@@ -171,7 +170,7 @@ async fn create_schema(conn: &mut AsyncPgConnection) -> Layout {
         NAMESPACE.clone(),
         NETWORK_NAME.to_string(),
     );
-    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), None)
+    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new())
         .await
         .expect("Failed to create relational schema")
 }

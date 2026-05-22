@@ -1,13 +1,13 @@
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc,
+        atomic::{AtomicU64, Ordering},
     },
 };
 
 use prometheus::IntCounterVec;
-use slog::{warn, Logger};
+use slog::{Logger, warn};
 
 use crate::components::network_provider::ProviderName;
 use crate::{components::metrics::MetricsRegistry, data::value::Word};
@@ -100,7 +100,7 @@ impl EndpointMetrics {
 
     /// This should only be used for testing.
     pub fn mock() -> Self {
-        use slog::{o, Discard};
+        use slog::{Discard, o};
         let providers: &[&str] = &[];
         Self::new(
             Logger::root(Discard, o!()),
@@ -169,7 +169,7 @@ impl EndpointMetrics {
 mod test {
     use std::sync::Arc;
 
-    use slog::{o, Discard, Logger};
+    use slog::{Discard, Logger, o};
 
     use crate::{
         components::metrics::MetricsRegistry,

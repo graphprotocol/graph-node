@@ -8,11 +8,11 @@ use async_trait::async_trait;
 use graph::amp;
 use graph::blockchain::DataSource;
 use graph::components::store::BLOCK_NUMBER_MAX;
-use graph::data::store::scalar::Bytes;
 use graph::data::store::Value;
+use graph::data::store::scalar::Bytes;
 use graph::data::subgraph::schema::SubgraphError;
 use graph::data::subgraph::{
-    Prune, LATEST_VERSION, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8,
+    LATEST_VERSION, Prune, SPEC_VERSION_0_0_4, SPEC_VERSION_0_0_7, SPEC_VERSION_0_0_8,
     SPEC_VERSION_0_0_9, SPEC_VERSION_1_0_0, SPEC_VERSION_1_2_0, SPEC_VERSION_1_3_0,
 };
 use graph::data_source::offchain::OffchainDataSourceKind;
@@ -21,9 +21,9 @@ use graph::entity;
 use graph::env::ENV_VARS;
 use graph::prelude::alloy::primitives::B256;
 use graph::prelude::{
-    anyhow, serde_yaml, BigDecimal, BigInt, DeploymentHash, Link, SubgraphManifest,
-    SubgraphManifestResolveError, SubgraphManifestValidationError, SubgraphStore,
-    UnvalidatedSubgraphManifest,
+    BigDecimal, BigInt, DeploymentHash, Link, SubgraphManifest, SubgraphManifestResolveError,
+    SubgraphManifestValidationError, SubgraphStore, UnvalidatedSubgraphManifest, anyhow,
+    serde_yaml,
 };
 use graph::{
     blockchain::NodeCapabilities as _,
@@ -308,9 +308,10 @@ specVersion: 1.3.0
     let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err
-        .to_string()
-        .contains("Entity TokenStats is an aggregation and cannot be used as a mapping entity"));
+    assert!(
+        err.to_string()
+            .contains("Entity TokenStats is an aggregation and cannot be used as a mapping entity")
+    );
 }
 
 #[graph::test]
@@ -823,18 +824,18 @@ specVersion: 1.2.0
     );
 
     assert_eq!(
-        Some(vec![B256::from_str(
-            "0000000000000000000000000000000000000000000000000000000000000001"
-        )
-        .unwrap()]),
+        Some(vec![
+            B256::from_str("0000000000000000000000000000000000000000000000000000000000000001")
+                .unwrap()
+        ]),
         topic2.clone()
     );
 
     assert_eq!(
-        Some(vec![B256::from_str(
-            "0000000000000000000000000000000000000000000000000000000000000002"
-        )
-        .unwrap()]),
+        Some(vec![
+            B256::from_str("0000000000000000000000000000000000000000000000000000000000000002")
+                .unwrap()
+        ]),
         topic3.clone()
     );
 }
@@ -1763,9 +1764,10 @@ specVersion: 1.3.0
     assert!(result.is_err());
     let err = result.unwrap_err();
     println!("Error: {}", err);
-    assert!(err
-        .to_string()
-        .contains("Subgraph datasources cannot be used alongside onchain datasources"));
+    assert!(
+        err.to_string()
+            .contains("Subgraph datasources cannot be used alongside onchain datasources")
+    );
 }
 
 #[test]
@@ -1855,8 +1857,11 @@ specVersion: 1.3.0
                 assert!(matches!(e, SubgraphManifestResolveError::ResolveError(_)));
                 let error_msg = e.to_string();
                 println!("{}", error_msg);
-                assert!(error_msg
-                    .contains("Nested subgraph data sources [SubgraphSource] are not supported."));
+                assert!(
+                    error_msg.contains(
+                        "Nested subgraph data sources [SubgraphSource] are not supported."
+                    )
+                );
             }
         }
     })
@@ -1893,9 +1898,11 @@ specVersion: 1.3.0
     let result = try_resolve_manifest(yaml, SPEC_VERSION_1_3_0).await;
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err
-        .to_string()
-        .contains("Entity MutableEntity is not immutable and cannot be used as a mapping entity"));
+    assert!(
+        err.to_string().contains(
+            "Entity MutableEntity is not immutable and cannot be used as a mapping entity"
+        )
+    );
 }
 
 #[graph::test]

@@ -1,16 +1,16 @@
 use graph::cheap_clone::CheapClone;
-use graph::futures03::future::join_all;
 use graph::futures03::FutureExt as _;
+use graph::futures03::future::join_all;
 use graph::internal_error;
 use graph::prelude::MetricsRegistry;
-use graph::prelude::{crit, debug, error, info, o, StoreError};
+use graph::prelude::{StoreError, crit, debug, error, info, o};
 use graph::slog::Logger;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::advisory_lock::with_migration_lock;
-use crate::{Shard, PRIMARY_SHARD};
+use crate::{PRIMARY_SHARD, Shard};
 
 use super::{ConnectionPool, ForeignServer, MigrationCount, PoolInner, PoolRole, PoolState};
 
@@ -265,7 +265,7 @@ impl PoolCoordinator {
 
         let primary = self.primary()?;
 
-        let mut pconn = primary.get().await?;
+        let mut pconn = primary.get_for_setup().await?;
 
         let states: Vec<_> = states
             .into_iter()

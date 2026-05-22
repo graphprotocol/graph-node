@@ -1,7 +1,7 @@
 pub use prometheus::core::Collector;
 pub use prometheus::{
-    labels, Counter, CounterVec, Error as PrometheusError, Gauge, GaugeVec, Histogram,
-    HistogramOpts, HistogramVec, Opts, Registry,
+    Counter, CounterVec, Error as PrometheusError, Gauge, GaugeVec, Histogram, HistogramOpts,
+    HistogramVec, Opts, Registry, labels,
 };
 
 pub mod registry;

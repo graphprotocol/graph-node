@@ -167,28 +167,6 @@ pub struct Opt {
 
     #[clap(
         long,
-        value_name = "URL",
-        env = "ELASTICSEARCH_URL",
-        help = "Elasticsearch service to write subgraph logs to"
-    )]
-    pub elasticsearch_url: Option<String>,
-    #[clap(
-        long,
-        value_name = "USER",
-        env = "ELASTICSEARCH_USER",
-        help = "User to use for Elasticsearch logging"
-    )]
-    pub elasticsearch_user: Option<String>,
-    #[clap(
-        long,
-        value_name = "PASSWORD",
-        env = "ELASTICSEARCH_PASSWORD",
-        hide_env_values = true,
-        help = "Password to use for Elasticsearch logging"
-    )]
-    pub elasticsearch_password: Option<String>,
-    #[clap(
-        long,
         value_name = "DISABLE_BLOCK_INGESTOR",
         env = "DISABLE_BLOCK_INGESTOR",
         help = "Ensures that the block ingestor component does not execute"

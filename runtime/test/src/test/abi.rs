@@ -7,7 +7,7 @@ use super::*;
 
 async fn test_unbounded_loop(api_version: Version) {
     // Set handler timeout to 3 seconds.
-    let mut instance = test_valid_module_and_store_with_timeout(
+    let mut instance = test_module_and_deployment_with_timeout(
         "unboundedLoop",
         mock_data_source(
             &wasm_file_path("non_terminating.wasm", api_version.clone()),
@@ -117,7 +117,7 @@ async fn abi_array_v0_0_4() {
 
 #[graph::test]
 async fn abi_array_v0_0_5() {
-    test_abi_array(API_VERSION_0_0_5, 1636130).await;
+    test_abi_array(API_VERSION_0_0_5, 1561046).await;
 }
 
 async fn test_abi_subarray(api_version: Version) {
@@ -525,8 +525,8 @@ async fn test_abi_big_int(api_version: Version) {
     let new_uint_obj: AscPtr<AscBigInt> = module.invoke_export1("test_uint", &old_uint).await;
     let new_uint: BigInt = module.asc_get(new_uint_obj).unwrap();
     assert_eq!(new_uint, BigInt::from(-49_i32));
-    let new_uint_from_u256 = BigInt::from_signed_u256(&new_uint.to_signed_u256());
-    assert_eq!(new_uint, new_uint_from_u256);
+    let new_uint_from_i256 = BigInt::from_i256(&new_uint.to_i256().unwrap());
+    assert_eq!(new_uint, new_uint_from_i256);
 }
 
 #[graph::test]

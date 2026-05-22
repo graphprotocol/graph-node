@@ -137,6 +137,7 @@ impl<'a> VisitExpr<'a> {
                 data_type: _,
                 kind,
                 format: _,
+                array: _,
             } => match kind {
                 // Cast: `CAST(<expr> as <datatype>)`
                 // DoubleColon: `<expr>::<datatype>`
@@ -235,7 +236,7 @@ impl<'a> VisitExpr<'a> {
         match pargs {
             p::FunctionArguments::None => { /* nothing to do */ }
             p::FunctionArguments::Subquery(_) => {
-                return self.illegal_function(format!("call to {name} uses a subquery argument"))
+                return self.illegal_function(format!("call to {name} uses a subquery argument"));
             }
             p::FunctionArguments::List(pargs) => {
                 let p::FunctionArgumentList {
@@ -262,7 +263,8 @@ impl<'a> VisitExpr<'a> {
                                 self.visit_expr(expr)?;
                             }
                             p::FunctionArgExpr::QualifiedWildcard(_)
-                            | p::FunctionArgExpr::Wildcard => {
+                            | p::FunctionArgExpr::Wildcard
+                            | p::FunctionArgExpr::WildcardWithOptions(_) => {
                                 return self.illegal_function(format!(
                                     "call to {name} uses a wildcard argument"
                                 ));

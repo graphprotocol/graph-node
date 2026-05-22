@@ -1,16 +1,16 @@
 use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
 use graph::blockchain::{BlockTime, ChainIdentifier};
-use graph::prelude::alloy::consensus::Header as ConsensusHeader;
-use graph::prelude::alloy::primitives::{Bloom, B256, U256};
-use graph::prelude::alloy::rpc::types::{Block, Header};
 use graph::prelude::LightEthereumBlock;
+use graph::prelude::alloy::consensus::Header as ConsensusHeader;
+use graph::prelude::alloy::primitives::{B256, Bloom, U256};
+use graph::prelude::alloy::rpc::types::{Block, Header};
 use lazy_static::lazy_static;
 
 use graph::components::store::BlockStore;
 use graph::{
     blockchain::Block as BlockchainBlock,
-    prelude::{serde_json, BlockHash, BlockNumber, BlockPtr, EthereumBlock},
+    prelude::{BlockHash, BlockNumber, BlockPtr, EthereumBlock, serde_json},
 };
 use graph_chain_ethereum::codec::{Block as FirehoseBlock, BlockHeader};
 use prost_types::Timestamp;
@@ -117,7 +117,7 @@ impl FakeBlock {
 
         let rpc_header = Header {
             hash: block_hash,
-            inner: consensus_header,
+            inner: graph::components::ethereum::AnyHeader::from(consensus_header),
             total_difficulty: None,
             size: None,
         };
@@ -125,7 +125,7 @@ impl FakeBlock {
         let block = Block::empty(rpc_header);
 
         EthereumBlock {
-            block: Arc::new(LightEthereumBlock::new(block.into())),
+            block: Arc::new(LightEthereumBlock::new(block)),
             transaction_receipts: Vec::new(),
         }
     }
@@ -181,7 +181,7 @@ impl BlockchainBlock for FakeBlock {
         // can never be null and therefore impossible to test without manipulating the JSON blob directly.
         if let serde_json::Value::Object(ref mut map) = value {
             map.entry("block").and_modify(|ref mut block| {
-                if let serde_json::Value::Object(ref mut block) = block {
+                if let serde_json::Value::Object(block) = block {
                     block.remove_entry("timestamp");
                 }
             });

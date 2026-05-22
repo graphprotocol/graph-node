@@ -1,10 +1,10 @@
+use super::Blockchain;
 use super::block_stream::{
-    BlockStream, BlockStreamError, BlockStreamEvent, FirehoseMapper, FIREHOSE_BUFFER_STREAM_SIZE,
+    BlockStream, BlockStreamError, BlockStreamEvent, FIREHOSE_BUFFER_STREAM_SIZE, FirehoseMapper,
 };
 use super::client::ChainClient;
-use super::Blockchain;
-use crate::blockchain::block_stream::FirehoseCursor;
 use crate::blockchain::TriggerFilter;
+use crate::blockchain::block_stream::FirehoseCursor;
 use crate::prelude::*;
 use crate::util::backoff::ExponentialBackoff;
 use crate::{firehose, firehose::FirehoseEndpoint};
@@ -360,7 +360,10 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
         .context("Mapping block to BlockStreamEvent failed")?;
 
     if *check_subgraph_continuity {
-        info!(logger, "Firehose started from a subgraph pointer without an existing cursor, ensuring chain continuity");
+        info!(
+            logger,
+            "Firehose started from a subgraph pointer without an existing cursor, ensuring chain continuity"
+        );
 
         if let BlockStreamEvent::ProcessBlock(ref block, _) = event {
             let previous_block_ptr = block.parent_ptr();
@@ -380,7 +383,10 @@ async fn process_firehose_response<C: Blockchain, F: FirehoseMapper<C>>(
                     .context("Could not fetch final block to revert to")?;
 
                 if revert_to.number < manifest_start_block_num {
-                    warn!(&logger, "We would return before subgraph manifest's start block, limiting rewind to manifest's start block");
+                    warn!(
+                        &logger,
+                        "We would return before subgraph manifest's start block, limiting rewind to manifest's start block"
+                    );
 
                     // We must revert up to parent's of manifest start block to ensure we delete everything "including" the start
                     // block that was processed.
@@ -445,10 +451,10 @@ fn must_check_subgraph_continuity(
 #[cfg(test)]
 mod tests {
     use crate::blockchain::{
-        block_stream::FirehoseCursor, firehose_block_stream::must_check_subgraph_continuity,
-        BlockPtr,
+        BlockPtr, block_stream::FirehoseCursor,
+        firehose_block_stream::must_check_subgraph_continuity,
     };
-    use slog::{o, Logger};
+    use slog::{Logger, o};
 
     #[test]
     fn check_continuity() {

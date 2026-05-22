@@ -1,11 +1,11 @@
 use diesel::select;
 use diesel::sql_query;
 use diesel::sql_types::{Bool, Integer};
-use diesel::{insert_into, OptionalExtension};
 use diesel::{
-    sql_types::{Array, BigInt, Double, Nullable, Text},
     ExpressionMethods, QueryDsl,
+    sql_types::{Array, BigInt, Double, Nullable, Text},
 };
+use diesel::{OptionalExtension, insert_into};
 use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
 use graph::components::store::VersionStats;
 use graph::prelude::BlockNumber;
@@ -20,14 +20,14 @@ use std::time::Duration;
 use graph::prelude::anyhow::anyhow;
 use graph::{
     data::subgraph::schema::POI_TABLE,
-    prelude::{lazy_static, StoreError, BLOCK_NUMBER_MAX},
+    prelude::{BLOCK_NUMBER_MAX, StoreError, lazy_static},
 };
 
 use crate::AsyncPgConnection;
 use crate::{
     block_range::BLOCK_RANGE_COLUMN,
     pool::ForeignServer,
-    primary::{Namespace, Site, NAMESPACE_PUBLIC},
+    primary::{NAMESPACE_PUBLIC, Namespace, Site},
     relational::SqlName,
 };
 
@@ -189,7 +189,7 @@ pub struct Catalog {
 
     /// Whether the database supports `int4_minmax_multi_ops` etc.
     /// See the [Postgres docs](https://www.postgresql.org/docs/15/brin-builtin-opclasses.html)
-    has_minmax_multi_ops: bool,
+    pub has_minmax_multi_ops: bool,
 
     /// Whether the column `pg_stats.range_bounds_histogram` introduced in
     /// Postgres 17 exists. See the [Postgres
@@ -911,6 +911,32 @@ pub(crate) async fn indexes_for_table(
         .map_err::<StoreError, _>(Into::into)?;
 
     Ok(results.into_iter().map(|i| i.def).collect())
+}
+
+pub(crate) async fn table_has_index(
+    conn: &mut AsyncPgConnection,
+    schema_name: &str,
+    index_name: &str,
+) -> Result<bool, StoreError> {
+    #[derive(QueryableByName)]
+    #[allow(dead_code)]
+    struct Exists {
+        #[diesel(sql_type = diesel::sql_types::Integer)]
+        exists: i32,
+    }
+
+    let exists = sql_query(
+        "SELECT 1 AS exists FROM pg_indexes \
+         WHERE schemaname = $1 AND indexname = $2",
+    )
+    .bind::<Text, _>(schema_name)
+    .bind::<Text, _>(index_name)
+    .get_result::<Exists>(conn)
+    .await
+    .optional()
+    .map_err::<StoreError, _>(Into::into)?;
+
+    Ok(exists.is_some())
 }
 
 pub(crate) async fn drop_index(

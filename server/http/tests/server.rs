@@ -197,7 +197,10 @@ mod test {
         let errors = assert_error_response(response, StatusCode::BAD_REQUEST, false).await;
 
         let message = errors[0].as_str().expect("Error message is not a string");
-        assert_eq!(message, "{\"error\":\"GraphQL server error (client error): The \\\"query\\\" field is missing in request data\"}");
+        assert_eq!(
+            message,
+            "{\"error\":\"GraphQL server error (client error): The \\\"query\\\" field is missing in request data\"}"
+        );
     }
 
     #[graph::test]

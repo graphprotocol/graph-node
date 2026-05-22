@@ -2,7 +2,7 @@
 
 use crate::{
     components::store::LoadRelatedRequest,
-    data::store::{scalar::Bytes, Value},
+    data::store::{Value, scalar::Bytes},
     schema::{EntityKey, EntityType},
 };
 

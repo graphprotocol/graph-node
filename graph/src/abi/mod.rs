@@ -7,8 +7,10 @@ pub use alloy::dyn_abi::DynSolType;
 pub use alloy::dyn_abi::DynSolValue;
 
 pub use alloy::json_abi::Event;
+pub use alloy::json_abi::EventParam;
 pub use alloy::json_abi::Function;
 pub use alloy::json_abi::JsonAbi;
+pub use alloy::json_abi::Param;
 pub use alloy::json_abi::StateMutability;
 
 pub use alloy::primitives::I256;

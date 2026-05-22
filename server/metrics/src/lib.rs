@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use graph::components::server::server::{start, ServerHandle};
+use graph::components::server::server::{ServerHandle, start};
 use graph::http_body_util::Full;
-use graph::hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 use graph::hyper::Response;
+use graph::hyper::header::{ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE};
 
 use graph::prelude::*;
 use graph::prometheus::{Encoder, Registry, TextEncoder};

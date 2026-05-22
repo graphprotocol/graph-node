@@ -10,10 +10,15 @@ those.
 
 ## JSON-RPC configuration for EVM chains
 
+> **Note**: Many of these settings can now be overridden per-chain in the TOML
+> configuration file under `[chains.<name>]`. When a per-chain value is set in
+> the config file it takes precedence over the environment variable. See
+> [config.md](config.md#configuring-chains) for details.
+
 - `ETHEREUM_REORG_THRESHOLD`: Maximum expected reorg size, if a larger reorg
   happens, subgraphs might process inconsistent data. Defaults to 250.
 - `ETHEREUM_POLLING_INTERVAL`: how often to poll Ethereum for new blocks (in ms,
-  defaults to 500ms)
+  defaults to 1000ms)
 - `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`: The ideal amount of triggers
   to be processed in a batch. If this is too small it may cause too many requests
   to the ethereum node, if it is too large it may cause unreasonably expensive
@@ -216,6 +221,9 @@ those.
   decisions. Set to `true` to turn simulation on, defaults to `false`
 - `GRAPH_STORE_CONNECTION_TIMEOUT`: How long to wait to connect to a
   database before assuming the database is down in ms. Defaults to 5000ms.
+- `GRAPH_STORE_SETUP_TIMEOUT`: Timeout for database setup operations
+  (migrations, schema creation) in milliseconds. Defaults to 30000ms (30s).
+  Setup operations can legitimately take longer than normal runtime operations.
 - `GRAPH_STORE_CONNECTION_UNAVAILABLE_RETRY`: When a database shard is marked
   unavailable due to connection timeouts, this controls how often to allow a
   single probe request through to check if the database has recovered. Only one
@@ -307,3 +315,55 @@ those.
   Disabling the store call cache may significantly impact performance; the actual impact depends on
   the average execution time of an `eth_call` compared to the cost of a database lookup for a cached result.
   (default: false)
+
+## Log Store Configuration
+
+`graph-node` supports storing and querying subgraph logs through multiple backends: Elasticsearch, Loki, local files, or disabled.
+
+**For complete log store documentation**, including detailed configuration, querying examples, and choosing the right backend, see the **[Log Store Guide](log-store.md)**.
+
+### Quick Reference
+
+**Backend selection:**
+- `GRAPH_LOG_STORE_BACKEND`: `disabled` (default), `elasticsearch`, `loki`, or `file`
+
+**Elasticsearch:**
+- `GRAPH_LOG_STORE_ELASTICSEARCH_URL`: Elasticsearch endpoint URL (required)
+- `GRAPH_LOG_STORE_ELASTICSEARCH_USER`: Username (optional)
+- `GRAPH_LOG_STORE_ELASTICSEARCH_PASSWORD`: Password (optional)
+- `GRAPH_LOG_STORE_ELASTICSEARCH_INDEX`: Index name (default: `subgraph`)
+
+**Loki:**
+- `GRAPH_LOG_STORE_LOKI_URL`: Loki endpoint URL (required)
+- `GRAPH_LOG_STORE_LOKI_TENANT_ID`: Tenant ID (optional)
+
+**File-based:**
+- `GRAPH_LOG_STORE_FILE_DIR`: Log directory (required)
+- `GRAPH_LOG_STORE_FILE_MAX_SIZE`: Max file size in bytes (default: 104857600 = 100MB)
+- `GRAPH_LOG_STORE_FILE_RETENTION_DAYS`: Retention period (default: 30)
+
+**Deprecated variables** (will be removed in future versions):
+- `GRAPH_ELASTICSEARCH_URL` → use `GRAPH_LOG_STORE_ELASTICSEARCH_URL`
+- `GRAPH_ELASTICSEARCH_USER` → use `GRAPH_LOG_STORE_ELASTICSEARCH_USER`
+- `GRAPH_ELASTICSEARCH_PASSWORD` → use `GRAPH_LOG_STORE_ELASTICSEARCH_PASSWORD`
+- `GRAPH_ELASTIC_SEARCH_INDEX` → use `GRAPH_LOG_STORE_ELASTICSEARCH_INDEX`
+
+### Example: File-based Logs for Local Development
+
+```bash
+mkdir -p ./graph-logs
+export GRAPH_LOG_STORE_BACKEND=file
+export GRAPH_LOG_STORE_FILE_DIR=./graph-logs
+
+graph-node \
+  --postgres-url postgresql://graph:pass@localhost/graph-node \
+  --ethereum-rpc mainnet:https://... \
+  --ipfs 127.0.0.1:5001
+```
+
+See the **[Log Store Guide](log-store.md)** for:
+- Detailed configuration for all backends
+- How log stores work internally
+- GraphQL query examples
+- Choosing the right backend for your use case
+- Best practices and troubleshooting

@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use anyhow::Error;
-use protobuf::descriptor::field_descriptor_proto::Label;
-use protobuf::descriptor::field_descriptor_proto::Type;
+use protobuf::Message;
+use protobuf::UnknownValueRef;
 use protobuf::descriptor::DescriptorProto;
 use protobuf::descriptor::FieldDescriptorProto;
 use protobuf::descriptor::OneofDescriptorProto;
-use protobuf::Message;
-use protobuf::UnknownValueRef;
+use protobuf::descriptor::field_descriptor_proto::Label;
+use protobuf::descriptor::field_descriptor_proto::Type;
 use std::convert::From;
 use std::path::Path;
 

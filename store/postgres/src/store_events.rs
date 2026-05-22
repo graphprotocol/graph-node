@@ -1,12 +1,12 @@
 use graph::futures01::Stream;
+use graph::futures03::TryStreamExt;
 use graph::futures03::compat::Stream01CompatExt;
 use graph::futures03::stream::StreamExt;
-use graph::futures03::TryStreamExt;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 use graph::parking_lot::RwLock;
 use std::{collections::HashMap, sync::atomic::AtomicUsize};
-use tokio::sync::mpsc::{channel, Sender};
+use tokio::sync::mpsc::{Sender, channel};
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::notification_listener::{NotificationListener, SafeChannelName};

@@ -1,9 +1,9 @@
 use anyhow::Ok;
 use async_graphql::Result;
 use graph::prelude::NodeId;
+use graphman::commands::deployment::reassign::ReassignResult;
 use graphman::commands::deployment::reassign::load_deployment;
 use graphman::commands::deployment::reassign::reassign_deployment;
-use graphman::commands::deployment::reassign::ReassignResult;
 use graphman::deployment::DeploymentSelector;
 
 use crate::resolvers::context::GraphmanContext;

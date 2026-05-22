@@ -17,9 +17,9 @@ use diesel::sql_types::Bool;
 use diesel_async::RunQueryDsl;
 use graph::prelude::StoreError;
 
+use crate::AsyncPgConnection;
 use crate::command_support::catalog::Site;
 use crate::primary::DeploymentId;
-use crate::AsyncPgConnection;
 
 /// A locking scope for a particular deployment. We use different scopes for
 /// different purposes, and in each scope we use an advisory lock for each

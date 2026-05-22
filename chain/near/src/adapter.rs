@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use crate::data_source::PartialAccounts;
-use crate::{data_source::DataSource, Chain};
+use crate::{Chain, data_source::DataSource};
 use graph::blockchain as bc;
 use graph::firehose::{BasicReceiptFilter, PrefixSuffixPair};
 use graph::itertools::Itertools;
@@ -251,7 +251,7 @@ mod test {
     use std::collections::HashSet;
 
     use super::NearBlockFilter;
-    use crate::adapter::{TriggerFilter, BASIC_RECEIPT_FILTER_TYPE_URL};
+    use crate::adapter::{BASIC_RECEIPT_FILTER_TYPE_URL, TriggerFilter};
     use graph::{
         blockchain::TriggerFilter as _,
         firehose::{BasicReceiptFilter, PrefixSuffixPair},

@@ -1,11 +1,11 @@
 //! Types and helpers to deal with entity IDs which support a subset of the
 //! types that more general values support
-use anyhow::{anyhow, Context, Error};
+use anyhow::{Context, Error, anyhow};
 use diesel::{
+    QueryResult,
     pg::Pg,
     query_builder::AstPass,
     sql_types::{BigInt, Binary, Text},
-    QueryResult,
 };
 use stable_hash::{StableHash, StableHasher};
 use std::convert::TryFrom;
@@ -27,7 +27,7 @@ use crate::{
     runtime::gas::{Gas, GasSizeOf},
 };
 
-use super::{scalar, Value, ValueType, ID};
+use super::{ID, Value, ValueType, scalar};
 
 /// The types that can be used for the `id` of an entity
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

@@ -1,13 +1,13 @@
 use crate::{
-    blockchain::{block_stream::EntitySourceOperation, Block, Blockchain},
+    blockchain::{Block, Blockchain, block_stream::EntitySourceOperation},
     components::{
         link_resolver::{LinkResolver, LinkResolverContext},
         store::BlockNumber,
     },
     data::{
         subgraph::{
-            calls_host_fn, SubgraphManifest, UnresolvedSubgraphManifest, LATEST_VERSION,
-            SPEC_VERSION_1_3_0,
+            LATEST_VERSION, SPEC_VERSION_1_3_0, SubgraphManifest, UnresolvedSubgraphManifest,
+            calls_host_fn,
         },
         value::Word,
     },
@@ -16,17 +16,17 @@ use crate::{
     prelude::{CheapClone, DataSourceContext, DeploymentHash, Link},
     schema::TypeKind,
 };
-use anyhow::{anyhow, Context, Error, Result};
-use futures03::{stream::FuturesOrdered, TryStreamExt};
+use anyhow::{Context, Error, Result, anyhow};
+use futures03::{TryStreamExt, stream::FuturesOrdered};
 use serde::Deserialize;
-use slog::{info, Logger};
+use slog::{Logger, info};
 use std::{fmt, sync::Arc};
 
 use super::{
+    DataSourceTemplateInfo, TriggerWithHandler,
     common::{
         AbiJson, CallDecls, FindMappingABI, MappingABI, UnresolvedCallDecls, UnresolvedMappingABI,
     },
-    DataSourceTemplateInfo, TriggerWithHandler,
 };
 use crate::amp;
 
@@ -231,6 +231,16 @@ pub struct UnresolvedSource {
     address: DeploymentHash,
     #[serde(default)]
     start_block: BlockNumber,
+}
+
+impl UnresolvedSource {
+    pub fn address(&self) -> &DeploymentHash {
+        &self.address
+    }
+
+    pub fn start_block(&self) -> BlockNumber {
+        self.start_block
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]

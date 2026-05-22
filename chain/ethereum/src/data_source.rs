@@ -1,5 +1,5 @@
-use anyhow::{anyhow, Error};
-use anyhow::{ensure, Context};
+use anyhow::{Context, ensure};
+use anyhow::{Error, anyhow};
 use async_trait::async_trait;
 use graph::abi;
 use graph::abi::EventExt;
@@ -18,16 +18,17 @@ use graph::data_source::common::{
 };
 use graph::data_source::{CausalityRegion, MappingTrigger as MappingTriggerType};
 use graph::env::ENV_VARS;
+use graph::futures03::TryStreamExt;
 use graph::futures03::future::try_join;
 use graph::futures03::stream::FuturesOrdered;
-use graph::futures03::TryStreamExt;
+use graph::prelude::alloy::primitives::keccak256;
 use graph::prelude::alloy::{
     consensus::{TxEnvelope, TxLegacy},
     network::TransactionResponse,
     primitives::{Address, B256, U256},
     rpc::types::Log,
 };
-use graph::prelude::{alloy, Link, SubgraphManifestValidationError};
+use graph::prelude::{Link, SubgraphManifestValidationError, alloy};
 use graph::slog::{debug, error, o, trace};
 use itertools::Itertools;
 use serde::de::Error as ErrorD;
@@ -37,26 +38,25 @@ use std::num::NonZeroU32;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tiny_keccak::{keccak256, Keccak};
 
 use graph::{
     blockchain::{self, Blockchain},
     prelude::{
-        serde_json, warn, BlockNumber, CheapClone, EthereumCall, LightEthereumBlock,
-        LightEthereumBlockExt, LinkResolver, Logger,
+        BlockNumber, CheapClone, EthereumCall, LightEthereumBlock, LightEthereumBlockExt,
+        LinkResolver, Logger, serde_json, warn,
     },
 };
 
 use graph::data::subgraph::{
-    calls_host_fn, DataSourceContext, Source, MIN_SPEC_VERSION, SPEC_VERSION_0_0_8,
-    SPEC_VERSION_1_2_0,
+    DataSourceContext, MIN_SPEC_VERSION, SPEC_VERSION_0_0_8, SPEC_VERSION_1_2_0, Source,
+    calls_host_fn,
 };
 
+use crate::NodeCapabilities;
 use crate::adapter::EthereumAdapter as _;
 use crate::chain::Chain;
 use crate::network::EthereumNetworkAdapters;
 use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger, MappingTrigger};
-use crate::NodeCapabilities;
 
 // The recommended kind is `ethereum`, `ethereum/contract` is accepted for backwards compatibility.
 const ETHEREUM_KINDS: &[&str] = &["ethereum/contract", "ethereum"];
@@ -444,10 +444,9 @@ fn create_dummy_transaction(
     transaction_index: Option<u64>,
     transaction_hash: Option<B256>,
 ) -> Result<AnyTransaction, anyhow::Error> {
-    use alloy::serde::WithOtherFields;
     use graph::components::ethereum::AnyTxEnvelope;
     use graph::prelude::alloy::{
-        consensus::transaction::Recovered, consensus::Signed, primitives::Signature,
+        consensus::Signed, consensus::transaction::Recovered, primitives::Signature,
         rpc::types::Transaction,
     };
 
@@ -465,15 +464,14 @@ fn create_dummy_transaction(
 
     let recovered = Recovered::new_unchecked(any_envelope, Address::ZERO);
 
-    let inner_tx = Transaction {
+    Ok(Transaction {
         inner: recovered,
         block_hash: Some(block_hash),
         block_number: Some(block_number),
+        block_timestamp: None,
         transaction_index,
         effective_gas_price: None,
-    };
-
-    Ok(AnyTransaction::new(WithOtherFields::new(inner_tx)))
+    })
 }
 
 impl DataSource {
@@ -812,7 +810,7 @@ impl DataSource {
                 let logging_extras = Arc::new(o! {
                     "signature" => event_handler.event.to_string(),
                     "address" => format!("{}", &log.address()),
-                    "transaction" => format!("{}", &transaction.inner.tx_hash()),
+                    "transaction" => format!("{}", &transaction.tx_hash()),
                 });
                 let handler = event_handler.handler.clone();
                 let calls = DeclaredCall::from_log_trigger_with_event(
@@ -921,7 +919,7 @@ impl DataSource {
                 let logging_extras = Arc::new(o! {
                     "function" => handler.function.to_string(),
                     "to" => format!("{}", &call.to),
-                    "transaction" => format!("{}", &transaction.inner.tx_hash()),
+                    "transaction" => format!("{}", &transaction.tx_hash()),
                 });
                 Ok(Some(TriggerWithHandler::<Chain>::new_with_logging_extras(
                     MappingTrigger::Call {
@@ -1592,13 +1590,7 @@ impl MappingEventHandler {
 
 /// Hashes a string to a B256 hash.
 fn string_to_b256(s: &str) -> B256 {
-    let mut result = [0u8; 32];
-    let data = s.replace(' ', "").into_bytes();
-    let mut sponge = Keccak::new_keccak256();
-    sponge.update(&data);
-    sponge.finalize(&mut result);
-
-    B256::from_slice(&result)
+    keccak256(s.replace(' ', "").as_bytes())
 }
 
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]

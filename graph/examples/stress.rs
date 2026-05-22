@@ -1,15 +1,15 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::collections::{BTreeMap, HashMap};
 use std::iter::FromIterator;
-use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::time::{Duration, Instant};
 
 use clap::Parser;
 use graph::data::value::{Object, Word};
 use graph::object;
-use graph::prelude::{lazy_static, q, r, BigDecimal, BigInt, QueryResult};
-use rand::{rngs::SmallRng, Rng};
+use graph::prelude::{BigDecimal, BigInt, QueryResult, lazy_static, q, r};
+use rand::{Rng, rngs::SmallRng};
 use rand::{RngCore, SeedableRng};
 
 use graph::util::cache_weight::CacheWeight;
@@ -166,7 +166,7 @@ impl<K: CacheWeight, V: CacheWeight> CacheWeight for MapMeasure<K, V> {
 
 unsafe impl GlobalAlloc for Counter {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ret = System.alloc(layout);
+        let ret = unsafe { System.alloc(layout) };
         if !ret.is_null() {
             ALLOCATED.fetch_add(layout.size(), SeqCst);
         }
@@ -174,7 +174,7 @@ unsafe impl GlobalAlloc for Counter {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        System.dealloc(ptr, layout);
+        unsafe { System.dealloc(ptr, layout) };
         ALLOCATED.fetch_sub(layout.size(), SeqCst);
     }
 }
@@ -240,11 +240,7 @@ impl Template for BigInt {
         let f = match rng {
             Some(rng) => {
                 let mag = rng.random_range(1..100);
-                if rng.random_bool(0.5) {
-                    mag
-                } else {
-                    -mag
-                }
+                if rng.random_bool(0.5) { mag } else { -mag }
             }
             None => 1,
         };
@@ -261,11 +257,7 @@ impl Template for BigDecimal {
         let f = match rng.as_deref_mut() {
             Some(rng) => {
                 let mag = rng.random_range(1i32..100);
-                if rng.random_bool(0.5) {
-                    mag
-                } else {
-                    -mag
-                }
+                if rng.random_bool(0.5) { mag } else { -mag }
             }
             None => 1,
         };
@@ -564,11 +556,7 @@ struct Opt {
 }
 
 fn maybe_rng<'a>(opt: &'a Opt, rng: &'a mut SmallRng) -> Option<&'a mut SmallRng> {
-    if opt.seed == Some(0) {
-        None
-    } else {
-        Some(rng)
-    }
+    if opt.seed == Some(0) { None } else { Some(rng) }
 }
 
 fn stress<T: Template>(opt: &Opt) {

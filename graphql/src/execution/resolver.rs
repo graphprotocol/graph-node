@@ -4,14 +4,14 @@ use async_trait::async_trait;
 
 use graph::components::store::QueryPermit;
 use graph::data::query::{CacheStatus, Trace};
-use graph::prelude::{s, Error, QueryExecutionError};
+use graph::prelude::{Error, QueryExecutionError, s};
 use graph::schema::ApiSchema;
 use graph::{
     data::graphql::ObjectOrInterface,
-    prelude::{r, QueryResult},
+    prelude::{QueryResult, r},
 };
 
-use crate::execution::{ast as a, ExecutionContext};
+use crate::execution::{ExecutionContext, ast as a};
 
 use super::Query;
 

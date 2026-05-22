@@ -11,6 +11,8 @@ use semver::Version;
 
 use self::graphql::*;
 use self::mappings::*;
+
+pub use self::mappings::WasmOptLevel;
 use self::store::*;
 use crate::{
     components::{store::BlockNumber, subgraph::SubgraphVersionSwitchingMode},
@@ -170,6 +172,14 @@ pub struct EnvVars {
     ///
     /// Set the flag `GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION`. Off by default.
     pub postpone_attribute_index_creation: bool,
+    /// When a subgraph gets within this many blocks of the chain head,
+    /// create any indexes whose creation was postponed. Only has an effect
+    /// when `postpone_attribute_index_creation` is set.
+    ///
+    /// Set by the environment variable
+    /// `GRAPH_POSTPONE_INDEXES_CREATION_THRESHOLD`. The default value is
+    /// 10000.
+    pub postpone_indexes_creation_threshold: BlockNumber,
     /// Verbose logging of mapping inputs.
     ///
     /// Set by the flag `GRAPH_LOG_TRIGGER_DATA`. Off by
@@ -320,7 +330,7 @@ impl EnvVars {
             lock_contention_log_threshold: Duration::from_millis(
                 inner.lock_contention_log_threshold_in_ms,
             ),
-            max_gas_per_handler: inner.max_gas_per_handler.0 .0,
+            max_gas_per_handler: inner.max_gas_per_handler.0.0,
             log_query_timing: inner
                 .log_query_timing
                 .split(',')
@@ -343,6 +353,7 @@ impl EnvVars {
             enable_select_by_specific_attributes: inner.enable_select_by_specific_attributes.0,
             postpone_attribute_index_creation: inner.postpone_attribute_index_creation.0
                 || cfg!(debug_assertions),
+            postpone_indexes_creation_threshold: inner.postpone_indexes_creation_threshold,
             log_trigger_data: inner.log_trigger_data.0,
             explorer_ttl: Duration::from_secs(inner.explorer_ttl_in_secs),
             explorer_lock_threshold: Duration::from_millis(inner.explorer_lock_threshold_in_msec),
@@ -547,6 +558,8 @@ struct Inner {
     enable_select_by_specific_attributes: EnvVarBoolean,
     #[envconfig(from = "GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION", default = "false")]
     postpone_attribute_index_creation: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_POSTPONE_INDEXES_CREATION_THRESHOLD", default = "10000")]
+    postpone_indexes_creation_threshold: i32,
     #[envconfig(from = "GRAPH_LOG_TRIGGER_DATA", default = "false")]
     log_trigger_data: EnvVarBoolean,
     #[envconfig(from = "GRAPH_EXPLORER_TTL", default = "10")]
@@ -606,10 +619,10 @@ struct Inner {
     )]
     disable_deployment_hash_validation: EnvVarBoolean,
 
-    #[envconfig(from = "GRAPH_AMP_MAX_BUFFER_SIZE")]
-    amp_max_buffer_size: Option<usize>,
-    #[envconfig(from = "GRAPH_AMP_MAX_BLOCK_RANGE")]
-    amp_max_block_range: Option<usize>,
+    #[envconfig(from = "GRAPH_AMP_BUFFER_SIZE")]
+    amp_buffer_size: Option<usize>,
+    #[envconfig(from = "GRAPH_AMP_BLOCK_RANGE")]
+    amp_block_range: Option<usize>,
     #[envconfig(from = "GRAPH_AMP_QUERY_RETRY_MIN_DELAY_SECONDS")]
     amp_query_retry_min_delay_seconds: Option<u64>,
     #[envconfig(from = "GRAPH_AMP_QUERY_RETRY_MAX_DELAY_SECONDS")]

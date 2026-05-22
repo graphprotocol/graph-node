@@ -1,0 +1,24 @@
+[
+  {
+    "constant": false,
+    "inputs": [
+      { "name": "", "type": "uint256" },
+      {
+        "type": "tuple",
+        "components": [
+          { "type": "bytes32" },
+          { "type": "bytes32" },
+          { "type": "uint256" }
+        ]
+      },
+      {
+        "type": "bool"
+      }
+    ],
+    "name": "doSomething",
+    "outputs": [],
+    "payable": false,
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+]

@@ -4,14 +4,14 @@ use arrow::{
     array::{
         BinaryArray, BinaryViewArray, BooleanArray, BooleanBuilder, Decimal128Builder,
         Decimal256Builder, FixedSizeBinaryArray, FixedSizeListBuilder, Float16Array, Float32Array,
-        Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, LargeBinaryArray,
+        Float64Array, Int8Array, Int16Array, Int32Array, Int64Array, LargeBinaryArray,
         LargeListBuilder, LargeListViewBuilder, LargeStringArray, ListBuilder, ListViewBuilder,
         RecordBatch, StringArray, StringViewArray, TimestampMicrosecondArray,
-        TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt16Array,
-        UInt32Array, UInt64Array, UInt8Array,
+        TimestampMillisecondArray, TimestampNanosecondArray, TimestampSecondArray, UInt8Array,
+        UInt16Array, UInt32Array, UInt64Array,
     },
     datatypes::{
-        i256, DataType, Field, Schema, TimeUnit, DECIMAL128_MAX_PRECISION, DECIMAL256_MAX_PRECISION,
+        DECIMAL128_MAX_PRECISION, DECIMAL256_MAX_PRECISION, DataType, Field, Schema, TimeUnit, i256,
     },
 };
 use chrono::{TimeZone, Utc};

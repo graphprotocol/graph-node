@@ -6,8 +6,8 @@ use indoc::indoc;
 use prometheus::Counter;
 use prometheus::IntGauge;
 
-use super::stopwatch::StopwatchMetrics;
 use super::MetricsRegistry;
+use super::stopwatch::StopwatchMetrics;
 use crate::blockchain::block_stream::BlockStreamMetrics;
 use crate::components::store::DeploymentLocator;
 use crate::prelude::{Gauge, Histogram, HostMetrics};

@@ -14,11 +14,11 @@ use git_testament::{git_testament, git_testament_macros};
 use graph::blockchain::BlockHash;
 use graph::data::store::scalar::ToPrimitive;
 use graph::data::subgraph::schema::{SubgraphError, SubgraphManifestEntity};
-use graph::prelude::alloy::primitives::B256;
 use graph::prelude::BlockNumber;
+use graph::prelude::alloy::primitives::B256;
 use graph::prelude::{
-    chrono::{DateTime, Utc},
     BlockPtr, DeploymentHash, StoreError, SubgraphDeploymentEntity,
+    chrono::{DateTime, Utc},
 };
 use graph::schema::InputSchema;
 use graph::{data::subgraph::status, internal_error};
@@ -27,12 +27,12 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::{ops::Bound, sync::Arc};
 
+use crate::AsyncPgConnection;
 use crate::deployment::{
-    deployment as subgraph_deployment, graph_node_versions, head as subgraph_head, subgraph_error,
-    subgraph_manifest, SubgraphHealth as HealthType,
+    SubgraphHealth as HealthType, deployment as subgraph_deployment, graph_node_versions,
+    head as subgraph_head, subgraph_error, subgraph_manifest,
 };
 use crate::primary::{DeploymentId, Site};
-use crate::AsyncPgConnection;
 
 git_testament_macros!(version);
 git_testament!(TESTAMENT);
@@ -655,6 +655,18 @@ pub async fn deployment_entity(
         .map(DeploymentDetail::from)?;
 
     StoredDeploymentEntity(detail, manifest).into_subgraph_deployment_entity(schema)
+}
+
+/// Load the entity count for a deployment from `subgraphs.head`.
+pub async fn entity_count(conn: &mut AsyncPgConnection, site: &Site) -> Result<usize, StoreError> {
+    use subgraph_head as h;
+
+    let count: i64 = h::table
+        .find(site.id)
+        .select(h::entity_count)
+        .first(conn)
+        .await?;
+    Ok(count as usize)
 }
 
 #[derive(Queryable, Identifiable, Insertable)]

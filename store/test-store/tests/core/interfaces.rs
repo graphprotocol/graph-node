@@ -315,11 +315,9 @@ async fn conflicting_implementors_id() {
     let msg = res.unwrap_err().to_string();
     // We don't know in which order the two entities get inserted; the two
     // error messages only differ in who gets inserted first
-    const EXPECTED1: &str =
-        "tried to set entity of type `Furniture` with ID \"1\" but an entity of type `Animal`, \
+    const EXPECTED1: &str = "tried to set entity of type `Furniture` with ID \"1\" but an entity of type `Animal`, \
          which has an interface in common with `Furniture`, exists with the same ID";
-    const EXPECTED2: &str =
-        "tried to set entity of type `Animal` with ID \"1\" but an entity of type `Furniture`, \
+    const EXPECTED2: &str = "tried to set entity of type `Animal` with ID \"1\" but an entity of type `Furniture`, \
          which has an interface in common with `Animal`, exists with the same ID";
 
     assert!(msg == EXPECTED1 || msg == EXPECTED2);

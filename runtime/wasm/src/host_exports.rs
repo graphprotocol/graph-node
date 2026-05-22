@@ -24,7 +24,7 @@ use graph::data_source::{CausalityRegion, DataSource, EntityTypeAccess};
 use graph::ensure;
 use graph::prelude::serde_json;
 use graph::prelude::{slog::b, slog::record_static, *};
-use graph::runtime::gas::{self, complexity, Gas, GasCounter};
+use graph::runtime::gas::{self, Gas, GasCounter, complexity};
 pub use graph::runtime::{DeterministicHostError, HostExportError};
 
 use crate::module::WasmInstance;
@@ -179,8 +179,8 @@ impl HostExports {
 
             if has_invalid_fields {
                 let mut invalid_fields: Vec<Word> = data
-                    .iter()
-                    .filter_map(|(field_name, _)| {
+                    .keys()
+                    .filter_map(|field_name| {
                         if !state
                             .entity_cache
                             .schema
@@ -224,7 +224,6 @@ impl HostExports {
     pub(crate) async fn store_set(
         &self,
         logger: &Logger,
-        block: BlockNumber,
         state: &mut BlockState,
         proof_of_indexing: &SharedProofOfIndexing,
         block_time: BlockTime,
@@ -251,7 +250,7 @@ impl HostExports {
                 .into());
             }
             let id_type = entity_type.id_type()?;
-            let id = state.entity_cache.generate_id(id_type, block)?;
+            let id = state.entity_cache.seq_gen.id(id_type)?;
             data.insert(store::ID.clone(), id.clone().into());
             id.to_string()
         } else {
@@ -338,12 +337,7 @@ impl HostExports {
 
         state
             .entity_cache
-            .set(
-                key,
-                entity,
-                block,
-                Some(&mut state.write_capacity_remaining),
-            )
+            .set(key, entity, Some(&mut state.write_capacity_remaining))
             .await?;
 
         Ok(())
@@ -676,7 +670,7 @@ impl HostExports {
             gas::DEFAULT_GAS_OP.with_args(complexity::Size, data),
             "crypto_keccak_256",
         )?;
-        Ok(tiny_keccak::keccak256(data))
+        Ok(alloy::primitives::keccak256(data).0)
     }
 
     pub(crate) fn big_int_plus(
@@ -1302,13 +1296,10 @@ pub mod test_support {
 
     use graph::{
         blockchain::BlockTime,
-        components::{
-            store::{BlockNumber, GetScope},
-            subgraph::SharedProofOfIndexing,
-        },
+        components::{store::GetScope, subgraph::SharedProofOfIndexing},
         data::value::Word,
         prelude::{BlockState, Entity, StopwatchMetrics, Value},
-        runtime::{gas::GasCounter, HostExportError},
+        runtime::{HostExportError, gas::GasCounter},
         slog::Logger,
     };
 
@@ -1330,7 +1321,6 @@ pub mod test_support {
         pub async fn store_set(
             &self,
             logger: &Logger,
-            block: BlockNumber,
             state: &mut BlockState,
             proof_of_indexing: &SharedProofOfIndexing,
             entity_type: String,
@@ -1342,7 +1332,6 @@ pub mod test_support {
             self.host_exports
                 .store_set(
                     logger,
-                    block,
                     state,
                     proof_of_indexing,
                     self.block_time,
@@ -1382,7 +1371,9 @@ fn bytes_to_string_is_lossy() {
         "Downcoin WETH-USDT",
         bytes_to_string(
             &graph::log::logger(true),
-            vec![68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84],
+            vec![
+                68, 111, 119, 110, 99, 111, 105, 110, 32, 87, 69, 84, 72, 45, 85, 83, 68, 84
+            ],
         )
     );
 

@@ -1,5 +1,5 @@
-use crate::json_patch;
 use alloy::transports::{TransportError, TransportErrorKind, TransportFut};
+use graph::components::ethereum::json_patch;
 use graph::components::network_provider::ProviderName;
 use graph::endpoint::{ConnectionType, EndpointMetrics, RequestLabels};
 use graph::prelude::alloy::rpc::json_rpc::{RequestPacket, ResponsePacket};
@@ -42,9 +42,17 @@ pub enum Transport {
 
 impl Transport {
     /// Creates an IPC transport.
+    ///
+    /// Accepts both a raw file path (`/tmp/geth.ipc`) and an `ipc://` URL
+    /// (`ipc:///tmp/geth.ipc`). When a URL is provided the file path is
+    /// extracted so that the underlying IPC connector receives a plain path.
     #[cfg(unix)]
     pub async fn new_ipc(ipc: &str) -> Self {
-        let transport = IpcConnect::new(ipc.to_string());
+        let path = Url::parse(ipc)
+            .ok()
+            .map(|u| u.path().to_string())
+            .unwrap_or_else(|| ipc.to_string());
+        let transport = IpcConnect::new(path);
 
         Transport::IPC(transport)
     }
@@ -257,12 +265,10 @@ impl Service<RequestPacket> for PatchingHttp {
                 ));
             }
 
-            if should_patch {
-                if let Some(patched) = Self::patch_response(&body) {
-                    return serde_json::from_slice(&patched).map_err(|err| {
-                        TransportError::deser_err(err, String::from_utf8_lossy(&patched))
-                    });
-                }
+            if should_patch && let Some(patched) = Self::patch_response(&body) {
+                return serde_json::from_slice(&patched).map_err(|err| {
+                    TransportError::deser_err(err, String::from_utf8_lossy(&patched))
+                });
             }
             serde_json::from_slice(&body)
                 .map_err(|err| TransportError::deser_err(err, String::from_utf8_lossy(&body)))

@@ -12,7 +12,7 @@ use diesel_async::RunQueryDsl;
 use graph::components::store::DeploymentId;
 use graph::{
     components::store::DeploymentLocator,
-    prelude::{anyhow, lazy_static, regex::Regex, DeploymentHash},
+    prelude::{DeploymentHash, anyhow, lazy_static, regex::Regex},
 };
 use graph_store_postgres::command_support::catalog as store_catalog;
 use graph_store_postgres::unused;

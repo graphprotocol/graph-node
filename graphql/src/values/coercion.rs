@@ -1,6 +1,6 @@
 use graph::data::store::scalar::Timestamp;
 use graph::prelude::s::{EnumType, InputValue, ScalarType, Type, TypeDefinition};
-use graph::prelude::{q, r, QueryExecutionError};
+use graph::prelude::{QueryExecutionError, q, r};
 use graph::schema;
 use std::collections::BTreeMap;
 use std::convert::TryFrom;

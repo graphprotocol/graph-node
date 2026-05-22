@@ -35,14 +35,18 @@ pub enum ChainIdentifierValidationError {
     #[error("identifier not set for chain '{0}'")]
     IdentifierNotSet(ChainName),
 
-    #[error("net version mismatch on chain '{chain_name}'; expected '{store_net_version}', found '{chain_net_version}'")]
+    #[error(
+        "net version mismatch on chain '{chain_name}'; expected '{store_net_version}', found '{chain_net_version}'"
+    )]
     NetVersionMismatch {
         chain_name: ChainName,
         store_net_version: String,
         chain_net_version: String,
     },
 
-    #[error("genesis block hash mismatch on chain '{chain_name}'; expected '{store_genesis_block_hash}', found '{chain_genesis_block_hash}'")]
+    #[error(
+        "genesis block hash mismatch on chain '{chain_name}'; expected '{store_genesis_block_hash}', found '{chain_genesis_block_hash}'"
+    )]
     GenesisBlockHashMismatch {
         chain_name: ChainName,
         store_genesis_block_hash: BlockHash,

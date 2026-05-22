@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use alloy::primitives::{BlockHash, BlockNumber};
 use graph::{
-    amp::{log::Logger as _, Codec, Manifest},
+    amp::{Codec, Manifest, log::Logger as _},
     cheap_clone::CheapClone,
     components::store::WritableStore,
     data::subgraph::DeploymentHash,
@@ -18,8 +18,8 @@ pub(in super::super) struct Context<AC> {
     pub(super) logger: Logger,
     pub(super) client: Arc<AC>,
     pub(super) store: Arc<dyn WritableStore>,
-    pub(super) max_buffer_size: usize,
-    pub(super) max_block_range: usize,
+    pub(super) buffer_size: usize,
+    pub(super) block_range: usize,
     pub(super) backoff: ExponentialBackoff,
     pub(super) deployment: DeploymentHash,
     pub(super) manifest: Manifest,
@@ -45,8 +45,8 @@ impl<AC> Context<AC> {
             logger,
             client,
             store,
-            max_buffer_size: env.max_buffer_size,
-            max_block_range: env.max_block_range,
+            buffer_size: env.buffer_size,
+            block_range: env.block_range,
             backoff,
             deployment,
             manifest,
@@ -77,15 +77,7 @@ impl<AC> Context<AC> {
             .map(|block_ptr| (block_ptr.number.compat(), block_ptr.hash.compat()))
     }
 
-    pub(super) fn total_queries(&self) -> usize {
-        self.manifest
-            .data_sources
-            .iter()
-            .map(|data_source| data_source.transformer.tables.len())
-            .sum()
-    }
-
-    pub(super) fn min_start_block(&self) -> BlockNumber {
+    pub(super) fn start_block(&self) -> BlockNumber {
         self.manifest
             .data_sources
             .iter()
@@ -94,7 +86,7 @@ impl<AC> Context<AC> {
             .unwrap()
     }
 
-    pub(super) fn max_end_block(&self) -> BlockNumber {
+    pub(super) fn end_block(&self) -> BlockNumber {
         self.manifest
             .data_sources
             .iter()

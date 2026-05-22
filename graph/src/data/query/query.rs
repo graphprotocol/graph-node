@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::{
     data::graphql::shape_hash::shape_hash,
-    prelude::{q, r, ApiVersion, DeploymentHash, SubgraphName, ENV_VARS},
+    prelude::{ApiVersion, DeploymentHash, ENV_VARS, SubgraphName, q, r},
 };
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>

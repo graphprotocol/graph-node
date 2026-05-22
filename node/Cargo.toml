@@ -14,12 +14,12 @@ path = "src/bin/manager.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-env_logger = "0.11.8"
+env_logger = { workspace = true }
 clap.workspace = true
-git-testament = "0.2"
+git-testament = { workspace = true }
 itertools = { workspace = true }
-lazy_static = "1.5.0"
-url = "2.5.8"
+lazy_static = { workspace = true }
+url = { workspace = true }
 graph = { path = "../graph" }
 graph-core = { path = "../core" }
 graph-chain-ethereum = { path = "../chain/ethereum" }
@@ -33,13 +33,15 @@ graph-store-postgres = { path = "../store/postgres" }
 graphman-server = { workspace = true }
 graphman = { workspace = true }
 serde = { workspace = true }
-shellexpand = "3.1.1"
+shellexpand = "3.1.2"
 termcolor = "1.4.1"
 tokio = { workspace = true }
 diesel = { workspace = true }
 diesel-async = { workspace = true }
 prometheus = { version = "0.14.0", features = ["push"] }
 json-structural-diff = { version = "0.2", features = ["colorize"] }
+indicatif = { workspace = true }
+console = { workspace = true }
 
 # Dependencies related to Amp subgraphs
 tokio-util.workspace = true

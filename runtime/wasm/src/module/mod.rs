@@ -1,8 +1,8 @@
 use std::convert::TryFrom;
 use std::mem::MaybeUninit;
 
-use anyhow::anyhow;
 use anyhow::Error;
+use anyhow::anyhow;
 use async_trait::async_trait;
 use graph::blockchain::Blockchain;
 use graph::data_source::subgraph;
@@ -13,14 +13,13 @@ use wasmtime::AsContext;
 use wasmtime::AsContextMut;
 use wasmtime::Memory;
 
-use graph::data_source::{offchain, MappingTrigger, TriggerWithHandler};
+use graph::data_source::{MappingTrigger, TriggerWithHandler, offchain};
 use graph::prelude::*;
 use graph::runtime::AscPtr;
 use graph::runtime::{
-    asc_new,
-    gas::{Gas, GasCounter},
     AscHeap, AscIndexId, AscType, DeterministicHostError, FromAscObj, HostExportError,
-    IndexForAscTypeId,
+    IndexForAscTypeId, asc_new,
+    gas::{Gas, GasCounter},
 };
 pub use into_wasm_ret::IntoWasmRet;
 
@@ -368,17 +367,29 @@ impl AscHeap for WasmInstanceContext<'_> {
         &mut self,
         type_id_index: IndexForAscTypeId,
     ) -> Result<u32, HostExportError> {
+        // Check the module-level cache. Lives on ValidModule (Arc-shared, persists
+        // across all triggers for this subgraph module).
+        if let Some(type_id) = self.as_ref().valid_module.get_cached_type_id(type_id_index) {
+            return Ok(type_id);
+        }
+
+        // Cache miss: call into WASM.
         let asc_heap = self.asc_heap().cheap_clone();
         let func = asc_heap.id_of_type.as_ref().unwrap();
-
-        // Unwrap ok because it's only called on correct apiVersion, look for AscPtr::generate_header
-        func.call_async(self.as_context_mut(), type_id_index as u32)
+        let type_id = func
+            .call_async(self.as_context_mut(), type_id_index as u32)
             .await
             .map_err(|trap| {
                 host_export_error_from_trap(
                     trap,
                     format!("Failed to call 'asc_type_id' with '{:?}'", type_id_index),
                 )
-            })
+            })?;
+
+        // Store for all future triggers.
+        self.as_ref()
+            .valid_module
+            .cache_type_id(type_id_index, type_id);
+        Ok(type_id)
     }
 }

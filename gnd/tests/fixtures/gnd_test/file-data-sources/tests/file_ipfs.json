@@ -1,0 +1,36 @@
+{
+  "name": "IPFS file data source creates entity from fetched content",
+  "files": [
+    {
+      "cid": "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+      "content": "Hello from IPFS"
+    }
+  ],
+  "blocks": [
+    {
+      "events": [
+        {
+          "address": "0x0000000000000000000000000000000000000002",
+          "event": "IpfsFileCreated(string cid)",
+          "params": {
+            "cid": "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG"
+          }
+        }
+      ]
+    },
+    {}
+  ],
+  "assertions": [
+    {
+      "query": "{ ipfsFiles { id content } }",
+      "expected": {
+        "ipfsFiles": [
+          {
+            "id": "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+            "content": "Hello from IPFS"
+          }
+        ]
+      }
+    }
+  ]
+}

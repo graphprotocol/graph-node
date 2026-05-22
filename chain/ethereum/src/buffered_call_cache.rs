@@ -9,7 +9,7 @@ use graph::{
     components::store::EthereumCallCache,
     data::store::ethereum::call,
     prelude::{BlockPtr, CachedEthereumCall},
-    slog::{error, Logger},
+    slog::{Logger, error},
 };
 
 /// A wrapper around an Ethereum call cache that buffers call results in

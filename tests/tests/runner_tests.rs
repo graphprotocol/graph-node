@@ -1,7 +1,8 @@
+use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::str::FromStr;
-use std::sync::atomic::{self, AtomicBool};
 use std::sync::Arc;
+use std::sync::atomic::{self, AtomicBool};
 use std::time::Duration;
 
 use assert_json_diff::assert_json_eq;
@@ -16,18 +17,26 @@ use graph::env::{EnvVars, TEST_WITH_NO_REORG};
 use graph::ipfs::test_utils::add_files_to_local_ipfs_node_for_testing;
 use graph::object;
 use graph::prelude::alloy::primitives::{Address, B256, U256};
-use graph::prelude::{hex, CheapClone, SubgraphName, SubgraphStore};
+use graph::prelude::{CheapClone, SubgraphName, SubgraphStore, hex};
 use graph_tests::fixture::ethereum::{
     chain, empty_block, generate_empty_blocks_for_range, genesis, push_test_command, push_test_log,
     push_test_polling_trigger,
 };
 
-use graph_tests::fixture::{
-    self, test_ptr, test_ptr_reorged, MockAdapterSelector, NoopAdapterSelector, TestChainTrait,
-    TestContext, TestInfo,
+use graph::blockchain::Trigger;
+use graph::prelude::alloy::rpc::types::BlockTransactions;
+use graph::prelude::{LightEthereumBlock, create_dummy_transaction, create_minimal_block_for_test};
+use graph_chain_ethereum::{
+    chain::BlockFinality,
+    trigger::{EthereumBlockTriggerType, EthereumTrigger},
 };
-use graph_tests::recipe::{build_subgraph_with_pnpm_cmd_and_arg, RunnerTestRecipe};
-use slog::{o, Discard, Logger};
+
+use graph_tests::fixture::{
+    self, MockAdapterSelector, NoopAdapterSelector, StaticArweaveResolver, TestChainTrait,
+    TestContext, TestInfo, test_ptr, test_ptr_reorged,
+};
+use graph_tests::recipe::{RunnerTestRecipe, build_subgraph_with_pnpm_cmd_and_arg};
+use slog::{Discard, Logger, o};
 
 fn assert_eq_ignore_backtrace(err: &SubgraphError, expected: &SubgraphError) {
     let equal = {
@@ -447,7 +456,7 @@ async fn end_block() -> anyhow::Result<()> {
     ) {
         let runner = ctx.runner(block_ptr.clone()).await;
         let runner = runner.run_for_test(false).await.unwrap();
-        let filter = runner.context().filter.as_ref().unwrap();
+        let filter = runner.build_filter_for_test();
         let addresses = filter
             .chain_filter
             .log()
@@ -664,11 +673,25 @@ async fn file_data_sources() {
         assert!(datasources.len() == 1);
     }
 
-    // Create a File data source from a same type of file data source handler
+    // Create a File data source from a same type of file data source handler.
+    // Both hash_2 and hash_3 handlers create entities in the same block,
+    // exercising the shared VID generator: colliding VIDs would cause a DB
+    // constraint violation.
     {
         ctx.start_and_sync_to(test_ptr(4)).await;
 
-        let content = "EXAMPLE_3";
+        let query_res = ctx
+            .query(&format!(
+                r#"{{ fileEntity(id: "{}") {{ id, content }} }}"#,
+                hash_2.clone()
+            ))
+            .await
+            .unwrap();
+        assert_json_eq!(
+            query_res,
+            Some(object! { fileEntity: object!{ id: hash_2.clone(), content: "EXAMPLE_2" } })
+        );
+
         let query_res = ctx
             .query(&format!(
                 r#"{{ fileEntity(id: "{}") {{ id, content }} }}"#,
@@ -678,7 +701,7 @@ async fn file_data_sources() {
             .unwrap();
         assert_json_eq!(
             query_res,
-            Some(object! { fileEntity: object!{ id: hash_3.clone(), content: content } })
+            Some(object! { fileEntity: object!{ id: hash_3.clone(), content: "EXAMPLE_3" } })
         );
     }
 
@@ -804,11 +827,22 @@ async fn file_data_sources() {
 
         chain.set_block_stream(blocks);
 
-        let message = "error while executing at wasm backtrace:\t    0:   0x3490 - <unknown>!generated/schema/Foo#save\t    1:   0x3eb2 - <unknown>!src/mapping/handleFile: entity type `Foo` is not on the 'entities' list for data source `File`. Hint: Add `Foo` to the 'entities' list, which currently is: `FileEntity`. in handler `handleFile` at block #5 () at block #5 (0000000000000000000000000000000000000000000000000000000000000005)";
-
         let err = ctx.start_and_sync_to_error(block_5.ptr()).await;
+        let err_msg = err.to_string();
 
-        assert_eq!(err.to_string(), message);
+        // Don't check exact wasm hex offsets since they change with any
+        // modification to the wasm binary.
+        assert!(
+            err_msg
+                .contains("entity type `Foo` is not on the 'entities' list for data source `File`"),
+            "unexpected error: {err_msg}"
+        );
+        assert!(
+            err_msg.contains(
+                "Hint: Add `Foo` to the 'entities' list, which currently is: `FileEntity`"
+            ),
+            "unexpected error: {err_msg}"
+        );
     }
 }
 
@@ -1141,23 +1175,22 @@ async fn arweave_file_data_sources() {
     // HASH used in the mappings.
     let id = "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8";
 
-    // This test assumes the file data sources will be processed in the same block in which they are
-    // created. But the test might fail due to a race condition if for some reason it takes longer
-    // than expected to fetch the file from arweave. The sleep here will conveniently happen after the
-    // data source is added to the offchain monitor but before the monitor is checked, in an an
-    // attempt to ensure the monitor has enough time to fetch the file.
-    let adapter_selector = NoopAdapterSelector {
-        x: PhantomData,
-        triggers_in_block_sleep: Duration::from_millis(1500),
-    };
-    let chain = chain(
-        &test_info.test_name,
-        blocks.clone(),
+    // Use a mock arweave resolver to avoid real network calls and eliminate the
+    // race condition that caused this test to be flaky.
+    let arweave_content: HashMap<String, Vec<u8>> =
+        HashMap::from([(id.to_string(), b"test arweave content".to_vec())]);
+    let arweave_resolver = Arc::new(StaticArweaveResolver::new(arweave_content));
+
+    let chain = chain(&test_info.test_name, blocks.clone(), &stores, None).await;
+    let ctx = fixture::setup_with_arweave_resolver(
+        &test_info,
         &stores,
-        Some(Arc::new(adapter_selector)),
+        &chain,
+        None,
+        None,
+        arweave_resolver,
     )
     .await;
-    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
     ctx.start_and_sync_to(test_ptr(2)).await;
 
     let store = ctx.store.cheap_clone();
@@ -1186,4 +1219,276 @@ async fn arweave_file_data_sources() {
         query_res,
         Some(object! { file: object!{ id: id, content: content.clone() } })
     );
+}
+
+#[graph::test]
+async fn aggregation_current_bucket() {
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("aggregation_current_bucket", "aggregation-current-bucket").await;
+
+    // Helper to create a block with a specific timestamp (seconds since epoch)
+    fn empty_block_with_timestamp(
+        parent_ptr: BlockPtr,
+        ptr: BlockPtr,
+        timestamp: u64,
+    ) -> BlockWithTriggers<graph_chain_ethereum::Chain> {
+        let dummy_txn =
+            create_dummy_transaction(ptr.number as u64, ptr.hash.as_b256(), Some(0), B256::ZERO);
+        let transactions = BlockTransactions::Full(vec![dummy_txn]);
+        let alloy_block = create_minimal_block_for_test(ptr.number as u64, ptr.hash.as_b256())
+            .map_header(|mut header| {
+                header.inner.parent_hash = parent_ptr.hash.as_b256();
+                header.inner.timestamp = timestamp;
+                header
+            })
+            .with_transactions(transactions);
+
+        BlockWithTriggers::<graph_chain_ethereum::Chain> {
+            block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block))),
+            trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
+                ptr,
+                EthereumBlockTriggerType::End,
+            ))],
+        }
+    }
+
+    // Block layout:
+    // Block 0: genesis (timestamp 0)
+    // Block 1: timestamp 3601 (hour 1, +1s) — create tokens
+    // Block 2: timestamp 3660 (hour 1, +1 min) — create data: TOKEN_A=10, TOKEN_B=20
+    // Block 3: timestamp 3720 (hour 1, +2 min) — create data: TOKEN_A=30, TOKEN_B=40
+    // Block 4: timestamp 7201 (hour 2, +1s, triggers hour-1 rollup) — create data: TOKEN_A=5, TOKEN_B=15
+    // Block 5: timestamp 7261 (hour 2, +1 min +1s) — create data: TOKEN_A=7, TOKEN_B=25
+    //
+    // Expected results:
+    // Hour 1 (rolled up): TOKEN_A sum=40, TOKEN_B sum=60
+    // Hour 2 (current):   TOKEN_A sum=12, TOKEN_B sum=40
+
+    let block_0 = genesis();
+
+    let mut block_1 = empty_block_with_timestamp(block_0.ptr(), test_ptr(1), 3601);
+    push_test_log(&mut block_1, "token:0xaa:TokenA");
+    push_test_log(&mut block_1, "token:0xbb:TokenB");
+
+    let mut block_2 = empty_block_with_timestamp(block_1.ptr(), test_ptr(2), 3660);
+    push_test_log(&mut block_2, "data:0xaa:10");
+    push_test_log(&mut block_2, "data:0xbb:20");
+
+    let mut block_3 = empty_block_with_timestamp(block_2.ptr(), test_ptr(3), 3720);
+    push_test_log(&mut block_3, "data:0xaa:30");
+    push_test_log(&mut block_3, "data:0xbb:40");
+
+    let mut block_4 = empty_block_with_timestamp(block_3.ptr(), test_ptr(4), 7201);
+    push_test_log(&mut block_4, "data:0xaa:5");
+    push_test_log(&mut block_4, "data:0xbb:15");
+
+    let mut block_5 = empty_block_with_timestamp(block_4.ptr(), test_ptr(5), 7261);
+    push_test_log(&mut block_5, "data:0xaa:7");
+    push_test_log(&mut block_5, "data:0xbb:25");
+
+    let blocks = vec![block_0, block_1, block_2, block_3, block_4, block_5];
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
+
+    ctx.start_and_sync_to(test_ptr(5)).await;
+
+    // Query 1: Root query with current: include
+    // Expect 4 rows: hour-1 TOKEN_A(sum=40), hour-1 TOKEN_B(sum=60),
+    //                hour-2 TOKEN_A(sum=12), hour-2 TOKEN_B(sum=40)
+    let query_res = ctx
+        .query(
+            r#"{
+                stats_collection(interval: "hour", current: include, orderBy: timestamp, orderDirection: asc) {
+                    token { id }
+                    sum
+                }
+            }"#,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! {
+            stats_collection: vec![
+                object! { token: object! { id: "0xaa" }, sum: "40" },
+                object! { token: object! { id: "0xbb" }, sum: "60" },
+                object! { token: object! { id: "0xaa" }, sum: "12" },
+                object! { token: object! { id: "0xbb" }, sum: "40" },
+            ]
+        })
+    );
+
+    // Query 2: Root query with current: exclude (only rolled-up data)
+    // Expect 2 rows: hour-1 TOKEN_A(sum=40), hour-1 TOKEN_B(sum=60)
+    let query_res = ctx
+        .query(
+            r#"{
+                stats_collection(interval: "hour", current: exclude, orderBy: timestamp, orderDirection: asc) {
+                    token { id }
+                    sum
+                }
+            }"#,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! {
+            stats_collection: vec![
+                object! { token: object! { id: "0xaa" }, sum: "40" },
+                object! { token: object! { id: "0xbb" }, sum: "60" },
+            ]
+        })
+    );
+
+    // Query 3: Nested query with current: include
+    // Each token should have 2 stats entries (hour-1 rolled-up + hour-2 current)
+    let query_res = ctx
+        .query(
+            r#"{
+                tokens(orderBy: id) {
+                    id
+                    stats(interval: "hour", current: include, orderBy: timestamp, orderDirection: asc) {
+                        sum
+                    }
+                }
+            }"#,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! {
+            tokens: vec![
+                object! {
+                    id: "0xaa",
+                    stats: vec![
+                        object! { sum: "40" },
+                        object! { sum: "12" },
+                    ]
+                },
+                object! {
+                    id: "0xbb",
+                    stats: vec![
+                        object! { sum: "60" },
+                        object! { sum: "40" },
+                    ]
+                },
+            ]
+        })
+    );
+}
+
+#[graph::test]
+async fn skip_duplicates() {
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("skip_duplicates", "skip-duplicates").await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        push_test_polling_trigger(&mut block_1);
+        let mut block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        push_test_polling_trigger(&mut block_2);
+        let mut block_3 = empty_block(block_2.ptr(), test_ptr(3));
+        push_test_polling_trigger(&mut block_3);
+        let mut block_4 = empty_block(block_3.ptr(), test_ptr(4));
+        push_test_polling_trigger(&mut block_4);
+        vec![block_0, block_1, block_2, block_3, block_4]
+    };
+
+    let stop_block = blocks.last().unwrap().block.ptr();
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
+
+    ctx.start_and_sync_to(stop_block).await;
+
+    let query_res = ctx
+        .query(r#"{ ping(id: "duplicate-entity") { id, value } }"#)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        query_res,
+        Some(object! {
+            ping: object! { id: "duplicate-entity", value: "ping" }
+        })
+    );
+}
+
+/// Test that the unfail mechanism retries until the deployment head reaches
+/// the error block. This is a regression test for issue #6205.
+///
+/// Scenario:
+/// 1. Sync to block 1
+/// 2. Inject non-deterministic error at block 3 (ahead of head)
+/// 3. Run runner to block 3
+/// 4. At blocks 1-2: unfail returns BehindErrorBlock, keeps trying
+/// 5. At block 3: unfail succeeds, health → Healthy
+#[graph::test]
+async fn non_deterministic_unfail_retries_until_error_block() -> anyhow::Result<()> {
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("non_deterministic_unfail_retries", "end-block").await;
+
+    let blocks = {
+        let block_0 = genesis();
+        let mut block_1 = empty_block(block_0.ptr(), test_ptr(1));
+        let mut block_2 = empty_block(block_1.ptr(), test_ptr(2));
+        let mut block_3 = empty_block(block_2.ptr(), test_ptr(3));
+
+        // Add triggers to exercise normal block processing.
+        push_test_log(&mut block_1, "a");
+        push_test_log(&mut block_2, "b");
+        push_test_log(&mut block_3, "c");
+
+        vec![block_0, block_1, block_2, block_3]
+    };
+
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
+
+    // Advance head to block 1.
+    ctx.start_and_sync_to(test_ptr(1)).await;
+
+    // Inject non-deterministic fatal error at block 3 (ahead of current head).
+    let writable = ctx
+        .store
+        .clone()
+        .writable(ctx.logger.clone(), ctx.deployment.id, Arc::new(vec![]))
+        .await
+        .unwrap();
+
+    writable
+        .fail_subgraph(SubgraphError {
+            subgraph_id: ctx.deployment.hash.clone(),
+            message: "injected transient error".to_string(),
+            block_ptr: Some(test_ptr(3)),
+            handler: None,
+            deterministic: false,
+        })
+        .await
+        .unwrap();
+
+    writable.flush().await.unwrap();
+
+    // Precondition: deployment is failed with non-deterministic error.
+    let status = ctx.indexing_status().await;
+    assert!(status.health == SubgraphHealth::Failed);
+    assert!(!status.fatal_error.as_ref().unwrap().deterministic);
+
+    // Run runner to block 3. The unfail mechanism should:
+    // - Return BehindErrorBlock at blocks 1-2 (keep trying)
+    // - Return Unfailed at block 3 (success)
+    let stop_block = test_ptr(3);
+    let _runner = ctx.runner(stop_block).await.run_for_test(false).await?;
+
+    // Postcondition: deployment is healthy, no fatal error.
+    let status = ctx.indexing_status().await;
+    assert!(status.health == SubgraphHealth::Healthy);
+    assert!(status.fatal_error.is_none());
+
+    Ok(())
 }

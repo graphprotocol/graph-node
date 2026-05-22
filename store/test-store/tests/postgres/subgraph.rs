@@ -6,8 +6,8 @@ use graph::{
     data::{
         query::QueryTarget,
         subgraph::{
-            schema::{DeploymentCreate, SubgraphError, SubgraphHealth},
             DeploymentFeatures, SubgraphFeature,
+            schema::{DeploymentCreate, SubgraphError, SubgraphHealth},
         },
     },
     prelude::{
@@ -18,8 +18,8 @@ use graph::{
     schema::InputSchema,
     semver::Version,
 };
-use graph_store_postgres::layout_for_tests::Connection as Primary;
 use graph_store_postgres::SubgraphStore;
+use graph_store_postgres::layout_for_tests::Connection as Primary;
 use std::{collections::HashSet, marker::PhantomData, sync::Arc};
 use test_store::*;
 
@@ -483,9 +483,9 @@ fn status() {
             .await
             .unwrap();
         let infos = store
-            .status(status::Filter::Deployments(vec![deployment
-                .hash
-                .to_string()]))
+            .status(status::Filter::Deployments(vec![
+                deployment.hash.to_string(),
+            ]))
             .await
             .unwrap();
         assert_eq!(1, infos.len());
@@ -1215,14 +1215,14 @@ fn fail_unfail_non_deterministic_error_noop() {
         // Fail the subgraph with a non-deterministic error, but with an advanced block.
         writable.fail_subgraph(error).await.unwrap();
 
-        // Since the block range of the block won't match the deployment head, this will be NOOP.
+        // Since the deployment head is behind the error block, this returns BehindErrorBlock.
         let outcome = writable
             .unfail_non_deterministic_error(&BLOCKS[1])
             .await
             .unwrap();
 
         // State continues the same besides a new error added to the database.
-        assert_eq!(outcome, UnfailOutcome::Noop);
+        assert_eq!(outcome, UnfailOutcome::BehindErrorBlock);
         assert_eq!(count().await, 2);
         let vi = get_version_info(&store, NAME).await;
         assert_eq!(NAME, vi.deployment_id.as_str());

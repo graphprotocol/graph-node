@@ -22,6 +22,10 @@ check-all:
 build *EXTRA_FLAGS:
     cargo build --bin graph-node {{EXTRA_FLAGS}}
 
+# Build both graph-node and gnd binaries
+build-all *EXTRA_FLAGS:
+    cargo build --bin graph-node --bin gnd {{EXTRA_FLAGS}}
+
 _cargo-test *ARGS:
     #!/usr/bin/env bash
     set -e # Exit on error
@@ -48,7 +52,53 @@ test-runner *EXTRA_FLAGS:
 
 # Run integration tests
 test-integration *EXTRA_FLAGS:
-    @just _cargo-test {{EXTRA_FLAGS}} --package graph-tests --test integration_tests -- --nocapture
+    #!/usr/bin/env bash
+    set -e # Exit on error
+
+    # Build graph-node and gnd binaries
+    cargo build --bin graph-node --bin gnd
+
+    just _cargo-test {{EXTRA_FLAGS}} --package graph-tests --test integration_tests -- --nocapture
+
+# Run gnd CLI integration tests (deployment workflow with gnd as CLI)
+# Prerequisites: nix run .#integration (PostgreSQL:3011, IPFS:3001, Anvil:3021)
+test-gnd-cli *EXTRA_FLAGS:
+    #!/usr/bin/env bash
+    set -e # Exit on error
+
+    # Build graph-node and gnd binaries
+    cargo build --bin graph-node --bin gnd
+
+    # Set GRAPH_CLI to use gnd binary
+    export GRAPH_CLI="../target/debug/gnd"
+
+    echo "Running gnd CLI integration tests with GRAPH_CLI=$GRAPH_CLI"
+
+    cargo test {{EXTRA_FLAGS}} --package graph-tests --test gnd_cli_tests -- --nocapture
+
+# Run gnd standalone command tests (init, add, build - no Graph Node required)
+test-gnd-commands *EXTRA_FLAGS:
+    #!/usr/bin/env bash
+    set -e # Exit on error
+
+    # Build gnd binary
+    cargo build --bin gnd
+
+    echo "Running gnd standalone command tests"
+
+    cargo test {{EXTRA_FLAGS}} --package gnd --test cli_commands -- --nocapture
+
+# Run gnd test runner tests (requires asc in PATH, uses pgtemp for PostgreSQL)
+test-gnd-test *EXTRA_FLAGS:
+    #!/usr/bin/env bash
+    set -e # Exit on error
+
+    # Build gnd binary
+    cargo build --bin gnd
+
+    echo "Running gnd test runner tests"
+
+    cargo test {{EXTRA_FLAGS}} --package gnd --test gnd_test -- --nocapture
 
 # Clean workspace (cargo clean)
 clean:

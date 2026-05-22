@@ -1,5 +1,5 @@
 use crate::gas_rules::GasRules;
-use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance};
+use crate::module::{ExperimentalFeatures, ToAscPtr, WasmInstance, WasmInstanceData};
 use graph::blockchain::{BlockTime, Blockchain, HostFn};
 use graph::components::store::SubgraphFork;
 use graph::components::subgraph::{MappingError, SharedProofOfIndexing};
@@ -7,13 +7,15 @@ use graph::data_source::{MappingTrigger, TriggerWithHandler};
 use graph::futures01::sync::mpsc;
 use graph::futures01::{Future as _, Stream as _};
 use graph::futures03::channel::oneshot::Sender;
+use graph::parking_lot::RwLock;
 use graph::prelude::*;
+use graph::runtime::IndexForAscTypeId;
 use graph::runtime::gas::Gas;
 use parity_wasm::elements::ExportEntry;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::panic::AssertUnwindSafe;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{panic, thread};
 
 /// Spawn a wasm module in its own thread.
@@ -205,7 +207,11 @@ impl MappingContext {
             host_exports: self.host_exports.cheap_clone(),
             block_ptr: self.block_ptr.cheap_clone(),
             timestamp: self.timestamp,
-            state: BlockState::new(self.state.entity_cache.store.clone(), Default::default()),
+            state: BlockState::new(
+                self.state.entity_cache.store.clone(),
+                Default::default(),
+                self.state.seq_gen(),
+            ),
             proof_of_indexing: self.proof_of_indexing.cheap_clone(),
             host_fns: self.host_fns.cheap_clone(),
             debug_fork: self.debug_fork.cheap_clone(),
@@ -221,6 +227,11 @@ const GN_START_FUNCTION_NAME: &str = "gn::start";
 /// A pre-processed and valid WASM module, ready to be started as a WasmModule.
 pub struct ValidModule {
     pub module: wasmtime::Module,
+
+    /// Pre-linked instance template. Created once at module validation time and reused for every
+    /// trigger instantiation, avoiding the cost of rebuilding the linker (~60 host function
+    /// registrations) and resolving imports on each trigger.
+    pub instance_pre: wasmtime::InstancePre<WasmInstanceData>,
 
     // Due to our internal architecture we don't want to run the start function at instantiation time,
     // so we track it separately so that we can run it at an appropriate time.
@@ -243,6 +254,10 @@ pub struct ValidModule {
 
     // Used as a guard to terminate this task dependency.
     epoch_counter_abort_handle: Option<tokio::task::AbortHandle>,
+
+    /// Cache for asc_type_id results. Maps IndexForAscTypeId to their WASM runtime
+    /// type IDs. Populated lazily on first use; deterministic per compiled module.
+    asc_type_id_cache: RwLock<HashMap<IndexForAscTypeId, u32>>,
 }
 
 impl ValidModule {
@@ -287,18 +302,25 @@ impl ValidModule {
 
             name
         });
-        let parity_module = wasm_instrument::gas_metering::inject(parity_module, &GasRules, "gas")
-            .map_err(|_| anyhow!("Failed to inject gas counter"))?;
+        let backend = wasm_instrument::gas_metering::host_function::Injector::new("gas", "gas");
+        let parity_module =
+            wasm_instrument::gas_metering::inject(parity_module, backend, &GasRules)
+                .map_err(|_| anyhow!("Failed to inject gas counter"))?;
         let raw_module = parity_module.into_bytes()?;
 
-        // We currently use Cranelift as a compilation engine. Cranelift is an optimizing compiler,
-        // but that should not cause determinism issues since it adheres to the Wasm spec. Still we
-        // turn off optional optimizations to be conservative.
+        // We use Cranelift as a compilation engine. Cranelift is an optimizing compiler, but that
+        // should not cause determinism issues since it adheres to the Wasm spec and NaN
+        // canonicalization is enabled below. The optimization level is configurable via
+        // GRAPH_WASM_OPT_LEVEL (default: speed).
         let mut config = wasmtime::Config::new();
         config.strategy(wasmtime::Strategy::Cranelift);
         config.epoch_interruption(true);
         config.cranelift_nan_canonicalization(true); // For NaN determinism.
-        config.cranelift_opt_level(wasmtime::OptLevel::None);
+        config.cranelift_opt_level(match ENV_VARS.mappings.wasm_opt_level {
+            graph::env::WasmOptLevel::None => wasmtime::OptLevel::None,
+            graph::env::WasmOptLevel::Speed => wasmtime::OptLevel::Speed,
+            graph::env::WasmOptLevel::SpeedAndSize => wasmtime::OptLevel::SpeedAndSize,
+        });
         config.max_wasm_stack(ENV_VARS.mappings.max_stack_size);
         config.async_support(true);
 
@@ -335,13 +357,26 @@ impl ValidModule {
             epoch_counter_abort_handle = Some(graph::spawn(epoch_counter).abort_handle());
         }
 
+        let linker = crate::module::build_linker(engine, &import_name_to_modules)?;
+        let instance_pre = linker.instantiate_pre(&module)?;
+
         Ok(ValidModule {
             module,
+            instance_pre,
             import_name_to_modules,
             start_function,
             timeout,
             epoch_counter_abort_handle,
+            asc_type_id_cache: RwLock::new(HashMap::new()),
         })
+    }
+
+    pub fn get_cached_type_id(&self, idx: IndexForAscTypeId) -> Option<u32> {
+        self.asc_type_id_cache.read().get(&idx).copied()
+    }
+
+    pub fn cache_type_id(&self, idx: IndexForAscTypeId, type_id: u32) {
+        self.asc_type_id_cache.write().insert(idx, type_id);
     }
 }
 

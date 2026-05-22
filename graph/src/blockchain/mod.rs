@@ -22,17 +22,17 @@ use crate::{
         subgraph::{HostMetrics, InstanceDSTemplateInfo, MappingError},
         trigger_processor::RunnableTriggers,
     },
-    data::subgraph::{UnifiedMappingApiVersion, MIN_SPEC_VERSION},
-    data_source::{self, subgraph, DataSourceTemplateInfo},
+    data::subgraph::{MIN_SPEC_VERSION, UnifiedMappingApiVersion},
+    data_source::{self, DataSourceTemplateInfo, subgraph},
     prelude::{DataSourceContext, DeploymentHash},
-    runtime::{gas::GasCounter, AscHeap, HostExportError},
+    runtime::{AscHeap, HostExportError, gas::GasCounter},
 };
 use crate::{
     components::store::BlockNumber,
-    prelude::{thiserror::Error, LinkResolver},
+    prelude::{LinkResolver, thiserror::Error},
 };
 use alloy::primitives::B256;
-use anyhow::{anyhow, Context, Error};
+use anyhow::{Context, Error, anyhow};
 use async_trait::async_trait;
 use futures03::future::BoxFuture;
 use graph_derive::CheapClone;

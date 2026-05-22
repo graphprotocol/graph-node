@@ -1,7 +1,7 @@
 use std::ops::ControlFlow;
 
 use alloy::json_abi::JsonAbi;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use sqlparser_latest::ast::{self, visit_expressions_mut};
 
 static FUNCTION_NAME: &str = "sg_event_signature";
@@ -43,7 +43,9 @@ fn visit_expr(expr: &mut ast::Expr, abis: &[(&str, &JsonAbi)]) -> Result<()> {
     }
 
     let Some((contract_name, event_name)) = get_args(function) else {
-        bail!("invalid function call: expected `{FUNCTION_NAME}('CONTRACT_NAME', 'EVENT_NAME')`, found: `{function}`");
+        bail!(
+            "invalid function call: expected `{FUNCTION_NAME}('CONTRACT_NAME', 'EVENT_NAME')`, found: `{function}`"
+        );
     };
 
     let Some(event) = get_event(abis, contract_name, event_name) else {

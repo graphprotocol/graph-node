@@ -1,6 +1,6 @@
 use graph::{
     components::store::SubscriptionManager,
-    prelude::{anyhow, StoreEventStreamBox},
+    prelude::{StoreEventStreamBox, anyhow},
 };
 
 pub mod catalog;

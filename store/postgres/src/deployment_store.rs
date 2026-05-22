@@ -1,22 +1,22 @@
 use detail::DeploymentDetail;
 use diesel::sql_query;
-use diesel_async::scoped_futures::ScopedFutureExt;
 use diesel_async::{AsyncConnection as _, RunQueryDsl, SimpleAsyncConnection};
 use tokio::task::JoinHandle;
 
 use graph::anyhow::Context;
-use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::blockchain::BlockTime;
+use graph::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use graph::components::store::write::RowGroup;
 use graph::components::store::{
-    Batch, DeploymentLocator, DerivedEntityQuery, PrunePhase, PruneReporter, PruneRequest,
-    PruningStrategy, QueryPermit, StoredDynamicDataSource, VersionStats,
+    Batch, DeploymentLocator, DerivedEntityQuery, DumpReporter, PrunePhase, PruneReporter,
+    PruneRequest, PruningStrategy, QueryPermit, RestoreReporter, StoredDynamicDataSource,
+    VersionStats,
 };
 use graph::components::versions::VERSIONS;
 use graph::data::graphql::IntoValue;
 use graph::data::query::Trace;
 use graph::data::store::{IdList, SqlQueryObject};
-use graph::data::subgraph::{status, SPEC_VERSION_0_0_6};
+use graph::data::subgraph::{SPEC_VERSION_0_0_6, status};
 use graph::data_source::CausalityRegion;
 use graph::derive::CheapClone;
 use graph::futures03::FutureExt;
@@ -30,8 +30,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
 use std::ops::Bound;
 use std::ops::{Deref, Range};
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::{atomic::AtomicUsize, Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::AtomicUsize};
 use std::time::{Duration, Instant};
 
 use graph::components::store::EntityCollection;
@@ -39,9 +40,9 @@ use graph::components::subgraph::{ProofOfIndexingFinisher, ProofOfIndexingVersio
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError};
 use graph::internal_error;
 use graph::prelude::{
-    anyhow, debug, info, o, warn, AttributeNames, BlockNumber, BlockPtr, CheapClone,
-    DeploymentHash, DeploymentState, Entity, EntityQuery, Error, Logger, QueryExecutionError,
-    StopwatchMetrics, StoreError, UnfailOutcome, Value, ENV_VARS,
+    AttributeNames, BlockNumber, BlockPtr, CheapClone, DeploymentHash, DeploymentState, ENV_VARS,
+    Entity, EntityQuery, Error, Logger, QueryExecutionError, StopwatchMetrics, StoreError,
+    UnfailOutcome, Value, anyhow, debug, info, o, warn,
 };
 use graph::schema::{ApiSchema, EntityKey, EntityType, InputSchema};
 
@@ -50,11 +51,11 @@ use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
 use crate::primary::{DeploymentId, Primary};
-use crate::relational::index::{CreateIndex, IndexList, Method};
-use crate::relational::{self, Layout, LayoutCache, SqlName, Table, STATEMENT_TIMEOUT};
+use crate::relational::index::{CreateIndex, IndexCreator, IndexList, Method};
+use crate::relational::{self, Layout, LayoutCache, STATEMENT_TIMEOUT, SqlName, Table};
 use crate::relational_queries::{FromEntityData, JSONData};
-use crate::{advisory_lock, catalog, retry, AsyncPgConnection};
-use crate::{detail, ConnectionPool};
+use crate::{AsyncPgConnection, advisory_lock, catalog, retry};
+use crate::{ConnectionPool, detail};
 use crate::{dynds, primary::Site};
 
 /// When connected to read replicas, this allows choosing which DB server to use for an operation.
@@ -174,11 +175,6 @@ impl DeploymentStore {
         DeploymentStore(Arc::new(store))
     }
 
-    // Parameter index_def is used to copy over the definition of the indexes from the source subgraph
-    // to the destination one. This happens when it is set to Some. In this case also the BTree attribude
-    // indexes are created later on, when the subgraph has synced. In case this parameter is None, all
-    // indexes are created with the default creation strategy for a new subgraph, and also from the very
-    // start.
     pub(crate) async fn create_deployment(
         &self,
         schema: &InputSchema,
@@ -186,57 +182,51 @@ impl DeploymentStore {
         site: Arc<Site>,
         replace: bool,
         on_sync: OnSync,
-        index_def: Option<IndexList>,
     ) -> Result<(), StoreError> {
         let mut conn = self.pool.get_permitted().await?;
-        conn.transaction::<_, StoreError, _>(|conn| {
-            async {
-                let exists = deployment::exists(conn, &site).await?;
+        conn.transaction::<_, StoreError, _>(async |conn| {
+            let exists = deployment::exists(conn, &site).await?;
 
-                // Create (or update) the metadata. Update only happens in tests
-                let entities_with_causality_region =
-                    deployment.manifest.entities_with_causality_region.clone();
+            // Create (or update) the metadata. Update only happens in tests
+            let entities_with_causality_region =
+                deployment.manifest.entities_with_causality_region.clone();
 
-                // If `GRAPH_HISTORY_BLOCKS_OVERRIDE` is set, override the history_blocks
-                // setting with the value of the environment variable.
-                let deployment = if let Some(history_blocks_global_override) =
-                    ENV_VARS.history_blocks_override
-                {
+            // If `GRAPH_HISTORY_BLOCKS_OVERRIDE` is set, override the history_blocks
+            // setting with the value of the environment variable.
+            let deployment =
+                if let Some(history_blocks_global_override) = ENV_VARS.history_blocks_override {
                     deployment.with_history_blocks_override(history_blocks_global_override)
                 } else {
                     deployment
                 };
 
-                if replace || !exists {
-                    deployment::create_deployment(conn, &site, deployment, exists, replace).await?;
-                };
+            if replace || !exists {
+                deployment::create_deployment(conn, &site, deployment, exists, replace).await?;
+            };
 
-                // Create the schema for the subgraph data
-                if !exists {
-                    let query = format!("create schema {}", &site.namespace);
-                    conn.batch_execute(&query).await?;
+            // Create the schema for the subgraph data
+            if !exists {
+                let query = format!("create schema {}", &site.namespace);
+                conn.batch_execute(&query).await?;
 
-                    let _ = Layout::create_relational_schema(
-                        conn,
-                        site.clone(),
-                        schema,
-                        entities_with_causality_region.into_iter().collect(),
-                        index_def,
-                    )
-                    .await?;
+                let _ = Layout::create_relational_schema(
+                    conn,
+                    site.clone(),
+                    schema,
+                    entities_with_causality_region.into_iter().collect(),
+                )
+                .await?;
 
-                    // Create data sources table
-                    if site.schema_version.private_data_sources() {
-                        conn.batch_execute(&DataSourcesTable::new(site.namespace.clone()).as_ddl())
-                            .await?;
-                    }
+                // Create data sources table
+                if site.schema_version.private_data_sources() {
+                    conn.batch_execute(&DataSourcesTable::new(site.namespace.clone()).as_ddl())
+                        .await?;
                 }
-
-                deployment::set_on_sync(conn, &site, on_sync).await?;
-
-                Ok(())
             }
-            .scope_boxed()
+
+            deployment::set_on_sync(conn, &site, on_sync).await?;
+
+            Ok(())
         })
         .await
     }
@@ -258,15 +248,12 @@ impl DeploymentStore {
     // is not reversible
     pub(crate) async fn drop_deployment(&self, site: &Site) -> Result<(), StoreError> {
         let mut conn = self.pool.get_permitted().await?;
-        conn.transaction(|conn| {
-            async {
-                crate::deployment::drop_schema(conn, &site.namespace).await?;
-                if !site.schema_version.private_data_sources() {
-                    crate::dynds::shared::drop(conn, &site.deployment).await?;
-                }
-                crate::deployment::drop_metadata(conn, site).await
+        conn.transaction(async |conn| {
+            crate::deployment::drop_schema(conn, &site.namespace).await?;
+            if !site.schema_version.private_data_sources() {
+                crate::dynds::shared::drop(conn, &site.deployment).await?;
             }
-            .scope_boxed()
+            crate::deployment::drop_metadata(conn, site).await
         })
         .await
     }
@@ -298,16 +285,13 @@ impl DeploymentStore {
         let query = diesel::sql_query(query);
 
         let results = conn
-            .transaction(|conn| {
-                async {
-                    if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
-                        conn.batch_execute(timeout_sql).await?;
-                    }
-
-                    // Execute the provided SQL query
-                    query.load::<JSONData>(conn).await
+            .transaction(async |conn| {
+                if let Some(ref timeout_sql) = *STATEMENT_TIMEOUT {
+                    conn.batch_execute(timeout_sql).await?;
                 }
-                .scope_boxed()
+
+                // Execute the provided SQL query
+                query.load::<JSONData>(conn).await
             })
             .await
             .map_err(|e| QueryExecutionError::SqlError(e.to_string()))?;
@@ -543,7 +527,7 @@ impl DeploymentStore {
         block_ptr: BlockPtr,
     ) -> Result<(), StoreError> {
         let mut conn = self.pool.get_permitted().await?;
-        conn.transaction(|conn| deployment::set_synced(conn, id, block_ptr).scope_boxed())
+        conn.transaction(async |conn| deployment::set_synced(conn, id, block_ptr).await)
             .await
     }
 
@@ -651,17 +635,14 @@ impl DeploymentStore {
             .map(|table| vec![table])
             .unwrap_or_else(|| layout.tables.values().map(Arc::as_ref).collect());
 
-        conn.transaction(|conn| {
-            async {
-                for table in tables {
-                    let (columns, _) = resolve_column_names_and_index_exprs(table, &columns)?;
+        conn.transaction(async |conn| {
+            for table in tables {
+                let (columns, _) = resolve_column_names_and_index_exprs(table, &columns)?;
 
-                    catalog::set_stats_target(conn, &site.namespace, &table.name, &columns, target)
-                        .await?;
-                }
-                Ok(())
+                catalog::set_stats_target(conn, &site.namespace, &table.name, &columns, target)
+                    .await?;
             }
-            .scope_boxed()
+            Ok(())
         })
         .await
     }
@@ -734,12 +715,11 @@ impl DeploymentStore {
         Ok(indexes.into_iter().map(CreateIndex::parse).collect())
     }
 
-    /// Do not use this while already holding a connection as that can lead
-    /// to deadlocks
     pub(crate) async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
-        let store = self.clone();
         let mut conn = self.pool.get_permitted().await?;
-        IndexList::load(&mut conn, site, store).await
+        let layout = self.layout(&mut conn, site).await?;
+
+        IndexList::load(&mut conn, &layout).await
     }
 
     /// Drops an index for a given deployment, concurrently.
@@ -861,9 +841,8 @@ impl DeploymentStore {
                 return Ok(reporter);
             }
 
-            conn.transaction(|conn| {
-                deployment::set_earliest_block(conn, site.as_ref(), req.earliest_block)
-                    .scope_boxed()
+            conn.transaction(async |conn| {
+                deployment::set_earliest_block(conn, site.as_ref(), req.earliest_block).await
             })
             .await?;
 
@@ -895,6 +874,59 @@ impl DeploymentStore {
         let layout = self.layout(&mut conn, site.clone()).await?;
 
         Ok(relational::prune::Viewer::new(self.pool.clone(), layout))
+    }
+
+    pub(crate) async fn dump(
+        &self,
+        site: Arc<Site>,
+        dir: PathBuf,
+        mut reporter: Box<dyn DumpReporter>,
+    ) -> Result<(), StoreError> {
+        let mut conn = self.pool.get_permitted().await?;
+        // Layout and index list are schema metadata — safe to load outside
+        // the snapshot transaction
+        let layout = self.layout(&mut conn, site.cheap_clone()).await?;
+        let index_list = IndexList::load(&mut conn, &layout).await?;
+
+        // Use REPEATABLE READ to get a consistent MVCC snapshot for the
+        // entire dump. All queries inside see the same database state,
+        // regardless of concurrent indexing or pruning.
+        conn.build_transaction()
+            .repeatable_read()
+            .read_only()
+            .run(async move |conn| {
+                let entity_count = crate::detail::entity_count(conn, &site).await?;
+                layout
+                    .dump(
+                        conn,
+                        index_list,
+                        dir,
+                        &site.network,
+                        entity_count,
+                        &mut *reporter,
+                    )
+                    .await
+            })
+            .await
+    }
+
+    pub(crate) async fn restore(
+        &self,
+        site: Arc<Site>,
+        dir: &Path,
+        metadata: &crate::relational::dump::Metadata,
+        reporter: &mut dyn RestoreReporter,
+    ) -> Result<(), StoreError> {
+        let mut conn = self.pool.get_permitted().await?;
+        reporter.start_create_schema(site.namespace.as_str(), site.shard.as_str());
+        let layout =
+            crate::relational::restore::create_schema(&mut conn, site, metadata, dir).await?;
+        reporter.finish_create_schema();
+        crate::relational::restore::import_data(&mut conn, &layout, metadata, dir, reporter)
+            .await?;
+        crate::relational::restore::finalize(&mut conn, &layout, metadata, reporter).await?;
+        reporter.finish();
+        Ok(())
     }
 }
 
@@ -1116,68 +1148,65 @@ impl DeploymentStore {
         };
 
         let (layout, earliest_block) = deployment::with_lock(&mut conn, &site, async |conn| {
-            conn.transaction(|conn| {
-                async {
-                    // Make the changes
-                    let layout = self.layout(conn, site.clone()).await?;
+            conn.transaction(async |conn| {
+                // Make the changes
+                let layout = self.layout(conn, site.clone()).await?;
 
-                    let section = stopwatch.start_section("apply_entity_modifications");
-                    let count = self
-                        .apply_entity_modifications(
-                            conn,
-                            logger,
-                            layout.as_ref(),
-                            batch.groups(),
-                            stopwatch,
-                        )
-                        .await?;
-                    section.end();
-
-                    layout.rollup(conn, last_rollup, &batch.block_times).await?;
-
-                    dynds::insert(conn, &site, &batch.data_sources, manifest_idx_and_name).await?;
-
-                    dynds::update_offchain_status(conn, &site, &batch.offchain_to_remove).await?;
-
-                    if !batch.deterministic_errors.is_empty() {
-                        deployment::insert_subgraph_errors(
-                            &self.logger,
-                            conn,
-                            &site.deployment,
-                            &batch.deterministic_errors,
-                            batch.block_ptr.number,
-                        )
-                        .await?;
-
-                        if batch.is_non_fatal_errors_active {
-                            debug!(
-                                logger,
-                                "Updating non-fatal errors for subgraph";
-                                "subgraph" => site.deployment.to_string(),
-                                "block" => batch.block_ptr.number,
-                            );
-                            deployment::update_non_fatal_errors(
-                                conn,
-                                &site.deployment,
-                                deployment::SubgraphHealth::Unhealthy,
-                                Some(&batch.deterministic_errors),
-                            )
-                            .await?;
-                        }
-                    }
-
-                    let earliest_block = deployment::transact_block(
+                let section = stopwatch.start_section("apply_entity_modifications");
+                let count = self
+                    .apply_entity_modifications(
                         conn,
-                        &site,
-                        &batch.block_ptr,
-                        &batch.firehose_cursor,
-                        count,
+                        logger,
+                        layout.as_ref(),
+                        batch.groups(),
+                        stopwatch,
+                    )
+                    .await?;
+                section.end();
+
+                layout.rollup(conn, last_rollup, &batch.block_times).await?;
+
+                dynds::insert(conn, &site, &batch.data_sources, manifest_idx_and_name).await?;
+
+                dynds::update_offchain_status(conn, &site, &batch.offchain_to_remove).await?;
+
+                if !batch.deterministic_errors.is_empty() {
+                    deployment::insert_subgraph_errors(
+                        &self.logger,
+                        conn,
+                        &site.deployment,
+                        &batch.deterministic_errors,
+                        batch.block_ptr.number,
                     )
                     .await?;
 
-                    Ok((layout, earliest_block))
+                    if batch.is_non_fatal_errors_active {
+                        debug!(
+                            logger,
+                            "Updating non-fatal errors for subgraph";
+                            "subgraph" => site.deployment.to_string(),
+                            "block" => batch.block_ptr.number,
+                        );
+                        deployment::update_non_fatal_errors(
+                            conn,
+                            &site.deployment,
+                            deployment::SubgraphHealth::Unhealthy,
+                            Some(&batch.deterministic_errors),
+                        )
+                        .await?;
+                    }
                 }
-                .scope_boxed()
+
+                let earliest_block = deployment::transact_block(
+                    conn,
+                    &site,
+                    &batch.block_ptr,
+                    &batch.firehose_cursor,
+                    count,
+                )
+                .await?;
+
+                Ok((layout, earliest_block))
             })
             .await
         })
@@ -1307,35 +1336,31 @@ impl DeploymentStore {
     ) -> Result<(), StoreError> {
         let logger = self.logger.cheap_clone();
         deployment::with_lock(conn, &site, async |conn| {
-            conn.transaction(|conn| {
-                async {
-                    // The revert functions want the number of the first block that we need to get rid of
-                    let block = block_ptr_to.number + 1;
+            conn.transaction(async |conn| {
+                // The revert functions want the number of the first block that we need to get rid of
+                let block = block_ptr_to.number + 1;
 
-                    deployment::revert_block_ptr(conn, &site, block_ptr_to, firehose_cursor)
-                        .await?;
+                deployment::revert_block_ptr(conn, &site, block_ptr_to, firehose_cursor).await?;
 
-                    // Revert the data
-                    let layout = self.layout(conn, site.clone()).await?;
+                // Revert the data
+                let layout = self.layout(conn, site.clone()).await?;
 
-                    if truncate {
-                        layout.truncate_tables(conn).await?;
-                        deployment::clear_entity_count(conn, site.as_ref()).await?;
-                    } else {
-                        let count = layout.revert_block(conn, block).await?;
-                        deployment::update_entity_count(conn, site.as_ref(), count).await?;
-                    }
-
-                    // Revert the meta data changes that correspond to this subgraph.
-                    // Only certain meta data changes need to be reverted, most
-                    // importantly creation of dynamic data sources. We ensure in the
-                    // rest of the code that we only record history for those meta data
-                    // changes that might need to be reverted
-                    Layout::revert_metadata(&logger, conn, &site, block).await?;
-
-                    Ok(())
+                if truncate {
+                    layout.truncate_tables(conn).await?;
+                    deployment::clear_entity_count(conn, site.as_ref()).await?;
+                } else {
+                    let count = layout.revert_block(conn, block).await?;
+                    deployment::update_entity_count(conn, site.as_ref(), count).await?;
                 }
-                .scope_boxed()
+
+                // Revert the meta data changes that correspond to this subgraph.
+                // Only certain meta data changes need to be reverted, most
+                // importantly creation of dynamic data sources. We ensure in the
+                // rest of the code that we only record history for those meta data
+                // changes that might need to be reverted
+                Layout::revert_metadata(&logger, conn, &site, block).await?;
+
+                Ok(())
             })
             .await
         })
@@ -1418,24 +1443,27 @@ impl DeploymentStore {
 
         // Confidence check on revert to ensure we go backward only
         if block_ptr_to.number >= deployment_head.number {
-            panic!("revert_block_operations must revert only backward, you are trying to revert forward going from subgraph block {} to new block {}", deployment_head, block_ptr_to);
+            panic!(
+                "revert_block_operations must revert only backward, you are trying to revert forward going from subgraph block {} to new block {}",
+                deployment_head, block_ptr_to
+            );
         }
 
         // Don't revert past a graft point
         let info = self
             .subgraph_info_with_conn(&mut conn, site.cheap_clone())
             .await?;
-        if let Some(graft_block) = info.graft_block {
-            if graft_block > block_ptr_to.number {
-                return Err(internal_error!(
-                    "Can not revert subgraph `{}` to block {} as it was \
+        if let Some(graft_block) = info.graft_block
+            && graft_block > block_ptr_to.number
+        {
+            return Err(internal_error!(
+                "Can not revert subgraph `{}` to block {} as it was \
                         grafted at block {} and reverting past a graft point \
                         is not possible",
-                    site.deployment.clone(),
-                    block_ptr_to.number,
-                    graft_block
-                ));
-            }
+                site.deployment.clone(),
+                block_ptr_to.number,
+                graft_block
+            ));
         }
 
         self.rewind_or_truncate_with_conn(&mut conn, site, block_ptr_to, firehose_cursor, false)
@@ -1456,7 +1484,7 @@ impl DeploymentStore {
         error: SubgraphError,
     ) -> Result<(), StoreError> {
         let mut conn = self.pool.get_permitted().await?;
-        conn.transaction(|conn| deployment::fail(conn, &id, &error).scope_boxed())
+        conn.transaction(async |conn| deployment::fail(conn, &id, &error).await)
             .await
     }
 
@@ -1562,96 +1590,119 @@ impl DeploymentStore {
             }
 
             let mut conn = self.pool.get_permitted().await?;
-            conn.transaction::<(), StoreError, _>(|conn| {
-                async {
-                    // Copy shared dynamic data sources and adjust their ID; if
-                    // the subgraph uses private data sources, that is done by
-                    // `copy::Connection::copy_data` since it requires access to
-                    // the source schema which in sharded setups is only
-                    // available while that function runs
-                    let start = Instant::now();
-                    let count =
-                        dynds::shared::copy(conn, &src.site, &dst.site, block.number).await?;
-                    info!(logger, "Copied {} dynamic data sources", count;
-                      "time_ms" => start.elapsed().as_millis());
+            conn.transaction::<(), StoreError, _>(async |conn| {
+                // Copy shared dynamic data sources and adjust their ID; if
+                // the subgraph uses private data sources, that is done by
+                // `copy::Connection::copy_data` since it requires access to
+                // the source schema which in sharded setups is only
+                // available while that function runs
+                let start = Instant::now();
+                let count = dynds::shared::copy(conn, &src.site, &dst.site, block.number).await?;
+                info!(logger, "Copied {} dynamic data sources", count;
+                  "time_ms" => start.elapsed().as_millis());
 
-                    // Copy errors across
-                    let start = Instant::now();
-                    let count = deployment::copy_errors(conn, &src.site, &dst.site, &block).await?;
-                    info!(logger, "Copied {} existing errors", count;
-                      "time_ms" => start.elapsed().as_millis());
+                // Copy errors across
+                let start = Instant::now();
+                let count = deployment::copy_errors(conn, &src.site, &dst.site, &block).await?;
+                info!(logger, "Copied {} existing errors", count;
+                  "time_ms" => start.elapsed().as_millis());
 
-                    catalog::copy_account_like(conn, &src.site, &dst.site).await?;
+                catalog::copy_account_like(conn, &src.site, &dst.site).await?;
 
-                    // Analyze all tables for this deployment
-                    info!(logger, "Analyzing all {} tables", dst.tables.len());
-                    for entity_name in dst.tables.keys() {
-                        self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), conn)
-                            .await?;
-                    }
-
-                    // Rewind the subgraph so that entity versions that are
-                    // clamped in the future (beyond `block`) become valid for
-                    // all blocks after `block`. `revert_block` gets rid of
-                    // everything including the block passed to it. We want to
-                    // preserve `block` and therefore revert `block+1`
-                    let start = Instant::now();
-                    let block_to_revert: BlockNumber = block
-                        .number
-                        .checked_add(1)
-                        .expect("block numbers fit into an i32");
-                    info!(logger, "Rewinding to block {}", block.number);
-                    let count = dst.revert_block(conn, block_to_revert).await?;
-                    deployment::update_entity_count(conn, &dst.site, count).await?;
-
-                    info!(logger, "Rewound subgraph to block {}", block.number;
-                      "time_ms" => start.elapsed().as_millis());
-
-                    deployment::set_history_blocks(
-                        conn,
-                        &dst.site,
-                        src_deployment.manifest.history_blocks,
-                    )
-                    .await?;
-
-                    // The `earliest_block` for `src` might have changed while
-                    // we did the copy if `src` was pruned while we copied;
-                    // adjusting it very late in the copy process ensures that
-                    // we truly do have all the data starting at
-                    // `earliest_block` and do not inadvertently expose data
-                    // that might be incomplete because a prune on the source
-                    // removed data just before we copied it
-                    deployment::copy_earliest_block(conn, &src.site, &dst.site).await?;
-
-                    // Set the block ptr to the graft point to signal that we successfully
-                    // performed the graft
-                    crate::deployment::forward_block_ptr(conn, &dst.site, &block).await?;
-                    info!(logger, "Subgraph successfully initialized";
-                    "time_ms" => start.elapsed().as_millis());
-                    Ok(())
+                // Analyze all tables for this deployment
+                info!(logger, "Analyzing all {} tables", dst.tables.len());
+                for entity_name in dst.tables.keys() {
+                    self.analyze_with_conn(site.cheap_clone(), entity_name.as_str(), conn)
+                        .await?;
                 }
-                .scope_boxed()
+
+                // CopyEntityBatchQuery now reverts entity versions
+                // during copying, making this rewind redundant for new
+                // copies. We keep it for backward compatibility: a copy
+                // that was started before this change and is resumed
+                // after upgrading will have already-copied rows that
+                // weren't reverted during copy. For data that was
+                // already reverted during copy, this is a no-op. This
+                // code can be removed once a release with this change
+                // has been out for a while and we are sure that there
+                // are no more copies in progress that started before
+                // the change
+                //
+                // `revert_block` gets rid of everything including the
+                // block passed to it. We want to preserve `block` and
+                // therefore revert `block+1`
+                let start = Instant::now();
+                let block_to_revert: BlockNumber = block
+                    .number
+                    .checked_add(1)
+                    .expect("block numbers fit into an i32");
+                info!(logger, "Rewinding to block {}", block.number);
+                let count = dst.revert_block(conn, block_to_revert).await?;
+                deployment::update_entity_count(conn, &dst.site, count).await?;
+
+                info!(logger, "Rewound subgraph to block {}", block.number;
+                  "time_ms" => start.elapsed().as_millis());
+
+                deployment::set_history_blocks(
+                    conn,
+                    &dst.site,
+                    src_deployment.manifest.history_blocks,
+                )
+                .await?;
+
+                // The `earliest_block` for `src` might have changed while
+                // we did the copy if `src` was pruned while we copied;
+                // adjusting it very late in the copy process ensures that
+                // we truly do have all the data starting at
+                // `earliest_block` and do not inadvertently expose data
+                // that might be incomplete because a prune on the source
+                // removed data just before we copied it
+                deployment::copy_earliest_block(conn, &src.site, &dst.site).await?;
+
+                // Set the block ptr to the graft point to signal that we successfully
+                // performed the graft
+                crate::deployment::forward_block_ptr(conn, &dst.site, &block).await?;
+                info!(logger, "Subgraph successfully initialized";
+                "time_ms" => start.elapsed().as_millis());
+                Ok(())
             })
             .await?;
         }
 
-        let mut conn = self.pool.get_permitted().await?;
-        if ENV_VARS.postpone_attribute_index_creation {
-            // Check if all indexes are valid and recreate them if they
-            // aren't.
-            IndexList::load(&mut conn, site, self.cheap_clone())
-                .await?
-                .recreate_invalid_indexes(&mut conn, &dst)
-                .await?;
-        }
+        // Create any indexes whose creation was postponed when the
+        // deployment was first created. Using `IF NOT EXISTS` and
+        // `CONCURRENTLY` makes this safe to call on every restart.
+        self.create_postponed_indexes(site.cheap_clone()).await?;
 
         // Make sure the block pointer is set. This is important for newly
         // deployed subgraphs so that we respect the 'startBlock' setting
         // the first time the subgraph is started
-        conn.transaction(|conn| {
-            crate::deployment::initialize_block_ptr(conn, &dst.site).scope_boxed()
+        let mut conn = self.pool.get_permitted().await?;
+        conn.transaction(async |conn| {
+            crate::deployment::initialize_block_ptr(conn, &dst.site).await
         })
         .await?;
+        Ok(())
+    }
+
+    /// Create all indexes whose creation was postponed when the
+    /// deployment was first created. Using `IF NOT EXISTS` and
+    /// `CONCURRENTLY` makes this safe to call even when some or all
+    /// indexes already exist.
+    pub(crate) async fn create_postponed_indexes(&self, site: Arc<Site>) -> Result<(), StoreError> {
+        let layout = self.find_layout(site).await?;
+        let creat = layout.index_creator(true, true);
+        let mut conn = self.pool.get_permitted().await?;
+        for table in layout.tables.values() {
+            let indexes = table.indexes(&layout.input_schema).map_err(|e| {
+                StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
+            })?;
+            for idx in indexes {
+                if idx.to_postpone() {
+                    IndexCreator::execute(&creat, &mut conn, &idx).await?;
+                }
+            }
+        }
         Ok(())
     }
 
@@ -1674,8 +1725,7 @@ impl DeploymentStore {
         let mut conn = self.pool.get_permitted().await?;
         let deployment_id = &site.deployment;
 
-        conn.transaction(|conn| {
-            async {
+        conn.transaction(async |conn| {
             // We'll only unfail subgraphs that had fatal errors
             let subgraph_error = match ErrorDetail::fatal(conn, deployment_id).await? {
                 Some(fatal_error) => fatal_error,
@@ -1749,7 +1799,7 @@ impl DeploymentStore {
 
                     Ok(UnfailOutcome::Noop)
                 }
-            } }.scope_boxed()
+            }
         }).await
     }
 
@@ -1771,7 +1821,7 @@ impl DeploymentStore {
         let mut conn = self.pool.get_permitted().await?;
         let deployment_id = &site.deployment;
 
-        conn.transaction(|conn| async {
+        conn.transaction(async |conn| {
             // We'll only unfail subgraphs that had fatal errors
             let subgraph_error = match ErrorDetail::fatal(conn, deployment_id).await? {
                 Some(fatal_error) => fatal_error,
@@ -1811,7 +1861,8 @@ impl DeploymentStore {
 
                         Ok(UnfailOutcome::Unfailed)
                     }
-                // NOOP, the deployment head is still before where non-deterministic error happened.
+                // The deployment head is still before where non-deterministic error happened.
+                // Return BehindErrorBlock so the caller knows to retry on subsequent blocks.
                 block_range => {
                     info!(
                         self.logger,
@@ -1823,10 +1874,10 @@ impl DeploymentStore {
                         "error_block_hash" => subgraph_error.block_hash.as_ref().map(|hash| format!("0x{}", hex::encode(hash))),
                     );
 
-                    Ok(UnfailOutcome::Noop)
+                    Ok(UnfailOutcome::BehindErrorBlock)
                 }
             }
-        }.scope_boxed()).await
+        }).await
     }
 
     #[cfg(debug_assertions)]

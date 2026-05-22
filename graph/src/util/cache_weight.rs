@@ -2,7 +2,7 @@ use chrono::{DateTime, TimeZone};
 
 use crate::{
     data::value::Word,
-    prelude::{q, BigDecimal, BigInt, Value},
+    prelude::{BigDecimal, BigInt, Value, q},
     schema::EntityType,
 };
 use std::{
@@ -140,7 +140,7 @@ impl CacheWeight for BigDecimal {
 
 impl CacheWeight for BigInt {
     fn indirect_weight(&self) -> usize {
-        self.bits() / 8
+        self.bits().div_ceil(8)
     }
 }
 
@@ -183,6 +183,12 @@ impl CacheWeight for usize {
 }
 
 impl CacheWeight for EntityType {
+    fn indirect_weight(&self) -> usize {
+        0
+    }
+}
+
+impl CacheWeight for slog::Logger {
     fn indirect_weight(&self) -> usize {
         0
     }

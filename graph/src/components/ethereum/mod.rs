@@ -1,9 +1,12 @@
+pub mod json_patch;
+mod network;
 mod types;
 
+pub use self::network::AnyNetworkBare;
 pub use self::types::{
-    AnyBlock, AnyTransaction, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
-    LightEthereumBlock, LightEthereumBlockExt,
+    AnyBlock, AnyTransaction, AnyTransactionReceiptBare, CachedBlock, EthereumBlock,
+    EthereumBlockWithCalls, EthereumCall, LightEthereumBlock, LightEthereumBlockExt,
 };
 
 // Re-export Alloy network types for convenience
-pub use alloy::network::{AnyHeader, AnyRpcBlock, AnyRpcHeader, AnyRpcTransaction, AnyTxEnvelope};
+pub use alloy::network::{AnyHeader, AnyRpcHeader, AnyTxEnvelope};

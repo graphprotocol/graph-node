@@ -165,4 +165,8 @@ impl Rules for GasRules {
 
         MemoryGrowCost::Linear(gas_per_page)
     }
+
+    fn call_per_local_cost(&self) -> u32 {
+        0
+    }
 }

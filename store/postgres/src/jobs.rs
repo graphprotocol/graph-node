@@ -7,12 +7,12 @@ use async_trait::async_trait;
 use diesel::{sql_query, sql_types::Double};
 use diesel_async::RunQueryDsl;
 
-use graph::prelude::{error, Logger, MetricsRegistry, StoreError, ENV_VARS};
+use graph::prelude::{ENV_VARS, Logger, MetricsRegistry, StoreError, error};
 use graph::prometheus::Gauge;
 use graph::util::jobs::{Job, Runner};
 
 use crate::ConnectionPool;
-use crate::{unused, Store, SubgraphStore};
+use crate::{Store, SubgraphStore, unused};
 
 pub fn register(
     runner: &mut Runner,

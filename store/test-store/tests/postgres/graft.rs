@@ -9,7 +9,7 @@ use graph::components::store::{
     DeploymentLocator, EntityOrder, EntityQuery, PruneReporter, PruneRequest, PruningStrategy,
     VersionStats,
 };
-use graph::data::store::{scalar, Id};
+use graph::data::store::{Id, scalar};
 use graph::data::subgraph::schema::*;
 use graph::data::subgraph::*;
 use graph::semver::Version;

@@ -1,0 +1,13 @@
+type Transfer @entity(immutable: true) {
+  id: Bytes!
+  from: Bytes!
+  to: Bytes!
+  value: BigInt!
+}
+
+type Approval @entity(immutable: true) {
+  id: Bytes!
+  owner: Bytes!
+  spender: Bytes!
+  value: BigInt!
+}

@@ -19,15 +19,15 @@ use graph::hyper::header::{
     ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_LENGTH, CONTENT_TYPE, LOCATION,
 };
-use graph::hyper::{body::Body, header::HeaderValue};
 use graph::hyper::{Method, Request, Response, StatusCode};
-use graph::prelude::serde_json;
-use graph::prelude::serde_json::json;
+use graph::hyper::{body::Body, header::HeaderValue};
 use graph::prelude::CacheWeight as _;
 use graph::prelude::QueryError;
+use graph::prelude::serde_json;
+use graph::prelude::serde_json::json;
 use graph::semver::VersionReq;
-use graph::slog::error;
 use graph::slog::Logger;
+use graph::slog::error;
 use graph::url::form_urlencoded;
 use graph::{components::server::query::ServerError, data::query::QueryTarget};
 
@@ -104,10 +104,10 @@ where
 
         if let Some(query) = request.uri().query() {
             let potential_version_requirement = query.split('&').find_map(|pair| {
-                if pair.starts_with("api-version=") {
-                    if let Some(version_requirement) = pair.split('=').nth(1) {
-                        return Some(version_requirement);
-                    }
+                if pair.starts_with("api-version=")
+                    && let Some(version_requirement) = pair.split('=').nth(1)
+                {
+                    return Some(version_requirement);
                 }
                 None
             });
@@ -298,12 +298,11 @@ where
     }
 
     fn has_request_body<T>(&self, req: &Request<T>) -> bool {
-        if let Some(length) = req.headers().get(CONTENT_LENGTH) {
-            if let Ok(length) = length.to_str() {
-                if let Ok(length) = length.parse::<usize>() {
-                    return length > 0;
-                }
-            }
+        if let Some(length) = req.headers().get(CONTENT_LENGTH)
+            && let Ok(length) = length.to_str()
+            && let Ok(length) = length.parse::<usize>()
+        {
+            return length > 0;
         }
         false
     }

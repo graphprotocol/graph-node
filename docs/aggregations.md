@@ -178,8 +178,8 @@ accepts the following arguments:
   dimension
 - A mandatory `interval`
 - An optional `current` to indicate whether to include the current,
-  partially filled bucket in the response. Can be either `ignore` (the
-  default) or `include` (still **TODO** and not implemented)
+  partially filled bucket in the response. Can be either `exclude` (the
+  default) or `include`
 - Optional `timestamp_{gte|gt|lt|lte|eq|in}` filters to restrict the range
   of timestamps to return. The timestamp to filter by must be a string
   containing microseconds since the epoch. The value `"1704164640000000"`
@@ -189,7 +189,7 @@ accepts the following arguments:
 
 ```graphql
 token_stats(interval: "hour",
-      current: ignore,
+      current: exclude,
       where: {
         token: "0x1234",
         timestamp_gte: 1234567890,
@@ -201,3 +201,53 @@ token_stats(interval: "hour",
   avgVolume
 }
 ```
+
+### Current Bucket
+
+By default, aggregation queries return only completed, rolled-up buckets
+(`current: exclude`). These are buckets whose time interval has ended and
+whose data has been fully aggregated by `graph-node`'s rollup process.
+
+Setting `current: include` adds an additional, partially filled bucket that
+is computed on-the-fly from the unrolled timeseries data that has been
+inserted since the last rollup. This current bucket aggregates raw data
+points from the source timeseries table that have not yet been rolled up
+into the aggregation table. It covers the time period from the end of the
+last completed bucket up to the most recent data point.
+
+- `current: exclude` (default) — return only completed, rolled-up buckets
+- `current: include` — also return the in-progress bucket computed from
+  unrolled source data
+
+The current bucket is useful when you need near-real-time aggregation data
+without waiting for the next rollup cycle to complete.
+
+#### Nested Aggregation Queries
+
+The `current` argument also works on nested aggregation fields accessed
+through a parent entity. For example, if a `Token` entity has a derived
+aggregation field `tokenStats`, you can query the current bucket for each
+token:
+
+```graphql
+{
+  tokens {
+    id
+    name
+    tokenStats(interval: "hour", current: include) {
+      timestamp
+      totalVolume
+    }
+  }
+}
+```
+
+This returns both the completed rolled-up hourly buckets and the current
+in-progress bucket for each token's stats.
+
+#### Limitations
+
+Current bucket support for nested aggregation fields is only available when
+the field references a single aggregation type. It is not supported when the
+aggregation field is accessed through an interface with multiple
+implementations.

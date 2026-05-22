@@ -2,29 +2,29 @@ use crate::firehose::fetch_client::FetchClient;
 use crate::firehose::interceptors::AuthInterceptor;
 use crate::{
     blockchain::{
-        block_stream::FirehoseCursor, Block as BlockchainBlock, BlockPtr, ChainIdentifier,
+        Block as BlockchainBlock, BlockPtr, ChainIdentifier, block_stream::FirehoseCursor,
     },
     cheap_clone::CheapClone,
     components::store::BlockNumber,
     endpoint::{ConnectionType, EndpointMetrics, RequestLabels},
     env::ENV_VARS,
     firehose::decode_firehose_block,
-    prelude::{anyhow, debug, DeploymentHash},
+    prelude::{DeploymentHash, anyhow, debug},
 };
 use anyhow::Context;
 use async_trait::async_trait;
 use futures03::{StreamExt, TryStreamExt};
 use http::uri::{Scheme, Uri};
 use itertools::Itertools;
-use slog::{error, info, trace, Logger};
+use slog::{Logger, error, info, trace};
 use std::{collections::HashMap, fmt::Display, ops::ControlFlow, sync::Arc, time::Duration};
 use tokio::sync::OnceCell;
 use tonic::codegen::InterceptedService;
 use tonic::{
+    Request,
     codegen::CompressionEncoding,
     metadata::{Ascii, MetadataKey, MetadataValue},
     transport::{Channel, ClientTlsConfig},
-    Request,
 };
 
 use super::{codec as firehose, interceptors::MetricsInterceptor, stream_client::StreamClient};
@@ -736,7 +736,7 @@ impl FirehoseEndpoints {
 mod test {
     use std::{mem, sync::Arc};
 
-    use slog::{o, Discard, Logger};
+    use slog::{Discard, Logger, o};
 
     use super::*;
     use crate::components::metrics::MetricsRegistry;

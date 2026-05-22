@@ -1,5 +1,5 @@
 use graph::blockchain::BlockTime;
-use graph::components::store::DeploymentLocator;
+use graph::components::store::{DeploymentLocator, SeqGenerator};
 use graph::components::subgraph::SharedProofOfIndexing;
 use graph::data::subgraph::*;
 use graph::data_source;
@@ -64,7 +64,7 @@ fn mock_host_exports(
     );
 
     let client =
-        IpfsRpcClient::new_unchecked(ServerAddress::local_rpc_api(), IpfsMetrics::test(), &LOGGER)
+        IpfsRpcClient::new_unchecked(ServerAddress::test_rpc_api(), IpfsMetrics::test(), &LOGGER)
             .unwrap();
 
     HostExports::new(
@@ -126,6 +126,7 @@ pub fn mock_context(
             ))
             .unwrap(),
             Default::default(),
+            SeqGenerator::new(12),
         ),
         proof_of_indexing: SharedProofOfIndexing::ignored(),
         host_fns: Arc::new(Vec::new()),

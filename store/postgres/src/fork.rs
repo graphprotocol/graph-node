@@ -9,8 +9,8 @@ use graph::{
     components::store::SubgraphFork as SubgraphForkTrait,
     internal_error,
     prelude::{
-        anyhow, info, r::Value as RValue, reqwest, serde_json, DeploymentHash, Entity, Logger,
-        Serialize, StoreError, Value, ValueType,
+        DeploymentHash, Entity, Logger, Serialize, StoreError, Value, ValueType, anyhow, info,
+        r::Value as RValue, reqwest, serde_json,
     },
     schema::Field,
     url::Url,
@@ -228,7 +228,7 @@ mod tests {
 
     use graph::{
         data::store::scalar,
-        prelude::{s::Type, DeploymentHash},
+        prelude::{DeploymentHash, s::Type},
         slog::{self, o},
     };
 

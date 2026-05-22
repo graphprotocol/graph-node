@@ -1,11 +1,12 @@
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufReader, Write};
 use std::path::PathBuf;
 use std::process::Command;
 
-use anyhow::{bail, Context};
+use crate::output::OutputConfig;
+use anyhow::{Context, bail};
 use graph::itertools::Itertools;
-use graph::prelude::serde_json::{json, Value};
+use graph::prelude::serde_json::{Value, json};
 use graph::prelude::{reqwest, serde_json};
 
 /// Parses stdout bytes into a prefixed String
@@ -80,14 +81,20 @@ pub fn run_cmd(command: &mut Command) -> String {
         .output()
         .context(format!("failed to run {}", program))
         .unwrap();
-    println!(
+
+    let mut out = OutputConfig::get();
+    writeln!(
+        out,
         "stdout:\n{}",
         pretty_output(&output.stdout, &format!("[{}:stdout] ", program))
-    );
-    println!(
+    )
+    .unwrap();
+    writeln!(
+        out,
         "stderr:\n{}",
         pretty_output(&output.stderr, &format!("[{}:stderr] ", program))
-    );
+    )
+    .unwrap();
 
     String::from_utf8(output.stdout).unwrap()
 }

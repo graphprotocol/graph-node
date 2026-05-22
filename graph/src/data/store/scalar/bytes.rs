@@ -11,7 +11,7 @@ use std::str::FromStr;
 
 use crate::blockchain::BlockHash;
 use crate::derive::CacheWeight;
-use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
+use crate::util::stable_hash_glue::{AsBytes, impl_stable_hash};
 
 /// A byte array that's serialized as a hex string prefixed by `0x`.
 #[derive(Clone, CacheWeight, PartialEq, Eq, PartialOrd, Ord)]

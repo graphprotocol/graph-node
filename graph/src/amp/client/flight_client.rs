@@ -2,17 +2,17 @@ use std::{collections::HashMap, ops::RangeInclusive, time::Duration};
 
 use ahash::RandomState;
 use alloy::primitives::{BlockHash, BlockNumber};
-use arrow::{datatypes::Schema, error::ArrowError};
+use arrow::datatypes::Schema;
 use arrow_flight::{
     decode::DecodedPayload, error::FlightError, flight_service_client::FlightServiceClient,
     sql::client::FlightSqlServiceClient,
 };
 use async_stream::try_stream;
 use bytes::Bytes;
-use futures03::{future::BoxFuture, stream::BoxStream, StreamExt};
+use futures03::{StreamExt, future::BoxFuture, stream::BoxStream};
 use http::Uri;
 use serde::{Deserialize, Serialize};
-use slog::{debug, trace, Logger};
+use slog::{Logger, debug, trace};
 use thiserror::Error;
 use tonic::transport::{Channel, ClientTlsConfig, Endpoint};
 
@@ -22,7 +22,7 @@ use crate::{
             Client, LatestBlockBeforeReorg, RequestMetadata, ResponseBatch, ResumeStreamingQuery,
         },
         error,
-        log::{one_line, Logger as _},
+        log::{Logger as _, one_line},
     },
     prelude::CheapClone,
 };
@@ -103,9 +103,9 @@ impl Client for FlightClient {
             let flight_info = raw_client
                 .execute(query, TXN_ID)
                 .await
-                .map_err(Error::Service)?;
+                .map_err(Error::service)?;
 
-            flight_info.try_decode_schema().map_err(Error::Service)
+            flight_info.try_decode_schema().map_err(Error::service)
         })
     }
 
@@ -163,14 +163,14 @@ impl Client for FlightClient {
             let flight_info = raw_client
                 .execute(query, TXN_ID)
                 .await
-                .map_err(Error::Service)?;
+                .map_err(Error::service)?;
 
             for (endpoint_index, endpoint) in flight_info.endpoint.into_iter().enumerate() {
                 let Some(ticket) = endpoint.ticket else {
                     continue;
                 };
 
-                let mut stream = raw_client.do_get(ticket).await.map_err(Error::Service)?.into_inner();
+                let mut stream = raw_client.do_get(ticket).await.map_err(Error::service)?.into_inner();
                 let mut batch_index = 0u32;
                 let mut prev_block_ranges = prev_block_ranges.clone();
 
@@ -232,10 +232,16 @@ pub enum Error {
     Connection(#[source] tonic::transport::Error),
 
     #[error("service failed: {0:#}")]
-    Service(#[source] ArrowError),
+    Service(#[source] Box<dyn std::error::Error + Sync + Send>),
 
     #[error("stream failed: {0:#}")]
     Stream(#[source] FlightError),
+}
+
+impl Error {
+    pub fn service<T: std::error::Error + Sync + Send + 'static>(e: T) -> Self {
+        Self::Service(Box::new(e))
+    }
 }
 
 impl error::IsDeterministic for Error {

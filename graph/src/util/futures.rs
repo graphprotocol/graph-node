@@ -2,14 +2,14 @@ use crate::ext::futures::FutureExtension;
 use futures03::{Future, FutureExt, TryFutureExt};
 use lazy_static::lazy_static;
 use regex::Regex;
-use slog::{debug, trace, warn, Logger};
+use slog::{Logger, debug, trace, warn};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
-use tokio_retry::strategy::{jitter, ExponentialBackoff};
 use tokio_retry::Retry;
+use tokio_retry::strategy::{ExponentialBackoff, jitter};
 
 // Use different limits for test and production code to speed up tests
 #[cfg(debug_assertions)]
@@ -412,7 +412,8 @@ pub fn retry_strategy(
         Some(limit) => {
             // Items are delays *between* attempts,
             // so subtract 1 from limit.
-            Box::new(backoff.take(limit - 1))
+            // Use saturating_sub to avoid underflow if limit is set to 0
+            Box::new(backoff.take(limit.saturating_sub(1)))
         }
         None => Box::new(backoff),
     }

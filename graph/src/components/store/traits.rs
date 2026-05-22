@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use super::*;
 use crate::blockchain::block_stream::{EntitySourceOperation, FirehoseCursor};
 use crate::blockchain::{BlockTime, ChainIdentifier, ExtendedBlockPtr};
+use crate::components::ethereum::CachedBlock;
 use crate::components::metrics::stopwatch::StopwatchMetrics;
 use crate::components::network_provider::ChainName;
 use crate::components::server::index_node::VersionInfo;
@@ -16,11 +17,11 @@ use crate::components::versions::ApiVersion;
 use crate::data::query::Trace;
 use crate::data::store::ethereum::call;
 use crate::data::store::{QueryObject, SqlQueryObject};
-use crate::data::subgraph::{status, DeploymentFeatures};
+use crate::data::subgraph::{DeploymentFeatures, status};
 use crate::data::{query::QueryTarget, subgraph::schema::*};
 use crate::prelude::{
-    alloy::primitives::{Address, B256},
     DeploymentState, NodeId, QueryExecutionError, SubgraphName,
+    alloy::primitives::{Address, B256},
 };
 use crate::schema::{ApiSchema, InputSchema};
 
@@ -103,10 +104,13 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// subgraph
     async fn create_subgraph(&self, name: SubgraphName) -> Result<String, StoreError>;
 
-    /// Remove a subgraph and all its versions; if deployments that were used
-    /// by this subgraph do not need to be indexed anymore, also remove
+    /// Remove a subgraph and all its versions; if deployments that were
+    /// used by this subgraph do not need to be indexed anymore, also remove
     /// their assignment, but keep the deployments themselves around
-    async fn remove_subgraph(&self, name: SubgraphName) -> Result<(), StoreError>;
+    ///
+    /// Returns the hashes of all deployments that were associated with the
+    /// removed name
+    async fn remove_subgraph(&self, name: SubgraphName) -> Result<Vec<DeploymentHash>, StoreError>;
 
     /// Assign the subgraph with `id` to the node `node_id`. If there is no
     /// assignment for the given deployment, report an error.
@@ -138,7 +142,7 @@ pub trait SubgraphStore: Send + Sync + 'static {
 
     /// Returns assignments that are not paused
     async fn active_assignments(&self, node: &NodeId)
-        -> Result<Vec<DeploymentLocator>, StoreError>;
+    -> Result<Vec<DeploymentLocator>, StoreError>;
 
     /// Return `true` if a subgraph `name` exists, regardless of whether the
     /// subgraph has any deployments attached to it
@@ -443,6 +447,12 @@ pub trait WritableStore: ReadStore + DeploymentCursorTracker {
 
     async fn health(&self) -> Result<SubgraphHealth, StoreError>;
 
+    /// Create indexes whose creation was postponed at deployment time.
+    /// This should be called when a subgraph gets close to the chain
+    /// head. Calling it when all postponed indexes already exist is safe
+    /// and a no-op.
+    async fn create_postponed_indexes(&self) -> Result<(), StoreError>;
+
     /// Wait for the background writer to finish processing its queue
     async fn flush(&self) -> Result<(), StoreError>;
 
@@ -521,6 +531,23 @@ pub trait ChainIdStore: Send + Sync + 'static {
     ) -> Result<(), Error>;
 }
 
+/// The default size for the block cache, i.e., how many blocks behind
+/// the chain head we should keep in the database cache. The
+/// configuration can change this for individual chains
+pub const BLOCK_CACHE_SIZE: BlockNumber = i32::MAX;
+
+/// Result of clearing stale call cache entries.
+pub struct StaleCallCacheResult {
+    /// The effective TTL in days that was actually used for deletion.
+    /// This may be larger than the requested TTL if `max_contracts`
+    /// was set and caused the cutoff to be adjusted.
+    pub effective_ttl_days: usize,
+    /// Number of cache entries deleted from the call cache.
+    pub cache_entries_deleted: usize,
+    /// Number of contract entries deleted from call meta.
+    pub contracts_deleted: usize,
+}
+
 /// Common trait for blockchain store implementations.
 #[async_trait]
 pub trait ChainStore: ChainHeadStore {
@@ -553,11 +580,15 @@ pub trait ChainStore: ChainHeadStore {
         ancestor_count: BlockNumber,
     ) -> Result<Option<B256>, Error>;
 
-    /// Returns the blocks present in the store.
-    async fn blocks(
-        self: Arc<Self>,
-        hashes: Vec<BlockHash>,
-    ) -> Result<Vec<serde_json::Value>, Error>;
+    /// Returns the blocks present in the store as typed cached blocks.
+    async fn blocks(self: Arc<Self>, hashes: Vec<BlockHash>) -> Result<Vec<CachedBlock>, Error>;
+
+    /// Return the parent block pointer for the block with the given hash.
+    /// Only reads header columns (hash, number, parent_hash), not the data
+    /// column. More efficient than `blocks` when only the parent pointer is
+    /// needed.
+    async fn block_parent_ptr(self: Arc<Self>, hash: &BlockHash)
+    -> Result<Option<BlockPtr>, Error>;
 
     /// Returns the blocks present in the store for the given block numbers.
     async fn block_ptrs_by_numbers(
@@ -584,7 +615,17 @@ pub trait ChainStore: ChainHeadStore {
         block_ptr: BlockPtr,
         offset: BlockNumber,
         root: Option<BlockHash>,
-    ) -> Result<Option<(serde_json::Value, BlockPtr)>, Error>;
+    ) -> Result<Option<(CachedBlock, BlockPtr)>, Error>;
+
+    /// Like `ancestor_block` but returns only the block pointer, not the
+    /// block data. More efficient when callers only need to identify which
+    /// block is the ancestor without reading the full block body.
+    async fn ancestor_block_ptr(
+        self: Arc<Self>,
+        block_ptr: BlockPtr,
+        offset: BlockNumber,
+        root: Option<BlockHash>,
+    ) -> Result<Option<BlockPtr>, Error>;
 
     /// Remove old blocks from the cache we maintain in the database and
     /// return a pair containing the number of the oldest block retained
@@ -634,12 +675,14 @@ pub trait ChainStore: ChainHeadStore {
     /// Clears call cache of the chain for the given `from` and `to` block number.
     async fn clear_call_cache(&self, from: BlockNumber, to: BlockNumber) -> Result<(), Error>;
 
-    /// Clears stale call cache entries for the given TTL in days.
+    /// Clears stale call cache entries for the given TTL in days. If
+    /// `max_contracts` is set, increase the effective TTL so that at
+    /// most `max_contracts` contracts are evicted.
     async fn clear_stale_call_cache(
         &self,
-        ttl_days: i32,
-        ttl_max_contracts: Option<i64>,
-    ) -> Result<(), Error>;
+        ttl_days: usize,
+        max_contracts: Option<usize>,
+    ) -> Result<StaleCallCacheResult, Error>;
 
     /// Return the chain identifier for this store.
     async fn chain_identifier(&self) -> Result<ChainIdentifier, Error>;
@@ -703,7 +746,7 @@ pub trait QueryStore: Send + Sync {
     async fn block_ptr(&self) -> Result<Option<BlockPtr>, StoreError>;
 
     async fn block_number(&self, block_hash: &BlockHash)
-        -> Result<Option<BlockNumber>, StoreError>;
+    -> Result<Option<BlockNumber>, StoreError>;
 
     async fn block_numbers(
         &self,

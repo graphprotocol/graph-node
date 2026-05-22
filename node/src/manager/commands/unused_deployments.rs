@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Instant};
 
 use graph::prelude::{anyhow::Error, chrono};
-use graph_store_postgres::{unused, SubgraphStore, UnusedDeployment};
+use graph_store_postgres::{SubgraphStore, UnusedDeployment, unused};
 
 use crate::manager::{deployment::DeploymentSearch, display::List};
 

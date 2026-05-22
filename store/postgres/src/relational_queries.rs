@@ -5,13 +5,13 @@
 //!
 //! Code in this module works very hard to minimize the number of allocations
 //! that it performs
+use diesel::QuerySource as _;
 use diesel::pg::Pg;
 use diesel::query_builder::{AstPass, Query, QueryFragment, QueryId};
 use diesel::query_dsl::RunQueryDsl;
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::Untyped;
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Int8, Integer, Jsonb, Text, Timestamptz};
-use diesel::QuerySource as _;
 use graph::components::store::write::{EntityWrite, RowGroup, WriteChunk};
 use graph::components::store::{Child as StoreChild, DerivedEntityQuery};
 
@@ -21,12 +21,15 @@ use graph::data::store::{IdList, IdRef, QueryObject};
 use graph::data::value::{Object, Word};
 use graph::data_source::CausalityRegion;
 use graph::prelude::{
-    anyhow, r, serde_json, BlockNumber, ChildMultiplicity, Entity, EntityCollection, EntityFilter,
-    EntityLink, EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange, EntityWindow,
-    ParentLink, QueryExecutionError, StoreError, Value, ENV_VARS,
+    BlockNumber, ChildMultiplicity, ENV_VARS, Entity, EntityCollection, EntityFilter, EntityLink,
+    EntityOrder, EntityOrderByChild, EntityOrderByChildInfo, EntityRange, EntityWindow, ParentLink,
+    QueryExecutionError, StoreError, Value, anyhow, r, serde_json,
 };
 use graph::schema::{EntityType, FulltextAlgorithm, FulltextConfig, InputSchema};
-use graph::{components::store::AttributeNames, data::store::scalar};
+use graph::{
+    components::store::{AggregationCurrent, AttributeNames},
+    data::store::scalar,
+};
 use inflector::Inflector;
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
@@ -38,15 +41,17 @@ use std::str::FromStr;
 use std::string::ToString;
 
 use crate::block_range::{BoundSide, EntityBlockRange};
+use crate::parquet::convert::RestoreRow;
 use crate::relational::dsl::AtBlock;
 use crate::relational::{
-    dsl, Column, ColumnType, Layout, SqlName, Table, BYTE_ARRAY_PREFIX_SIZE, PRIMARY_KEY_COLUMN,
-    STRING_PREFIX_SIZE, VID_COLUMN,
+    BYTE_ARRAY_PREFIX_SIZE, Column, ColumnType, Layout, PRIMARY_KEY_COLUMN, STRING_PREFIX_SIZE,
+    SqlName, Table, VID_COLUMN, dsl, rollup::Rollup,
 };
 use crate::{
     block_range::{
-        BlockRangeColumn, BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BlockRangeValue,
-        BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT, CAUSALITY_REGION_COLUMN,
+        BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT, BlockRangeColumn,
+        BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BlockRangeValue,
+        CAUSALITY_REGION_COLUMN,
     },
     primary::Site,
 };
@@ -627,7 +632,7 @@ impl<'a> SqlValue<'a> {
 
         let value = match value {
             String(s) => match column_type {
-                ColumnType::String|ColumnType::Enum(_)|ColumnType::TSVector(_) => S::Text(s),
+                ColumnType::String | ColumnType::Enum(_) | ColumnType::TSVector(_) => S::Text(s),
                 ColumnType::Int8 => S::Int8(s.parse::<i64>().map_err(|e| {
                     internal_error!("failed to convert `{}` to an Int8: {}", s, e.to_string())
                 })?),
@@ -642,35 +647,26 @@ impl<'a> SqlValue<'a> {
             },
             Int(i) => S::Int(*i),
             Value::Int8(i) => S::Int8(*i),
-            BigDecimal(d) => {
-                S::Numeric(d.to_string())
-            }
+            BigDecimal(d) => S::Numeric(d.to_string()),
             Timestamp(ts) => S::Timestamp(*ts),
             Bool(b) => S::Bool(*b),
-            List(values) => {
-                match column_type {
-                    ColumnType::BigDecimal | ColumnType::BigInt => {
-                        let text_values: Vec<_> = values.iter().map(|v| v.to_string()).collect();
-                        S::Numerics(text_values)
-                    },
-                    ColumnType::Boolean|ColumnType::Bytes|
-                    ColumnType::Int|
-                    ColumnType::Int8|
-                    ColumnType::String|
-                    ColumnType::Timestamp|
-                    ColumnType::Enum(_)|
-                    ColumnType::TSVector(_) => {
-                        S::List(values)
-                    }
+            List(values) => match column_type {
+                ColumnType::BigDecimal | ColumnType::BigInt => {
+                    let text_values: Vec<_> = values.iter().map(|v| v.to_string()).collect();
+                    S::Numerics(text_values)
                 }
-            }
-            Null => {
-                S::Null
-            }
+                ColumnType::Boolean
+                | ColumnType::Bytes
+                | ColumnType::Int
+                | ColumnType::Int8
+                | ColumnType::String
+                | ColumnType::Timestamp
+                | ColumnType::Enum(_)
+                | ColumnType::TSVector(_) => S::List(values),
+            },
+            Null => S::Null,
             Bytes(b) => S::Bytes(b),
-            BigInt(i) => {
-                S::Numeric(i.to_string())
-            }
+            BigInt(i) => S::Numeric(i.to_string()),
         };
         Ok(value)
     }
@@ -761,7 +757,7 @@ impl<'a> QueryFragment<Pg> for QueryValue<'a> {
         use SqlValue as S;
         match &self.value {
             S::Text(s) => push_string(s, column_type, &mut out),
-            S::String(ref s) => push_string(s, column_type, &mut out),
+            S::String(s) => push_string(s, column_type, &mut out),
             S::Int(i) => out.push_bind_param::<Integer, _>(i),
             S::Int8(i) => out.push_bind_param::<Int8, _>(i),
             S::Timestamp(i) => out.push_bind_param::<Timestamptz, _>(&i.0),
@@ -2314,7 +2310,7 @@ impl<'a> InsertRow<'a> {
             let iv = if let Some(fields) = column.fulltext_fields.as_ref() {
                 let fulltext_field_values: Vec<_> = fields
                     .iter()
-                    .filter_map(|field| row.entity.get(field))
+                    .filter_map(|field| row.entity.get(field).filter(|v| !v.is_null()))
                     .map(|value| match value {
                         Value::String(s) => Ok(s),
                         _ => Err(internal_error!(
@@ -2345,6 +2341,74 @@ impl<'a> InsertRow<'a> {
             vid,
         })
     }
+
+    /// Build an `InsertRow` from a `RestoreRow` (Parquet restore path).
+    ///
+    /// Unlike `new()`, this looks up values by SQL column name rather than
+    /// entity field name, since `RestoreRow.values` is keyed by SQL name.
+    /// Fulltext columns are regenerated from their source fields.
+    fn from_restore(
+        columns: &[&'a Column],
+        row: &'a RestoreRow,
+        table: &'a Table,
+    ) -> Result<Self, StoreError> {
+        let mut values = Vec::with_capacity(columns.len());
+        for column in columns {
+            let iv = if let Some(fields) = column.fulltext_fields.as_ref() {
+                // Fulltext columns: `fields` contains GraphQL field names,
+                // but `RestoreRow.values` is keyed by SQL column names.
+                // Resolve via the table's columns.
+                let fulltext_field_values: Vec<_> = fields
+                    .iter()
+                    .filter_map(|field_name| {
+                        table
+                            .columns
+                            .iter()
+                            .find(|c| c.field.as_str() == field_name.as_str())
+                            .and_then(|src_col| {
+                                row.values
+                                    .iter()
+                                    .find(|(w, _)| w.as_str() == src_col.name.as_str())
+                                    .map(|(_, v)| v)
+                                    .filter(|v| !v.is_null())
+                            })
+                    })
+                    .map(|value| match value {
+                        Value::String(s) => Ok(s),
+                        _ => Err(internal_error!(
+                            "fulltext fields must be strings but got {:?}",
+                            value
+                        )),
+                    })
+                    .collect::<Result<_, _>>()?;
+                if let ColumnType::TSVector(config) = &column.column_type {
+                    InsertValue::Fulltext(fulltext_field_values, config)
+                } else {
+                    return Err(StoreError::FulltextColumnMissingConfig);
+                }
+            } else {
+                let value = row
+                    .values
+                    .iter()
+                    .find(|(w, _)| w.as_str() == column.name.as_str())
+                    .map(|(_, v)| v)
+                    .unwrap_or(&NULL);
+                let qv = QueryValue::new(value, &column.column_type)?;
+                InsertValue::Value(qv)
+            };
+            values.push(iv);
+        }
+        let end = row.block_range_end.flatten();
+        let br_value = BlockRangeValue::new(table, row.block, end);
+        let causality_region = CausalityRegion::from(row.causality_region.unwrap_or(0));
+        let vid = row.vid;
+        Ok(Self {
+            values,
+            br_value,
+            causality_region,
+            vid,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -2360,11 +2424,11 @@ impl<'a> InsertQuery<'a> {
             for column in table.columns.iter() {
                 if !column.is_nullable() && !row.entity.contains_key(&column.field) {
                     return Err(StoreError::QueryExecutionError(format!(
-                    "can not insert entity {}[{}] since value for non-nullable attribute {} is missing. \
+                        "can not insert entity {}[{}] since value for non-nullable attribute {} is missing. \
                      To fix this, mark the attribute as nullable in the GraphQL schema or change the \
                      mapping code to always set this attribute.",
-                    table.object, row.id, column.field
-                )));
+                        table.object, row.id, column.field
+                    )));
                 }
             }
         }
@@ -2374,6 +2438,29 @@ impl<'a> InsertQuery<'a> {
         let rows: Vec<_> = rows
             .iter()
             .map(|row| InsertRow::new(&unique_columns, row, table))
+            .collect::<Result<_, _>>()?;
+
+        Ok(InsertQuery {
+            table,
+            rows,
+            unique_columns,
+        })
+    }
+
+    /// Build an `InsertQuery` from restore rows (Parquet restore path).
+    ///
+    /// All data columns from the dump are present, so `unique_columns`
+    /// includes every column in the table. Fulltext columns are
+    /// regenerated from their source fields.
+    pub fn for_restore(
+        table: &'a Table,
+        rows: &'a [RestoreRow],
+    ) -> Result<InsertQuery<'a>, StoreError> {
+        let unique_columns: Vec<&Column> = table.columns.iter().collect();
+
+        let rows: Vec<_> = rows
+            .iter()
+            .map(|row| InsertRow::from_restore(&unique_columns, row, table))
             .collect::<Result<_, _>>()?;
 
         Ok(InsertQuery {
@@ -2487,6 +2574,12 @@ impl<'a> QueryFragment<Pg> for InsertQuery<'a> {
                 out.push_bind_param::<BigInt, _>(&row.vid)?;
             }
             out.push_sql(")");
+        }
+
+        if self.table.immutable && self.table.skip_duplicates {
+            out.push_sql("\n ON CONFLICT (");
+            out.push_identifier(self.table.primary_key().name.as_str())?;
+            out.push_sql(") DO NOTHING");
         }
 
         Ok(())
@@ -2651,6 +2744,11 @@ impl<'a> ParentLimit<'a> {
         }
         // limiting is taken care of in a wrapper around
         // the query we are currently building
+    }
+
+    /// Returns the maximum number of rows that could be requested by this range filter.
+    fn max_num_rows(&self) -> u32 {
+        self.range.0.first.unwrap_or(EntityRange::FIRST) + self.range.0.skip
     }
 }
 
@@ -4275,6 +4373,7 @@ pub struct FilterQuery<'a> {
     block: BlockNumber,
     query_id: Option<String>,
     site: &'a Site,
+    rollup: Option<&'a Rollup>,
 }
 
 /// String representation that is useful for debugging when `walk_ast` fails
@@ -4302,10 +4401,12 @@ impl<'a> FilterQuery<'a> {
         block: BlockNumber,
         query_id: Option<String>,
         site: &'a Site,
+        aggregation_current: Option<AggregationCurrent>,
     ) -> Result<Self, QueryExecutionError> {
         let sort_key = SortKey::new(order, collection, filter, layout, block)?;
         let range = FilterRange(range);
         let limit = ParentLimit { sort_key, range };
+        let rollup = Self::find_rollup(collection, layout, aggregation_current)?;
 
         Ok(FilterQuery {
             collection,
@@ -4313,7 +4414,56 @@ impl<'a> FilterQuery<'a> {
             block,
             query_id,
             site,
+            rollup,
         })
+    }
+
+    /// Finds the relevant [Rollup] for an aggregation entity query when the query requires the current bucket.
+    ///
+    /// Returns `None` for non-aggregation entity queries.
+    ///
+    /// Returns an error if the query is not supported.
+    fn find_rollup(
+        collection: &'a FilterCollection,
+        layout: &'a Layout,
+        aggregation_current: Option<AggregationCurrent>,
+    ) -> Result<Option<&'a Rollup>, QueryExecutionError> {
+        if !matches!(aggregation_current, Some(AggregationCurrent::Include)) {
+            return Ok(None);
+        }
+
+        // Determine which table and column_names to check based on collection type.
+        // We support root queries (All with 1 entity) and single-window nested queries.
+        let (object_name, column_names) = match collection {
+            FilterCollection::All(entities) if entities.len() == 1 => {
+                let entity = &entities[0];
+                (
+                    entity.table.meta.object.as_str(),
+                    &entity.column_names,
+                )
+            }
+            FilterCollection::SingleWindow(window) => (
+                window.table.meta.object.as_str(),
+                &window.column_names,
+            ),
+            _ => {
+                return Err(QueryExecutionError::NotSupported(
+                    "The current aggregation bucket can only be queried in a root query for one aggregation entity or a single-window nested query".to_string(),
+                ))
+            }
+        };
+
+        // This is not supported because the use of `SELECT *` does not always produce the expected results when combined with `UNION ALL`.
+        if matches!(column_names, AttributeNames::All) {
+            return Err(QueryExecutionError::NotSupported(
+                "The current aggregation bucket can only be queried when fields are explicitly selected".to_string())
+            );
+        }
+
+        Ok(layout
+            .rollups
+            .iter()
+            .find(|rollup| rollup.agg_table.object.as_str() == object_name))
     }
 
     /// Generate
@@ -4361,19 +4511,61 @@ impl<'a> FilterQuery<'a> {
     ///         where block_range @> $block
     ///           and filter
     ///         order by .. limit .. skip ..) c
+    ///
+    /// For aggregation entity queries that require the current bucket,
+    /// the generated query has the following structure:
+    ///
+    ///   select '..' as entity, to_jsonb(e.*) as data
+    ///     from (
+    ///       (select {column names} from agg_table c where {filters} limit {limit + skip + 1})
+    ///         union all
+    ///       (select {column names} from ({current bucket query from agg source table} + {filters}) c)
+    ///     ) c order by .. limit .. skip ..
     fn query_no_window_one_entity<'b>(
         &'b self,
         wh: &'b WholeTable<'a>,
         out: &mut AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(wh.table, out);
-        out.push_sql(" from (select ");
-        write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
-        self.filtered_rows(wh, out)?;
-        out.push_sql("\n ");
-        self.limit.sort_key.order_by(out, false)?;
-        self.limit.range.walk_ast(out.reborrow())?;
-        out.push_sql(") c");
+        out.push_sql(" from (");
+
+        match self.rollup {
+            Some(rollup) => {
+                out.push_sql("(select ");
+                write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
+                self.filtered_rows(wh, out)?;
+                out.push_sql("\n ");
+                self.limit.sort_key.order_by(out, false)?;
+                out.push_sql(" limit ");
+                out.push_sql(&self.limit.max_num_rows().to_string());
+                out.push_sql(") union all (select ");
+                write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
+                out.push_sql(" from (");
+                let mut current_sql_split = rollup.select_current_sql.split("/*FILTERS*/");
+                out.push_sql(current_sql_split.next().unwrap());
+                out.push_sql(" and ");
+                wh.at_block.walk_ast(out.reborrow())?;
+                if let Some(filter) = &wh.filter {
+                    out.push_sql(" and ");
+                    filter.walk_ast(out.reborrow())?;
+                }
+                out.push_sql(current_sql_split.next().unwrap());
+                out.push_sql(") c ) ) c");
+                out.push_sql("\n ");
+                self.limit.sort_key.order_by(out, false)?;
+                self.limit.range.walk_ast(out.reborrow())?;
+            }
+            None => {
+                out.push_sql("select ");
+                write_column_names(&wh.column_names, wh.table, Some("c."), out)?;
+                self.filtered_rows(wh, out)?;
+                out.push_sql("\n ");
+                self.limit.sort_key.order_by(out, false)?;
+                self.limit.range.walk_ast(out.reborrow())?;
+                out.push_sql(") c");
+            }
+        }
+
         Ok(())
     }
 
@@ -4384,20 +4576,82 @@ impl<'a> FilterQuery<'a> {
     ///     from (select {column_names}, p.id as g$parent_id from {window.children(...)}) c
     ///     order by c.g$parent_id, {sort_key}
     ///     limit {first} offset {skip}
+    ///
+    /// For aggregation entity queries that require the current bucket,
+    /// the generated query has the following structure:
+    ///
+    ///   select '..' as entity, to_jsonb(e.*) as data
+    ///     from (
+    ///       (select {column_names}, p.id::text as g$parent_id from {window.children(...)})
+    ///       union all
+    ///       (select {column_names}, c.{link_col}::text as g$parent_id
+    ///          from ({current bucket query with filters}) c
+    ///         where c.{link_col} = any({parent_ids}))
+    ///     ) c
+    ///     order by c.g$parent_id, {sort_key}
     fn query_window_one_entity<'b>(
         &'b self,
         window: &'b FilterWindow,
         mut out: AstPass<'_, 'b, Pg>,
     ) -> QueryResult<()> {
         Self::select_entity_and_data(window.table, &mut out);
-        out.push_sql(" from (select ");
-        write_column_names(&window.column_names, window.table, Some("c."), &mut out)?;
-        out.push_sql(", p.id::text as ");
-        out.push_sql(PARENT_ID);
-        window.children(false, &self.limit, &mut out)?;
-        out.push_sql(") c");
-        out.push_sql("\n ");
-        self.limit.sort_key.order_by_parent(&mut out, false)
+
+        match self.rollup {
+            Some(rollup) => {
+                out.push_sql(" from ((select ");
+                write_column_names(&window.column_names, window.table, Some("c."), &mut out)?;
+                out.push_sql(", p.id::text as ");
+                out.push_sql(PARENT_ID);
+                window.children(false, &self.limit, &mut out)?;
+                out.push_sql(") union all (select ");
+                write_column_names(&window.column_names, window.table, Some("c."), &mut out)?;
+
+                // Determine the link column name from the window's link.
+                // For Direct links, the column name on the aggregation table
+                // matches the dimension column on the source timeseries table.
+                let link_col_name = match &window.link {
+                    TableLink::Direct(col, _) => col.name(),
+                    TableLink::Parent(_, _) => {
+                        return Err(diesel::result::Error::QueryBuilderError(
+                            "current aggregation bucket is not supported for Parent-linked nested queries".into(),
+                        ));
+                    }
+                };
+
+                out.push_sql(", c.\"");
+                out.push_sql(link_col_name);
+                out.push_sql("\"::text as ");
+                out.push_sql(PARENT_ID);
+                out.push_sql(" from (");
+
+                let mut current_sql_split = rollup.select_current_sql.split("/*FILTERS*/");
+                out.push_sql(current_sql_split.next().unwrap());
+                out.push_sql(" and ");
+                window.at_block.walk_ast(out.reborrow())?;
+                if let Some(filter) = &window.query_filter {
+                    out.push_sql(" and ");
+                    filter.walk_ast(out.reborrow())?;
+                }
+                out.push_sql(current_sql_split.next().unwrap());
+                out.push_sql(") c where c.\"");
+                out.push_sql(link_col_name);
+                out.push_sql("\" = any(");
+                window.ids.push_bind_param(&mut out)?;
+                out.push_sql("))) c");
+                out.push_sql("\n ");
+                self.limit.sort_key.order_by_parent(&mut out, false)
+            }
+            None => {
+                out.push_sql(" from (select ");
+                write_column_names(&window.column_names, window.table, Some("c."), &mut out)?;
+                out.push_sql(", p.id::text as ");
+                out.push_sql(PARENT_ID);
+                window.children(false, &self.limit, &mut out)?;
+                out.push_sql(") c");
+                out.push_sql("\n ");
+                self.limit.sort_key.order_by_parent(&mut out, false)
+            }
+        }
     }
 
     /// No windowing, but multiple entity types
@@ -4837,6 +5091,7 @@ pub struct CopyEntityBatchQuery<'a> {
     columns: Vec<&'a Column>,
     first_vid: i64,
     last_vid: i64,
+    target_block: BlockNumber,
 }
 
 impl<'a> CopyEntityBatchQuery<'a> {
@@ -4845,6 +5100,7 @@ impl<'a> CopyEntityBatchQuery<'a> {
         src: &'a Table,
         first_vid: i64,
         last_vid: i64,
+        target_block: BlockNumber,
     ) -> Result<Self, StoreError> {
         let mut columns = Vec::new();
         for dcol in &dst.columns {
@@ -4871,6 +5127,7 @@ impl<'a> CopyEntityBatchQuery<'a> {
             columns,
             first_vid,
             last_vid,
+            target_block,
         })
     }
 
@@ -4955,7 +5212,16 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
                 );
                 out.push_sql(&checked_conversion);
             }
-            (false, false) => out.push_sql(BLOCK_RANGE_COLUMN),
+            (false, false) => {
+                let range_conv = format!(
+                    r#"
+                case when upper({BLOCK_RANGE_COLUMN}) > {}
+                     then int4range(lower({BLOCK_RANGE_COLUMN}), null)
+                     else {BLOCK_RANGE_COLUMN} end"#,
+                    self.target_block
+                );
+                out.push_sql(&range_conv)
+            }
         }
 
         match (self.src.has_causality_region, self.dst.has_causality_region) {
@@ -4985,6 +5251,16 @@ impl<'a> QueryFragment<Pg> for CopyEntityBatchQuery<'a> {
         out.push_bind_param::<BigInt, _>(&self.first_vid)?;
         out.push_sql(" and vid <= ");
         out.push_bind_param::<BigInt, _>(&self.last_vid)?;
+        out.push_sql(" and ");
+        if self.src.immutable {
+            out.push_sql(BLOCK_COLUMN);
+        } else {
+            out.push_sql("lower(");
+            out.push_sql(BLOCK_RANGE_COLUMN);
+            out.push_sql(")");
+        }
+        out.push_sql(" <= ");
+        out.push_bind_param::<Integer, _>(&self.target_block)?;
         out.push_sql("\n returning ");
         if self.dst.immutable {
             out.push_sql("true");

@@ -22,17 +22,17 @@ mod entity_type;
 mod fulltext;
 pub(crate) mod input;
 
-pub use api::{is_introspection_field, APISchemaError, INTROSPECTION_QUERY_TYPE};
+pub use api::{APISchemaError, INTROSPECTION_QUERY_TYPE, is_introspection_field};
 
 pub use api::{ApiSchema, ErrorPolicy};
 pub use entity_key::EntityKey;
 pub use entity_type::{AsEntityTypeName, EntityType};
 pub use fulltext::{FulltextAlgorithm, FulltextConfig, FulltextDefinition, FulltextLanguage};
-pub use input::sqlexpr::{ExprVisitor, VisitExpr};
 pub(crate) use input::POI_OBJECT;
+pub use input::sqlexpr::{ExprVisitor, VisitExpr};
 pub use input::{
-    kw, Aggregate, AggregateFn, Aggregation, AggregationInterval, AggregationMapping, Field,
-    InputSchema, InterfaceType, ObjectOrInterface, ObjectType, TypeKind,
+    Aggregate, AggregateFn, Aggregation, AggregationInterval, AggregationMapping, Field,
+    InputSchema, InterfaceType, ObjectOrInterface, ObjectType, TypeKind, kw,
 };
 
 pub const SCHEMA_TYPE_NAME: &str = "_Schema_";
@@ -40,6 +40,9 @@ pub const INTROSPECTION_SCHEMA_FIELD_NAME: &str = "__schema";
 
 pub const META_FIELD_TYPE: &str = "_Meta_";
 pub const META_FIELD_NAME: &str = "_meta";
+
+pub const LOGS_FIELD_TYPE: &str = "_Log_";
+pub const LOGS_FIELD_NAME: &str = "_logs";
 
 pub const INTROSPECTION_TYPE_FIELD_NAME: &str = "__type";
 
@@ -57,6 +60,8 @@ impl fmt::Display for Strings {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SchemaValidationError {
+    #[error("Invalid schema: {0}")]
+    InvalidSchema(String),
     #[error("Interface `{0}` not defined")]
     InterfaceUndefined(String),
 
@@ -70,7 +75,9 @@ pub enum SchemaValidationError {
          the following fields: {2}"
     )]
     InterfaceFieldsMissing(String, String, Strings), // (type, interface, missing_fields)
-    #[error("Implementors of interface `{0}` use different id types `{1}`. They must all use the same type")]
+    #[error(
+        "Implementors of interface `{0}` use different id types `{1}`. They must all use the same type"
+    )]
     InterfaceImplementorsMixId(String, String),
     #[error("Field `{1}` in type `{0}` has invalid @derivedFrom: {2}")]
     InvalidDerivedFrom(String, String, String), // (type, field, reason)
@@ -88,7 +95,9 @@ pub enum SchemaValidationError {
     FulltextNameUndefined,
     #[error("Fulltext directive name overlaps with type: {0}")]
     FulltextNameConflict(String),
-    #[error("Fulltext directive name overlaps with an existing entity field or a top-level query field: {0}")]
+    #[error(
+        "Fulltext directive name overlaps with an existing entity field or a top-level query field: {0}"
+    )]
     FulltextNameCollision(String),
     #[error("Fulltext language is undefined")]
     FulltextLanguageUndefined,
@@ -120,9 +129,13 @@ pub enum SchemaValidationError {
     IllegalIdType(String),
     #[error("Timeseries {0} is missing a `timestamp` field")]
     TimestampFieldMissing(String),
-    #[error("Aggregation {0}, field{1}: aggregates must use a numeric type, one of Int, Int8, BigInt, and BigDecimal")]
+    #[error(
+        "Aggregation {0}, field{1}: aggregates must use a numeric type, one of Int, Int8, BigInt, and BigDecimal"
+    )]
     NonNumericAggregate(String, String),
-    #[error("Aggregation '{0}', field '{1}': first/last aggregates must use a numeric, byte array, string or a reference type")]
+    #[error(
+        "Aggregation '{0}', field '{1}': first/last aggregates must use a numeric, byte array, string or a reference type"
+    )]
     InvalidFirstLastAggregate(String, String),
     #[error("Aggregation {0} is missing the `source` argument")]
     AggregationMissingSource(String),
@@ -146,6 +159,10 @@ pub enum SchemaValidationError {
     AggregationDerivedField(String, String),
     #[error("Timeseries {0} is marked as mutable, it must be immutable")]
     MutableTimeseries(String),
+    #[error(
+        "Entity type `{0}` has skipDuplicates: true but is not immutable; skipDuplicates requires immutable: true"
+    )]
+    SkipDuplicatesRequiresImmutable(String),
     #[error("Timeseries {0} is missing a `timestamp` field")]
     TimeseriesMissingTimestamp(String),
     #[error("Type {0} has a `timestamp` field of type {1}, but it must be of type Timestamp")]
@@ -164,7 +181,9 @@ pub enum SchemaValidationError {
     AggregationInvalidFn(String, String, String),
     #[error("Field {1} in aggregation {0} is missing the `fn` argument")]
     AggregationMissingFn(String, String),
-    #[error("Field {1} in aggregation {0} is missing the `arg` argument since the function {2} requires it")]
+    #[error(
+        "Field {1} in aggregation {0} is missing the `arg` argument since the function {2} requires it"
+    )]
     AggregationMissingArg(String, String, String),
     #[error(
         "Field {1} in aggregation {0} has `arg` {2} but the source type does not have such a field"
@@ -176,11 +195,17 @@ pub enum SchemaValidationError {
     AggregationNonMatchingArg(String, String, String, String, String),
     #[error("Field {1} in aggregation {0} has arg `{3}` but that is not a numeric field in {2}")]
     AggregationNonNumericArg(String, String, String, String),
-    #[error("Field {1} in aggregation {0} has an invalid value for `cumulative`. It needs to be a boolean")]
+    #[error(
+        "Field {1} in aggregation {0} has an invalid value for `cumulative`. It needs to be a boolean"
+    )]
     AggregationInvalidCumulative(String, String),
-    #[error("Aggregations are not supported with spec version {0}; please migrate the subgraph to the latest version")]
+    #[error(
+        "Aggregations are not supported with spec version {0}; please migrate the subgraph to the latest version"
+    )]
     AggregationsNotSupported(Version),
-    #[error("Using Int8 as the type for the `id` field is not supported with spec version {0}; please migrate the subgraph to the latest version")]
+    #[error(
+        "Using Int8 as the type for the `id` field is not supported with spec version {0}; please migrate the subgraph to the latest version"
+    )]
     IdTypeInt8NotSupported(Version),
     #[error("{0}")]
     ExprNotSupported(String),
@@ -305,7 +330,7 @@ impl Schema {
                 arguments: vec![subgraph_id_argument],
             };
 
-            if let s::Definition::TypeDefinition(ref mut type_definition) = definition {
+            if let s::Definition::TypeDefinition(type_definition) = definition {
                 let (name, directives) = match type_definition {
                     s::TypeDefinition::Object(object_type) => {
                         (&object_type.name, &mut object_type.directives)

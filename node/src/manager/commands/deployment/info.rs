@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 
-use anyhow::bail;
 use anyhow::Result;
+use anyhow::bail;
 use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::Store;
+use graphman::commands::deployment::info::DeploymentStatus;
 use graphman::commands::deployment::info::load_deployment_statuses;
 use graphman::commands::deployment::info::load_deployments;
-use graphman::commands::deployment::info::DeploymentStatus;
 use graphman::deployment::Deployment;
 use graphman::deployment::DeploymentSelector;
 use graphman::deployment::DeploymentVersionSelector;

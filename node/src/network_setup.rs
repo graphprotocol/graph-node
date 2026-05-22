@@ -1,6 +1,7 @@
 use ethereum::{
-    network::{EthereumNetworkAdapter, EthereumNetworkAdapters},
     BlockIngestor,
+    chain::ChainSettings,
+    network::{EthereumNetworkAdapter, EthereumNetworkAdapters},
 };
 use graph::components::network_provider::ChainName;
 use graph::components::network_provider::NetworkDetails;
@@ -19,19 +20,20 @@ use graph::{
     itertools::Itertools,
     log::factory::LoggerFactory,
     prelude::{
-        anyhow::{anyhow, Result},
-        info, Logger,
+        Logger,
+        anyhow::{Result, anyhow},
+        info,
     },
-    slog::{o, warn, Discard},
+    slog::{Discard, o, warn},
 };
 use graph_chain_ethereum as ethereum;
 use graph_store_postgres::{BlockStore, ChainHeadUpdateListener};
 
-use std::{any::Any, cmp::Ordering, sync::Arc, time::Duration};
+use std::{any::Any, cmp::Ordering, sync::Arc};
 
 use crate::chain::{
-    create_ethereum_networks, create_firehose_networks, networks_as_chains, AnyChainFilter,
-    ChainFilter, OneChainFilter,
+    AnyChainFilter, ChainFilter, OneChainFilter, create_ethereum_networks,
+    create_firehose_networks, networks_as_chains,
 };
 
 #[derive(Debug, Clone)]
@@ -39,9 +41,7 @@ pub struct EthAdapterConfig {
     pub chain_id: ChainName,
     pub adapters: Vec<EthereumNetworkAdapter>,
     pub call_only: Vec<EthereumNetworkAdapter>,
-    // polling interval is set per chain so if set all adapter configuration will have
-    // the same value.
-    pub polling_interval: Option<Duration>,
+    pub settings: Arc<ChainSettings>,
 }
 
 #[derive(Debug, Clone)]
@@ -130,13 +130,13 @@ impl Networks {
                     Ok(ident) => return Ok(ident),
                     Err(err) => {
                         warn!(
-                        logger,
-                        "unable to get chain identification from {} provider {} for chain {}, err: {}",
-                        provider_type,
-                        adapter.provider_name(),
-                        chain_id,
-                        err.to_string(),
-                    );
+                            logger,
+                            "unable to get chain identification from {} provider {} for chain {}, err: {}",
+                            provider_type,
+                            adapter.provider_name(),
+                            chain_id,
+                            err.to_string(),
+                        );
                     }
                 }
             }
@@ -182,7 +182,7 @@ impl Networks {
             endpoint_metrics.cheap_clone(),
             chain_filter,
         );
-        let adapters: Vec<_> = eth.into_iter().chain(firehose.into_iter()).collect();
+        let adapters: Vec<_> = eth.into_iter().chain(firehose).collect();
 
         Ok(Networks::new(&logger, adapters, provider_checks))
     }
@@ -236,7 +236,7 @@ impl Networks {
                  chain_id,
                  mut adapters,
                  call_only: _,
-                 polling_interval: _,
+                 settings: _,
              }| {
                 adapters.sort_by(|a, b| {
                     a.capabilities
@@ -261,7 +261,7 @@ impl Networks {
             )
             .collect_vec();
 
-        let s = Self {
+        Self {
             adapters: adapters2,
             rpc_provider_manager: ProviderManager::new(
                 logger.clone(),
@@ -273,9 +273,7 @@ impl Networks {
                 firehose_adapters,
                 ProviderCheckStrategy::RequireAll(provider_checks),
             ),
-        };
-
-        s
+        }
     }
 
     pub async fn block_ingestors(

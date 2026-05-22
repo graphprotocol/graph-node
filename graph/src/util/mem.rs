@@ -1,4 +1,4 @@
-use std::mem::{transmute, MaybeUninit};
+use std::mem::{MaybeUninit, transmute};
 
 /// Temporarily needed until MaybeUninit::write_slice is stabilized.
 pub fn init_slice<'a, T>(src: &[T], dst: &'a mut [MaybeUninit<T>]) -> &'a mut [T]

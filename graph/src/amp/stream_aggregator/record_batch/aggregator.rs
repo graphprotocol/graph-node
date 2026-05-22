@@ -1,10 +1,10 @@
 use std::{
-    collections::{btree_map::Entry, BTreeMap, HashSet},
+    collections::{BTreeMap, HashSet, btree_map::Entry},
     sync::{Arc, Weak},
 };
 
 use alloy::primitives::{BlockHash, BlockNumber};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use arrow::array::RecordBatch;
 
 use super::{Decoder, GroupData};
@@ -146,11 +146,11 @@ impl Aggregator {
         let incomplete_groups = self.buffer.split_off(max_block_ptr);
         let mut completed_groups = std::mem::replace(&mut self.buffer, incomplete_groups);
 
-        if let Some((block_ptr, _)) = self.buffer.first_key_value() {
-            if block_ptr == max_block_ptr {
-                let (block_ptr, group_data) = self.buffer.pop_first().unwrap();
-                completed_groups.insert(block_ptr, group_data);
-            }
+        if let Some((block_ptr, _)) = self.buffer.first_key_value()
+            && block_ptr == max_block_ptr
+        {
+            let (block_ptr, group_data) = self.buffer.pop_first().unwrap();
+            completed_groups.insert(block_ptr, group_data);
         }
 
         if completed_groups.is_empty() {

@@ -3,28 +3,28 @@ use std::sync::Arc;
 
 use async_graphql::EmptySubscription;
 use async_graphql::Schema;
+use axum::Router;
 use axum::extract::Extension;
 use axum::http::Method;
 use axum::routing::get;
-use axum::Router;
 use graph::log::factory::LoggerFactory;
 use graph::prelude::ComponentLoggerConfig;
 use graph::prelude::ElasticComponentLoggerConfig;
-use graph_store_postgres::graphman::GraphmanStore;
 use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::NotificationSender;
 use graph_store_postgres::Store;
-use slog::{info, Logger};
+use graph_store_postgres::graphman::GraphmanStore;
+use slog::{Logger, info};
 use tokio::sync::Notify;
 use tower_http::cors::{Any, CorsLayer};
 
+use crate::GraphmanServerError;
 use crate::auth::AuthToken;
+use crate::handlers::AppState;
 use crate::handlers::graphql_playground_handler;
 use crate::handlers::graphql_request_handler;
-use crate::handlers::AppState;
 use crate::resolvers::MutationRoot;
 use crate::resolvers::QueryRoot;
-use crate::GraphmanServerError;
 
 #[derive(Clone)]
 pub struct GraphmanServer {

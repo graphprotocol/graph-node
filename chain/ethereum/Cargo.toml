@@ -12,10 +12,10 @@ serde = { workspace = true }
 prost = { workspace = true }
 prost-types = { workspace = true }
 anyhow = "1.0"
-tiny-keccak = "1.5.0"
 hex = "0.4.3"
-semver = "1.0.27"
+semver = { workspace = true }
 thiserror = { workspace = true }
+futures = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 tower = { workspace = true }

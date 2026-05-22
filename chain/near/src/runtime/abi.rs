@@ -3,7 +3,7 @@ use crate::trigger::ReceiptWithOutcome;
 use async_trait::async_trait;
 use graph::anyhow::anyhow;
 use graph::runtime::gas::GasCounter;
-use graph::runtime::{asc_new, AscHeap, AscPtr, DeterministicHostError, HostExportError, ToAscObj};
+use graph::runtime::{AscHeap, AscPtr, DeterministicHostError, HostExportError, ToAscObj, asc_new};
 use graph_runtime_wasm::asc_abi::class::{Array, AscEnum, EnumPayload, Uint8Array};
 
 pub(crate) use super::generated::*;
@@ -517,7 +517,7 @@ impl ToAscObj<AscMerklePathItem> for codec::MerklePathItem {
                         "Invalid direction value {}",
                         x
                     ))
-                    .into())
+                    .into());
                 }
             },
         })
@@ -557,7 +557,7 @@ impl ToAscObj<AscSignature> for codec::Signature {
                         "Invalid signature type {}",
                         value,
                     ))
-                    .into())
+                    .into());
                 }
             },
             bytes: asc_new(heap, self.bytes.as_slice(), gas).await?,
@@ -596,7 +596,7 @@ impl ToAscObj<AscPublicKey> for codec::PublicKey {
                         "Invalid public key type {}",
                         value,
                     ))
-                    .into())
+                    .into());
                 }
             },
             bytes: asc_new(heap, self.bytes.as_slice(), gas).await?,

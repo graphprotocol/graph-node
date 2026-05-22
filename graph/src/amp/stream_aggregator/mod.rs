@@ -7,10 +7,10 @@ use std::{
     task::{self, Poll},
 };
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use arrow::array::RecordBatch;
-use futures03::{stream::BoxStream, Stream, StreamExt, TryStreamExt};
-use slog::{debug, info, Logger};
+use futures03::{Stream, StreamExt, TryStreamExt, stream::BoxStream};
+use slog::{Logger, debug, info};
 
 use self::record_batch::Buffer;
 use crate::{
@@ -60,7 +60,7 @@ impl StreamAggregator {
     pub fn new<E>(
         logger: &Logger,
         named_streams: impl IntoIterator<Item = (String, BoxStream<'static, Result<ResponseBatch, E>>)>,
-        max_buffer_size: usize,
+        buffer_size: usize,
     ) -> Self
     where
         E: std::error::Error + IsDeterministic + Send + Sync + 'static,
@@ -101,14 +101,9 @@ impl StreamAggregator {
 
         let num_streams = named_streams.len();
 
-        info!(logger, "Initializing stream aggregator";
-            "num_streams" => num_streams,
-            "max_buffer_size" => max_buffer_size
-        );
-
         Self {
             named_streams,
-            buffer: Buffer::new(num_streams, max_buffer_size),
+            buffer: Buffer::new(num_streams, buffer_size),
             logger,
             is_finalized: false,
             is_failed: false,
@@ -120,6 +115,7 @@ impl StreamAggregator {
         cx: &mut task::Context<'_>,
     ) -> Poll<Option<Result<RecordBatchGroups, Error>>> {
         let mut made_progress = false;
+        let mut needs_repoll = false;
 
         for (stream_index, (stream_name, stream)) in self.named_streams.iter_mut().enumerate() {
             let logger = self.logger.new(slog::o!(
@@ -157,6 +153,7 @@ impl StreamAggregator {
                     match buffer_result {
                         Ok(()) => {
                             made_progress = true;
+                            needs_repoll = true;
 
                             debug!(logger, "Buffered record batch";
                                 "buffer_size" => self.buffer.size(stream_index),
@@ -172,6 +169,7 @@ impl StreamAggregator {
                 }
                 Poll::Ready(Some(Ok(_empty_record_batch))) => {
                     debug!(logger, "Received an empty record batch");
+                    needs_repoll = true;
                 }
                 Poll::Ready(Some(Err(e))) => {
                     self.is_failed = true;
@@ -197,21 +195,30 @@ impl StreamAggregator {
             }
         }
 
-        if made_progress {
-            if let Some(completed_groups) =
+        if made_progress
+            && let Some(completed_groups) =
                 self.buffer.completed_groups().map_err(Error::Aggregation)?
-            {
-                debug!(self.logger, "Sending completed record batch groups";
-                    "num_completed_groups" => completed_groups.len()
-                );
+        {
+            debug!(self.logger, "Sending completed record batch groups";
+                "num_completed_groups" => completed_groups.len()
+            );
 
-                return Poll::Ready(Some(Ok(completed_groups)));
-            }
+            return Poll::Ready(Some(Ok(completed_groups)));
         }
 
         if self.is_finalized {
             info!(self.logger, "All streams completed");
             return Poll::Ready(None);
+        }
+
+        // When any stream returned `Poll::Ready` but we couldn't produce
+        // output (e.g. empty batch, or data buffered but no completed
+        // groups yet), the waker was consumed by that stream's poll call
+        // and won't be re-registered until we poll it again. Schedule an
+        // immediate re-poll so those streams get polled again and their
+        // wakers are properly re-registered.
+        if needs_repoll {
+            cx.waker().wake_by_ref();
         }
 
         Poll::Pending

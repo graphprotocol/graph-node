@@ -4,7 +4,7 @@ use anyhow::Result;
 use graph_store_postgres::ConnectionPool;
 use graph_store_postgres::NotificationSender;
 use graphman::commands::deployment::pause::{
-    load_active_deployment, pause_active_deployment, PauseDeploymentError,
+    PauseDeploymentError, load_active_deployment, pause_active_deployment,
 };
 use graphman::deployment::DeploymentSelector;
 

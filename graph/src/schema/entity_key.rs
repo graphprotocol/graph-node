@@ -59,3 +59,17 @@ impl std::fmt::Debug for EntityKey {
         )
     }
 }
+
+impl std::fmt::Display for EntityKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.causality_region == CausalityRegion::ONCHAIN {
+            write!(f, "{}[{}]", self.entity_type, self.entity_id)
+        } else {
+            write!(
+                f,
+                "{}/{}[{}]",
+                self.entity_type, self.causality_region, self.entity_id
+            )
+        }
+    }
+}

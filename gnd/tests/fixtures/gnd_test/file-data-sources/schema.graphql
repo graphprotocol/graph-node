@@ -1,0 +1,9 @@
+type IpfsFile @entity {
+  id: ID!
+  content: String!
+}
+
+type ArweaveFile @entity {
+  id: ID!
+  content: String!
+}

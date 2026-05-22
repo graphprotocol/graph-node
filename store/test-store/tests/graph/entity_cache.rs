@@ -1,10 +1,11 @@
 use async_trait::async_trait;
-use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockTime;
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::components::store::{
-    DeploymentCursorTracker, DerivedEntityQuery, GetScope, LoadRelatedRequest, ReadStore,
-    StoredDynamicDataSource, WritableStore,
+    DeploymentCursorTracker, DerivedEntityQuery, EntityLfuCache, GetScope, LoadRelatedRequest,
+    ReadStore, StoredDynamicDataSource, WritableStore,
 };
+use graph::components::subgraph::BlockState;
 use graph::data::store::Id;
 use graph::data::subgraph::schema::{DeploymentCreate, SubgraphError, SubgraphHealth};
 use graph::data_source::CausalityRegion;
@@ -169,6 +170,10 @@ impl WritableStore for MockStore {
         unimplemented!()
     }
 
+    async fn create_postponed_indexes(&self) -> Result<(), StoreError> {
+        unimplemented!()
+    }
+
     async fn flush(&self) -> Result<(), StoreError> {
         unimplemented!()
     }
@@ -194,8 +199,8 @@ fn sort_by_entity_key(mut mods: Vec<EntityModification>) -> Vec<EntityModificati
 #[graph::test]
 async fn empty_cache_modifications() {
     let store = Arc::new(MockStore::new(BTreeMap::new()));
-    let cache = EntityCache::new(store);
-    let result = cache.as_modifications(0).await;
+    let cache = EntityCache::new(store, SeqGenerator::new(0));
+    let result = cache.as_modifications(0, &STOPWATCH).await;
     assert_eq!(result.unwrap().modifications, vec![]);
 }
 
@@ -206,26 +211,26 @@ async fn insert_modifications() {
     let store = MockStore::new(BTreeMap::new());
 
     let store = Arc::new(store);
-    let mut cache = EntityCache::new(store);
+    let mut cache = EntityCache::new(store, SeqGenerator::new(0));
 
     let mut mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai" };
     let mogwai_key = make_band_key("mogwai");
     cache
-        .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
+        .set(mogwai_key.clone(), mogwai_data.clone(), None)
         .await
         .unwrap();
 
     let mut sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros" };
     let sigurros_key = make_band_key("sigurros");
     cache
-        .set(sigurros_key.clone(), sigurros_data.clone(), 0, None)
+        .set(sigurros_key.clone(), sigurros_data.clone(), None)
         .await
         .unwrap();
 
     mogwai_data.set_vid(100).unwrap();
     sigurros_data.set_vid(101).unwrap();
 
-    let result = cache.as_modifications(0).await;
+    let result = cache.as_modifications(0, &STOPWATCH).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -257,26 +262,26 @@ async fn overwrite_modifications() {
     };
 
     let store = Arc::new(store);
-    let mut cache = EntityCache::new(store);
+    let mut cache = EntityCache::new(store, SeqGenerator::new(0));
 
     let mut mogwai_data = entity! { SCHEMA => id: "mogwai", name: "Mogwai", founded: 1995 };
     let mogwai_key = make_band_key("mogwai");
     cache
-        .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
+        .set(mogwai_key.clone(), mogwai_data.clone(), None)
         .await
         .unwrap();
 
     let mut sigurros_data = entity! { SCHEMA => id: "sigurros", name: "Sigur Ros", founded: 1994};
     let sigurros_key = make_band_key("sigurros");
     cache
-        .set(sigurros_key.clone(), sigurros_data.clone(), 0, None)
+        .set(sigurros_key.clone(), sigurros_data.clone(), None)
         .await
         .unwrap();
 
     mogwai_data.set_vid(100).unwrap();
     sigurros_data.set_vid(101).unwrap();
 
-    let result = cache.as_modifications(0).await;
+    let result = cache.as_modifications(0, &STOPWATCH).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![
@@ -298,25 +303,25 @@ async fn consecutive_modifications() {
     };
 
     let store = Arc::new(store);
-    let mut cache = EntityCache::new(store);
+    let mut cache = EntityCache::new(store, SeqGenerator::new(0));
 
     // First, add "founded" and change the "label".
     let update_data =
         entity! { SCHEMA => id: "mogwai", founded: 1995, label: "Rock Action Records" };
     let update_key = make_band_key("mogwai");
-    cache.set(update_key, update_data, 0, None).await.unwrap();
+    cache.set(update_key, update_data, None).await.unwrap();
 
     // Then, just reset the "label".
     let update_data = entity! { SCHEMA => id: "mogwai", label: Value::Null };
     let update_key = make_band_key("mogwai");
     cache
-        .set(update_key.clone(), update_data, 0, None)
+        .set(update_key.clone(), update_data, None)
         .await
         .unwrap();
 
     // We expect a single overwrite modification for the above that leaves "id"
     // and "name" untouched, sets "founded" and removes the "label" field.
-    let result = cache.as_modifications(0).await;
+    let result = cache.as_modifications(0, &STOPWATCH).await;
     assert_eq!(
         sort_by_entity_key(result.unwrap().modifications),
         sort_by_entity_key(vec![EntityModification::overwrite(
@@ -331,7 +336,7 @@ async fn consecutive_modifications() {
 async fn check_vid_sequence() {
     let store = MockStore::new(BTreeMap::new());
     let store = Arc::new(store);
-    let mut cache = EntityCache::new(store);
+    let mut cache = EntityCache::new(store, SeqGenerator::new(0));
 
     for n in 0..10 {
         let id = (10 - n).to_string();
@@ -339,12 +344,12 @@ async fn check_vid_sequence() {
         let mogwai_key = make_band_key(id.as_str());
         let mogwai_data = entity! { SCHEMA => id: id, name: name };
         cache
-            .set(mogwai_key.clone(), mogwai_data.clone(), 0, None)
+            .set(mogwai_key.clone(), mogwai_data.clone(), None)
             .await
             .unwrap();
     }
 
-    let result = cache.as_modifications(0).await;
+    let result = cache.as_modifications(0, &STOPWATCH).await;
     let mods = result.unwrap().modifications;
     for m in mods {
         match m {
@@ -363,6 +368,134 @@ async fn check_vid_sequence() {
             }
             _ => panic!("wrong entity modification type"),
         }
+    }
+}
+
+// Test that demonstrates the VID collision bug when multiple offchain triggers
+// use separate VidGenerators. Each gets its own sequence starting at RESERVED_VIDS
+// (100), so entities in the same block get identical VIDs.
+#[graph::test]
+async fn offchain_trigger_vid_collision_without_shared_generator() {
+    let block: i32 = 2_163_923;
+
+    // Simulate first offchain trigger with its own VidGenerator
+    let store1 = Arc::new(MockStore::new(BTreeMap::new()));
+    let mut cache1 = EntityCache::new(store1, SeqGenerator::new(block));
+    let band1_data = entity! { SCHEMA => id: "band1", name: "First Band" };
+    let band1_key = make_band_key("band1");
+    cache1
+        .set(band1_key.clone(), band1_data, None)
+        .await
+        .unwrap();
+    let result1 = cache1.as_modifications(block, &STOPWATCH).await.unwrap();
+
+    // Simulate second offchain trigger with a SEPARATE VidGenerator
+    let store2 = Arc::new(MockStore::new(BTreeMap::new()));
+    let mut cache2 = EntityCache::new(store2, SeqGenerator::new(block));
+    let band2_data = entity! { SCHEMA => id: "band2", name: "Second Band" };
+    let band2_key = make_band_key("band2");
+    cache2
+        .set(band2_key.clone(), band2_data, None)
+        .await
+        .unwrap();
+    let result2 = cache2.as_modifications(block, &STOPWATCH).await.unwrap();
+
+    let vid1 = match &result1.modifications[0] {
+        EntityModification::Insert { data, .. } => data.vid(),
+        _ => panic!("expected Insert"),
+    };
+    let vid2 = match &result2.modifications[0] {
+        EntityModification::Insert { data, .. } => data.vid(),
+        _ => panic!("expected Insert"),
+    };
+
+    // BUG: Both VIDs are identical because each VidGenerator starts at 100
+    let expected_vid = ((block as i64) << 32) + 100;
+    assert_eq!(vid1, expected_vid);
+    assert_eq!(vid2, expected_vid);
+    assert_eq!(vid1, vid2, "VIDs collide when using separate VidGenerators");
+}
+
+// Test that demonstrates the fix: sharing a single VidGenerator across
+// multiple EntityCaches prevents VID collisions.
+#[graph::test]
+async fn offchain_trigger_vid_no_collision_with_shared_generator() {
+    let block: i32 = 2_163_923;
+    let vid_gen = SeqGenerator::new(block);
+
+    // First offchain trigger
+    let store1 = Arc::new(MockStore::new(BTreeMap::new()));
+    let mut cache1 = EntityCache::new(store1, vid_gen.cheap_clone());
+    let band1_data = entity! { SCHEMA => id: "band1", name: "First Band" };
+    let band1_key = make_band_key("band1");
+    cache1
+        .set(band1_key.clone(), band1_data, None)
+        .await
+        .unwrap();
+    let result1 = cache1.as_modifications(block, &STOPWATCH).await.unwrap();
+
+    // Second offchain trigger shares the same VidGenerator
+    let store2 = Arc::new(MockStore::new(BTreeMap::new()));
+    let mut cache2 = EntityCache::new(store2, vid_gen.cheap_clone());
+    let band2_data = entity! { SCHEMA => id: "band2", name: "Second Band" };
+    let band2_key = make_band_key("band2");
+    cache2
+        .set(band2_key.clone(), band2_data, None)
+        .await
+        .unwrap();
+    let result2 = cache2.as_modifications(block, &STOPWATCH).await.unwrap();
+
+    let vid1 = match &result1.modifications[0] {
+        EntityModification::Insert { data, .. } => data.vid(),
+        _ => panic!("expected Insert"),
+    };
+    let vid2 = match &result2.modifications[0] {
+        EntityModification::Insert { data, .. } => data.vid(),
+        _ => panic!("expected Insert"),
+    };
+
+    // With a shared VidGenerator, VIDs are different
+    assert_ne!(
+        vid1, vid2,
+        "VIDs should NOT collide when sharing a VidGenerator"
+    );
+    let expected_vid1 = ((block as i64) << 32) + 100;
+    let expected_vid2 = ((block as i64) << 32) + 101;
+    assert_eq!(vid1, expected_vid1, "first trigger starts at vid_seq 100");
+    assert_eq!(
+        vid2, expected_vid2,
+        "second trigger continues at vid_seq 101"
+    );
+}
+
+// Simulate the ipfs.map() pattern: multiple EntityCache instances each create
+// an entity using a shared SeqGenerator. VIDs must be unique and sequential.
+#[graph::test]
+async fn ipfs_map_pattern_vid_uniqueness() {
+    let block: i32 = 42;
+    let vid_gen = SeqGenerator::new(block);
+
+    let mut all_vids = Vec::new();
+    for i in 0..5u32 {
+        let store = Arc::new(MockStore::new(BTreeMap::new()));
+        let mut cache = EntityCache::new(store, vid_gen.cheap_clone());
+        let data = entity! { SCHEMA => id: format!("band{i}"), name: format!("Band {i}") };
+        let key = make_band_key(&format!("band{i}"));
+        cache.set(key, data, None).await.unwrap();
+        let result = cache.as_modifications(block, &STOPWATCH).await.unwrap();
+        let vid = match &result.modifications[0] {
+            EntityModification::Insert { data, .. } => data.vid(),
+            _ => panic!("expected Insert"),
+        };
+        all_vids.push(vid);
+    }
+
+    for i in 1..all_vids.len() {
+        assert_eq!(
+            all_vids[i],
+            all_vids[i - 1] + 1,
+            "VIDs should be sequential"
+        );
     }
 }
 
@@ -440,7 +573,7 @@ where
 
         let read_store = Arc::new(writable.clone());
 
-        let cache = EntityCache::new(read_store);
+        let cache = EntityCache::new(read_store, SeqGenerator::new(0));
         // Run test and wait for the background writer to finish its work so
         // it won't conflict with the next test
         test(cache, subgraph_store.clone(), deployment, writable.clone()).await;
@@ -773,7 +906,7 @@ fn scoped_get() {
         let mut wallet5 = create_wallet_entity_no_vid("5", &account5, 100);
         let key5 = WALLET_TYPE.parse_key("5").unwrap();
         cache
-            .set(key5.clone(), wallet5.clone(), 0, None)
+            .set(key5.clone(), wallet5.clone(), None)
             .await
             .unwrap();
 
@@ -801,7 +934,7 @@ fn scoped_get() {
         let mut wallet1 = wallet1;
         wallet1.set("balance", 70).unwrap();
         cache
-            .set(key1.clone(), wallet1.clone(), 0, None)
+            .set(key1.clone(), wallet1.clone(), None)
             .await
             .unwrap();
         wallet1a = wallet1;
@@ -852,6 +985,382 @@ fn no_interface_mods() {
 
         let entity = entity! { LOAD_RELATED_SUBGRAPH => id: "1", balance: 100 };
 
-        cache.set(key, entity, 0, None).await.unwrap_err();
+        cache.set(key, entity, None).await.unwrap_err();
     })
+}
+
+// ---------------------------------------------------------------------------
+// Tests for `EntityCache::load_related` under same-block changes to
+// derived field membership. Each test exercises a write that should
+// move an entity into or out of an `account.wallets` derived
+// collection (reassignment, removal, or fresh creation), asserting
+// that the returned collection reflects the entity's final state.
+//
+// Fixture (from `insert_test_data`):
+//   - account "1" owns wallets "1", "2", "3"
+//   - account "2" owns wallet "4"
+//   - account "3" owns no wallets
+//
+// Tests that need writes in `EntityCache::handler_updates` (rather than
+// `updates`) drive a handler lifecycle through `BlockState::enter_handler`
+// / `exit_handler`. `EntityCache` has two in-block write layers: writes
+// outside a handler go to `self.updates`; writes inside an active
+// handler go to `self.handler_updates`. `exit_handler` merges
+// `handler_updates` into `updates`. Driving this lifecycle requires
+// `BlockState` because the `enter`/`exit` methods on `EntityCache` are
+// crate-private.
+// ---------------------------------------------------------------------------
+
+/// Wallet "1" is reassigned from account "1" to account "3" within a
+/// single handler. Account "1"'s derived `wallets` collection must
+/// reflect the final state and exclude wallet "1".
+#[test]
+fn load_related_excludes_wallet_that_leaves_collection() {
+    run_store_test(|mut cache, _store, _deployment, _writable| async move {
+        let acc_1 = ACCOUNT_TYPE.parse_id("1").unwrap();
+        let acc_3 = ACCOUNT_TYPE.parse_id("3").unwrap();
+        let wallet_1_key = WALLET_TYPE.parse_key("1").unwrap();
+
+        // Precondition: fixture placed wallet "1" under account "1".
+        // The `set` below is a reassignment of an existing row.
+        let pre = cache
+            .get(&wallet_1_key, GetScope::Store)
+            .await
+            .unwrap()
+            .expect("fixture should have inserted wallet 1");
+        assert_eq!(pre.get("account").unwrap(), &Value::from(acc_1.clone()));
+
+        let reassigned = create_wallet_entity_no_vid("1", &acc_3, 67_i32);
+        cache.set(wallet_1_key, reassigned, None).await.unwrap();
+
+        let request = LoadRelatedRequest {
+            entity_type: ACCOUNT_TYPE.clone(),
+            entity_field: "wallets".into(),
+            entity_id: acc_1.clone(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).await.unwrap();
+
+        let result_ids: Vec<_> = result
+            .iter()
+            .map(|e| e.get("id").unwrap().clone())
+            .collect();
+
+        assert_eq!(
+            result.len(),
+            2,
+            "account 1 should own 2 wallets after reassignment, got {:?}",
+            result_ids,
+        );
+        for w in &result {
+            assert_eq!(
+                w.get("account").unwrap(),
+                &Value::from(acc_1.clone()),
+                "every wallet in account 1's collection must have account=1, got {:?}",
+                w,
+            );
+        }
+    });
+}
+
+/// Wallet "4" is moved from account "2" to account "3" in handler 1,
+/// then back to account "2" in handler 2. Account "3"'s derived
+/// `wallets` collection must reflect the final state and exclude
+/// wallet "4".
+#[test]
+fn load_related_excludes_wallet_that_leaves_collection_across_handlers() {
+    run_store_test(|_cache, _store, _deployment, writable| async move {
+        let acc_2 = ACCOUNT_TYPE.parse_id("2").unwrap();
+        let acc_3 = ACCOUNT_TYPE.parse_id("3").unwrap();
+        let wallet_4_key = WALLET_TYPE.parse_key("4").unwrap();
+
+        let mut state = BlockState::new(
+            writable.clone(),
+            EntityLfuCache::new(),
+            SeqGenerator::new(10),
+        );
+
+        // Precondition: fixture placed wallet "4" under account "2".
+        let pre = writable
+            .get(&wallet_4_key)
+            .await
+            .unwrap()
+            .expect("fixture should have inserted wallet 4");
+        assert_eq!(pre.get("account").unwrap(), &Value::from(acc_2.clone()));
+
+        // Handler 1: move wallet "4" to account "3". On exit, this
+        // write is promoted from handler_updates into updates.
+        state.enter_handler();
+        state
+            .entity_cache
+            .set(
+                wallet_4_key.clone(),
+                create_wallet_entity_no_vid("4", &acc_3, 32_i32),
+                None,
+            )
+            .await
+            .unwrap();
+        state.exit_handler();
+
+        // Handler 2: move wallet "4" back to account "2". This write
+        // is in handler_updates; the prior handler's write is in updates.
+        state.enter_handler();
+        state
+            .entity_cache
+            .set(
+                wallet_4_key,
+                create_wallet_entity_no_vid("4", &acc_2, 32_i32),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let request = LoadRelatedRequest {
+            entity_type: ACCOUNT_TYPE.clone(),
+            entity_field: "wallets".into(),
+            entity_id: acc_3.clone(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = state.entity_cache.load_related(&request).await.unwrap();
+
+        assert!(
+            result.is_empty(),
+            "account 3 should own no wallets (wallet 4's final account is 2), got {:?}",
+            result,
+        );
+    });
+}
+
+/// Wallet "4" is touched in handler 1 without changing its `account`,
+/// then reassigned from account "2" to account "3" in handler 2.
+/// Account "3"'s derived `wallets` collection must reflect the final
+/// state and include wallet "4".
+#[test]
+fn load_related_includes_wallet_that_joins_collection_across_handlers() {
+    run_store_test(|_cache, _store, _deployment, writable| async move {
+        let acc_2 = ACCOUNT_TYPE.parse_id("2").unwrap();
+        let acc_3 = ACCOUNT_TYPE.parse_id("3").unwrap();
+        let wallet_4_key = WALLET_TYPE.parse_key("4").unwrap();
+
+        let mut state = BlockState::new(
+            writable.clone(),
+            EntityLfuCache::new(),
+            SeqGenerator::new(10),
+        );
+
+        // Precondition: fixture placed wallet "4" under account "2".
+        let pre = writable
+            .get(&wallet_4_key)
+            .await
+            .unwrap()
+            .expect("fixture should have inserted wallet 4");
+        assert_eq!(pre.get("account").unwrap(), &Value::from(acc_2.clone()));
+
+        // Handler 1: touch wallet "4" (bump balance) but keep its account.
+        // On exit, this write is promoted into updates.
+        state.enter_handler();
+        state
+            .entity_cache
+            .set(
+                wallet_4_key.clone(),
+                create_wallet_entity_no_vid("4", &acc_2, 999_i32),
+                None,
+            )
+            .await
+            .unwrap();
+        state.exit_handler();
+
+        // Handler 2: reassign wallet "4" to account "3". This write is
+        // in handler_updates; handler 1's write remains in updates.
+        state.enter_handler();
+        state
+            .entity_cache
+            .set(
+                wallet_4_key.clone(),
+                create_wallet_entity_no_vid("4", &acc_3, 999_i32),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let request = LoadRelatedRequest {
+            entity_type: ACCOUNT_TYPE.clone(),
+            entity_field: "wallets".into(),
+            entity_id: acc_3.clone(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = state.entity_cache.load_related(&request).await.unwrap();
+
+        assert_eq!(
+            result.len(),
+            1,
+            "account 3 should own wallet 4 after reassignment, got {:?}",
+            result,
+        );
+        assert_eq!(result[0].get("id").unwrap(), &Value::from("4"),);
+        assert_eq!(
+            result[0].get("account").unwrap(),
+            &Value::from(acc_3.clone()),
+            "wallet 4 must carry handler 2's post-merge account=3",
+        );
+    });
+}
+
+/// Wallet "1" is removed via a write that lands directly in
+/// `EntityCache::updates` (no active handler). Account "1"'s derived
+/// `wallets` collection must reflect the final state and exclude
+/// wallet "1".
+#[test]
+fn load_related_excludes_wallet_removed_via_updates() {
+    run_store_test(|mut cache, _store, _deployment, _writable| async move {
+        let acc_1 = ACCOUNT_TYPE.parse_id("1").unwrap();
+        let wallet_1_key = WALLET_TYPE.parse_key("1").unwrap();
+
+        // Precondition: fixture placed wallet "1" under account "1".
+        let pre = cache
+            .get(&wallet_1_key, GetScope::Store)
+            .await
+            .unwrap()
+            .expect("fixture should have inserted wallet 1");
+        assert_eq!(pre.get("account").unwrap(), &Value::from(acc_1.clone()));
+
+        cache.remove(wallet_1_key);
+
+        let request = LoadRelatedRequest {
+            entity_type: ACCOUNT_TYPE.clone(),
+            entity_field: "wallets".into(),
+            entity_id: acc_1.clone(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = cache.load_related(&request).await.unwrap();
+
+        let result_ids: Vec<_> = result
+            .iter()
+            .map(|e| e.get("id").unwrap().clone())
+            .collect();
+
+        assert_eq!(
+            result.len(),
+            2,
+            "account 1 should own 2 wallets after wallet 1 is removed, got {:?}",
+            result_ids,
+        );
+        assert!(
+            !result_ids.contains(&Value::from("1")),
+            "removed wallet 1 must not appear, got {:?}",
+            result_ids,
+        );
+    });
+}
+
+/// Wallet "1" is removed inside an active handler so the Remove op
+/// sits in `EntityCache::handler_updates` at query time. Account "1"'s
+/// derived `wallets` collection must reflect the final state and
+/// exclude wallet "1".
+#[test]
+fn load_related_excludes_wallet_removed_via_handler_updates() {
+    run_store_test(|_cache, _store, _deployment, writable| async move {
+        let acc_1 = ACCOUNT_TYPE.parse_id("1").unwrap();
+        let wallet_1_key = WALLET_TYPE.parse_key("1").unwrap();
+
+        let mut state = BlockState::new(
+            writable.clone(),
+            EntityLfuCache::new(),
+            SeqGenerator::new(10),
+        );
+
+        // Precondition: fixture placed wallet "1" under account "1".
+        let pre = writable
+            .get(&wallet_1_key)
+            .await
+            .unwrap()
+            .expect("fixture should have inserted wallet 1");
+        assert_eq!(pre.get("account").unwrap(), &Value::from(acc_1.clone()));
+
+        // Remove wallet "1" inside an active handler. The Remove op
+        // sits in handler_updates and is queried before exit_handler.
+        state.enter_handler();
+        state.entity_cache.remove(wallet_1_key);
+
+        let request = LoadRelatedRequest {
+            entity_type: ACCOUNT_TYPE.clone(),
+            entity_field: "wallets".into(),
+            entity_id: acc_1.clone(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = state.entity_cache.load_related(&request).await.unwrap();
+
+        let result_ids: Vec<_> = result
+            .iter()
+            .map(|e| e.get("id").unwrap().clone())
+            .collect();
+
+        assert_eq!(
+            result.len(),
+            2,
+            "account 1 should own 2 wallets after wallet 1 is removed, got {:?}",
+            result_ids,
+        );
+        assert!(
+            !result_ids.contains(&Value::from("1")),
+            "removed wallet 1 must not appear, got {:?}",
+            result_ids,
+        );
+    });
+}
+
+/// A wallet is created inside a handler with no prior store baseline.
+/// `load_related` called from the same handler must observe the new
+/// wallet in its parent account's derived collection.
+#[test]
+fn load_related_includes_wallet_created_in_handler() {
+    run_store_test(|_cache, _store, _deployment, writable| async move {
+        let acc_3 = ACCOUNT_TYPE.parse_id("3").unwrap();
+        let new_wallet_key = WALLET_TYPE.parse_key("99").unwrap();
+
+        let mut state = BlockState::new(
+            writable.clone(),
+            EntityLfuCache::new(),
+            SeqGenerator::new(10),
+        );
+
+        // Precondition: account "3" starts with no wallets and
+        // wallet "99" does not exist in the store.
+        assert!(
+            writable.get(&new_wallet_key).await.unwrap().is_none(),
+            "wallet 99 should not exist in the store baseline",
+        );
+
+        // Create a fresh wallet under account "3" inside a handler.
+        state.enter_handler();
+        state
+            .entity_cache
+            .set(
+                new_wallet_key,
+                create_wallet_entity_no_vid("99", &acc_3, 500_i32),
+                None,
+            )
+            .await
+            .unwrap();
+
+        let request = LoadRelatedRequest {
+            entity_type: ACCOUNT_TYPE.clone(),
+            entity_field: "wallets".into(),
+            entity_id: acc_3.clone(),
+            causality_region: CausalityRegion::ONCHAIN,
+        };
+        let result = state.entity_cache.load_related(&request).await.unwrap();
+
+        assert_eq!(
+            result.len(),
+            1,
+            "account 3 should own the newly created wallet 99, got {:?}",
+            result,
+        );
+        assert_eq!(result[0].get("id").unwrap(), &Value::from("99"));
+        assert_eq!(
+            result[0].get("account").unwrap(),
+            &Value::from(acc_3.clone()),
+        );
+    });
 }

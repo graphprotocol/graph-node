@@ -1,6 +1,6 @@
-use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
+use anyhow::anyhow;
 
 use crate::blockchain::BlockHash;
 use crate::blockchain::BlockPtr;
@@ -78,9 +78,9 @@ fn parse_block_hash(
     s: String,
     encoding: codec::info_response::BlockIdEncoding,
 ) -> Result<BlockHash> {
+    use base64::Engine;
     use base64::engine::general_purpose::STANDARD;
     use base64::engine::general_purpose::URL_SAFE;
-    use base64::Engine;
     use codec::info_response::BlockIdEncoding::*;
 
     let block_hash = match encoding {

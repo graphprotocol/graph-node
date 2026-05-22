@@ -18,7 +18,7 @@ use graph::{
 use slog::{debug, error};
 use tokio_util::sync::CancellationToken;
 
-use super::{runner, Metrics, Monitor};
+use super::{Metrics, Monitor, runner};
 
 /// Manages Amp subgraph runner futures.
 ///

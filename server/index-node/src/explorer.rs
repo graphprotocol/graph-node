@@ -18,7 +18,7 @@ use graph::{
     },
     data::subgraph::status,
     object,
-    prelude::{serde_json, warn, Logger, ENV_VARS},
+    prelude::{ENV_VARS, Logger, serde_json, warn},
     util::timed_cache::TimedCache,
 };
 

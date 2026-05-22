@@ -2,14 +2,14 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use graph::components::network_provider::ChainName;
 use graph::{
-    anyhow::{bail, Context},
+    anyhow::{Context, bail},
     components::subgraph::{Setting, Settings},
     endpoint::EndpointMetrics,
     env::EnvVars,
     itertools::Itertools,
     prelude::{
-        anyhow::{anyhow, Error},
         MetricsRegistry, NodeId, SubgraphName,
+        anyhow::{Error, anyhow},
     },
     slog::Logger,
 };

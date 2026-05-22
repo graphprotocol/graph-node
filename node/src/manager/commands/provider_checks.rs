@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use graph::components::network_provider::chain_id_validator;
 use graph::components::network_provider::ChainIdentifierValidator;
 use graph::components::network_provider::ChainName;
 use graph::components::network_provider::ExtendedBlocksCheck;
@@ -9,9 +8,10 @@ use graph::components::network_provider::GenesisHashCheck;
 use graph::components::network_provider::NetworkDetails;
 use graph::components::network_provider::ProviderCheck;
 use graph::components::network_provider::ProviderCheckStatus;
-use graph::prelude::tokio;
+use graph::components::network_provider::chain_id_validator;
 use graph::prelude::CheapClone;
 use graph::prelude::Logger;
+use graph::prelude::tokio;
 use graph_store_postgres::BlockStore;
 use itertools::Itertools;
 

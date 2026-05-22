@@ -3,8 +3,8 @@ use std::{marker::PhantomData, sync::Arc, time::Duration};
 use crate::{
     blockchain::Block as BlockchainBlock,
     components::store::ChainHeadStore,
-    firehose::{self, decode_firehose_block, HeaderOnly},
-    prelude::{error, info, Logger},
+    firehose::{self, HeaderOnly, decode_firehose_block},
+    prelude::{Logger, error, info},
     util::backoff::ExponentialBackoff,
 };
 use anyhow::{Context, Error};
@@ -15,7 +15,7 @@ use prost_types::Any;
 use slog::{o, trace};
 use tonic::Streaming;
 
-use super::{client::ChainClient, BlockIngestor, Blockchain, BlockchainKind};
+use super::{BlockIngestor, Blockchain, BlockchainKind, client::ChainClient};
 use crate::components::network_provider::ChainName;
 
 const TRANSFORM_ETHEREUM_HEADER_ONLY: &str =

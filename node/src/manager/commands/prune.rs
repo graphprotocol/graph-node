@@ -12,11 +12,11 @@ use graph::{
 use graph::{
     components::store::{PruneReporter, StatusStore},
     data::subgraph::status,
-    prelude::{anyhow, BlockNumber},
+    prelude::{BlockNumber, anyhow},
 };
 use graph_store_postgres::{
-    command_support::{Phase, PruneTableState},
     ConnectionPool, Store,
+    command_support::{Phase, PruneTableState},
 };
 use termcolor::Color;
 
@@ -194,7 +194,9 @@ async fn check_args(
         .ok_or_else(|| anyhow!("deployment {} does not index any chain", deployment))?;
     let latest_block = status.latest_block.map(|ptr| ptr.number()).unwrap_or(0);
     if latest_block <= history {
-        return Err(anyhow!("deployment {deployment} has only indexed up to block {latest_block} and we can't preserve {history} blocks of history"));
+        return Err(anyhow!(
+            "deployment {deployment} has only indexed up to block {latest_block} and we can't preserve {history} blocks of history"
+        ));
     }
     Ok(Args {
         history,
@@ -426,7 +428,8 @@ pub async fn status(
         let batch_size = batch_size.map_or_null(|b| b.to_string());
         let duration = started_at.map_or_null(|s| fmt::duration(s, &finished_at));
         let phase = phase.as_str();
-        writeln!(term,
+        writeln!(
+            term,
             "{table_name:<30} | {:<15} {complete:>6} | {rows:>8} | {batch_size:>11} | {duration:>8}",
             format!("{strategy}/{phase}")
         )?;

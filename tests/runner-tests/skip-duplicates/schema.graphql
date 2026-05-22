@@ -1,0 +1,4 @@
+type Ping @entity(immutable: true, skipDuplicates: true) {
+  id: ID!
+  value: String!
+}

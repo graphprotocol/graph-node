@@ -1,0 +1,25 @@
+specVersion: 1.3.0
+schema:
+  file: ./schema.graphql
+dataSources:
+  - name: Receipts
+    kind: ethereum/contract
+    network: arbitrum
+    source:
+      abi: ERC20
+      address: "0x000000000000000000000000000000000000000a"
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      file: ./src/receipts.ts
+      entities:
+        - Transfer
+        - Approval
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+      eventHandlers:
+        - event: Transfer(indexed address,indexed address,uint256)
+          handler: handleEventsWithReceipts
+          receipt: true

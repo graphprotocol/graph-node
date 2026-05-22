@@ -3,8 +3,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use super::{
-    test_ptr, CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector,
-    NoopRuntimeAdapterBuilder, StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain,
+    CommonChainConfig, MutexBlockStreamBuilder, NoopAdapterSelector, NoopRuntimeAdapterBuilder,
+    StaticBlockRefetcher, StaticStreamBuilder, Stores, TestChain, test_ptr,
 };
 use graph::abi;
 use graph::blockchain::block_stream::BlockWithTriggers;
@@ -13,16 +13,16 @@ use graph::blockchain::client::ChainClient;
 use graph::blockchain::{BlockPtr, Trigger, TriggersAdapterSelector};
 use graph::cheap_clone::CheapClone;
 use graph::data_source::subgraph;
-use graph::prelude::alloy::primitives::{Address, B256, U256};
+use graph::prelude::alloy::primitives::{Address, B256, U256, keccak256};
 use graph::prelude::alloy::rpc::types::BlockTransactions;
 use graph::prelude::{
-    create_dummy_transaction, create_minimal_block_for_test, tiny_keccak, DeploymentHash, Entity,
-    LightEthereumBlock, ENV_VARS,
+    DeploymentHash, ENV_VARS, Entity, LightEthereumBlock, create_dummy_transaction,
+    create_minimal_block_for_test,
 };
 use graph::schema::EntityType;
 use graph_chain_ethereum::network::EthereumNetworkAdapters;
 use graph_chain_ethereum::trigger::LogRef;
-use graph_chain_ethereum::Chain;
+use graph_chain_ethereum::{Chain, chain::ChainSettings};
 use graph_chain_ethereum::{
     chain::BlockFinality,
     trigger::{EthereumBlockTriggerType, EthereumTrigger},
@@ -67,9 +67,9 @@ pub async fn chain(
         Arc::new(NoopRuntimeAdapterBuilder {}),
         eth_adapters,
         ENV_VARS.reorg_threshold(),
-        ENV_VARS.ingestor_polling_interval,
         // We assume the tested chain is always ingestible for now
         true,
+        Arc::new(ChainSettings::from_env_defaults()),
     );
 
     TestChain {
@@ -84,7 +84,7 @@ pub fn genesis() -> BlockWithTriggers<graph_chain_ethereum::Chain> {
     let block = create_minimal_block_for_test(ptr.number as u64, ptr.hash.as_b256());
 
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(block.into()))),
+        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(block))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,
@@ -128,7 +128,7 @@ pub fn empty_block(parent_ptr: BlockPtr, ptr: BlockPtr) -> BlockWithTriggers<Cha
         .with_transactions(transactions);
 
     BlockWithTriggers::<graph_chain_ethereum::Chain> {
-        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block.into()))),
+        block: BlockFinality::Final(Arc::new(LightEthereumBlock::new(alloy_block))),
         trigger_data: vec![Trigger::Chain(EthereumTrigger::Block(
             ptr,
             EthereumBlockTriggerType::End,
@@ -143,7 +143,7 @@ pub fn push_test_log(block: &mut BlockWithTriggers<Chain>, payload: impl Into<St
         inner: alloy::primitives::Log {
             address: Address::ZERO,
             data: LogData::new_unchecked(
-                vec![tiny_keccak::keccak256(b"TestEvent(string)").into()],
+                vec![keccak256(b"TestEvent(string)")],
                 abi::DynSolValue::String(payload.into()).abi_encode().into(),
             ),
         },
@@ -199,7 +199,7 @@ pub fn push_test_command(
         inner: alloy::primitives::Log {
             address: Address::ZERO,
             data: LogData::new_unchecked(
-                vec![tiny_keccak::keccak256(b"TestEvent(string,string)").into()],
+                vec![keccak256(b"TestEvent(string,string)")],
                 abi::DynSolValue::Tuple(vec![
                     abi::DynSolValue::String(test_command.into()),
                     abi::DynSolValue::String(data.into()),

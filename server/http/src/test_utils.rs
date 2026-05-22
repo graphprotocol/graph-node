@@ -1,5 +1,5 @@
 use graph::http_body_util::{BodyExt, Full};
-use graph::hyper::{body::Bytes, header::ACCESS_CONTROL_ALLOW_ORIGIN, Response, StatusCode};
+use graph::hyper::{Response, StatusCode, body::Bytes, header::ACCESS_CONTROL_ALLOW_ORIGIN};
 use graph::prelude::serde_json;
 
 /// Asserts that the response is a successful GraphQL response; returns its `"data"` field.

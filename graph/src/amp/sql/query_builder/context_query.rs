@@ -1,4 +1,3 @@
-use ahash::RandomState;
 use itertools::Itertools;
 use sqlparser_latest::ast;
 
@@ -19,16 +18,11 @@ pub(super) fn new_context_query<'a>(
     context_columns: impl IntoIterator<Item = &'a str>,
 ) -> ast::Query {
     // CTE names are unique within a SQL query.
-    // The hasher ensures that CTEs created for context do not collide with user-defined CTEs.
-    // Constant seeds ensure consistent context queries for the same input parameters.
-    let hasher = RandomState::with_seeds(0, 0, 0, 0);
-    let query_hash = hasher.hash_one(query);
-
     let context_columns = context_columns.into_iter().collect_vec();
     assert!(!context_columns.is_empty());
 
-    let context_cte = format!("context_{query_hash}");
-    let source_cte = format!("source_{query_hash}");
+    let context_cte = "amp_ctx";
+    let source_cte = "amp_src";
 
     let context_query = format!(
         "
@@ -81,21 +75,13 @@ mod tests {
             context_query,
             parse_query(
                 "
-                WITH context_10500256449332496249 AS (
-                    SELECT DISTINCT _block_num, cx_c, cx_d FROM cx_a.cx_b
-                ),
-                source_10500256449332496249 AS (
-                    SELECT a, b, c FROM d
-                )
-                SELECT
-                    context_10500256449332496249.cx_c,
-                    context_10500256449332496249.cx_d,
-                    source_10500256449332496249.*
-                FROM
-                    source_10500256449332496249
-                INNER JOIN context_10500256449332496249 ON
-                    context_10500256449332496249._block_num = source_10500256449332496249.b
-                "
+                WITH amp_ctx AS (
+                       SELECT DISTINCT _block_num, cx_c, cx_d FROM cx_a.cx_b
+                     ),
+                     amp_src AS (SELECT a, b, c FROM d)
+              SELECT amp_ctx.cx_c, amp_ctx.cx_d, amp_src.*
+                FROM amp_src
+                INNER JOIN amp_ctx ON amp_ctx._block_num = amp_src.b"
             )
             .unwrap()
         )

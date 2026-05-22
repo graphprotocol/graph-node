@@ -7,8 +7,8 @@ fn check_repeated_type_ok() {
     let types = parse_proto_file(PROTO_FILE).expect("Unable to read proto file!");
 
     let array_types = types
-        .iter()
-        .flat_map(|(_, t)| t.fields.iter())
+        .values()
+        .flat_map(|t| t.fields.iter())
         .filter(|t| t.is_array)
         .map(|t| t.type_name.clone())
         .collect::<std::collections::HashSet<_>>();

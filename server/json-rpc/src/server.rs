@@ -6,14 +6,14 @@
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
-use axum::routing::post;
 use axum::Router;
+use axum::routing::post;
 use graph::prelude::{NodeId, SubgraphRegistrar};
-use slog::{info, Logger};
+use slog::{Logger, info};
 use thiserror::Error;
 use tokio::sync::Notify;
 
-use crate::handlers::{jsonrpc_handler, AppState};
+use crate::handlers::{AppState, jsonrpc_handler};
 
 /// Errors that can occur when starting the JSON-RPC server.
 #[derive(Debug, Error)]

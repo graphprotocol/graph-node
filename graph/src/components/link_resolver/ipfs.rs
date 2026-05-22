@@ -4,7 +4,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use bytes::BytesMut;
-use derivative::Derivative;
+use derive_more::Debug;
 use futures03::compat::Stream01CompatExt;
 use futures03::stream::StreamExt;
 use futures03::stream::TryStreamExt;
@@ -12,20 +12,19 @@ use serde_json::Value;
 
 use crate::derive::CheapClone;
 use crate::env::EnvVars;
-use crate::futures01::stream::poll_fn;
-use crate::futures01::stream::Stream;
-use crate::futures01::try_ready;
 use crate::futures01::Async;
 use crate::futures01::Poll;
+use crate::futures01::stream::Stream;
+use crate::futures01::stream::poll_fn;
+use crate::futures01::try_ready;
 use crate::ipfs::{ContentPath, IpfsClient, IpfsContext, RetryPolicy};
 use crate::prelude::*;
 
 use super::{LinkResolver, LinkResolverContext};
 
-#[derive(Clone, CheapClone, Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, CheapClone, Debug)]
 pub struct IpfsResolver {
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     client: Arc<dyn IpfsClient>,
 
     timeout: Duration,
@@ -262,7 +261,7 @@ mod tests {
         let logger = crate::log::discard();
 
         let client = IpfsRpcClient::new_unchecked(
-            ServerAddress::local_rpc_api(),
+            ServerAddress::test_rpc_api(),
             IpfsMetrics::test(),
             &logger,
         )
@@ -290,7 +289,7 @@ mod tests {
 
         let logger = crate::log::discard();
         let client = IpfsRpcClient::new_unchecked(
-            ServerAddress::local_rpc_api(),
+            ServerAddress::test_rpc_api(),
             IpfsMetrics::test(),
             &logger,
         )?;

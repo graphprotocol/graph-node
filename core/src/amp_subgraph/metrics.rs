@@ -4,7 +4,7 @@ use alloy::primitives::BlockNumber;
 use graph::{
     cheap_clone::CheapClone,
     components::{
-        metrics::{stopwatch::StopwatchMetrics, MetricsRegistry},
+        metrics::{MetricsRegistry, stopwatch::StopwatchMetrics},
         store::WritableStore,
     },
     prelude::DeploymentHash,

@@ -1,11 +1,11 @@
 use std::io::Write;
 use std::sync::Arc;
 
-use graph::futures03::{future, StreamExt};
+use graph::futures03::{StreamExt, future};
 
 use graph::{
     components::store::SubscriptionManager as _,
-    prelude::{serde_json, Error},
+    prelude::{Error, serde_json},
 };
 use graph_store_postgres::SubscriptionManager;
 

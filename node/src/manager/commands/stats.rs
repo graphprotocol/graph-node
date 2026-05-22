@@ -6,15 +6,15 @@ use crate::manager::deployment::DeploymentSearch;
 use crate::manager::fmt;
 use graph::components::store::DeploymentLocator;
 use graph::components::store::VersionStats;
-use graph::prelude::anyhow;
 use graph::prelude::CheapClone as _;
-use graph_store_postgres::command_support::catalog as store_catalog;
-use graph_store_postgres::command_support::catalog::Site;
+use graph::prelude::anyhow;
 use graph_store_postgres::AsyncPgConnection;
 use graph_store_postgres::ConnectionPool;
+use graph_store_postgres::PRIMARY_SHARD;
 use graph_store_postgres::Shard;
 use graph_store_postgres::SubgraphStore;
-use graph_store_postgres::PRIMARY_SHARD;
+use graph_store_postgres::command_support::catalog as store_catalog;
+use graph_store_postgres::command_support::catalog::Site;
 
 async fn site_and_conn(
     pools: HashMap<Shard, ConnectionPool>,

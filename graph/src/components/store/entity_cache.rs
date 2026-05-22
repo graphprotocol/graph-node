@@ -1,14 +1,15 @@
 use anyhow::{anyhow, bail};
 use std::borrow::Borrow;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::{self, Debug};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::cheap_clone::CheapClone;
 use crate::components::store::write::EntityModification;
 use crate::components::store::{self as s, Entity, EntityOperation};
 use crate::data::store::{EntityValidationError, Id, IdType, IntoEntityIterator};
-use crate::prelude::{CacheWeight, ENV_VARS};
+use crate::prelude::{CacheWeight, ENV_VARS, StopwatchMetrics};
 use crate::schema::{EntityKey, InputSchema};
 use crate::util::intern::Error as InternError;
 use crate::util::lfu_cache::{EvictStats, LfuCache};
@@ -20,6 +21,52 @@ pub type EntityLfuCache = LfuCache<EntityKey, Option<Arc<Entity>>>;
 // Number of VIDs that are reserved outside of the generated ones here.
 // Currently none is used, but lets reserve a few more.
 const RESERVED_VIDS: u32 = 100;
+
+/// Shared generator for VID and entity ID sequences within a block.
+///
+/// Created once per block and shared (via `Arc`) across all `EntityCache`
+/// instances that operate on the same block. This prevents VID collisions
+/// when multiple isolated caches (e.g. ipfs.map callbacks, offchain
+/// triggers) write entities in the same block.
+#[derive(Clone, Debug)]
+pub struct SeqGenerator {
+    block: BlockNumber,
+    vid_seq: Arc<AtomicU32>,
+    id_seq: Arc<AtomicU32>,
+}
+
+impl CheapClone for SeqGenerator {
+    fn cheap_clone(&self) -> Self {
+        self.clone()
+    }
+}
+
+impl SeqGenerator {
+    pub fn new(block: BlockNumber) -> Self {
+        SeqGenerator {
+            block,
+            vid_seq: Arc::new(AtomicU32::new(RESERVED_VIDS)),
+            id_seq: Arc::new(AtomicU32::new(0)),
+        }
+    }
+
+    /// Return the next VID. The VID encodes the block number in the upper
+    /// 32 bits and a monotonically increasing sequence in the lower 32
+    /// bits.
+    pub fn vid(&self) -> i64 {
+        let seq = self.vid_seq.fetch_add(1, Ordering::Relaxed);
+        ((self.block as i64) << 32) + seq as i64
+    }
+
+    /// Generate the next entity ID for the given ID type. The ID encodes
+    /// the block number in the upper 32 bits and a monotonically
+    /// increasing sequence in the lower 32 bits.
+    pub fn id(&self, id_type: IdType) -> anyhow::Result<Id> {
+        let seq = self.id_seq.fetch_add(1, Ordering::Relaxed);
+
+        id_type.generate_id(self.block, seq)
+    }
+}
 
 /// The scope in which the `EntityCache` should perform a `get` operation
 pub enum GetScope {
@@ -103,16 +150,8 @@ pub struct EntityCache {
 
     pub schema: InputSchema,
 
-    /// A sequence number for generating entity IDs. We use one number for
-    /// all id's as the id's are scoped by block and a u32 has plenty of
-    /// room for all changes in one block. To ensure reproducability of
-    /// generated IDs, the `EntityCache` needs to be newly instantiated for
-    /// each block
-    seq: u32,
-
-    // Sequence number of the next VID value for this block. The value written
-    // in the database consist of a block number and this SEQ number.
-    pub vid_seq: u32,
+    /// Shared sequence generator for VIDs and entity IDs within a block.
+    pub seq_gen: SeqGenerator,
 }
 
 impl Debug for EntityCache {
@@ -131,7 +170,7 @@ pub struct ModificationsAndCache {
 }
 
 impl EntityCache {
-    pub fn new(store: Arc<dyn s::ReadStore>) -> Self {
+    pub fn new(store: Arc<dyn s::ReadStore>, seq_gen: SeqGenerator) -> Self {
         Self {
             current: LfuCache::new(),
             updates: HashMap::new(),
@@ -139,8 +178,7 @@ impl EntityCache {
             in_handler: false,
             schema: store.input_schema(),
             store,
-            seq: 0,
-            vid_seq: RESERVED_VIDS,
+            seq_gen,
         }
     }
 
@@ -152,7 +190,11 @@ impl EntityCache {
         self.schema.make_entity(iter)
     }
 
-    pub fn with_current(store: Arc<dyn s::ReadStore>, current: EntityLfuCache) -> EntityCache {
+    pub fn with_current(
+        store: Arc<dyn s::ReadStore>,
+        current: EntityLfuCache,
+        seq_gen: SeqGenerator,
+    ) -> EntityCache {
         EntityCache {
             current,
             updates: HashMap::new(),
@@ -160,9 +202,12 @@ impl EntityCache {
             in_handler: false,
             schema: store.input_schema(),
             store,
-            seq: 0,
-            vid_seq: RESERVED_VIDS,
+            seq_gen,
         }
+    }
+
+    pub fn seq_gen(&self) -> SeqGenerator {
+        self.seq_gen.cheap_clone()
     }
 
     pub(crate) fn enter_handler(&mut self) {
@@ -246,113 +291,52 @@ impl EntityCache {
             causality_region: eref.causality_region,
         };
 
-        let mut entity_map = self.store.get_derived(&query).await?;
+        // Entities that satisfied the query at the start of this block.
+        let stored = self.store.get_derived(&query).await?;
 
-        for (key, entity) in entity_map.iter() {
-            // Only insert to the cache if it's not already there
+        for (key, entity) in &stored {
             if !self.current.contains_key(key) {
                 self.current
                     .insert(key.clone(), Some(Arc::new(entity.clone())));
             }
         }
 
-        let mut keys_to_remove = Vec::new();
-
-        // Apply updates from `updates` and `handler_updates` directly to entities in `entity_map` that match the query
-        for (key, entity) in entity_map.iter_mut() {
-            let op = match (
-                self.updates.get(key).cloned(),
-                self.handler_updates.get(key).cloned(),
-            ) {
-                (Some(op), None) | (None, Some(op)) => op,
-                (Some(mut op), Some(op2)) => {
-                    op.accumulate(op2);
-                    op
-                }
-                (None, None) => continue,
-            };
-
-            let updated_entity = op
-                .apply_to(&Some(&*entity))
-                .map_err(|e| key.unknown_attribute(e))?;
-
-            if let Some(updated_entity) = updated_entity {
-                *entity = updated_entity;
-            } else {
-                // if entity_arc is None, it means that the entity was removed by an update
-                // mark the key for removal from the map
-                keys_to_remove.push(key.clone());
+        // Candidate set: keys that were matching at baseline, plus keys
+        // any in-block write has touched whose entity_type and causality
+        // region are compatible with the query. The latter catches
+        // entities an in-block write has moved into the matching set or
+        // created fresh in this block.
+        let mut candidates: BTreeSet<&EntityKey> = stored.keys().collect();
+        for key in self.updates.keys().chain(self.handler_updates.keys()) {
+            if key.entity_type == query.entity_type
+                && key.causality_region == query.causality_region
+            {
+                candidates.insert(key);
             }
         }
 
-        // A helper function that checks if an update matches the query and returns the updated entity if it does
-        fn matches_query(
-            op: &EntityOp,
-            query: &DerivedEntityQuery,
-            key: &EntityKey,
-        ) -> Result<Option<Entity>, anyhow::Error> {
-            match op {
-                EntityOp::Update(entity) | EntityOp::Overwrite(entity)
-                    if query.matches(key, entity) =>
-                {
-                    Ok(Some(entity.clone()))
-                }
-                EntityOp::Remove => Ok(None),
-                _ => Ok(None),
+        let mut result = Vec::new();
+        for key in candidates {
+            // Resolve the entity's final in-block state by layering
+            // store baseline, then self.updates, then self.handler_updates.
+            // Each layer's op may mutate, replace, or remove the entity.
+            let mut entity: Option<Entity> = stored.get(key).cloned();
+            if let Some(op) = self.updates.get(key).cloned() {
+                entity = op.apply_to(&entity).map_err(|e| key.unknown_attribute(e))?;
+            }
+            if let Some(op) = self.handler_updates.get(key).cloned() {
+                entity = op.apply_to(&entity).map_err(|e| key.unknown_attribute(e))?;
+            }
+
+            // Include the entity only if its final state still matches the query.
+            if let Some(entity) = entity
+                && query.matches(key, &entity)
+            {
+                result.push(entity);
             }
         }
 
-        // Iterate over self.updates to find entities that:
-        // - Aren't already present in the entity_map
-        // - Match the query
-        // If these conditions are met:
-        // - Check if there's an update for the same entity in handler_updates and apply it.
-        // - Add the entity to entity_map.
-        for (key, op) in self.updates.iter() {
-            if !entity_map.contains_key(key) {
-                if let Some(entity) = matches_query(op, &query, key)? {
-                    if let Some(handler_op) = self.handler_updates.get(key).cloned() {
-                        // If there's a corresponding update in handler_updates, apply it to the entity
-                        // and insert the updated entity into entity_map
-                        let mut entity = Some(entity);
-                        entity = handler_op
-                            .apply_to(&entity)
-                            .map_err(|e| key.unknown_attribute(e))?;
-
-                        if let Some(updated_entity) = entity {
-                            entity_map.insert(key.clone(), updated_entity);
-                        }
-                    } else {
-                        // If there isn't a corresponding update in handler_updates or the update doesn't match the query, just insert the entity from self.updates
-                        entity_map.insert(key.clone(), entity);
-                    }
-                }
-            }
-        }
-
-        // Iterate over handler_updates to find entities that:
-        // - Aren't already present in the entity_map.
-        // - Aren't present in self.updates.
-        // - Match the query.
-        // If these conditions are met, add the entity to entity_map.
-        for (key, handler_op) in self.handler_updates.iter() {
-            if !entity_map.contains_key(key) && !self.updates.contains_key(key) {
-                if let Some(entity) = matches_query(handler_op, &query, key)? {
-                    entity_map.insert(key.clone(), entity);
-                }
-            }
-        }
-
-        // Remove entities that are in the store but have been removed by an update.
-        // We do this last since the loops over updates and handler_updates are only
-        // concerned with entities that are not in the store yet and by leaving removed
-        // keys in entity_map we avoid processing these updates a second time when we
-        // already looked at them when we went through entity_map
-        for key in keys_to_remove {
-            entity_map.remove(&key);
-        }
-
-        Ok(entity_map.into_values().collect())
+        Ok(result)
     }
 
     pub fn remove(&mut self, key: EntityKey) {
@@ -368,7 +352,6 @@ impl EntityCache {
         &mut self,
         key: EntityKey,
         entity: Entity,
-        block: BlockNumber,
         write_capacity_remaining: Option<&mut usize>,
     ) -> Result<(), anyhow::Error> {
         // check the validate for derived fields
@@ -386,9 +369,7 @@ impl EntityCache {
             *write_capacity_remaining -= weight;
         }
 
-        // The next VID is based on a block number and a sequence within the block
-        let vid = ((block as i64) << 32) + self.vid_seq as i64;
-        self.vid_seq += 1;
+        let vid = self.seq_gen.vid();
         let mut entity = entity;
         let old_vid = entity.set_vid(vid).expect("the vid should be set");
         // Make sure that there was no VID previously set for this entity.
@@ -459,13 +440,6 @@ impl EntityCache {
         }
     }
 
-    /// Generate an id.
-    pub fn generate_id(&mut self, id_type: IdType, block: BlockNumber) -> anyhow::Result<Id> {
-        let id = id_type.generate_id(block, self.seq)?;
-        self.seq += 1;
-        Ok(id)
-    }
-
     /// Return the changes that have been made via `set` and `remove` as
     /// `EntityModification`, making sure to only produce one when a change
     /// to the current state is actually needed.
@@ -474,6 +448,7 @@ impl EntityCache {
     pub async fn as_modifications(
         mut self,
         block: BlockNumber,
+        stopwatch: &StopwatchMetrics,
     ) -> Result<ModificationsAndCache, StoreError> {
         assert!(!self.in_handler);
 
@@ -491,10 +466,14 @@ impl EntityCache {
         // is wrong and the store already has a version of the entity from a
         // previous block, the attempt to insert will trigger a constraint
         // violation in the database, ensuring correctness
-        let missing = missing.filter(|key| !key.entity_type.is_immutable());
+        {
+            let _section = stopwatch.start_section("as_modifications_load");
 
-        for (entity_key, entity) in self.store.get_many(missing.cloned().collect()).await? {
-            self.current.insert(entity_key, Some(Arc::new(entity)));
+            let missing = missing.filter(|key| !key.entity_type.is_immutable());
+
+            for (entity_key, entity) in self.store.get_many(missing.cloned().collect()).await? {
+                self.current.insert(entity_key, Some(Arc::new(entity)));
+            }
         }
 
         let mut mods = Vec::new();
@@ -518,12 +497,14 @@ impl EntityCache {
                 }
                 // Entity may have been changed
                 (Some(current), EntityOp::Update(updates)) => {
-                    let mut data = current.as_ref().clone();
-                    data.merge_remove_null_fields(updates)
+                    let mut data =
+                        Arc::try_unwrap(current).unwrap_or_else(|arc| arc.as_ref().clone());
+                    let changed = data
+                        .merge_remove_null_fields(updates)
                         .map_err(|e| key.unknown_attribute(e))?;
                     let data = Arc::new(data);
                     self.current.insert(key.clone(), Some(data.cheap_clone()));
-                    if current != data {
+                    if changed {
                         Some(Overwrite {
                             key,
                             data,

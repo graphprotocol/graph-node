@@ -8,8 +8,8 @@ use graph::{
         subgraph::API_VERSION_0_0_4,
     },
     runtime::{
-        gas::GasCounter, AscHeap, AscIndexId, AscType, AscValue, HostExportError,
-        IndexForAscTypeId, ToAscObj,
+        AscHeap, AscIndexId, AscType, AscValue, HostExportError, IndexForAscTypeId, ToAscObj,
+        gas::GasCounter,
     },
 };
 use graph::{prelude::serde_json, runtime::DeterministicHostError};

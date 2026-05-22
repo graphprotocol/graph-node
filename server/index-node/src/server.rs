@@ -3,7 +3,7 @@ use graph::{
     blockchain::BlockchainMap,
     cheap_clone::CheapClone,
     components::{
-        server::server::{start, ServerHandle},
+        server::server::{ServerHandle, start},
         store::Store,
     },
     prelude::*,

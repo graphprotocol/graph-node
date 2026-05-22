@@ -1,10 +1,10 @@
 //! Entity types that contain the graph-node state.
 
-use anyhow::{anyhow, bail, Error};
+use anyhow::{Error, anyhow, bail};
 use chrono::{DateTime, Utc};
 use hex;
-use rand::rngs::OsRng;
 use rand::TryRngCore as _;
+use rand::rngs::OsRng;
 use std::collections::BTreeSet;
 use std::str::FromStr;
 use std::{fmt, fmt::Display};

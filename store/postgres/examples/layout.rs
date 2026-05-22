@@ -1,7 +1,7 @@
 extern crate clap;
 extern crate graph_store_postgres;
 
-use clap::{arg, Command};
+use clap::{Command, arg};
 use graph::schema::InputSchema;
 use std::collections::BTreeSet;
 use std::process::exit;
@@ -42,7 +42,7 @@ fn print_delete_all(layout: &Layout) {
 }
 
 fn print_ddl(layout: &Layout) {
-    let ddl = ensure(layout.as_ddl(None), "Failed to generate DDL");
+    let ddl = ensure(layout.as_ddl(), "Failed to generate DDL");
     println!("{}", ddl);
 }
 

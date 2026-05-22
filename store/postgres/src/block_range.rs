@@ -8,7 +8,7 @@ use diesel::sql_types::{Integer, Range};
 use graph::env::ENV_VARS;
 use std::ops::{Bound, RangeBounds, RangeFrom};
 
-use graph::prelude::{lazy_static, BlockNumber, BlockPtr, BLOCK_NUMBER_MAX};
+use graph::prelude::{BLOCK_NUMBER_MAX, BlockNumber, BlockPtr, lazy_static};
 
 use crate::relational::{SqlName, Table};
 

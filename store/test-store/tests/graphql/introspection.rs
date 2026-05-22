@@ -5,16 +5,16 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use graph::components::store::QueryPermit;
-use graph::data::graphql::{object_value, ObjectOrInterface};
+use graph::data::graphql::{ObjectOrInterface, object_value};
 use graph::data::query::Trace;
 use graph::prelude::{
-    o, q, r, s, serde_json, slog, tokio, DeploymentHash, Logger, Query, QueryExecutionError,
-    QueryResult,
+    DeploymentHash, Logger, Query, QueryExecutionError, QueryResult, o, q, r, s, serde_json, slog,
+    tokio,
 };
 use graph::schema::{ApiSchema, InputSchema};
 
 use graph_graphql::prelude::{
-    a, execute_query, ExecutionContext, Query as PreparedQuery, QueryExecutionOptions, Resolver,
+    ExecutionContext, Query as PreparedQuery, QueryExecutionOptions, Resolver, a, execute_query,
 };
 use test_store::graphql_metrics;
 
@@ -125,6 +125,7 @@ async fn introspection_query(schema: Arc<ApiSchema>, query: &str) -> QueryResult
         max_first: u32::MAX,
         max_skip: u32::MAX,
         trace: false,
+        log_store: Arc::new(graph::components::log_store::NoOpLogStore),
     };
 
     let result =
@@ -883,6 +884,8 @@ async fn successfully_runs_introspection_query_against_complex_schema() {
           description
           type { ...TypeRef }
           defaultValue
+          isDeprecated
+          deprecationReason
         }
 
         fragment TypeRef on __Type {

@@ -13,14 +13,14 @@ use graph::hyper::header::{
     self, ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
     CONTENT_TYPE, LOCATION,
 };
-use graph::hyper::{body::Body, Method, Request, Response, StatusCode};
+use graph::hyper::{Method, Request, Response, StatusCode, body::Body};
 
 use graph::amp;
 use graph::components::{server::query::ServerError, store::Store};
 use graph::data::query::{Query, QueryError, QueryResult, QueryResults};
 use graph::prelude::{q, serde_json};
-use graph::slog::{debug, error, Logger};
-use graph_graphql::prelude::{execute_query, Query as PreparedQuery, QueryExecutionOptions};
+use graph::slog::{Logger, debug, error};
+use graph_graphql::prelude::{Query as PreparedQuery, QueryExecutionOptions, execute_query};
 
 use crate::auth::bearer_token;
 
@@ -153,6 +153,7 @@ where
                 max_first: u32::MAX,
                 max_skip: u32::MAX,
                 trace: false,
+                log_store: Arc::new(graph::components::log_store::NoOpLogStore),
             };
             let (result, _) = execute_query(query_clone.cheap_clone(), None, None, options).await;
             query_clone.log_execution(0);

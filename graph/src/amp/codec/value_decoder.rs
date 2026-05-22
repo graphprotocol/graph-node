@@ -1,13 +1,13 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use arrow::{
     array::{
         Array, BinaryArray, BinaryViewArray, BooleanArray, Decimal128Array, Decimal256Array,
         FixedSizeBinaryArray, FixedSizeListArray, Float16Array, Float32Array, Float64Array,
-        Int16Array, Int32Array, Int64Array, Int8Array, LargeBinaryArray, LargeListArray,
+        Int8Array, Int16Array, Int32Array, Int64Array, LargeBinaryArray, LargeListArray,
         LargeListViewArray, LargeStringArray, ListArray, ListViewArray, StringArray,
         StringViewArray, TimestampMicrosecondArray, TimestampMillisecondArray,
-        TimestampNanosecondArray, TimestampSecondArray, UInt16Array, UInt32Array, UInt64Array,
-        UInt8Array,
+        TimestampNanosecondArray, TimestampSecondArray, UInt8Array, UInt16Array, UInt32Array,
+        UInt64Array,
     },
     datatypes::{DataType, TimeUnit},
 };
@@ -15,8 +15,8 @@ use chrono::{DateTime, Utc};
 
 use super::{ArrayDecoder, Decoder, ListDecoder, MappingDecoder};
 use crate::data::store::{
-    scalar::{BigDecimal, BigInt, Bytes, Timestamp},
     Value, ValueType,
+    scalar::{BigDecimal, BigInt, Bytes, Timestamp},
 };
 
 /// Returns a decoder that converts an Arrow array into subgraph store values.

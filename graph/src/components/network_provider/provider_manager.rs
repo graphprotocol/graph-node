@@ -3,11 +3,11 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use derivative::Derivative;
+use derive_more::Debug;
 use itertools::Itertools;
+use slog::Logger;
 use slog::info;
 use slog::warn;
-use slog::Logger;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
@@ -24,10 +24,9 @@ const VALIDATION_MAX_DURATION: Duration = Duration::from_secs(30);
 const VALIDATION_RETRY_INTERVAL: Duration = Duration::from_secs(300);
 
 /// ProviderManager is responsible for validating providers before they are returned to consumers.
-#[derive(Clone, Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, Debug)]
 pub struct ProviderManager<T: NetworkDetails> {
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     inner: Arc<Inner<T>>,
 
     validation_max_duration: Duration,

@@ -12,8 +12,8 @@ pub use costs::DEFAULT_BASE_COST;
 pub use costs::*;
 pub use saturating::*;
 
-use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use std::{fmt, fmt::Display};
 
 pub struct GasOp {
@@ -100,11 +100,11 @@ impl GasCounter {
         amount += costs::HOST_EXPORT_GAS;
 
         // If gas metrics are enabled, track the gas used
-        if ENV_VARS.enable_dips_metrics {
-            if let Some(method) = method {
-                self.metrics.track_gas(method, amount.0);
-                self.metrics.track_operations(method, 1);
-            }
+        if ENV_VARS.enable_dips_metrics
+            && let Some(method) = method
+        {
+            self.metrics.track_gas(method, amount.0);
+            self.metrics.track_operations(method, 1);
         }
 
         let old = self

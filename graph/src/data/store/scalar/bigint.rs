@@ -1,11 +1,12 @@
+use alloy::primitives::I256;
 use anyhow::bail;
 use num_bigint;
 use serde::{self, Deserialize, Serialize};
-use stable_hash::utils::AsInt;
 use stable_hash::StableHash;
+use stable_hash::utils::AsInt;
 use thiserror::Error;
 
-use crate::prelude::alloy::primitives::{U128, U256, U64};
+use crate::prelude::alloy::primitives::{U64, U128, U256};
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
 use std::ops::{Add, BitAnd, BitOr, Div, Mul, Rem, Shl, Shr, Sub};
@@ -185,24 +186,27 @@ impl BigInt {
         BigInt::from_unsigned_bytes_le(&bytes).unwrap()
     }
 
-    pub fn from_signed_u256(n: &U256) -> Self {
-        let bytes: [u8; U256::BYTES] = n.to_le_bytes();
+    pub fn from_i256(n: &I256) -> Self {
+        let bytes: [u8; I256::BYTES] = n.to_le_bytes();
+        // Unwrap: 256 bits is much less than BigInt::MAX_BITS
         BigInt::from_signed_bytes_le(&bytes).unwrap()
     }
 
-    pub fn to_signed_u256(&self) -> U256 {
+    pub fn to_i256(&self) -> Result<I256, anyhow::Error> {
         let bytes = self.to_signed_bytes_le();
-        if self < &BigInt::from(0) {
-            assert!(
-                bytes.len() <= 32,
-                "BigInt value does not fit into signed U256"
-            );
-            let mut i_bytes: [u8; 32] = [255; 32];
-            i_bytes[..bytes.len()].copy_from_slice(&bytes);
-            U256::from_le_slice(&i_bytes)
+        anyhow::ensure!(
+            bytes.len() <= I256::BYTES,
+            "BigInt value `{}` does not fit into int256",
+            self
+        );
+        let fill: u8 = if self.sign() == BigIntSign::Minus {
+            0xFF
         } else {
-            U256::from_le_slice(&bytes)
-        }
+            0x00
+        };
+        let mut buf = [fill; I256::BYTES];
+        buf[..bytes.len()].copy_from_slice(&bytes);
+        Ok(I256::from_le_bytes(buf))
     }
 
     pub fn to_unsigned_u256(&self) -> Result<U256, anyhow::Error> {
@@ -213,6 +217,11 @@ impl BigInt {
                 self
             );
         }
+        anyhow::ensure!(
+            bytes.len() <= U256::BYTES,
+            "BigInt value `{}` does not fit into uint256",
+            self
+        );
         Ok(U256::from_le_slice(&bytes))
     }
 
@@ -409,6 +418,71 @@ mod test {
     use alloy::primitives::U64;
 
     use super::{super::test::same_stable_hash, BigInt};
+
+    /// Compute 2^n via repeated doubling so we can build values larger than
+    /// `BigInt::pow`'s u8 exponent limit.
+    fn pow2(n: u32) -> BigInt {
+        let mut acc = BigInt::from(1u64);
+        for _ in 0..n {
+            acc = acc * BigInt::from(2u64);
+        }
+        acc
+    }
+
+    #[test]
+    fn to_i256_succeeds_at_boundaries() {
+        let one = BigInt::from(1u64);
+        let i256_max = pow2(255) - one.clone();
+        let i256_min = BigInt::from(0) - pow2(255);
+
+        for v in &[
+            BigInt::from(0),
+            BigInt::from(1),
+            BigInt::from(-1),
+            i256_max.clone(),
+            i256_min.clone(),
+        ] {
+            let i = v.to_i256().expect("in-range value should convert");
+            let back = BigInt::from_i256(&i);
+            assert_eq!(&back, v, "round-trip failed for {}", v);
+        }
+    }
+
+    #[test]
+    fn to_i256_errors_outside_range() {
+        let one = BigInt::from(1u64);
+        let just_above_max = pow2(255);
+        let just_below_min = BigInt::from(0) - pow2(255) - one;
+        let way_above = pow2(300);
+        let way_below = BigInt::from(0) - pow2(300);
+
+        for v in &[just_above_max, just_below_min, way_above, way_below] {
+            assert!(
+                v.to_i256().is_err(),
+                "out-of-range value {} should error, not panic",
+                v
+            );
+        }
+    }
+
+    #[test]
+    fn to_unsigned_u256_errors_outside_range() {
+        let just_above_max = pow2(256);
+        let way_above = pow2(300);
+
+        for v in &[just_above_max, way_above] {
+            assert!(
+                v.to_unsigned_u256().is_err(),
+                "value {} above u256::MAX should error, not panic",
+                v
+            );
+        }
+
+        assert!(
+            BigInt::from(-1).to_unsigned_u256().is_err(),
+            "negative value should error"
+        );
+    }
 
     #[test]
     fn bigint_to_from_u64() {

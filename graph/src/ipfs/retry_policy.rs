@@ -2,8 +2,8 @@ use slog::Logger;
 
 use crate::ipfs::error::IpfsError;
 use crate::prelude::*;
-use crate::util::futures::retry;
 use crate::util::futures::RetryConfig;
+use crate::util::futures::retry;
 
 /// Describes retry behavior when IPFS requests fail.
 #[derive(Clone, Copy, Debug)]
@@ -42,9 +42,9 @@ impl RetryPolicy {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::sync::atomic::AtomicU64;
     use std::sync::atomic::Ordering;
-    use std::sync::Arc;
     use std::time::Duration;
 
     use super::*;

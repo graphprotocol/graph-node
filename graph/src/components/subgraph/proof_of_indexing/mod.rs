@@ -81,7 +81,7 @@ impl SharedProofOfIndexing {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
+    use crate::util::stable_hash_glue::{AsBytes, impl_stable_hash};
     use crate::{
         data::store::Id,
         prelude::{BlockPtr, DeploymentHash, Value},
@@ -91,7 +91,7 @@ mod tests {
     use maplit::hashmap;
     use online::ProofOfIndexingFinisher;
     use reference::*;
-    use slog::{o, Discard, Logger};
+    use slog::{Discard, Logger, o};
     use stable_hash::{fast_stable_hash, utils::check_for_child_errors};
     use stable_hash_legacy::crypto::SetHasher;
     use stable_hash_legacy::utils::stable_hash as stable_hash_legacy;
@@ -134,7 +134,8 @@ mod tests {
         // return the same result.
         check_for_child_errors(&case.data).expect("Found child errors");
 
-        let offline_fast = tiny_keccak::keccak256(&fast_stable_hash(&case.data).to_le_bytes());
+        let offline_fast =
+            alloy::primitives::keccak256(fast_stable_hash(&case.data).to_le_bytes()).0;
         let offline_legacy = stable_hash_legacy::<SetHasher, _>(&case.data);
 
         for (version, offline, hardcoded) in [

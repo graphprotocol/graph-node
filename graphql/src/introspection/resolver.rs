@@ -4,12 +4,12 @@ use graph::data::graphql::ext::{FieldExt, TypeDefinitionExt};
 use graph::data::query::Trace;
 use std::collections::BTreeMap;
 
-use graph::data::graphql::{object, DocumentExt, ObjectOrInterface};
+use graph::data::graphql::{DocumentExt, ObjectOrInterface, object};
 use graph::prelude::*;
 
 use crate::execution::ast as a;
 use crate::prelude::*;
-use graph::schema::{ast as sast, Schema};
+use graph::schema::{Schema, ast as sast};
 
 type TypeObjectsMap = BTreeMap<String, r::Value>;
 
@@ -34,8 +34,8 @@ fn type_object(schema: &Schema, type_objects: &mut TypeObjectsMap, t: &s::Type) 
     match t {
         // We store the name of the named type here to be able to resolve it dynamically later
         s::Type::NamedType(s) => r::Value::String(s.clone()),
-        s::Type::ListType(ref inner) => list_type_object(schema, type_objects, inner),
-        s::Type::NonNullType(ref inner) => non_null_type_object(schema, type_objects, inner),
+        s::Type::ListType(inner) => list_type_object(schema, type_objects, inner),
+        s::Type::NonNullType(inner) => non_null_type_object(schema, type_objects, inner),
     }
 }
 
@@ -300,6 +300,8 @@ fn input_value(
                 .map_or(r::Value::Null, |value| {
                     r::Value::String(format!("{}", value))
                 }),
+        isDeprecated: false,
+        deprecationReason: r::Value::Null,
     }
 }
 
@@ -389,7 +391,7 @@ impl Resolver for IntrospectionResolver {
                         type_names
                             .iter()
                             .filter_map(|type_name| match type_name {
-                                r::Value::String(ref type_name) => Some(type_name),
+                                r::Value::String(type_name) => Some(type_name),
                                 _ => None,
                             })
                             .filter_map(|type_name| self.type_objects.get(type_name).cloned())

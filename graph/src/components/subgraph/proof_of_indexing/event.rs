@@ -60,8 +60,8 @@ pub enum ProofOfIndexingEvent<'a> {
 
 impl stable_hash_legacy::StableHash for ProofOfIndexingEvent<'_> {
     fn stable_hash<H: StableHasher>(&self, mut sequence_number: H::Seq, state: &mut H) {
-        use stable_hash_legacy::prelude::*;
         use ProofOfIndexingEvent::*;
+        use stable_hash_legacy::prelude::*;
 
         let str: &'static str = self.into();
         str.stable_hash(sequence_number.next_child(), state);

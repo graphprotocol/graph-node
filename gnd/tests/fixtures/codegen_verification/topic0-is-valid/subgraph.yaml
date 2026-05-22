@@ -1,0 +1,24 @@
+specVersion: 0.0.1
+repository: https://github.com/graphprotocol/test-subgraph
+description: Test subgraph
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: ExampleSubgraph
+    source:
+      abi: ExampleContract
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      file: ./mapping.ts
+      entities:
+        - ExampleEntity
+      abis:
+        - name: ExampleContract
+          file: ./Abi.json
+      eventHandlers:
+        - event: ExampleEvent(string)
+          topic0: b74a38eb2ebca56512a2bb0283f335555a4a4dac46ab998d65fd76f9027dca70
+          handler: handleExampleEvent

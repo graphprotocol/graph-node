@@ -9,7 +9,9 @@ use diesel::pg::Pg;
 use diesel::serialize::{Output, ToSql};
 use diesel::sql_types::Integer;
 use diesel_derives::{AsExpression, FromSqlRow};
-pub use entity_cache::{EntityCache, EntityLfuCache, GetScope, ModificationsAndCache};
+pub use entity_cache::{
+    EntityCache, EntityLfuCache, GetScope, ModificationsAndCache, SeqGenerator,
+};
 use slog::Logger;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -25,8 +27,8 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 use std::fmt::Display;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -41,8 +43,8 @@ use crate::data_source::CausalityRegion;
 use crate::derive::CheapClone;
 use crate::env::ENV_VARS;
 use crate::internal_error;
-use crate::prelude::{s, Attribute, DeploymentHash, ValueType};
-use crate::schema::{ast as sast, EntityKey, EntityType, InputSchema};
+use crate::prelude::{Attribute, DeploymentHash, ValueType, s};
+use crate::schema::{EntityKey, EntityType, InputSchema, ast as sast};
 use crate::util::stats::AtomicMovingStats;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -466,6 +468,8 @@ pub struct EntityQuery {
     pub query_id: Option<String>,
 
     pub trace: bool,
+
+    pub aggregation_current: Option<AggregationCurrent>,
 }
 
 impl EntityQuery {
@@ -484,6 +488,7 @@ impl EntityQuery {
             logger: None,
             query_id: None,
             trace: false,
+            aggregation_current: None,
         }
     }
 
@@ -516,31 +521,44 @@ impl EntityQuery {
         // If there is one window, with one id, in a direct relation to the
         // entities, we can simplify the query by changing the filter and
         // getting rid of the window
-        if let EntityCollection::Window(windows) = &self.collection {
-            if windows.len() == 1 {
-                let window = windows.first().expect("we just checked");
-                if window.ids.len() == 1 {
-                    let id = window.ids.first().expect("we just checked").to_value();
-                    if let EntityLink::Direct(attribute, _) = &window.link {
-                        let filter = match attribute {
-                            WindowAttribute::Scalar(name) => {
-                                EntityFilter::Equal(name.clone(), id.into())
-                            }
-                            WindowAttribute::List(name) => {
-                                EntityFilter::Contains(name.clone(), Value::from(vec![id]))
-                            }
-                        };
-                        self.filter = Some(filter.and_maybe(self.filter));
-                        self.collection = EntityCollection::All(vec![(
-                            window.child_type.clone(),
-                            window.column_names.clone(),
-                        )]);
-                    }
+        if let EntityCollection::Window(windows) = &self.collection
+            && windows.len() == 1
+        {
+            let window = windows.first().expect("we just checked");
+            if window.ids.len() == 1 {
+                let id = window.ids.first().expect("we just checked").to_value();
+                if let EntityLink::Direct(attribute, _) = &window.link {
+                    let filter = match attribute {
+                        WindowAttribute::Scalar(name) => {
+                            EntityFilter::Equal(name.clone(), id.into())
+                        }
+                        WindowAttribute::List(name) => {
+                            EntityFilter::Contains(name.clone(), Value::from(vec![id]))
+                        }
+                    };
+                    self.filter = Some(filter.and_maybe(self.filter));
+                    self.collection = EntityCollection::All(vec![(
+                        window.child_type.clone(),
+                        window.column_names.clone(),
+                    )]);
                 }
             }
         }
         self
     }
+}
+
+/// Indicates whether the current, partially filled bucket should be included in the response.
+///
+/// This is only relevant for aggregation entity queries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AggregationCurrent {
+    /// Exclude the current, partially filled bucket from the response.
+    #[default]
+    Exclude,
+
+    /// Include the current, partially filled bucket in the response.
+    Include,
 }
 
 /// Operation types that lead to changes in assignments
@@ -650,8 +668,12 @@ pub enum EntityOperation {
 
 #[derive(Debug, PartialEq)]
 pub enum UnfailOutcome {
+    /// Nothing to do - no error exists, or error is of wrong type (e.g., deterministic).
     Noop,
+    /// Successfully unfailed the subgraph.
     Unfailed,
+    /// The deployment head is still behind the error block, retry on subsequent blocks.
+    BehindErrorBlock,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -962,6 +984,75 @@ pub trait PruneReporter: Send + 'static {
     fn finish(&mut self) {}
 }
 
+/// Callbacks for `SubgraphStore.dump` so that callers can report progress
+/// of the dump procedure to users
+#[allow(unused_variables)]
+pub trait DumpReporter: Send + 'static {
+    /// Called at the start with deployment hash and total entity table count.
+    fn start(&mut self, deployment: &str, table_count: usize) {}
+
+    /// Called before dumping an entity table. `rows_approx` is estimated
+    /// from the vid range (max_vid - min_vid + 1), 0 if empty.
+    fn start_table(&mut self, table: &str, rows_approx: usize) {}
+
+    /// Called after a batch of rows has been written to Parquet.
+    fn batch_dumped(&mut self, table: &str, rows: usize) {}
+
+    /// Called after an entity table has been fully dumped.
+    fn finish_table(&mut self, table: &str, rows: usize) {}
+
+    /// Called before dumping data_sources$.
+    fn start_data_sources(&mut self) {}
+
+    /// Called after data_sources$ has been dumped.
+    fn finish_data_sources(&mut self, rows: usize) {}
+
+    /// Called before dumping clamps for a table.
+    fn start_clamps(&mut self, _table: &str, _rows_approx: usize) {}
+
+    /// Called after clamps have been dumped for a table.
+    fn finish_clamps(&mut self, _table: &str, _rows: usize) {}
+
+    /// Called when the entire dump has completed.
+    fn finish(&mut self) {}
+}
+
+/// Callbacks for `SubgraphStore.restore` so that callers can report
+/// progress of the restore procedure to users
+#[allow(unused_variables)]
+pub trait RestoreReporter: Send + 'static {
+    /// Called at the start with deployment hash and total entity table count.
+    fn start(&mut self, deployment: &str, table_count: usize) {}
+
+    /// Called when creating the schema.
+    fn start_create_schema(&mut self, namespace: &str, shard: &str) {}
+    fn finish_create_schema(&mut self) {}
+
+    /// Called before importing an entity table. `total_rows` is the sum
+    /// of row counts across all chunks for this table.
+    fn start_table(&mut self, table: &str, total_rows: usize) {}
+
+    /// Called after a batch of rows has been inserted.
+    fn batch_imported(&mut self, table: &str, rows: usize) {}
+
+    /// Called when a table is skipped because it was already restored.
+    fn skip_table(&mut self, table: &str) {}
+
+    /// Called after an entity table has been fully imported.
+    fn finish_table(&mut self, table: &str, rows: usize) {}
+
+    /// Called before/after importing data_sources$.
+    fn start_data_sources(&mut self, total_rows: usize) {}
+    fn finish_data_sources(&mut self, rows: usize) {}
+
+    /// Called during finalization (sequence resets, head block set).
+    fn start_finalize(&mut self) {}
+    fn finish_finalize(&mut self) {}
+
+    /// Called when the entire restore has completed.
+    fn finish(&mut self) {}
+}
+
 /// Select how pruning should be done
 #[derive(Clone, Copy, Debug, Display, PartialEq)]
 pub enum PruningStrategy {
@@ -1043,9 +1134,16 @@ impl PruneRequest {
             ));
         }
 
-        // We need to add + 1 to `earliset_block` because the lower bound is inclusive
-        // and otherwise we would end up with `history_blocks + 1` blocks of history instead of `history_blocks`
-        let earliest_block = latest_block - history_blocks + 1;
+        // Note: this intentionally keeps `history_blocks + 1` blocks on disk.
+        // The range [earliest_block, latest_block] is inclusive on both ends,
+        // so it contains `history_blocks + 1` entries. The extra block is a
+        // required buffer: `revert_block_ptr` requires at least
+        // `reorg_threshold + 2` actual blocks on disk to allow even a
+        // single-block reorg after pruning, and `strategy` requires
+        // `earliest_block < final_block`. Both conditions are satisfied when
+        // `history_blocks >= reorg_threshold + 1`, which gives
+        // `reorg_threshold + 2` blocks on disk.
+        let earliest_block = latest_block - history_blocks;
         let final_block = latest_block - reorg_threshold;
 
         Ok(Self {

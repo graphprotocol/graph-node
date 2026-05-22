@@ -1,0 +1,36 @@
+{
+  "name": "Arweave file data source creates entity from fetched content",
+  "arweaveFiles": [
+    {
+      "txId": "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8",
+      "content": "Hello from Arweave"
+    }
+  ],
+  "blocks": [
+    {
+      "events": [
+        {
+          "address": "0x0000000000000000000000000000000000000002",
+          "event": "ArweaveFileCreated(string txId)",
+          "params": {
+            "txId": "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8"
+          }
+        }
+      ]
+    },
+    {}
+  ],
+  "assertions": [
+    {
+      "query": "{ arweaveFiles { id content } }",
+      "expected": {
+        "arweaveFiles": [
+          {
+            "id": "8APeQ5lW0-csTcBaGdPBDLAL2ci2AT9pTn2tppGPU_8",
+            "content": "Hello from Arweave"
+          }
+        ]
+      }
+    }
+  ]
+}

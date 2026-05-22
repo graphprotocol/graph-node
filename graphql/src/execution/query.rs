@@ -3,7 +3,7 @@ use graph::data::graphql::DocumentExt as _;
 use graph::data::value::{Object, Word};
 use graph::schema::ApiSchema;
 use graphql_tools::validation::rules::*;
-use graphql_tools::validation::validate::{validate, ValidationPlan};
+use graphql_tools::validation::validate::{ValidationPlan, validate};
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -12,15 +12,15 @@ use std::sync::Arc;
 use std::time::Instant;
 use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
-use graph::data::graphql::{ext::TypeExt, ObjectOrInterface};
+use graph::data::graphql::{ObjectOrInterface, ext::TypeExt};
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
 use graph::data::query::{QueryExecutionError, Trace};
 use graph::prelude::{
-    info, o, q, r, s, warn, BlockNumber, CheapClone, DeploymentHash, EntityRange, GraphQLMetrics,
-    Logger, TryFromValue, ENV_VARS,
+    BlockNumber, CheapClone, DeploymentHash, ENV_VARS, EntityRange, GraphQLMetrics, Logger,
+    TryFromValue, info, o, q, r, s, warn,
 };
-use graph::schema::ast::{self as sast};
 use graph::schema::ErrorPolicy;
+use graph::schema::ast::{self as sast};
 
 use crate::execution::ast as a;
 use crate::execution::get_field;
@@ -224,12 +224,12 @@ impl Query {
             q::OperationDefinition::Subscription(_) => {
                 return Err(vec![QueryExecutionError::NotSupported(
                     "Subscriptions are not supported".to_owned(),
-                )])
+                )]);
             }
             q::OperationDefinition::Mutation(_) => {
                 return Err(vec![QueryExecutionError::NotSupported(
                     "Mutations are not supported".to_owned(),
-                )])
+                )]);
             }
         };
 
@@ -468,13 +468,13 @@ impl<'s> RawQuery<'s> {
         max_depth: u8,
     ) -> Result<u64, Vec<QueryExecutionError>> {
         let complexity = self.complexity(max_depth).map_err(|e| vec![e])?;
-        if let Some(max_complexity) = max_complexity {
-            if complexity > max_complexity {
-                return Err(vec![QueryExecutionError::TooComplex(
-                    complexity,
-                    max_complexity,
-                )]);
-            }
+        if let Some(max_complexity) = max_complexity
+            && complexity > max_complexity
+        {
+            return Err(vec![QueryExecutionError::TooComplex(
+                complexity,
+                max_complexity,
+            )]);
         }
         Ok(complexity)
     }

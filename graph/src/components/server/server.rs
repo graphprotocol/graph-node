@@ -1,10 +1,10 @@
 use std::future::Future;
 use std::net::SocketAddr;
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
-use hyper::body::Incoming;
 use hyper::Request;
+use hyper::body::Incoming;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 

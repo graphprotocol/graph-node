@@ -16,15 +16,15 @@ pub async fn remap(
     };
     let servers = coord.servers();
 
-    if let Some(src) = &src {
-        if !servers.iter().any(|srv| srv.shard.as_str() == src) {
-            return Err(anyhow!("unknown source shard {src}"));
-        }
+    if let Some(src) = &src
+        && !servers.iter().any(|srv| srv.shard.as_str() == src)
+    {
+        return Err(anyhow!("unknown source shard {src}"));
     }
-    if let Some(dst) = &dst {
-        if !pools.iter().any(|pool| pool.shard.as_str() == dst) {
-            return Err(anyhow!("unknown destination shard {dst}"));
-        }
+    if let Some(dst) = &dst
+        && !pools.iter().any(|pool| pool.shard.as_str() == dst)
+    {
+        return Err(anyhow!("unknown destination shard {dst}"));
     }
 
     let servers = servers.iter().filter(|srv| match &src {

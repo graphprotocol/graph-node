@@ -1,5 +1,5 @@
 use alloy::primitives::{BlockHash, BlockNumber};
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use arrow::array::{
     Array, FixedSizeBinaryArray, RecordBatch, TimestampNanosecondArray, UInt64Array,
 };

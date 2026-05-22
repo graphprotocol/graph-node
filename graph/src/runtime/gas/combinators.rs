@@ -83,10 +83,10 @@ where
 
     #[inline]
     fn const_gas_size_of() -> Option<Gas> {
-        if let Some(t0) = T0::const_gas_size_of() {
-            if let Some(t1) = T1::const_gas_size_of() {
-                return Some(C::combine(t0, t1));
-            }
+        if let Some(t0) = T0::const_gas_size_of()
+            && let Some(t1) = T1::const_gas_size_of()
+        {
+            return Some(C::combine(t0, t1));
         }
         None
     }
@@ -109,12 +109,11 @@ where
 
     #[inline] // Const propagation to the rescue. I hope.
     fn const_gas_size_of() -> Option<Gas> {
-        if let Some(t0) = T0::const_gas_size_of() {
-            if let Some(t1) = T1::const_gas_size_of() {
-                if let Some(t2) = T2::const_gas_size_of() {
-                    return Some(C::combine(C::combine(t0, t1), t2));
-                }
-            }
+        if let Some(t0) = T0::const_gas_size_of()
+            && let Some(t1) = T1::const_gas_size_of()
+            && let Some(t2) = T2::const_gas_size_of()
+        {
+            return Some(C::combine(C::combine(t0, t1), t2));
         }
         None
     }

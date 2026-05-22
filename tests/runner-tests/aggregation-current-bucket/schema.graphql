@@ -1,0 +1,19 @@
+type Token @entity(immutable: true) {
+  id: Bytes!
+  name: String!
+  stats: [Stats!]! @derivedFrom(field: "token")
+}
+
+type Data @entity(timeseries: true) {
+  id: Int8!
+  timestamp: Timestamp!
+  token: Token!
+  amount: BigDecimal!
+}
+
+type Stats @aggregation(intervals: ["hour"], source: "Data") {
+  id: Int8!
+  timestamp: Timestamp!
+  token: Token!
+  sum: BigDecimal! @aggregate(fn: "sum", arg: "amount")
+}

@@ -19,8 +19,8 @@ use crate::data::graphql::IntoValue;
 use crate::data::store::scalar::Timestamp;
 use crate::derive::CheapClone;
 use crate::object;
-use crate::prelude::{r, Value};
-use crate::util::stable_hash_glue::{impl_stable_hash, AsBytes};
+use crate::prelude::{Value, r};
+use crate::util::stable_hash_glue::{AsBytes, impl_stable_hash};
 
 /// A simple marker for byte arrays that are really block hashes
 #[derive(Clone, Default, PartialEq, Eq, Hash, FromSqlRow, AsExpression)]

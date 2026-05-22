@@ -9,6 +9,7 @@ use graph::data_source::common::ContractCall;
 use graph::firehose::CallToFilter;
 use graph::firehose::CombinedFilter;
 use graph::firehose::LogFilter;
+use graph::prelude::alloy::primitives::keccak256;
 use graph::prelude::alloy::primitives::{Address, B256};
 use graph::prelude::alloy::rpc::types::Log;
 use graph::prelude::alloy::transports::{RpcError, TransportErrorKind};
@@ -19,7 +20,6 @@ use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use thiserror::Error;
-use tiny_keccak::keccak256;
 
 use graph::prelude::*;
 use graph::{
@@ -35,7 +35,7 @@ const COMBINED_FILTER_TYPE_URL: &str =
 
 use crate::capabilities::NodeCapabilities;
 use crate::data_source::{BlockHandlerFilter, DataSource};
-use crate::{Chain, Mapping, ENV_VARS};
+use crate::{Chain, ENV_VARS, Mapping};
 
 pub type EventSignature = B256;
 pub type FunctionSelector = [u8; 4];
@@ -364,7 +364,7 @@ pub struct EthereumLogFilter {
 
 impl From<EthereumLogFilter> for Vec<LogFilter> {
     fn from(val: EthereumLogFilter) -> Self {
-        val.eth_get_logs_filters()
+        val.eth_get_logs_filters(ENV_VARS.get_logs_max_contracts)
             .map(
                 |EthGetLogsFilter {
                      contracts,
@@ -399,8 +399,7 @@ impl EthereumLogFilter {
                 let contract = LogFilterNode::Contract(log.address());
                 let event = LogFilterNode::Event(*sig);
                 self.contracts_and_events_graph
-                    .all_edges()
-                    .any(|(s, t, _)| (s == contract && t == event) || (t == contract && s == event))
+                    .contains_edge(contract, event)
                     || self.wildcard_events.contains_key(sig)
                     || self
                         .events_with_topic_filters
@@ -439,13 +438,12 @@ impl EthereumLogFilter {
             let contract_node = LogFilterNode::Contract(*address);
             let event_node = LogFilterNode::Event(*event_signature);
 
-            // Directly iterate over all edges and return true if a matching edge that requires a receipt is found.
-            for (s, t, &r) in self.contracts_and_events_graph.all_edges() {
-                if r && ((s == contract_node && t == event_node)
-                    || (t == contract_node && s == event_node))
-                {
-                    return true;
-                }
+            if self
+                .contracts_and_events_graph
+                .edge_weight(contract_node, event_node)
+                == Some(&true)
+            {
+                return true;
             }
         }
 
@@ -548,7 +546,10 @@ impl EthereumLogFilter {
     /// Filters for `eth_getLogs` calls. The filters will not return false positives. This attempts
     /// to balance between having granular filters but too many calls and having few calls but too
     /// broad filters causing the Ethereum endpoint to timeout.
-    pub fn eth_get_logs_filters(self) -> impl Iterator<Item = EthGetLogsFilter> {
+    pub fn eth_get_logs_filters(
+        self,
+        get_logs_max_contracts: usize,
+    ) -> impl Iterator<Item = EthGetLogsFilter> {
         let mut filters = Vec::new();
 
         // Start with the wildcard event filters.
@@ -598,7 +599,7 @@ impl EthereumLogFilter {
             for neighbor in g.neighbors(max_vertex) {
                 match neighbor {
                     LogFilterNode::Contract(address) => {
-                        if filter.contracts.len() == ENV_VARS.get_logs_max_contracts {
+                        if filter.contracts.len() == get_logs_max_contracts {
                             // The batch size was reached, register the filter and start a new one.
                             let event = filter.event_signatures[0];
                             push_filter(filter);
@@ -1176,11 +1177,16 @@ pub trait EthereumAdapter: Send + Sync + 'static {
         address: Address,
         block_ptr: BlockPtr,
     ) -> Result<alloy::primitives::Bytes, EthereumRpcError>;
+
+    /// Returns a boolean indicating whether the adapter can reach
+    /// the RPC provider it is configured to use.
+    /// This is used to determine if a provider should be considered healthy.
+    async fn is_reachable(&self) -> bool;
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::adapter::{FunctionSelector, COMBINED_FILTER_TYPE_URL};
+    use crate::adapter::{COMBINED_FILTER_TYPE_URL, FunctionSelector};
 
     use super::{EthereumBlockFilter, LogFilterNode};
     use super::{EthereumCallFilter, EthereumLogFilter, TriggerFilter};
@@ -1189,8 +1195,8 @@ mod tests {
     use graph::blockchain::TriggerFilter as _;
     use graph::firehose::{CallToFilter, CombinedFilter, LogFilter, MultiLogFilter};
     use graph::petgraph::graphmap::GraphMap;
-    use graph::prelude::alloy::primitives::{Address, Bytes, B256, U256};
     use graph::prelude::EthereumCall;
+    use graph::prelude::alloy::primitives::{Address, B256, Bytes, U256};
     use hex::ToHex;
     use itertools::Itertools;
     use prost::Message;
@@ -1258,9 +1264,11 @@ mod tests {
         assert_eq!(sig, actual_sig);
 
         let filter = LogFilter {
-            addresses: vec![Address::from_str(hex_addr)
-                .expect("failed to parse address")
-                .to_vec()],
+            addresses: vec![
+                Address::from_str(hex_addr)
+                    .expect("failed to parse address")
+                    .to_vec(),
+            ],
             event_signatures: vec![fs.to_vec()],
         };
 
@@ -1645,8 +1653,8 @@ mod tests {
     }
 
     #[test]
-    fn extending_ethereum_block_filter_every_block_in_base_and_merge_contract_addresses_and_polling_intervals(
-    ) {
+    fn extending_ethereum_block_filter_every_block_in_base_and_merge_contract_addresses_and_polling_intervals()
+     {
         let mut base = EthereumBlockFilter {
             polling_intervals: HashSet::from_iter(vec![(10, 3)]),
             contract_addresses: HashSet::from_iter(vec![(10, address(2))]),
@@ -1768,7 +1776,7 @@ fn complete_log_filter() {
                 wildcard_events: HashMap::new(),
                 events_with_topic_filters: HashMap::new(),
             }
-            .eth_get_logs_filters()
+            .eth_get_logs_filters(ENV_VARS.get_logs_max_contracts)
             .collect();
 
             // Assert that a contract or event is filtered on iff it was present in the graph.

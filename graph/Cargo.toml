@@ -9,7 +9,7 @@ base64 = "=0.21.7"
 anyhow = "1.0"
 async-trait = { workspace = true }
 async-stream = "0.3"
-atomic_refcell = "0.1.13"
+atomic_refcell = "0.1.14"
 # We require this precise version of bigdecimal. Updating to later versions
 # has caused PoI differences; if you update this version, you will need to
 # make sure that it does not cause PoI changes
@@ -18,15 +18,16 @@ old_bigdecimal = { version = "=0.1.2", features = [
 ], package = "bigdecimal" }
 bytes = "1.0.1"
 bs58 = { workspace = true }
-cid = "0.11.1"
-derivative = { workspace = true }
+cid = "0.11.3"
+derive_more = { workspace = true, features = ["debug"] }
 graph_derive = { path = "./derive" }
 diesel = { workspace = true }
 diesel_derives = { workspace = true }
-chrono = "0.4.43"
+chrono = "0.4.44"
 envconfig = { workspace = true }
 Inflector = "0.11.3"
 reqwest = { version = "0.12.23", features = ["json", "stream", "multipart", "gzip", "brotli", "deflate"] }
+rustls = { workspace = true }
 hex = "0.4.3"
 http0 = { version = "0", package = "http" }
 http = "1"
@@ -36,20 +37,20 @@ hyper-util = { version = "0.1", features = ["full"] }
 futures01 = { package = "futures", version = "0.1.31" }
 lru_time_cache = "0.11"
 graphql-tools = { workspace = true }
-lazy_static = "1.5.0"
+lazy_static = { workspace = true }
 num-bigint = { version = "=0.2.6", features = ["serde"] }
 num-integer = { version = "=0.1.46" }
 num-traits = "=0.2.19"
 rand.workspace = true
 redis = { workspace = true }
-regex = "1.5.4"
-semver = { version = "1.0.27", features = ["serde"] }
+regex = { workspace = true }
+semver = { workspace = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 serde_json = { workspace = true }
 serde_regex = { workspace = true }
 serde_yaml = { workspace = true }
-sha2 = "0.10.9"
+sha2 = "0.11.0"
 slog = { workspace = true }
 sqlparser = { workspace = true }
 # TODO: This should be reverted to the latest version once it's published
@@ -57,17 +58,16 @@ sqlparser = { workspace = true }
 # stable-hash = { version = "0.4.2" }
 stable-hash = { git = "https://github.com/graphprotocol/stable-hash", branch = "main" }
 stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }
-strum_macros = "0.27.2"
+strum_macros = "0.28.0"
 slog-async = "2.5.0"
 slog-envlogger = "2.1.0"
 slog-term = "2.7.0"
 petgraph = "0.8.3"
-tiny-keccak = "1.5.0"
 tokio = { workspace = true}
 tokio-stream = { workspace = true }
 tokio-retry = { workspace = true }
-toml = "0.9.11"
-url = "2.5.8"
+toml = "1.1.2"
+url = { workspace = true }
 prometheus = "0.14.0"
 priority-queue = "2.7.0"
 tonic = { workspace = true }
@@ -85,7 +85,7 @@ defer = "0.2"
 
 serde_plain = "1.0.2"
 csv = "1.4.0"
-object_store = { version = "0.13.1", features = ["gcp"] }
+object_store = { version = "0.13.2", features = ["gcp"] }
 
 # Dependencies related to Amp subgraphs
 ahash.workspace = true
@@ -102,6 +102,7 @@ clap.workspace = true
 maplit = "1.0.2"
 hex-literal = "1.1"
 wiremock = "0.6.5"
+tempfile = "3.8"
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }

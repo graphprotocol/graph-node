@@ -18,16 +18,17 @@ use graph::url::Url;
 use graph::{
     amp,
     blockchain::{Blockchain, BlockchainKind, BlockchainMap},
+    components::network_provider::AmpChainNames,
 };
-use graph_core::polling_monitor::{arweave_service, ArweaveService, IpfsService};
+use graph_core::polling_monitor::{ArweaveService, IpfsService, arweave_service};
 use graph_graphql::prelude::GraphQlRunner;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
 use graph_server_index_node::IndexNodeServer;
 use graph_server_json_rpc::JsonRpcServer;
 use graph_server_metrics::PrometheusMetricsServer;
 use graph_store_postgres::{
-    register_jobs as register_store_jobs, ChainHeadUpdateListener, ConnectionPool,
-    NotificationSender, Store, SubgraphStore, SubscriptionManager,
+    ChainHeadUpdateListener, ConnectionPool, NotificationSender, Store, SubgraphStore,
+    SubscriptionManager, register_jobs as register_store_jobs,
 };
 use graphman_server::GraphmanServer;
 use graphman_server::GraphmanServerConfig;
@@ -276,6 +277,7 @@ fn build_subgraph_registrar<AC>(
     ipfs_service: IpfsService,
     amp_client: Option<Arc<AC>>,
     cancel_token: CancellationToken,
+    amp_chain_names: Arc<AmpChainNames>,
 ) -> Arc<
     graph_core::subgraph::SubgraphRegistrar<
         graph_core::subgraph_provider::SubgraphProvider,
@@ -354,6 +356,7 @@ where
         node_id.clone(),
         version_switching_mode,
         Arc::new(subgraph_settings),
+        amp_chain_names,
     ))
 }
 
@@ -364,6 +367,7 @@ fn build_graphql_server(
     metrics_registry: Arc<MetricsRegistry>,
     network_store: &Arc<Store>,
     logger_factory: &LoggerFactory,
+    log_store: Arc<dyn graph::components::log_store::LogStore>,
 ) -> GraphQLQueryServer<GraphQlRunner<Store>> {
     let shards: Vec<_> = config.stores.keys().cloned().collect();
     let load_manager = Arc::new(LoadManager::new(
@@ -377,6 +381,7 @@ fn build_graphql_server(
         network_store.clone(),
         load_manager,
         metrics_registry,
+        log_store,
     ));
 
     GraphQLQueryServer::new(logger_factory, graphql_runner.clone())
@@ -410,6 +415,13 @@ pub async fn run(
         render_testament!(TESTAMENT)
     );
 
+    #[cfg(debug_assertions)]
+    warn!(
+        logger,
+        "This is a DEBUG build — performance is severely degraded. \
+        Use `cargo build --release` for production deployments."
+    );
+
     if !graph_server_index_node::PoiProtection::from_env(&ENV_VARS).is_active() {
         warn!(
             logger,
@@ -440,20 +452,45 @@ pub async fn run(
 
     info!(logger, "Starting up"; "node_id" => &node_id);
 
-    // Optionally, identify the Elasticsearch logging configuration
-    let elastic_config = opt
-        .elasticsearch_url
-        .clone()
-        .map(|endpoint| ElasticLoggingConfig {
-            endpoint,
-            username: opt.elasticsearch_user.clone(),
-            password: opt.elasticsearch_password.clone(),
-            client: reqwest::Client::new(),
-        });
+    // Resolve log store configuration from [log_store] TOML section
+    let (log_store, log_store_config) = match &config.log_store {
+        Some(section) => match section.to_log_store_config() {
+            Ok(store_config) => {
+                let store = graph::components::log_store::LogStoreFactory::from_config(
+                    store_config.clone(),
+                )
+                .unwrap_or_else(|e| {
+                    warn!(logger, "Failed to initialize log store: {}", e);
+                    Arc::new(graph::components::log_store::NoOpLogStore)
+                });
+                info!(logger, "Log store initialized"; "backend" => format!("{:?}", store_config));
+                (store, Some(store_config))
+            }
+            Err(e) => {
+                warn!(logger, "Invalid [log_store] configuration: {}", e);
+                (
+                    Arc::new(graph::components::log_store::NoOpLogStore)
+                        as Arc<dyn graph::components::log_store::LogStore>,
+                    None,
+                )
+            }
+        },
+        None => {
+            info!(
+                logger,
+                "No [log_store] section in config, log queries will return empty results"
+            );
+            (
+                Arc::new(graph::components::log_store::NoOpLogStore)
+                    as Arc<dyn graph::components::log_store::LogStore>,
+                None,
+            )
+        }
+    };
 
     // Create a component and subgraph logger factory
     let logger_factory =
-        LoggerFactory::new(logger.clone(), elastic_config, metrics_registry.clone());
+        LoggerFactory::new(logger.clone(), log_store_config, metrics_registry.clone());
 
     let arweave_resolver = Arc::new(ArweaveClient::new(
         logger.cheap_clone(),
@@ -548,9 +585,19 @@ pub async fn run(
         )
         .await;
 
-        // see comment on cleanup_ethereum_shallow_blocks
-        if !opt.disable_block_ingestor {
+        if config.is_block_ingestor() {
+            // see comment on cleanup_ethereum_shallow_blocks
             cleanup_ethereum_shallow_blocks(&blockchain_map, &network_store).await;
+        } else if opt.disable_block_ingestor {
+            info!(
+                logger,
+                "Block ingestor disabled by --disable-block-ingestor"
+            );
+        } else {
+            info!(
+                logger,
+                "Not running block ingestion, ingestor is `{}`", config.chains.ingestor
+            );
         }
 
         let graphql_server = build_graphql_server(
@@ -560,6 +607,7 @@ pub async fn run(
             metrics_registry.clone(),
             &network_store,
             &logger_factory,
+            log_store.clone(),
         );
 
         let index_node_server = IndexNodeServer::new(
@@ -570,7 +618,7 @@ pub async fn run(
             amp_client.cheap_clone(),
         );
 
-        if !opt.disable_block_ingestor {
+        if config.is_block_ingestor() {
             spawn_block_ingestor(
                 &logger,
                 &blockchain_map,
@@ -581,6 +629,7 @@ pub async fn run(
             .await;
         }
 
+        let amp_chain_names = Arc::new(config.amp_chain_names());
         let subgraph_registrar = build_subgraph_registrar(
             metrics_registry.clone(),
             &network_store,
@@ -595,6 +644,7 @@ pub async fn run(
             ipfs_service,
             amp_client,
             cancel_token,
+            amp_chain_names,
         );
 
         graph::spawn(
@@ -670,25 +720,28 @@ fn spawn_contention_checker(logger: Logger) {
         }
         panic!("ping sender dropped");
     });
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(1));
-        let (pong_send, pong_receive) = std::sync::mpsc::sync_channel(1);
-        if graph::futures03::executor::block_on(ping_send.clone().send(pong_send)).is_err() {
-            debug!(logger, "Shutting down contention checker thread");
-            break;
-        }
-        let mut timeout = Duration::from_millis(10);
-        while pong_receive.recv_timeout(timeout) == Err(std::sync::mpsc::RecvTimeoutError::Timeout)
-        {
-            debug!(logger, "Possible contention in tokio threadpool";
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(Duration::from_secs(1));
+            let (pong_send, pong_receive) = std::sync::mpsc::sync_channel(1);
+            if graph::futures03::executor::block_on(ping_send.clone().send(pong_send)).is_err() {
+                debug!(logger, "Shutting down contention checker thread");
+                break;
+            }
+            let mut timeout = Duration::from_millis(10);
+            while pong_receive.recv_timeout(timeout)
+                == Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            {
+                debug!(logger, "Possible contention in tokio threadpool";
                                      "timeout_ms" => timeout.as_millis(),
                                      "code" => LogCode::TokioContention);
-            if timeout < ENV_VARS.kill_if_unresponsive_timeout {
-                timeout *= 10;
-            } else if ENV_VARS.kill_if_unresponsive {
-                // The node is unresponsive, kill it in hopes it will be restarted.
-                crit!(logger, "Node is unresponsive, killing process");
-                std::process::abort()
+                if timeout < ENV_VARS.kill_if_unresponsive_timeout {
+                    timeout *= 10;
+                } else if ENV_VARS.kill_if_unresponsive {
+                    // The node is unresponsive, kill it in hopes it will be restarted.
+                    crit!(logger, "Node is unresponsive, killing process");
+                    std::process::abort()
+                }
             }
         }
     });

@@ -12,48 +12,39 @@
 //! operation can resume after an interruption, for example, because
 //! `graph-node` was restarted while the copy was running.
 use std::{
+    collections::HashSet,
     convert::TryFrom,
     future::Future,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, AtomicI64, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, AtomicI64, Ordering},
     },
     time::{Duration, Instant},
 };
 
 use diesel::{
-    dsl::sql, insert_into, select, sql_query, update, ExpressionMethods, OptionalExtension,
-    QueryDsl,
+    ExpressionMethods, OptionalExtension, QueryDsl, dsl::sql, insert_into, select, update,
 };
-use diesel_async::{
-    scoped_futures::{ScopedBoxFuture, ScopedFutureExt},
-    AsyncConnection,
-};
-use diesel_async::{RunQueryDsl, SimpleAsyncConnection};
+use diesel_async::{AsyncConnection, RunQueryDsl, SimpleAsyncConnection};
 
+use crate::{
+    AsyncPgConnection, ConnectionPool, advisory_lock, catalog, deployment,
+    dynds::DataSourcesTable,
+    pool::TxnCallback,
+    primary::{DeploymentId, Primary, Site},
+    relational::{Layout, Table, index::IndexList},
+    relational_queries as rq,
+    vid_batcher::{VidBatcher, VidRange},
+};
 use graph::{
-    futures03::{
-        future::{select_all, BoxFuture},
-        FutureExt as _,
-    },
+    futures03::{FutureExt as _, future::select_all},
     internal_error,
     prelude::{
-        info, lazy_static, o, warn, BlockNumber, BlockPtr, CheapClone, Logger, StoreError, ENV_VARS,
+        BlockNumber, BlockPtr, CheapClone, ENV_VARS, Logger, StoreError, info, lazy_static, o, warn,
     },
     schema::EntityType,
     slog::error,
-};
-use itertools::Itertools;
-
-use crate::{
-    advisory_lock, catalog, deployment,
-    dynds::DataSourcesTable,
-    primary::{DeploymentId, Primary, Site},
-    relational::{index::IndexList, Layout, Table},
-    relational_queries as rq,
-    vid_batcher::{VidBatcher, VidRange},
-    AsyncPgConnection, ConnectionPool,
 };
 
 const LOG_INTERVAL: Duration = Duration::from_secs(3 * 60);
@@ -151,7 +142,8 @@ impl CopyState {
                         src.site.deployment,
                         dst.site.deployment,
                         stored_target_block,
-                        target_block));
+                        target_block
+                    ));
                 }
                 if src_id != src.site.id {
                     return Err(internal_error!(
@@ -178,7 +170,14 @@ impl CopyState {
         dst: Arc<Layout>,
         target_block: BlockPtr,
     ) -> Result<CopyState, StoreError> {
-        let tables = TableState::load(conn, primary, src.as_ref(), dst.as_ref()).await?;
+        let tables = TableState::load(
+            conn,
+            primary,
+            src.as_ref(),
+            dst.as_ref(),
+            target_block.number,
+        )
+        .await?;
         let (finished, mut unfinished): (Vec<_>, Vec<_>) =
             tables.into_iter().partition(|table| table.finished());
         unfinished.sort_by_key(|table| table.dst.object.to_string());
@@ -329,6 +328,7 @@ struct TableState {
     dst_site: Arc<Site>,
     batcher: VidBatcher,
     duration_ms: i64,
+    target_block: BlockNumber,
 }
 
 impl TableState {
@@ -351,6 +351,7 @@ impl TableState {
             dst_site,
             batcher,
             duration_ms: 0,
+            target_block: target_block.number,
         })
     }
 
@@ -363,6 +364,7 @@ impl TableState {
         primary: Primary,
         src_layout: &Layout,
         dst_layout: &Layout,
+        target_block: BlockNumber,
     ) -> Result<Vec<TableState>, StoreError> {
         use copy_table_state as cts;
 
@@ -429,6 +431,7 @@ impl TableState {
                 dst_site: dst_layout.site.clone(),
                 batcher,
                 duration_ms,
+                target_block,
             };
             states.push(state);
         }
@@ -503,15 +506,20 @@ impl TableState {
     }
 
     async fn copy_batch(&mut self, conn: &mut AsyncPgConnection) -> Result<Status, StoreError> {
-        let (duration, count) = self
+        let (duration, count): (_, Option<i32>) = self
             .batcher
-            .step(async |start, end| {
-                let count =
-                    rq::CopyEntityBatchQuery::new(self.dst.as_ref(), &self.src, start, end)?
-                        .count_current()
-                        .get_result::<i64>(conn)
-                        .await
-                        .optional()?;
+            .step(async |start: i64, end: i64| {
+                let count = rq::CopyEntityBatchQuery::new(
+                    self.dst.as_ref(),
+                    &self.src,
+                    start,
+                    end,
+                    self.target_block,
+                )?
+                .count_current()
+                .get_result::<i64>(conn)
+                .await
+                .optional()?;
                 Ok(count.unwrap_or(0) as i32)
             })
             .await?;
@@ -806,14 +814,11 @@ impl CopyTableWorker {
                     }
 
                     match conn
-                        .transaction(|conn| {
-                            async {
-                                if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
-                                    conn.batch_execute(timeout).await?;
-                                }
-                                self.table.copy_batch(conn).await
+                        .transaction(async |conn| {
+                            if let Some(timeout) = BATCH_STATEMENT_TIMEOUT.as_ref() {
+                                conn.batch_execute(timeout).await?;
                             }
-                            .scope_boxed()
+                            self.table.copy_batch(conn).await
                         })
                         .await
                     {
@@ -852,7 +857,7 @@ impl CopyTableWorker {
                     // that is hard to predict. This mechanism ensures
                     // that if our estimation is wrong, the consequences
                     // aren't too severe.
-                    conn.transaction(|conn| self.table.set_batch_size(conn, 1).scope_boxed())
+                    conn.transaction(async |conn| self.table.set_batch_size(conn, 1).await)
                         .await?;
                 }
             };
@@ -1004,26 +1009,29 @@ impl Connection {
     /// Run `callback` in a transaction using the connection in `self.conn`.
     /// This will return an error if `self.conn` is `None`, which happens
     /// while a background task is copying a table.
+    fn get_conn(&mut self) -> Result<&mut AsyncPgConnection, StoreError> {
+        let Some(conn) = self.conn.as_mut() else {
+            return Err(internal_error!(
+                "copy connection has been handed to background task but not returned yet (get_conn)"
+            ));
+        };
+        Ok(&mut conn.inner)
+    }
+
+    /// Run `callback` in a transaction using the connection in `self.conn`.
+    /// This will return an error if `self.conn` is `None`, which happens
+    /// while a background task is copying a table.
     fn transaction<'a, 'conn, R, F>(
         &'conn mut self,
         callback: F,
-    ) -> Result<BoxFuture<'conn, Result<R, StoreError>>, StoreError>
+    ) -> Result<impl Future<Output = Result<R, StoreError>> + Send + 'conn, StoreError>
     where
-        F: for<'r> FnOnce(
-                &'r mut AsyncPgConnection,
-            ) -> ScopedBoxFuture<'a, 'r, Result<R, StoreError>>
-            + Send
-            + 'a,
+        F: TxnCallback<R, StoreError> + 'a,
         R: Send + 'a,
         'a: 'conn,
     {
-        let Some(conn) = self.conn.as_mut() else {
-            return Err(internal_error!(
-                "copy connection has been handed to background task but not returned yet (transaction)"
-            ));
-        };
-        let conn = &mut conn.inner;
-        Ok(conn.transaction(|conn| callback(conn).scope_boxed()))
+        let conn = self.get_conn()?;
+        Ok(conn.transaction(callback))
     }
 
     /// Copy private data sources if the source uses a schema version that
@@ -1033,19 +1041,19 @@ impl Connection {
         let src_manifest_idx_and_name = self.src_manifest_idx_and_name.cheap_clone();
         let dst_manifest_idx_and_name = self.dst_manifest_idx_and_name.cheap_clone();
         if state.src.site.schema_version.private_data_sources() {
-            self.transaction(|conn| {
-                async {
-                    DataSourcesTable::new(state.src.site.namespace.clone())
-                        .copy_to(
-                            conn,
-                            &DataSourcesTable::new(state.dst.site.namespace.clone()),
-                            state.target_block.number,
-                            &src_manifest_idx_and_name,
-                            &dst_manifest_idx_and_name,
-                        )
-                        .await
-                }
-                .scope_boxed()
+            let src_ns = state.src.site.namespace.clone();
+            let dst_ns = state.dst.site.namespace.clone();
+            let target_block = state.target_block.number;
+            self.transaction(async move |conn| {
+                DataSourcesTable::new(src_ns)
+                    .copy_to(
+                        conn,
+                        &DataSourcesTable::new(dst_ns),
+                        target_block,
+                        &src_manifest_idx_and_name,
+                        &dst_manifest_idx_and_name,
+                    )
+                    .await
             })?
             .await?;
         }
@@ -1144,8 +1152,8 @@ impl Connection {
         let target_block = self.target_block.clone();
         let primary = self.primary.cheap_clone();
         let mut state = self
-            .transaction(|conn| {
-                CopyState::new(conn, primary, src, dst, target_block).scope_boxed()
+            .transaction(async move |conn| {
+                CopyState::new(conn, primary, src, dst, target_block).await
             })?
             .await?;
 
@@ -1232,50 +1240,38 @@ impl Connection {
         // Create indexes for all the attributes that were postponed at the start of
         // the copy/graft operations.
         // First recreate the indexes that existed in the original subgraph.
+        let creat = self.dst.index_creator(false, true);
         for table in state.all_tables() {
-            let arr = index_list.indexes_for_table(
-                &self.dst.site.namespace,
-                &table.src.name.to_string(),
-                &table.dst,
-                true,
-                false,
-                true,
-            )?;
+            let dst_nsp = self.dst.site.namespace.to_string();
+            let idxs = index_list
+                .indexes_for_table(&table.dst)
+                .filter(|idx| idx.to_postpone())
+                .map(|idx| idx.with_nsp(dst_nsp.clone()))
+                .collect::<Result<Vec<_>, _>>()?;
 
-            for (_, sql) in arr {
-                let query = sql_query(format!("{};", sql));
-                self.transaction(|conn| {
-                    async { query.execute(conn).await.map_err(StoreError::from) }.scope_boxed()
-                })?
-                .await?;
-            }
+            let conn = self.get_conn()?;
+            creat.execute_many(conn, &idxs).await?;
         }
 
-        // Second create the indexes for the new fields.
-        // Here we need to skip those created in the first step for the old fields.
+        // Second create the indexes for the new fields that don't exist in
+        // the source.
         for table in state.all_tables() {
-            let orig_colums = table
-                .src
-                .columns
-                .iter()
-                .map(|c| c.name.to_string())
-                .collect_vec();
-            for sql in table
+            let src_columns: HashSet<&str> =
+                table.src.columns.iter().map(|c| c.name.as_str()).collect();
+            let new_idxs: Vec<_> = table
                 .dst
-                .create_postponed_indexes(orig_colums, false)
+                .indexes(&self.dst.input_schema)
+                .map_err(|_| internal_error!("failed to generate indexes for copy"))?
                 .into_iter()
-            {
-                let query = sql_query(sql);
-                self.transaction(|conn| {
-                    async { query.execute(conn).await.map_err(StoreError::from) }.scope_boxed()
-                })?
-                .await?;
-            }
+                .filter(|idx| idx.to_postpone() && idx.references_column_not_in(&src_columns))
+                .collect();
+            let conn = self.get_conn()?;
+            creat.execute_many(conn, &new_idxs).await?;
         }
 
         self.copy_private_data_sources(&state).await?;
 
-        self.transaction(|conn| state.finished(conn).scope_boxed())?
+        self.transaction(async |conn| state.finished(conn).await)?
             .await?;
         progress.finished();
 

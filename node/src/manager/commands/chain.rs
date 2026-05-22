@@ -19,20 +19,19 @@ use graph::{
     components::store::BlockStore as _, components::store::ChainHeadStore as _,
     prelude::anyhow::Error,
 };
-use graph_chain_ethereum::chain::BlockFinality;
 use graph_chain_ethereum::EthereumAdapter;
 use graph_chain_ethereum::EthereumAdapterTrait as _;
+use graph_chain_ethereum::chain::BlockFinality;
+use graph_store_postgres::BlockStore;
+use graph_store_postgres::ChainStore;
+use graph_store_postgres::PoolCoordinator;
+use graph_store_postgres::Shard;
 use graph_store_postgres::add_chain;
 use graph_store_postgres::find_chain;
 use graph_store_postgres::update_chain_name;
-use graph_store_postgres::BlockStore;
-use graph_store_postgres::ChainStatus;
-use graph_store_postgres::ChainStore;
-use graph_store_postgres::PoolCoordinator;
-use graph_store_postgres::ScopedFutureExt;
-use graph_store_postgres::Shard;
-use graph_store_postgres::{command_support::catalog::block_store, ConnectionPool};
+use graph_store_postgres::{ConnectionPool, command_support::catalog::block_store};
 
+use crate::manager::prompt::prompt_for_confirmation;
 use crate::network_setup::Networks;
 
 pub async fn list(primary: ConnectionPool, store: BlockStore) -> Result<(), Error> {
@@ -84,16 +83,28 @@ pub async fn clear_call_cache(
 
 pub async fn clear_stale_call_cache(
     chain_store: Arc<ChainStore>,
-    ttl_days: i32,
-    ttl_max_contracts: Option<i64>,
+    ttl_days: usize,
+    max_contracts: Option<usize>,
 ) -> Result<(), Error> {
     println!(
         "Removing stale entries from the call cache for `{}`",
         chain_store.chain
     );
-    chain_store
-        .clear_stale_call_cache(ttl_days, ttl_max_contracts)
+    let result = chain_store
+        .clear_stale_call_cache(ttl_days, max_contracts)
         .await?;
+    if result.effective_ttl_days != ttl_days {
+        println!(
+            "Effective TTL: {} days (adjusted from {} to stay within {} contracts)",
+            result.effective_ttl_days,
+            ttl_days,
+            max_contracts.unwrap()
+        );
+    }
+    println!(
+        "Deleted {} cache entries for {} contracts",
+        result.cache_entries_deleted, result.contracts_deleted
+    );
     Ok(())
 }
 
@@ -135,10 +146,11 @@ pub async fn info(
     let head_block = chain_store.cheap_clone().chain_head_ptr().await?;
     let ancestor = match &head_block {
         None => None,
-        Some(head_block) => chain_store
-            .ancestor_block(head_block.clone(), offset, None)
-            .await?
-            .map(|x| x.1),
+        Some(head_block) => {
+            chain_store
+                .ancestor_block_ptr(head_block.clone(), offset, None)
+                .await?
+        }
     };
 
     row("name", chain.name);
@@ -238,6 +250,9 @@ pub async fn change_block_cache_shard(
         .await?
         .ok_or_else(|| anyhow!("unknown chain: {}", chain_name))?;
     let old_shard = chain.shard;
+    let canonical_backup_name = format!("{chain_name}-old");
+
+    let existing_backup = find_chain(&mut conn, &canonical_backup_name).await?;
 
     println!("Current shard: {}", old_shard);
 
@@ -245,43 +260,110 @@ pub async fn change_block_cache_shard(
         .chain_store(&chain_name)
         .await
         .ok_or_else(|| anyhow!("unknown chain: {}", &chain_name))?;
-    let new_name = format!("{}-old", &chain_name);
     let ident = chain_store.chain_identifier().await?;
+    let target_shard = Shard::new(shard)?;
 
-    conn.transaction::<(), StoreError, _>(|conn|  {
-        async {
-            let shard = Shard::new(shard.to_string())?;
+    let reuse_existing_backup = match existing_backup.as_ref() {
+        None => false,
+        Some(backup) if backup.shard != target_shard => {
+            bail!(
+                "`{}` already exists on shard `{}`. Remove it with `graphman chain remove {}` before changing `{}` to shard `{}`",
+                canonical_backup_name,
+                backup.shard,
+                canonical_backup_name,
+                chain_name,
+                target_shard,
+            );
+        }
+        Some(backup) => {
+            let backup_ident = backup.network_identifier()?;
+            if backup_ident != ident {
+                bail!(
+                    "`{}` has a different chain identifier ({}) than `{}` ({}). Remove it with `graphman chain remove {}` before changing `{}` to shard `{}`",
+                    canonical_backup_name,
+                    backup_ident,
+                    chain_name,
+                    ident,
+                    canonical_backup_name,
+                    chain_name,
+                    target_shard,
+                );
+            }
+            let prompt = format!(
+                "`{}` already exists on shard `{}` and will be reused as the active `{}` chain.\nProceed?",
+                canonical_backup_name, target_shard, chain_name
+            );
+            if !prompt_for_confirmation(&prompt)? {
+                println!(
+                    "Aborting. Remove `{}` with `graphman chain remove {}` if you want to create a fresh cache on shard `{}`.",
+                    canonical_backup_name, canonical_backup_name, target_shard
+                );
+                return Ok(());
+            }
+            true
+        }
+    };
 
-            let chain = BlockStore::allocate_chain(conn, &chain_name, &shard, &ident).await?;
+    let existing_backup_store = if reuse_existing_backup {
+        store.chain_store(&canonical_backup_name).await
+    } else {
+        None
+    };
 
-            store.add_chain_store(&chain,ChainStatus::Ingestible, true).await?;
+    if !reuse_existing_backup {
+        let chain =
+            BlockStore::allocate_chain(&mut conn, &chain_name, &target_shard, &ident).await?;
+        store.add_chain_store(&chain, true).await?;
+    }
 
-            // Drop the foreign key constraint on deployment_schemas
-            sql_query(
-                "alter table deployment_schemas drop constraint deployment_schemas_network_fkey;",
-            )
-            .execute(conn).await?;
+    let temp_backup_name = format!("{chain_name}-old-temp");
+    if reuse_existing_backup && find_chain(&mut conn, &temp_backup_name).await?.is_some() {
+        bail!(
+            "`{}` already exists. Remove it with `graphman chain remove {}` before changing `{}` to shard `{}`",
+            temp_backup_name,
+            temp_backup_name,
+            chain_name,
+            target_shard,
+        );
+    }
 
-            // Update the current chain name to chain-old
-            update_chain_name(conn, &chain_name, &new_name).await?;
+    conn.transaction::<(), StoreError, _>(async |conn| {
+        sql_query(
+            "alter table deployment_schemas drop constraint deployment_schemas_network_fkey;",
+        )
+        .execute(conn)
+        .await?;
 
-            // Create a new chain with the name in the destination shard
-            let _ = add_chain(conn, &chain_name, &shard, ident).await?;
+        if let Some(backup) = existing_backup.as_ref() {
+            update_chain_name(conn, &backup.name, &temp_backup_name).await?;
+        }
 
-            // Re-add the foreign key constraint
-            sql_query(
-                "alter table deployment_schemas add constraint deployment_schemas_network_fkey foreign key (network) references chains(name);",
-            )
-            .execute(conn).await?;
-            Ok(())
-        }.scope_boxed()
-    }).await?;
+        update_chain_name(conn, &chain_name, &canonical_backup_name).await?;
 
-    chain_store.update_name(&new_name).await?;
+        if reuse_existing_backup {
+            update_chain_name(conn, &temp_backup_name, &chain_name).await?;
+        } else {
+            add_chain(conn, &chain_name, &target_shard, ident.clone()).await?;
+        }
+
+        sql_query(
+            "alter table deployment_schemas add constraint deployment_schemas_network_fkey foreign key (network) references chains(name);",
+        )
+        .execute(conn)
+        .await?;
+        Ok(())
+    })
+    .await?;
+
+    chain_store.update_name(&canonical_backup_name).await?;
+
+    if reuse_existing_backup && let Some(backup_store) = existing_backup_store.as_ref() {
+        backup_store.update_name(&chain_name).await?;
+    }
 
     println!(
         "Changed block cache shard for {} from {} to {}",
-        chain_name, old_shard, shard
+        chain_name, old_shard, target_shard
     );
 
     Ok(())

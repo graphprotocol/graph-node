@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use graph::prelude::{anyhow, Error, SubgraphName, SubgraphStore as _};
+use graph::prelude::{Error, SubgraphName, SubgraphStore as _, anyhow};
 use graph_store_postgres::SubgraphStore;
 
 pub async fn run(store: Arc<SubgraphStore>, name: String) -> Result<(), Error> {

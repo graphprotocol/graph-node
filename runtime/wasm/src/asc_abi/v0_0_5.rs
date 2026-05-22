@@ -7,7 +7,7 @@ use semver::Version;
 
 use graph::runtime::gas::GasCounter;
 use graph::runtime::{
-    AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HostExportError, HEADER_SIZE,
+    AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, HEADER_SIZE, HostExportError,
 };
 
 use crate::asc_abi::class;

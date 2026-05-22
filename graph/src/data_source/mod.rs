@@ -25,9 +25,9 @@ use crate::{
     prelude::{CheapClone as _, DataSourceContext},
     schema::{EntityType, InputSchema},
 };
-use anyhow::{anyhow, Context, Error};
+use anyhow::{Context, Error, anyhow};
 use semver::Version;
-use serde::{de::IntoDeserializer as _, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, de::IntoDeserializer as _};
 use slog::{Logger, SendSyncRefUnwindSafeKV};
 use std::{
     collections::{BTreeMap, HashSet},

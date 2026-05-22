@@ -6,12 +6,12 @@ use super::{ProofOfIndexingEvent, ProofOfIndexingVersion};
 use crate::{
     blockchain::BlockPtr,
     data::store::Id,
-    prelude::{debug, BlockNumber, DeploymentHash, Logger, ENV_VARS},
+    prelude::{BlockNumber, DeploymentHash, ENV_VARS, Logger, debug},
     util::stable_hash_glue::AsBytes,
 };
 use alloy::primitives::Address;
 use sha2::{Digest, Sha256};
-use stable_hash::{fast::FastStableHasher, FieldAddress, StableHash, StableHasher};
+use stable_hash::{FieldAddress, StableHash, StableHasher, fast::FastStableHasher};
 use stable_hash_legacy::crypto::{Blake3SeqNo, SetHasher};
 use stable_hash_legacy::prelude::{
     StableHash as StableHashLegacy, StableHasher as StableHasherLegacy, *,
@@ -324,7 +324,7 @@ impl ProofOfIndexingFinisher {
 
         match self.state {
             Hashers::Legacy(legacy) => legacy.finish(),
-            Hashers::Fast(fast) => tiny_keccak::keccak256(&fast.finish().to_le_bytes()),
+            Hashers::Fast(fast) => alloy::primitives::keccak256(fast.finish().to_le_bytes()).0,
         }
     }
 }

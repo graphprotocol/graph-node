@@ -5,12 +5,11 @@ CLI. The location of the file is passed with the `--config` command line switch.
 configuration file, it is not possible to use the options `--postgres-url`,
 `--postgres-secondary-hosts`, and `--postgres-host-weights`.
 
-The TOML file consists of four sections:
+The TOML file consists of three sections:
 
-- `[chains]` sets the endpoints to blockchain clients.
-- `[store]` describes the available databases.
-- `[ingestor]` sets the name of the node responsible for block ingestion.
-- `[deployment]` describes how to place newly deployed subgraphs.
+- [`[chains]`](#configuring-chains) lists the available chains and how to access them.
+- [`[store]`](#configuring-multiple-databases) describes the available databases.
+- [`[deployment]`](#controlling-deployment) describes how to place newly deployed subgraphs.
 
 Some of these sections support environment variable expansion out of the box,
 most notably Postgres connection strings. The official `graph-node` Docker image
@@ -104,8 +103,19 @@ names that will use this configuration file.
 
 The `[chains]` section controls the providers that `graph-node`
 connects to, and where blocks and other metadata for each chain are
-stored. The section consists of the name of the node doing block ingestion
-(currently not used), and a list of chains.
+stored. The section consists of the name of the node responsible for block
+ingestion and a list of chains. Block ingestion only runs on the node
+whose `--node-id` matches the `ingestor` value. The
+`--disable-block-ingestor` flag (or `DISABLE_BLOCK_INGESTOR` env var)
+acts as a hard override that always prevents ingestion regardless of
+the config.
+
+The section-level setting `cache_size` controls the default number of
+blocks from the chain head for which block data is kept cached. Individual
+chains can override this value. The default is 500. When the environment
+variable `GRAPH_STORE_IGNORE_BLOCK_CACHE` is set, blocks older than
+`cache_size` are treated as if they have no data. The value must be greater
+than the reorg threshold.
 
 The configuration for a chain `name` is specified in the section
 `[chains.<name>]`, with the following:
@@ -113,8 +123,42 @@ The configuration for a chain `name` is specified in the section
 - `shard`: where chain data is stored
 - `protocol`: the protocol type being indexed, default `ethereum`
   (alternatively `near`, `cosmos`,`arweave`,`starknet`)
-- `polling_interval`: the polling interval for the block ingestor (default 500ms)
+- `amp`: the network name used by AMP for this chain; defaults to the chain name.
+  Set this when AMP uses a different name than graph-node (e.g., `amp = "ethereum-mainnet"`
+  on a chain named `mainnet`).
+- `cache_size`: number of blocks from the chain head for which to keep
+  block data cached. Defaults to the section-level `cache_size`.
 - `provider`: a list of providers for that chain
+
+Additionally, Ethereum chains support per-chain RPC tuning settings. When
+omitted, each setting falls back to its corresponding environment variable
+default (see [environment-variables.md](environment-variables.md) for
+details):
+
+- `polling_interval`: block ingestor polling interval in milliseconds.
+  Default: `ETHEREUM_POLLING_INTERVAL` (1000ms).
+- `json_rpc_timeout`: timeout for JSON-RPC requests in seconds.
+  Default: `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT` (180s).
+- `request_retries`: number of times to retry failed JSON-RPC requests.
+  Default: `GRAPH_ETHEREUM_REQUEST_RETRIES` (10).
+- `max_block_range_size`: maximum number of blocks to scan for triggers per
+  request. Default: `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE` (1000).
+- `block_batch_size`: number of blocks to request in parallel.
+  Default: `ETHEREUM_BLOCK_BATCH_SIZE` (10).
+- `block_ptr_batch_size`: number of block pointers to request in parallel.
+  Default: `ETHEREUM_BLOCK_PTR_BATCH_SIZE` (100).
+- `max_event_only_range`: maximum range for `eth_getLogs` requests that
+  don't filter on contract address.
+  Default: `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE` (500).
+- `target_triggers_per_block_range`: ideal number of triggers per batch.
+  Default: `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE` (100).
+- `get_logs_max_contracts`: maximum contracts per `eth_getLogs` call.
+  Default: `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS` (2000).
+- `block_ingestor_max_concurrent_json_rpc_calls`: maximum concurrent
+  JSON-RPC calls for transaction receipts during block ingestion.
+  Default: `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS` (1000).
+- `genesis_block_number`: genesis block number for this chain.
+  Default: `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER` (0).
 
 A `provider` is an object with the following characteristics:
 
@@ -162,8 +206,14 @@ optimisations.
 ```toml
 [chains]
 ingestor = "block_ingestor_node"
+cache_size = 500
 [chains.mainnet]
 shard = "vip"
+amp = "ethereum-mainnet"
+# Per-chain RPC tuning (all optional — omitted fields use env var defaults)
+json_rpc_timeout = 300
+request_retries = 15
+max_block_range_size = 2000
 provider = [
   { label = "mainnet1", url = "http://..", features = [], headers = { Authorization = "Bearer foo" } },
   { label = "mainnet2", url = "http://..", features = [ "archive", "traces" ] }
@@ -177,6 +227,33 @@ shard = "blocks_b"
 protocol = "near"
 provider = [ { label = "near", details = { type = "firehose", url = "https://..", key = "", features = ["compression", "filters"] } } ]
 ```
+
+### Block ingestor failover
+
+When the block ingestor's `do_poll()` call fails (after all internal per-request retries are
+exhausted), `graph-node` automatically attempts to switch to a healthier provider. The logic
+is:
+
+1. **Probe the current provider first.** `do_poll()` can fail for reasons unrelated to RPC
+   availability (e.g. a database error or a chain reorg). If the current provider still
+   responds to `eth_blockNumber`, the failure was not caused by the provider — no switch
+   occurs.
+2. **Probe all alternatives in parallel.** If the current provider is unreachable, all other
+   validated providers are probed simultaneously via `eth_blockNumber` to minimise wait time
+   when providers are timing out.
+3. **Switch to the first reachable provider.** The first provider to respond successfully
+   to the probe is selected as the new provider for the ingestor.
+   The remaining probes are cancelled at this point.
+4. **If all providers are unreachable**, the ingestor stays on the current provider and
+   re-probes on the next `do_poll()` failure.
+
+There is no automatic return to the original provider. Once the ingestor switches, it stays on
+the new provider until that provider fails, at which point the same probe-and-switch logic
+applies.
+
+Only validated providers are eligible as failover candidates. A provider in a temporary failure
+state (e.g. unreachable at startup, pending re-validation) is excluded until it passes
+validation again.
 
 ### Controlling the number of subgraphs using a provider
 

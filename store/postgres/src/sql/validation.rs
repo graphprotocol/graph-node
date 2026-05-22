@@ -246,7 +246,7 @@ impl VisitorMut for Validator<'_> {
             SetExpr::Table(_) => { /* permitted */ }
             SetExpr::Values(_) => { /* permitted */ }
             SetExpr::Insert(_) | SetExpr::Update(_) | SetExpr::Delete(_) | SetExpr::Merge(_) => {
-                return ControlFlow::Break(Error::NotSelectQuery)
+                return ControlFlow::Break(Error::NotSelectQuery);
             }
         }
 
@@ -383,12 +383,14 @@ impl VisitorMut for Validator<'_> {
                     name: Ident::new(table.name.as_str()),
                     columns: vec![],
                     explicit: true,
+                    at: None,
                 })
             });
             *table_factor = TableFactor::Derived {
                 lateral: false,
                 subquery,
                 alias,
+                sample: None,
             };
         }
         ControlFlow::Continue(())

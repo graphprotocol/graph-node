@@ -3,8 +3,8 @@
 use super::schema::{SubgraphError, SubgraphHealth};
 use crate::blockchain::BlockHash;
 use crate::components::store::{BlockNumber, DeploymentId};
-use crate::data::graphql::{object, IntoValue};
-use crate::prelude::{r, BlockPtr, Value};
+use crate::data::graphql::{IntoValue, object};
+use crate::prelude::{BlockPtr, Value, r};
 
 pub enum Filter {
     /// Get all versions for the named subgraph

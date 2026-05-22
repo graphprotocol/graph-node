@@ -10,24 +10,24 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::Error;
-use graph::components::store::GetScope;
+use graph::components::store::{GetScope, SeqGenerator};
 use never::Never;
 
-use crate::asc_abi::class::*;
 use crate::HostExports;
+use crate::asc_abi::class::*;
 use graph::data::store;
 
+use crate::ExperimentalFeatures;
 use crate::asc_abi::class::AscEntity;
 use crate::asc_abi::class::AscString;
 use crate::mapping::MappingContext;
 use crate::mapping::ValidModule;
-use crate::ExperimentalFeatures;
 use graph::prelude::*;
 use graph::runtime::AscPtr;
-use graph::runtime::{asc_new, gas::GasCounter, DeterministicHostError, HostExportError};
+use graph::runtime::{DeterministicHostError, HostExportError, asc_new, gas::GasCounter};
 
-use super::asc_get;
 use super::AscHeapCtx;
+use super::asc_get;
 
 pub(crate) struct WasmInstanceContext<'a> {
     inner: StoreContextMut<'a, WasmInstanceData>,
@@ -82,6 +82,9 @@ pub struct WasmInstanceData {
     pub valid_module: Arc<ValidModule>,
     pub host_metrics: Arc<HostMetrics>,
 
+    // Per-trigger gas counter, shared via Arc so clones refer to the same counter.
+    pub gas: GasCounter,
+
     // A trap ocurred due to a possible reorg detection.
     pub possible_reorg: bool,
 
@@ -100,6 +103,7 @@ impl WasmInstanceData {
         ctx: MappingContext,
         valid_module: Arc<ValidModule>,
         host_metrics: Arc<HostMetrics>,
+        gas: GasCounter,
         experimental_features: ExperimentalFeatures,
     ) -> Self {
         WasmInstanceData {
@@ -107,6 +111,7 @@ impl WasmInstanceData {
             ctx,
             valid_module,
             host_metrics,
+            gas,
             possible_reorg: false,
             deterministic_host_trap: false,
             experimental_features,
@@ -126,7 +131,11 @@ impl WasmInstanceData {
 
         std::mem::replace(
             state,
-            BlockState::new(state.entity_cache.store.cheap_clone(), LfuCache::default()),
+            BlockState::new(
+                state.entity_cache.store.cheap_clone(),
+                LfuCache::default(),
+                SeqGenerator::new(self.ctx.block_ptr.number),
+            ),
         )
     }
 }
@@ -251,7 +260,6 @@ impl WasmInstanceContext<'_> {
     ) -> Result<(), HostExportError> {
         let stopwatch = self.as_ref().host_metrics.stopwatch.cheap_clone();
         let logger = self.as_ref().ctx.logger.cheap_clone();
-        let block_number = self.as_ref().ctx.block_ptr.block_number();
         stopwatch.start_section("host_export_store_set__wasm_instance_context_store_set");
 
         let entity: String = asc_get(self, entity_ptr, gas)?;
@@ -270,7 +278,6 @@ impl WasmInstanceContext<'_> {
         host_exports
             .store_set(
                 &logger,
-                block_number,
                 &mut ctx.state,
                 &ctx.proof_of_indexing,
                 ctx.timestamp,

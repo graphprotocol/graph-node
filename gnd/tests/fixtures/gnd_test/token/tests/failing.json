@@ -1,0 +1,12 @@
+{
+  "name": "Deliberately failing test (wrong expected value)",
+  "blocks": [
+    {}
+  ],
+  "assertions": [
+    {
+      "query": "{ tokens { id name symbol } }",
+      "expected": { "tokens": [ { "id": "0x731a10897d267e19b34503ad902d0a29173ba4b1", "name": "TheGraph", "symbol": "GRT" } ] }
+    }
+  ]
+}

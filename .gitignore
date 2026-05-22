@@ -25,6 +25,7 @@ lcov.info
 
 # Node dependencies
 node_modules/
+.pnpm-store/
 
 # Docker volumes and debug logs
 .postgres
@@ -37,3 +38,4 @@ logfile
 
 # Local claude settings
 .claude/settings.local.json
+.claude/ralph-loop.local.md

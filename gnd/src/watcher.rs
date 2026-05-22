@@ -1,8 +1,8 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use graph::prelude::{DeploymentHash, SubgraphName};
-use graph::slog::{self, error, info, Logger};
-use notify::{recommended_watcher, Event, RecursiveMode, Watcher};
+use graph::slog::{self, Logger, error, info};
+use notify::{Event, RecursiveMode, Watcher, recommended_watcher};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;

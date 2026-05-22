@@ -1,4 +1,4 @@
-use std::sync::{atomic::AtomicBool, atomic::Ordering, Mutex};
+use std::sync::{Mutex, atomic::AtomicBool, atomic::Ordering};
 use std::time::Instant;
 
 use crate::derive::CheapClone;

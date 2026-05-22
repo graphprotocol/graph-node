@@ -12,10 +12,9 @@ use graph::{
 };
 
 use crate::{
-    catalog,
+    AsyncPgConnection, catalog,
     primary::Namespace,
     relational::{Table, VID_COLUMN},
-    AsyncPgConnection,
 };
 
 /// The initial batch size for tables that do not have an array column
@@ -35,6 +34,13 @@ pub(crate) struct AdaptiveBatchSize {
 }
 
 impl AdaptiveBatchSize {
+    pub fn with_size(size: i64) -> Self {
+        Self {
+            size,
+            target: ENV_VARS.store.batch_target_duration,
+        }
+    }
+
     pub fn new(table: &Table) -> Self {
         let size = if table.columns.iter().any(|col| col.is_list()) {
             INITIAL_BATCH_SIZE_LIST

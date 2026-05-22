@@ -9,7 +9,7 @@ mod resolver;
 /// Our representation of a query AST
 pub mod ast;
 
-use stable_hash_legacy::{crypto::SetHasher, StableHasher};
+use stable_hash_legacy::{StableHasher, crypto::SetHasher};
 
 pub use self::execution::*;
 pub use self::query::Query;

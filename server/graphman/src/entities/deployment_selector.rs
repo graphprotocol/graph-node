@@ -1,5 +1,5 @@
-use anyhow::anyhow;
 use anyhow::Result;
+use anyhow::anyhow;
 use async_graphql::InputObject;
 
 /// Available criteria for selecting one or more deployments.

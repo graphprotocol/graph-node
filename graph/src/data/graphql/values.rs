@@ -1,12 +1,12 @@
 use alloy::primitives::Address;
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::str::FromStr;
 
 use crate::blockchain::BlockHash;
 use crate::data::value::Object;
-use crate::prelude::{r, BigInt};
+use crate::prelude::{BigInt, r};
 
 pub trait TryFromValue: Sized {
     fn try_from_value(value: &r::Value) -> Result<Self, Error>;

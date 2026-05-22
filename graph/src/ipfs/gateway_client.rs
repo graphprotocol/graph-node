@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
-use derivative::Derivative;
+use derive_more::Debug;
 use http::header::ACCEPT;
 use http::header::CACHE_CONTROL;
-use reqwest::{redirect::Policy as RedirectPolicy, StatusCode};
+use reqwest::{StatusCode, redirect::Policy as RedirectPolicy};
 use slog::Logger;
 
 use crate::env::ENV_VARS;
@@ -17,12 +17,11 @@ use crate::ipfs::{
 /// A client that connects to an IPFS gateway.
 ///
 /// Reference: <https://specs.ipfs.tech/http-gateways/path-gateway>
-#[derive(Clone, Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, Debug)]
 pub struct IpfsGatewayClient {
     server_address: ServerAddress,
 
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     http_client: reqwest::Client,
 
     metrics: IpfsMetrics,
@@ -163,11 +162,11 @@ mod tests {
 
     use bytes::BytesMut;
     use futures03::TryStreamExt;
-    use wiremock::matchers as m;
     use wiremock::Mock;
     use wiremock::MockBuilder;
     use wiremock::MockServer;
     use wiremock::ResponseTemplate;
+    use wiremock::matchers as m;
 
     use super::*;
     use crate::data::subgraph::DeploymentHash;
@@ -552,7 +551,7 @@ mod tests {
 
     #[crate::test]
     async fn operation_names_include_cid_for_debugging() {
-        use slog::{o, Drain, Logger, Record};
+        use slog::{Drain, Logger, Record, o};
         use std::sync::{Arc, Mutex};
 
         // Custom drain to capture log messages

@@ -1,0 +1,80 @@
+{
+  "name": "Test dynamic datasources support",
+  "blocks": [
+    {
+      "number": 2001,
+      "events": [
+        {
+          "address": "0x0000000000000000000000000000000000000001",
+          "event": "FactoryTokenCreated(address indexed addr)",
+          "params": {
+            "addr": "0x0000000000000000000000000000000000000002"
+          }
+        }
+      ],
+      "ethCalls": [
+        {
+          "address": "0x0000000000000000000000000000000000000002",
+          "function": "symbol()(string)",
+          "params": [],
+          "returns": ["FT1"]
+        },
+        {
+          "address": "0x0000000000000000000000000000000000000002",
+          "function": "name()(string)",
+          "params": [],
+          "returns": ["FactoryToken1"]
+        },
+        {
+          "address": "0x0000000000000000000000000000000000000002",
+          "function": "decimals()(uint8)",
+          "params": [],
+          "returns": ["18"]
+        }
+      ]
+    },
+    {
+      "number": 2002,
+      "events": [
+        {
+          "address": "0x0000000000000000000000000000000000000002",
+          "event": "Transfer(address indexed from, address indexed to, uint256 value)",
+          "params": {
+            "from": "0xaaaa000000000000000000000000000000000000",
+            "to": "0xbbbb000000000000000000000000000000000000",
+            "value": "1000000000000000000"
+          }
+        }
+      ],
+      "ethCalls": [
+        {
+          "address": "0x0000000000000000000000000000000000000002",
+          "function": "balanceOf(address)(uint256)",
+          "params": ["0xaaaa000000000000000000000000000000000000"],
+          "returns": ["3000000000000000000"]
+        },
+        {
+          "address": "0x0000000000000000000000000000000000000002",
+          "function": "balanceOf(address)(uint256)",
+          "params": ["0xbbbb000000000000000000000000000000000000"],
+          "returns": ["5000000000000000000"]
+        }
+      ]
+    }
+  ],
+  "assertions": [
+    {
+      "query": "{ tokens { id name symbol decimals } }",
+      "expected": { "tokens": [ { "id": "0x0000000000000000000000000000000000000002", "name": "FactoryToken1", "symbol": "FT1", "decimals": 18 } ] }
+    },
+    {
+      "query": "{ accounts { id balances { token { symbol } amount } } }",
+      "expected": {
+        "accounts": [
+          {"id": "0xbbbb000000000000000000000000000000000000", "balances": [{"token": { "symbol": "FT1" }, "amount": "5000000000000000000"}]},
+          {"id": "0xaaaa000000000000000000000000000000000000", "balances": [{"token": { "symbol": "FT1" }, "amount": "3000000000000000000"}]}
+        ]
+      }
+    }
+  ]
+}

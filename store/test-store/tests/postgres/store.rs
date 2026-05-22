@@ -1,5 +1,5 @@
-use graph::blockchain::block_stream::FirehoseCursor;
 use graph::blockchain::BlockTime;
+use graph::blockchain::block_stream::FirehoseCursor;
 use graph::data::graphql::ext::TypeDefinitionExt;
 use graph::data::subgraph::schema::DeploymentCreate;
 use graph::data_source::common::MappingABI;

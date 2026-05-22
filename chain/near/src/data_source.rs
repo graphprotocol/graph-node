@@ -7,7 +7,7 @@ use graph::components::subgraph::InstanceDSTemplateInfo;
 use graph::data::subgraph::{DataSourceContext, DeploymentHash};
 use graph::prelude::SubgraphManifestValidationError;
 use graph::{
-    anyhow::{anyhow, Error},
+    anyhow::{Error, anyhow},
     blockchain::{self, Blockchain},
     prelude::{BlockNumber, CheapClone, Deserialize, Link, LinkResolver, Logger},
     semver,

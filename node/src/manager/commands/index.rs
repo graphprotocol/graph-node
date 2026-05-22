@@ -1,12 +1,12 @@
-use crate::manager::{color::Terminal, deployment::DeploymentSearch, CmdResult};
+use crate::manager::{CmdResult, color::Terminal, deployment::DeploymentSearch};
 use graph::{
     components::store::DeploymentLocator,
     itertools::Itertools,
-    prelude::{anyhow, StoreError},
+    prelude::{StoreError, anyhow},
 };
 use graph_store_postgres::{
-    command_support::index::{CreateIndex, Method},
     ConnectionPool, SubgraphStore,
+    command_support::index::{CreateIndex, IndexCreator, Method},
 };
 use std::io::Write as _;
 use std::{collections::HashSet, sync::Arc};
@@ -183,8 +183,9 @@ pub async fn list(
     let mut term = Terminal::new();
 
     if to_sql {
+        let creat = IndexCreator::new(concurrent, if_not_exists, true);
         for index in indexes {
-            writeln!(term, "{};", index.to_sql(concurrent, if_not_exists)?)?;
+            writeln!(term, "{};", creat.to_sql(&index)?)?;
         }
     } else {
         let mut first = true;

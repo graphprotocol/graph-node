@@ -12,7 +12,7 @@ mod test {
 
     use crate::{
         catalog::Catalog,
-        primary::{make_dummy_site, Namespace},
+        primary::{Namespace, make_dummy_site},
         relational::Layout,
     };
 

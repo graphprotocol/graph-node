@@ -16,16 +16,16 @@ use crate::{
     prelude::{DataSourceContext, Link},
     schema::{EntityType, InputSchema},
 };
-use anyhow::{anyhow, Context, Error};
+use anyhow::{Context, Error, anyhow};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use serde::Deserialize;
-use slog::{info, warn, Logger};
+use slog::{Logger, info, warn};
 use std::{
     collections::HashMap,
     fmt,
     str::FromStr,
-    sync::{atomic::AtomicI32, Arc},
+    sync::{Arc, atomic::AtomicI32},
 };
 
 use super::{CausalityRegion, DataSourceCreationError, DataSourceTemplateInfo, TriggerWithHandler};
@@ -326,8 +326,8 @@ impl Source {
     ///    the `source` of the data source is equal the `source` of the `TriggerData`.
     pub fn address(&self) -> Option<Vec<u8>> {
         match self {
-            Source::Ipfs(ref path) => Some(path.to_string().as_bytes().to_vec()),
-            Source::Arweave(ref base64) => Some(base64.as_bytes().to_vec()),
+            Source::Ipfs(path) => Some(path.to_string().as_bytes().to_vec()),
+            Source::Arweave(base64) => Some(base64.as_bytes().to_vec()),
         }
     }
 }
@@ -335,8 +335,8 @@ impl Source {
 impl From<Source> for Bytes {
     fn from(val: Source) -> Self {
         match val {
-            Source::Ipfs(ref path) => Bytes::from(path.to_string().as_bytes().to_vec()),
-            Source::Arweave(ref base64) => Bytes::from(base64.as_bytes()),
+            Source::Ipfs(path) => Bytes::from(path.to_string().as_bytes().to_vec()),
+            Source::Arweave(base64) => Bytes::from(base64.as_bytes()),
         }
     }
 }

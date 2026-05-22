@@ -5,8 +5,8 @@ use cache::CachingClient;
 use futures03::future::BoxFuture;
 use futures03::stream::FuturesUnordered;
 use futures03::stream::StreamExt;
-use slog::info;
 use slog::Logger;
+use slog::info;
 
 use crate::components::metrics::MetricsRegistry;
 use crate::util::security::SafeDisplay;

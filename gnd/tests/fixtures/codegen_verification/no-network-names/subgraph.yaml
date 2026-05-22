@@ -1,0 +1,40 @@
+specVersion: 0.0.1
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: ExampleSubgraph
+    source:
+      address: '22843e74c59580b3eaf6c233fa67d8b7c561a835'
+      abi: ExampleContract
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      file: ./mapping.ts
+      entities:
+        - ExampleEntity
+      abis:
+        - name: ExampleContract
+          file: ./Abi.json
+      eventHandlers:
+        - event: ExampleEvent(string)
+          handler: handleExampleEvent
+templates:
+  - kind: ethereum/contract
+    name: ExampleTemplate
+    source:
+      abi: ExampleContract
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      file: ./mapping.ts
+      entities:
+        - ExampleEntity
+      abis:
+        - name: ExampleContract
+          file: ./Abi.json
+      eventHandlers:
+        - event: ExampleEvent(string)
+          handler: handleExampleEvent

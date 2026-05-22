@@ -8,18 +8,19 @@ use graph::{
     blockchain::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
     },
-    components::ethereum::{AnyBlock, AnyHeader, AnyRpcHeader, AnyRpcTransaction, AnyTxEnvelope},
+    components::ethereum::{
+        AnyBlock, AnyHeader, AnyRpcHeader, AnyTransactionReceiptBare, AnyTxEnvelope,
+    },
     prelude::{
+        BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
+        LightEthereumBlock,
         alloy::{
             self,
             consensus::{ReceiptWithBloom, TxEnvelope, TxType},
             network::AnyReceiptEnvelope,
-            primitives::{aliases::B2048, Address, Bloom, Bytes, LogData, B256, U256},
+            primitives::{Address, B256, Bloom, Bytes, LogData, U256, aliases::B2048},
             rpc::types::{self as alloy_rpc_types, AccessList, AccessListItem, Transaction},
-            serde::WithOtherFields,
         },
-        BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
-        LightEthereumBlock,
     },
 };
 use std::sync::Arc;
@@ -161,6 +162,11 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
         // Extract data from trace and block
         let block_hash = self.block.hash.try_decode_proto("transaction block hash")?;
         let block_number = self.block.number;
+        let block_timestamp = self
+            .block
+            .header
+            .as_ref()
+            .and_then(|h| h.timestamp.as_ref().map(|t| t.seconds as u64));
         let transaction_index = Some(self.trace.index as u64);
         let from_address = self
             .trace
@@ -240,6 +246,7 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
                 inner: recovered,
                 block_hash: Some(block_hash),
                 block_number: Some(block_number),
+                block_timestamp,
                 transaction_index,
                 effective_gas_price: if gas_price > 0 { Some(gas_price) } else { None },
             });
@@ -450,6 +457,7 @@ impl<'a> TryInto<Transaction<AnyTxEnvelope>> for TransactionTraceAt<'a> {
             inner: recovered,
             block_hash: Some(block_hash),
             block_number: Some(block_number),
+            block_timestamp,
             transaction_index,
             effective_gas_price: if gas_price > 0 { Some(gas_price) } else { None }, // gas_price already contains effective gas price per protobuf spec
         })
@@ -527,6 +535,8 @@ impl TryInto<AnyBlock> for &Block {
             } else {
                 Some(header.requests_hash.try_decode_proto("requests hash")?)
             },
+            block_access_list_hash: None,
+            slot_number: None,
         };
 
         let rpc_header = alloy::rpc::types::Header {
@@ -556,19 +566,12 @@ impl TryInto<AnyBlock> for &Block {
 
         let any_header: AnyRpcHeader = rpc_header.map(AnyHeader::from);
 
-        let any_transactions: Vec<AnyRpcTransaction> = transactions
-            .into_iter()
-            .map(|tx| AnyRpcTransaction::new(WithOtherFields::new(tx)))
-            .collect();
-
-        let any_block = Block {
+        Ok(Block {
             header: any_header,
-            transactions: alloy::rpc::types::BlockTransactions::Full(any_transactions),
+            transactions: alloy::rpc::types::BlockTransactions::Full(transactions),
             uncles,
             withdrawals: None,
-        };
-
-        Ok(AnyBlock::new(WithOtherFields::new(any_block)))
+        })
     }
 }
 
@@ -619,7 +622,7 @@ impl TryInto<EthereumBlockWithCalls> for &Block {
 fn transaction_trace_to_alloy_txn_reciept(
     t: &TransactionTrace,
     block: &Block,
-) -> Result<Option<alloy::network::AnyTransactionReceipt>, Error> {
+) -> Result<Option<AnyTransactionReceiptBare>, Error> {
     use alloy::consensus::{Eip658Value, Receipt};
     let r = t.receipt.as_ref();
 
@@ -656,7 +659,7 @@ fn transaction_trace_to_alloy_txn_reciept(
         TransactionTraceStatus::Unknown => {
             return Err(format_err!(
                 "Transaction trace has UNKNOWN status; datasource is broken"
-            ))
+            ));
         }
         TransactionTraceStatus::Succeeded => true,
         TransactionTraceStatus::Failed | TransactionTraceStatus::Reverted => false,
@@ -719,7 +722,7 @@ fn transaction_trace_to_alloy_txn_reciept(
         inner: any_envelope,
     };
 
-    Ok(Some(WithOtherFields::new(receipt)))
+    Ok(Some(receipt))
 }
 
 impl BlockHeader {
@@ -1014,7 +1017,7 @@ mod test {
 
         let receipt = receipt_opt.unwrap();
 
-        assert_eq!(receipt.inner.inner.r#type, 126);
+        assert_eq!(receipt.inner.r#type, 126);
         assert_eq!(receipt.gas_used, 21000);
         assert_eq!(receipt.transaction_index, Some(0));
     }

@@ -29,12 +29,12 @@
 /// ```
 use clap::Parser;
 
-use graph::data::graphql::ext::DirectiveFinder;
 use graph::data::graphql::DirectiveExt;
 use graph::data::graphql::DocumentExt;
+use graph::data::graphql::ext::DirectiveFinder;
 use graph::data::subgraph::SPEC_VERSION_1_1_0;
-use graph::prelude::s;
 use graph::prelude::DeploymentHash;
+use graph::prelude::s;
 use graph::schema::InputSchema;
 use serde::Deserialize;
 use std::alloc::GlobalAlloc;
@@ -50,7 +50,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 use std::time::{Duration, Instant};
 
-use graph::anyhow::{anyhow, bail, Result};
+use graph::anyhow::{Result, anyhow, bail};
 
 // Install an allocator that tracks allocation sizes
 
@@ -60,7 +60,7 @@ struct Counter;
 
 unsafe impl GlobalAlloc for Counter {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        let ret = System.alloc(layout);
+        let ret = unsafe { System.alloc(layout) };
         if !ret.is_null() {
             ALLOCATED.fetch_add(layout.size(), SeqCst);
         }
@@ -68,7 +68,7 @@ unsafe impl GlobalAlloc for Counter {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        System.dealloc(ptr, layout);
+        unsafe { System.dealloc(ptr, layout) };
         ALLOCATED.fetch_sub(layout.size(), SeqCst);
     }
 }
@@ -278,7 +278,9 @@ impl Runner for Sizer {
 
 pub fn main() {
     // Allow fulltext search in schemas
-    std::env::set_var("GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH", "true");
+    unsafe {
+        std::env::set_var("GRAPH_ALLOW_NON_DETERMINISTIC_FULLTEXT_SEARCH", "true");
+    }
 
     let opt = Opts::parse();
 

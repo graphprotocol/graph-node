@@ -84,21 +84,23 @@ When filtering for specific tests, ensure the intended test name(s) appear in th
 3. Anvil running on localhost:3021
 4. PNPM
 5. Foundry (for smart contract compilation)
-6. **Built graph-node binary** (integration tests require the compiled binary)
 
 The environment dependencies and environment setup are operated by the human.
 
 **Running Integration Tests:**
 
 ```bash
-# REQUIRED: Build graph-node binary before running integration tests
-just build
-
-# Run all integration tests
+# Run all integration tests (automatically builds graph-node and gnd)
 just test-integration
 
 # Run a specific integration test case (e.g., "grafted" test case)
 TEST_CASE=grafted just test-integration
+
+# (Optional) Use graph-cli instead of gnd for compatibility testing
+GRAPH_CLI=node_modules/.bin/graph just test-integration
+
+# Override ports if using different service ports (e.g., for local development)
+POSTGRES_TEST_PORT=5432 ETHEREUM_TEST_PORT=8545 IPFS_TEST_PORT=5001 just test-integration
 ```
 
 **⚠️ Test Verification Requirements:**
@@ -112,6 +114,8 @@ TEST_CASE=grafted just test-integration
 - Integration tests take significant time (several minutes)
 - Tests automatically reset the database between runs
 - Logs are written to `tests/integration-tests/graph-node.log`
+- **If a test hangs for >10 minutes**, it's likely stuck - kill with `pkill -9 integration_tests` and check logs
+- CI uses the default ports (3011, 3021, 3001) - local development can override with environment variables
 
 ### Code Quality
 
@@ -258,10 +262,7 @@ just test-runner
 # PostgreSQL: localhost:3011, IPFS: localhost:3001, Anvil: localhost:3021
 nix run .#integration
 
-# Claude: Build graph-node binary before running integration tests
-just build
-
-# Claude: Run integration tests
+# Claude: Run integration tests (automatically builds graph-node and gnd)
 just test-integration
 ```
 

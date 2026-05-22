@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::parking_lot::RwLock;
 
-use prometheus::{labels, Histogram, IntCounterVec};
+use prometheus::{Histogram, IntCounterVec, labels};
 use prometheus::{IntCounter, IntGauge};
 use slog::debug;
 
@@ -13,7 +13,7 @@ use crate::prometheus::{
     Counter, CounterVec, Error as PrometheusError, Gauge, GaugeVec, HistogramOpts, HistogramVec,
     Opts, Registry,
 };
-use crate::slog::{self, error, o, Logger};
+use crate::slog::{self, Logger, error, o};
 
 pub struct MetricsRegistry {
     logger: Logger,

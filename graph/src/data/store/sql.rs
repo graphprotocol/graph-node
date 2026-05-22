@@ -5,7 +5,7 @@ use diesel::sql_types::{Binary, Bool, Int8, Integer, Text, Timestamptz};
 
 use std::str::FromStr;
 
-use super::{scalar, Value};
+use super::{Value, scalar};
 
 impl ToSql<Bool, Pg> for Value {
     fn to_sql(&self, out: &mut Output<Pg>) -> serialize::Result {

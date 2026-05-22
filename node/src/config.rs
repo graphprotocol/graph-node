@@ -1,29 +1,33 @@
 use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
-    components::network_provider::ChainName,
+    components::{
+        network_provider::{AmpChainNames, ChainName},
+        store::BLOCK_CACHE_SIZE,
+    },
     env::ENV_VARS,
-    firehose::{SubgraphLimit, SUBGRAPHS_PER_CONN},
+    firehose::{SUBGRAPHS_PER_CONN, SubgraphLimit},
     itertools::Itertools,
     prelude::{
-        anyhow::{anyhow, bail, Context, Result},
+        BLOCK_NUMBER_MAX, Logger, NodeId, StoreError,
+        anyhow::{Context, Result, anyhow, bail},
         info,
         regex::Regex,
         serde::{
-            de::{self, value, SeqAccess, Visitor},
             Deserialize, Deserializer,
+            de::{self, SeqAccess, Visitor, value},
         },
-        serde_json, serde_regex, toml, Logger, NodeId, StoreError,
+        serde_json, serde_regex, toml,
     },
 };
 use graph_chain_ethereum as ethereum;
 use graph_chain_ethereum::{Compression, NodeCapabilities};
-use graph_store_postgres::{DeploymentPlacer, Shard as ShardName, PRIMARY_SHARD};
+use graph_store_postgres::{DeploymentPlacer, PRIMARY_SHARD, Shard as ShardName};
 
 use graph::http::{HeaderMap, Uri};
 use serde::Serialize;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt,
 };
 use std::{fs::read_to_string, time::Duration};
@@ -72,11 +76,14 @@ impl Default for Opt {
 pub struct Config {
     #[serde(skip, default = "default_node_id")]
     pub node: NodeId,
+    #[serde(skip)]
+    pub disable_block_ingestor: bool,
     pub general: Option<GeneralSection>,
     #[serde(rename = "store")]
     pub stores: BTreeMap<String, Shard>,
     pub chains: ChainSection,
     pub deployment: Deployment,
+    pub log_store: Option<LogStoreSection>,
 }
 
 fn validate_name(s: &str) -> Result<()> {
@@ -104,12 +111,39 @@ fn validate_name(s: &str) -> Result<()> {
 }
 
 impl Config {
+    /// Returns `true` if this node should run block ingestion.
+    ///
+    /// Block ingestion runs when the `--disable-block-ingestor` kill switch
+    /// is **not** set and this node's id matches the `ingestor` value from
+    /// the `[chains]` config section.
+    pub fn is_block_ingestor(&self) -> bool {
+        !self.disable_block_ingestor && self.chains.ingestor == self.node.to_string()
+    }
+
     pub fn chain_ids(&self) -> Vec<ChainName> {
         self.chains
             .chains
             .keys()
             .map(|k| k.as_str().into())
             .collect()
+    }
+
+    /// Build an `AmpChainNames` mapping from the config. Chains with an
+    /// explicit `amp` name map that name to the chain name; chains without
+    /// use identity mapping.
+    pub fn amp_chain_names(&self) -> AmpChainNames {
+        let mapping: HashMap<ChainName, ChainName> = self
+            .chains
+            .chains
+            .iter()
+            .map(|(chain_name, chain)| {
+                let amp_name: ChainName =
+                    chain.amp.as_deref().unwrap_or(chain_name.as_str()).into();
+                let internal_name: ChainName = chain_name.as_str().into();
+                (amp_name, internal_name)
+            })
+            .collect();
+        AmpChainNames::new(mapping)
     }
 
     /// Check that the config is valid.
@@ -124,7 +158,7 @@ impl Config {
             ));
         }
         for (key, shard) in self.stores.iter_mut() {
-            shard.validate(key)?;
+            shard.validate(key, &self.node)?;
         }
         self.deployment.validate()?;
 
@@ -164,7 +198,7 @@ impl Config {
     /// a config from the command line arguments in `opt`
     pub fn load(logger: &Logger, opt: &Opt) -> Result<Config> {
         if let Some(config) = &opt.config {
-            Self::from_file(logger, config, &opt.node_id)
+            Self::from_file(logger, config, opt)
         } else {
             info!(
                 logger,
@@ -174,14 +208,16 @@ impl Config {
         }
     }
 
-    pub fn from_file(logger: &Logger, path: &str, node: &str) -> Result<Config> {
+    pub fn from_file(logger: &Logger, path: &str, opt: &Opt) -> Result<Config> {
         info!(logger, "Reading configuration file `{}`", path);
-        Self::from_str(&read_to_string(path)?, node)
+        Self::from_str(&read_to_string(path)?, opt)
     }
 
-    pub fn from_str(config: &str, node: &str) -> Result<Config> {
+    pub fn from_str(config: &str, opt: &Opt) -> Result<Config> {
         let mut config: Config = toml::from_str(config)?;
-        config.node = NodeId::new(node).map_err(|node| anyhow!("invalid node id {}", node))?;
+        config.node =
+            NodeId::new(&opt.node_id).map_err(|node| anyhow!("invalid node id {}", node))?;
+        config.disable_block_ingestor = opt.disable_block_ingestor;
         config.validate()?;
         Ok(config)
     }
@@ -195,10 +231,12 @@ impl Config {
         stores.insert(PRIMARY_SHARD.to_string(), Shard::from_opt(true, opt)?);
         Ok(Config {
             node,
+            disable_block_ingestor: opt.disable_block_ingestor,
             general: None,
             stores,
             chains,
             deployment,
+            log_store: None,
         })
     }
 
@@ -236,6 +274,79 @@ pub struct GeneralSection {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct LogStoreSection {
+    pub backend: String,
+
+    // File backend
+    pub directory: Option<String>,
+    pub retention_hours: Option<u32>,
+
+    // Elasticsearch backend
+    pub url: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub index: Option<String>,
+    pub timeout_secs: Option<u64>,
+
+    // Loki backend (url shared with elasticsearch, differentiated by backend)
+    pub tenant_id: Option<String>,
+}
+
+impl LogStoreSection {
+    pub fn to_log_store_config(&self) -> Result<graph::components::log_store::LogStoreConfig> {
+        use graph::components::log_store::LogStoreConfig;
+
+        match self.backend.to_lowercase().as_str() {
+            "disabled" | "none" => Ok(LogStoreConfig::Disabled),
+
+            "elasticsearch" | "elastic" | "es" => {
+                let endpoint = self.url.clone().ok_or_else(|| {
+                    anyhow!("log_store: 'url' is required for elasticsearch backend")
+                })?;
+
+                Ok(LogStoreConfig::Elasticsearch {
+                    endpoint,
+                    username: self.username.clone(),
+                    password: self.password.clone(),
+                    index: self.index.clone().unwrap_or_else(|| "subgraph".to_string()),
+                    timeout_secs: self.timeout_secs.unwrap_or(10),
+                })
+            }
+
+            "loki" => {
+                let endpoint = self
+                    .url
+                    .clone()
+                    .ok_or_else(|| anyhow!("log_store: 'url' is required for loki backend"))?;
+
+                Ok(LogStoreConfig::Loki {
+                    endpoint,
+                    tenant_id: self.tenant_id.clone(),
+                    username: self.username.clone(),
+                    password: self.password.clone(),
+                })
+            }
+
+            "file" | "files" => {
+                let directory = self.directory.clone().ok_or_else(|| {
+                    anyhow!("log_store: 'directory' is required for file backend")
+                })?;
+
+                Ok(LogStoreConfig::File {
+                    directory: std::path::PathBuf::from(directory),
+                    retention_hours: self.retention_hours.unwrap_or(0),
+                })
+            }
+
+            other => Err(anyhow!(
+                "log_store: unknown backend '{}'. Valid options: disabled, elasticsearch, loki, file",
+                other
+            )),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Shard {
     pub connection: String,
     #[serde(default = "one")]
@@ -249,10 +360,10 @@ pub struct Shard {
 }
 
 impl Shard {
-    fn validate(&mut self, name: &str) -> Result<()> {
+    fn validate(&mut self, name: &str, node: &NodeId) -> Result<()> {
         ShardName::new(name.to_string()).map_err(|e| anyhow!(e))?;
 
-        self.expand_connection()?;
+        self.expand_connection(node)?;
 
         if matches!(self.pool_size, PoolSize::None) {
             return Err(anyhow!("missing pool size definition for shard `{}`", name));
@@ -302,22 +413,25 @@ impl Shard {
         })
     }
 
-    fn expand_connection(&mut self) -> Result<()> {
+    // Put the PGAPPNAME into the URL since tokio-postgres ignores this
+    // environment variable. If PGAPPNAME is not set, use `node`.
+    fn expand_connection(&mut self, node: &NodeId) -> Result<()> {
+        let app_name = std::env::var("PGAPPNAME").unwrap_or(node.to_string());
+
         let mut url = Url::parse(shellexpand::env(&self.connection)?.as_ref())?;
-        // Put the PGAPPNAME into the URL since tokio-postgres ignores this
-        // environment variable
-        if let Ok(app_name) = std::env::var("PGAPPNAME") {
-            let query = match url.query() {
-                Some(query) => {
-                    format!("{query}&application_name={app_name}")
-                }
-                None => {
-                    format!("application_name={app_name}")
-                }
-            };
-            url.set_query(Some(&query));
-        }
+
+        let query = match url.query() {
+            Some(query) => {
+                format!("{query}&application_name={app_name}")
+            }
+            None => {
+                format!("application_name={app_name}")
+            }
+        };
+        url.set_query(Some(&query));
+
         self.connection = url.to_string();
+
         Ok(())
     }
 }
@@ -421,31 +535,97 @@ pub struct ChainSection {
     pub ingestor: String,
     #[serde(flatten)]
     pub chains: BTreeMap<String, Chain>,
+    /// The default for chains that don't set this explicitly. When running
+    /// without a config file, we use `BLOCK_NUMBER_MAX` to turn off pruning
+    /// the block cache
+    #[serde(default = "default_cache_size")]
+    pub cache_size: i32,
 }
 
 impl ChainSection {
     fn validate(&mut self) -> Result<()> {
         NodeId::new(&self.ingestor)
             .map_err(|node| anyhow!("invalid node id for ingestor {}", node))?;
-        for (_, chain) in self.chains.iter_mut() {
-            chain.validate()?
+        let reorg_threshold = ENV_VARS.reorg_threshold();
+
+        if self.cache_size <= reorg_threshold {
+            return Err(anyhow!(
+                "default chains.cache_size ({}) must be greater than reorg_threshold ({})",
+                self.cache_size,
+                reorg_threshold
+            ));
         }
+
+        // Apply section-level cache_size as default for chains that
+        // don't set their own.
+        for chain in self.chains.values_mut() {
+            if chain.cache_size == 0 {
+                chain.cache_size = self.cache_size;
+            }
+        }
+
+        for (name, chain) in self.chains.iter_mut() {
+            chain
+                .validate()
+                .map_err(|e| anyhow!("chain '{}': {}", name, e))?;
+            if chain.cache_size <= reorg_threshold {
+                return Err(anyhow!(
+                    "chain '{}': cache_size ({}) must be greater than reorg_threshold ({})",
+                    name,
+                    chain.cache_size,
+                    reorg_threshold
+                ));
+            }
+        }
+
+        // Validate that effective AMP names are unique and don't collide
+        // with other chain names.
+        let mut amp_names: BTreeMap<String, String> = BTreeMap::new();
+        for (chain_name, chain) in &self.chains {
+            let effective = chain.amp.as_deref().unwrap_or(chain_name.as_str());
+            if let Some(prev_chain) = amp_names.get(effective) {
+                return Err(anyhow!(
+                    "duplicate AMP name `{}`: used by chains `{}` and `{}`",
+                    effective,
+                    prev_chain,
+                    chain_name
+                ));
+            }
+            // Check that an explicit amp alias doesn't collide with
+            // another chain's own name (which would be ambiguous).
+            if chain.amp.is_some()
+                && let Some(other) = self.chains.get(effective)
+            {
+                // Only a collision if the other chain doesn't also
+                // set the same amp alias (which is covered by the
+                // duplicate check above).
+                if other.amp.as_deref() != Some(effective) {
+                    return Err(anyhow!(
+                        "AMP alias `{}` on chain `{}` collides with chain `{}`",
+                        effective,
+                        chain_name,
+                        effective,
+                    ));
+                }
+            }
+            amp_names.insert(effective.to_string(), chain_name.clone());
+        }
+
         Ok(())
     }
 
     fn from_opt(opt: &Opt) -> Result<Self> {
-        // If we are not the block ingestor, set the node name
-        // to something that is definitely not our node_id
-        let ingestor = if opt.disable_block_ingestor {
-            format!("{} is not ingesting", opt.node_id)
-        } else {
-            opt.node_id.clone()
-        };
+        let ingestor = opt.node_id.clone();
         let mut chains = BTreeMap::new();
         Self::parse_networks(&mut chains, Transport::Rpc, &opt.ethereum_rpc)?;
         Self::parse_networks(&mut chains, Transport::Ws, &opt.ethereum_ws)?;
         Self::parse_networks(&mut chains, Transport::Ipc, &opt.ethereum_ipc)?;
-        Ok(Self { ingestor, chains })
+        Ok(Self {
+            ingestor,
+            chains,
+            // When running without a config file, we do not prune the block cache
+            cache_size: BLOCK_NUMBER_MAX,
+        })
     }
 
     pub fn providers(&self) -> Vec<String> {
@@ -521,12 +701,120 @@ impl ChainSection {
                 let entry = chains.entry(name.to_string()).or_insert_with(|| Chain {
                     shard: PRIMARY_SHARD.to_string(),
                     protocol: BlockchainKind::Ethereum,
-                    polling_interval: default_polling_interval(),
                     providers: vec![],
+                    amp: None,
+                    cache_size: 0,
+                    settings: ChainSettings::default(),
                 });
                 entry.providers.push(provider);
             }
         }
+        Ok(())
+    }
+}
+
+/// Per-chain settings. Flattened into `Chain` so all fields appear as top-level keys in
+/// `[chains.X]` TOML sections. Absent fields fall back to the corresponding `GRAPH_ETHEREUM_*` /
+/// `ETHEREUM_*` environment variable defaults via serde default functions — the same pattern as
+/// `polling_interval`.
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct ChainSettings {
+    /// Set by `polling_interval` (milliseconds). Defaults to `ETHEREUM_POLLING_INTERVAL`.
+    #[serde(
+        default = "default_polling_interval",
+        deserialize_with = "deserialize_duration_millis"
+    )]
+    pub polling_interval: Duration,
+    /// Set by `json_rpc_timeout` (seconds). Defaults to `GRAPH_ETHEREUM_JSON_RPC_TIMEOUT`.
+    #[serde(
+        default = "default_json_rpc_timeout",
+        deserialize_with = "deserialize_duration_secs"
+    )]
+    pub json_rpc_timeout: Duration,
+    /// Defaults to `GRAPH_ETHEREUM_REQUEST_RETRIES`.
+    #[serde(default = "default_request_retries")]
+    pub request_retries: usize,
+    /// Defaults to `GRAPH_ETHEREUM_MAX_BLOCK_RANGE_SIZE`.
+    #[serde(default = "default_max_block_range_size")]
+    pub max_block_range_size: i32,
+    /// Defaults to `ETHEREUM_BLOCK_BATCH_SIZE`.
+    #[serde(default = "default_block_batch_size")]
+    pub block_batch_size: usize,
+    /// Defaults to `ETHEREUM_BLOCK_PTR_BATCH_SIZE`.
+    #[serde(default = "default_block_ptr_batch_size")]
+    pub block_ptr_batch_size: usize,
+    /// Defaults to `GRAPH_ETHEREUM_MAX_EVENT_ONLY_RANGE`.
+    #[serde(default = "default_max_event_only_range")]
+    pub max_event_only_range: i32,
+    /// Defaults to `GRAPH_ETHEREUM_TARGET_TRIGGERS_PER_BLOCK_RANGE`.
+    #[serde(default = "default_target_triggers_per_block_range")]
+    pub target_triggers_per_block_range: u64,
+    /// Defaults to `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`.
+    #[serde(default = "default_get_logs_max_contracts")]
+    pub get_logs_max_contracts: usize,
+    /// Defaults to `GRAPH_ETHEREUM_BLOCK_INGESTOR_MAX_CONCURRENT_JSON_RPC_CALLS_FOR_TXN_RECEIPTS`.
+    #[serde(default = "default_block_ingestor_max_concurrent_json_rpc_calls")]
+    pub block_ingestor_max_concurrent_json_rpc_calls: usize,
+    /// Defaults to `GRAPH_ETHEREUM_GENESIS_BLOCK_NUMBER`.
+    #[serde(default = "default_genesis_block_number")]
+    pub genesis_block_number: u64,
+}
+
+impl Default for ChainSettings {
+    fn default() -> Self {
+        ChainSettings {
+            polling_interval: default_polling_interval(),
+            json_rpc_timeout: default_json_rpc_timeout(),
+            request_retries: default_request_retries(),
+            max_block_range_size: default_max_block_range_size(),
+            block_batch_size: default_block_batch_size(),
+            block_ptr_batch_size: default_block_ptr_batch_size(),
+            max_event_only_range: default_max_event_only_range(),
+            target_triggers_per_block_range: default_target_triggers_per_block_range(),
+            get_logs_max_contracts: default_get_logs_max_contracts(),
+            block_ingestor_max_concurrent_json_rpc_calls:
+                default_block_ingestor_max_concurrent_json_rpc_calls(),
+            genesis_block_number: default_genesis_block_number(),
+        }
+    }
+}
+
+impl ChainSettings {
+    fn validate(&self) -> Result<()> {
+        anyhow::ensure!(
+            !self.polling_interval.is_zero(),
+            "polling_interval must be > 0"
+        );
+        anyhow::ensure!(
+            !self.json_rpc_timeout.is_zero(),
+            "json_rpc_timeout must be > 0"
+        );
+        anyhow::ensure!(self.request_retries > 0, "request_retries must be > 0");
+        anyhow::ensure!(
+            self.max_block_range_size > 0,
+            "max_block_range_size must be > 0"
+        );
+        anyhow::ensure!(
+            self.max_event_only_range > 0,
+            "max_event_only_range must be > 0"
+        );
+        anyhow::ensure!(self.block_batch_size > 0, "block_batch_size must be > 0");
+        anyhow::ensure!(
+            self.block_ptr_batch_size > 0,
+            "block_ptr_batch_size must be > 0"
+        );
+        anyhow::ensure!(
+            self.block_ingestor_max_concurrent_json_rpc_calls > 0,
+            "block_ingestor_max_concurrent_json_rpc_calls must be > 0"
+        );
+        anyhow::ensure!(
+            self.get_logs_max_contracts > 0,
+            "get_logs_max_contracts must be > 0"
+        );
+        anyhow::ensure!(
+            self.target_triggers_per_block_range > 0,
+            "target_triggers_per_block_range must be > 0"
+        );
         Ok(())
     }
 }
@@ -536,13 +824,24 @@ pub struct Chain {
     pub shard: String,
     #[serde(default = "default_blockchain_kind")]
     pub protocol: BlockchainKind,
-    #[serde(
-        default = "default_polling_interval",
-        deserialize_with = "deserialize_duration_millis"
-    )]
-    pub polling_interval: Duration,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
+    /// AMP network name alias. When set, AMP manifests using this name will
+    /// resolve to this chain. Defaults to the chain name.
+    #[serde(default)]
+    pub amp: Option<String>,
+    /// Number of blocks from chain head for which to keep block data
+    /// cached. When `GRAPH_STORE_IGNORE_BLOCK_CACHE` is set, blocks
+    /// older than this are treated as if they have no data.
+    #[serde(default)]
+    pub cache_size: i32,
+    /// Per-chain settings (flat fields). Absent fields fall back to ENV_VAR defaults.
+    #[serde(flatten)]
+    pub settings: ChainSettings,
+}
+
+fn default_cache_size() -> i32 {
+    BLOCK_CACHE_SIZE
 }
 
 fn default_blockchain_kind() -> BlockchainKind {
@@ -555,12 +854,16 @@ impl Chain {
         labels.sort();
         labels.dedup();
         if labels.len() != self.providers.len() {
-            return Err(anyhow!("Provider labels must be unique"));
+            return Err(anyhow!("provider labels must be unique"));
         }
 
         // `Config` validates that `self.shard` references a configured shard
         for provider in self.providers.iter_mut() {
             provider.validate()?
+        }
+
+        if self.protocol == BlockchainKind::Ethereum {
+            self.settings.validate()?;
         }
 
         Ok(())
@@ -907,7 +1210,9 @@ impl<'de> Deserialize<'de> for Provider {
                             || features.is_some()
                             || headers.is_some()
                         {
-                            return Err(serde::de::Error::custom("when `details` field is provided, deprecated `url`, `transport`, `features` and `headers` cannot be specified"));
+                            return Err(serde::de::Error::custom(
+                                "when `details` field is provided, deprecated `url`, `transport`, `features` and `headers` cannot be specified",
+                            ));
                         }
 
                         if let ProviderDetails::Firehose(ref mut firehose) = v {
@@ -1097,10 +1402,10 @@ impl Predicate {
     }
 
     pub fn matches(&self, name: &str, network: &str) -> bool {
-        if let Some(n) = &self.network {
-            if !n.matches(network) {
-                return false;
-            }
+        if let Some(n) = &self.network
+            && !n.matches(network)
+        {
+            return false;
         }
 
         match self.name.find(name) {
@@ -1186,12 +1491,60 @@ fn default_polling_interval() -> Duration {
     ENV_VARS.ingestor_polling_interval
 }
 
+fn default_json_rpc_timeout() -> Duration {
+    ethereum::ENV_VARS.json_rpc_timeout
+}
+
+fn default_request_retries() -> usize {
+    ethereum::ENV_VARS.request_retries
+}
+
+fn default_max_block_range_size() -> i32 {
+    ethereum::ENV_VARS.max_block_range_size
+}
+
+fn default_block_batch_size() -> usize {
+    ethereum::ENV_VARS.block_batch_size
+}
+
+fn default_block_ptr_batch_size() -> usize {
+    ethereum::ENV_VARS.block_ptr_batch_size
+}
+
+fn default_max_event_only_range() -> i32 {
+    ethereum::ENV_VARS.max_event_only_range
+}
+
+fn default_target_triggers_per_block_range() -> u64 {
+    ethereum::ENV_VARS.target_triggers_per_block_range
+}
+
+fn default_get_logs_max_contracts() -> usize {
+    ethereum::ENV_VARS.get_logs_max_contracts
+}
+
+fn default_block_ingestor_max_concurrent_json_rpc_calls() -> usize {
+    ethereum::ENV_VARS.block_ingestor_max_concurrent_json_rpc_calls
+}
+
+fn default_genesis_block_number() -> u64 {
+    ethereum::ENV_VARS.genesis_block_number
+}
+
 fn deserialize_duration_millis<'de, D>(data: D) -> Result<Duration, D::Error>
 where
     D: Deserializer<'de>,
 {
     let millis = u64::deserialize(data)?;
     Ok(Duration::from_millis(millis))
+}
+
+fn deserialize_duration_secs<'de, D>(data: D) -> Result<Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let secs = u64::deserialize(data)?;
+    Ok(Duration::from_secs(secs))
 }
 
 // From https://github.com/serde-rs/serde/issues/889#issuecomment-295988865
@@ -1229,16 +1582,25 @@ where
 #[cfg(test)]
 mod tests {
 
-    use crate::config::{default_polling_interval, ChainSection, Web3Rule};
+    use std::time::Duration;
+
+    use crate::config::{
+        ChainSection, Web3Rule, default_block_batch_size,
+        default_block_ingestor_max_concurrent_json_rpc_calls, default_block_ptr_batch_size,
+        default_genesis_block_number, default_get_logs_max_contracts, default_json_rpc_timeout,
+        default_max_block_range_size, default_max_event_only_range, default_polling_interval,
+        default_request_retries, default_target_triggers_per_block_range,
+    };
 
     use super::{
-        Chain, Config, FirehoseProvider, Provider, ProviderDetails, Shard, Transport, Web3Provider,
+        Chain, ChainSettings, Config, FirehoseProvider, Provider, ProviderDetails, Shard,
+        Transport, Web3Provider,
     };
     use graph::blockchain::BlockchainKind;
     use graph::firehose::SubgraphLimit;
     use graph::http::{HeaderMap, HeaderValue};
     use graph::prelude::regex::Regex;
-    use graph::prelude::{toml, NodeId};
+    use graph::prelude::{NodeId, toml};
     use graph_chain_ethereum::Compression;
     use std::collections::BTreeSet;
     use std::fs::read_to_string;
@@ -1274,8 +1636,10 @@ mod tests {
             Chain {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Ethereum,
-                polling_interval: default_polling_interval(),
                 providers: vec![],
+                amp: None,
+                cache_size: 0,
+                settings: ChainSettings::default(),
             },
             actual
         );
@@ -1296,11 +1660,38 @@ mod tests {
             Chain {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Near,
-                polling_interval: default_polling_interval(),
                 providers: vec![],
+                amp: None,
+                cache_size: 0,
+                settings: ChainSettings::default(),
             },
             actual
         );
+    }
+
+    #[test]
+    fn chain_inherits_cache_size_from_section() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            cache_size = 1000
+            [mainnet]
+            shard = "primary"
+            provider = []
+            [sepolia]
+            shard = "primary"
+            provider = []
+            cache_size = 2000
+            "#,
+        )
+        .unwrap();
+
+        section.validate().unwrap();
+
+        // mainnet inherits from section
+        assert_eq!(section.chains["mainnet"].cache_size, 1000);
+        // sepolia keeps its explicit value
+        assert_eq!(section.chains["sepolia"].cache_size, 2000);
     }
 
     #[test]
@@ -1573,9 +1964,11 @@ mod tests {
         assert!(actual.is_err(), "{:?}", actual);
 
         if let Err(error) = actual {
-            assert!(error
-                .to_string()
-                .starts_with("supported firehose endpoint filters are:"))
+            assert!(
+                error
+                    .to_string()
+                    .starts_with("supported firehose endpoint filters are:")
+            )
         }
     }
 
@@ -1832,7 +2225,12 @@ mod tests {
 
         assert_eq!(
             default,
-            actual.chains.get("mainnet").unwrap().polling_interval
+            actual
+                .chains
+                .get("mainnet")
+                .unwrap()
+                .settings
+                .polling_interval
         );
 
         // Polling interval set explicitly, use that
@@ -1852,7 +2250,12 @@ mod tests {
 
         assert_eq!(
             different,
-            actual.chains.get("mainnet").unwrap().polling_interval
+            actual
+                .chains
+                .get("mainnet")
+                .unwrap()
+                .settings
+                .polling_interval
         );
     }
 
@@ -1880,7 +2283,9 @@ fdw_pool_size = [
             )
             .unwrap();
 
-            shard.validate("index_node_1").unwrap();
+            shard
+                .validate("shard_1", &NodeId::new("index_node_1").unwrap())
+                .unwrap();
             shard
         };
         if let Some(appname) = appname {
@@ -1901,5 +2306,488 @@ fdw_pool_size = [
         assert_eq!(shard.fdw_pool_size.size_for(&index, "ashard").unwrap(), 10);
         assert_eq!(shard.fdw_pool_size.size_for(&query, "ashard").unwrap(), 5);
         assert_eq!(shard.fdw_pool_size.size_for(&other, "ashard").unwrap(), 5);
+    }
+
+    #[test]
+    fn amp_chain_names_parsed_from_toml() {
+        let actual: Chain = toml::from_str(
+            r#"
+            shard = "primary"
+            provider = []
+            amp = "ethereum-mainnet"
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(actual.amp, Some("ethereum-mainnet".to_string()));
+    }
+
+    #[test]
+    fn amp_chain_names_default_when_absent() {
+        let actual: Chain = toml::from_str(
+            r#"
+            shard = "primary"
+            provider = []
+        "#,
+        )
+        .unwrap();
+
+        assert_eq!(actual.amp, None);
+    }
+
+    #[test]
+    fn amp_chain_names_validation_rejects_duplicate_effective_names() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            provider = []
+            amp = "eth"
+            [sepolia]
+            shard = "primary"
+            provider = []
+            amp = "eth"
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate();
+        assert!(err.is_err());
+        assert!(
+            err.unwrap_err().to_string().contains("duplicate AMP name"),
+            "expected duplicate AMP name error"
+        );
+    }
+
+    #[test]
+    fn amp_chain_names_validation_rejects_alias_colliding_with_chain_name() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            provider = []
+            [sepolia]
+            shard = "primary"
+            provider = []
+            amp = "mainnet"
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate();
+        assert!(err.is_err());
+        let msg = err.unwrap_err().to_string();
+        // The alias "mainnet" on sepolia collides with the chain named
+        // "mainnet" whose effective AMP name is also "mainnet".
+        assert!(
+            msg.contains("duplicate AMP name") || msg.contains("collides with chain"),
+            "expected collision/duplicate error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn amp_chain_names_builds_correct_mapping() {
+        let section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            provider = []
+            amp = "ethereum-mainnet"
+            [sepolia]
+            shard = "primary"
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let config = Config {
+            node: NodeId::new("test").unwrap(),
+            disable_block_ingestor: false,
+            general: None,
+            stores: {
+                let mut s = std::collections::BTreeMap::new();
+                s.insert(
+                    "primary".to_string(),
+                    toml::from_str::<Shard>(r#"connection = "postgresql://u:p@h/db""#).unwrap(),
+                );
+                s
+            },
+            chains: section,
+            deployment: toml::from_str("[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]")
+                .unwrap(),
+            log_store: None,
+        };
+
+        let amp = config.amp_chain_names();
+        // Explicit alias resolves
+        assert_eq!(
+            amp.resolve(&"ethereum-mainnet".into()),
+            graph::components::network_provider::ChainName::from("mainnet")
+        );
+        // Identity for chain without alias
+        assert_eq!(
+            amp.resolve(&"sepolia".into()),
+            graph::components::network_provider::ChainName::from("sepolia")
+        );
+        // Unknown name passes through
+        assert_eq!(
+            amp.resolve(&"unknown".into()),
+            graph::components::network_provider::ChainName::from("unknown")
+        );
+    }
+
+    #[test]
+    fn is_block_ingestor() {
+        let make_config = |node: &str, ingestor: &str, disable: bool| -> Config {
+            let section: ChainSection =
+                toml::from_str(&format!(r#"ingestor = "{}""#, ingestor)).unwrap();
+            Config {
+                node: NodeId::new(node).unwrap(),
+                disable_block_ingestor: disable,
+                general: None,
+                stores: {
+                    let mut s = std::collections::BTreeMap::new();
+                    s.insert(
+                        "primary".to_string(),
+                        toml::from_str::<Shard>(r#"connection = "postgresql://u:p@h/db""#).unwrap(),
+                    );
+                    s
+                },
+                chains: section,
+                deployment: toml::from_str(
+                    "[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]",
+                )
+                .unwrap(),
+                log_store: None,
+            }
+        };
+
+        // Node matches ingestor, not disabled
+        assert!(make_config("index-0", "index-0", false).is_block_ingestor());
+
+        // Node does not match ingestor
+        assert!(!make_config("query-0", "index-0", false).is_block_ingestor());
+
+        // Node matches but kill switch is on
+        assert!(!make_config("index-0", "index-0", true).is_block_ingestor());
+
+        // Node does not match and kill switch is on
+        assert!(!make_config("query-0", "index-0", true).is_block_ingestor());
+    }
+
+    #[test]
+    fn chain_settings_valid_overrides() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            json_rpc_timeout = 300
+            request_retries = 15
+            max_block_range_size = 2000
+            block_batch_size = 20
+            block_ptr_batch_size = 50
+            max_event_only_range = 1000
+            target_triggers_per_block_range = 200
+            get_logs_max_contracts = 5000
+            block_ingestor_max_concurrent_json_rpc_calls = 500
+            genesis_block_number = 1
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        assert!(section.validate().is_ok());
+        let settings = &section.chains.get("mainnet").unwrap().settings;
+        assert_eq!(settings.json_rpc_timeout, Duration::from_secs(300));
+        assert_eq!(settings.request_retries, 15);
+        assert_eq!(settings.max_block_range_size, 2000);
+        assert_eq!(settings.block_batch_size, 20);
+        assert_eq!(settings.block_ptr_batch_size, 50);
+        assert_eq!(settings.max_event_only_range, 1000);
+        assert_eq!(settings.target_triggers_per_block_range, 200);
+        assert_eq!(settings.get_logs_max_contracts, 5000);
+        assert_eq!(settings.block_ingestor_max_concurrent_json_rpc_calls, 500);
+        assert_eq!(settings.genesis_block_number, 1);
+    }
+
+    #[test]
+    fn chain_settings_defaults_match_env_vars() {
+        let settings = ChainSettings::default();
+        assert_eq!(settings.polling_interval, default_polling_interval());
+        assert_eq!(settings.json_rpc_timeout, default_json_rpc_timeout());
+        assert_eq!(settings.request_retries, default_request_retries());
+        assert_eq!(
+            settings.max_block_range_size,
+            default_max_block_range_size()
+        );
+        assert_eq!(settings.block_batch_size, default_block_batch_size());
+        assert_eq!(
+            settings.block_ptr_batch_size,
+            default_block_ptr_batch_size()
+        );
+        assert_eq!(
+            settings.max_event_only_range,
+            default_max_event_only_range()
+        );
+        assert_eq!(
+            settings.target_triggers_per_block_range,
+            default_target_triggers_per_block_range()
+        );
+        assert_eq!(
+            settings.get_logs_max_contracts,
+            default_get_logs_max_contracts()
+        );
+        assert_eq!(
+            settings.block_ingestor_max_concurrent_json_rpc_calls,
+            default_block_ingestor_max_concurrent_json_rpc_calls()
+        );
+        assert_eq!(
+            settings.genesis_block_number,
+            default_genesis_block_number()
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_max_block_range_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            max_block_range_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("max_block_range_size must be > 0"),
+            "expected max_block_range_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_negative_max_block_range_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            max_block_range_size = -1
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("max_block_range_size must be > 0"),
+            "expected max_block_range_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_max_event_only_range() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            max_event_only_range = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("max_event_only_range must be > 0"),
+            "expected max_event_only_range error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_block_batch_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            block_batch_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("block_batch_size must be > 0"),
+            "expected block_batch_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_block_ptr_batch_size() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            block_ptr_batch_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("block_ptr_batch_size must be > 0"),
+            "expected block_ptr_batch_size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_concurrent_json_rpc_calls() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            block_ingestor_max_concurrent_json_rpc_calls = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("block_ingestor_max_concurrent_json_rpc_calls must be > 0"),
+            "expected block_ingestor_max_concurrent_json_rpc_calls error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_get_logs_max_contracts() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            get_logs_max_contracts = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("get_logs_max_contracts must be > 0"),
+            "expected get_logs_max_contracts error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_polling_interval() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            polling_interval = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("polling_interval must be > 0"),
+            "expected polling_interval error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_json_rpc_timeout() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            json_rpc_timeout = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("json_rpc_timeout must be > 0"),
+            "expected json_rpc_timeout error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_request_retries() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            request_retries = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("request_retries must be > 0"),
+            "expected request_retries error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_rejects_zero_target_triggers_per_block_range() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [mainnet]
+            shard = "primary"
+            target_triggers_per_block_range = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("target_triggers_per_block_range must be > 0"),
+            "expected target_triggers_per_block_range error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn chain_settings_validation_error_includes_chain_name() {
+        let mut section = toml::from_str::<ChainSection>(
+            r#"
+            ingestor = "block_ingestor_node"
+            [my_chain]
+            shard = "primary"
+            block_batch_size = 0
+            provider = []
+            "#,
+        )
+        .unwrap();
+
+        let err = section.validate().unwrap_err().to_string();
+        assert!(
+            err.contains("my_chain"),
+            "expected chain name in error, got: {err}"
+        );
     }
 }

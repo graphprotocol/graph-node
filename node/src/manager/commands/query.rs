@@ -9,8 +9,9 @@ use graph::prelude::{q, r};
 use graph::{
     data::query::QueryTarget,
     prelude::{
+        DeploymentHash, GraphQlRunner as _, Query, QueryVariables, SubgraphName,
         anyhow::{self, anyhow},
-        serde_json, DeploymentHash, GraphQlRunner as _, Query, QueryVariables, SubgraphName,
+        serde_json,
     },
 };
 use graph_graphql::prelude::GraphQlRunner;

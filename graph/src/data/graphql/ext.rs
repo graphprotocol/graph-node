@@ -6,7 +6,7 @@ use crate::prelude::s::{
     self, Definition, Directive, Document, EnumType, Field, InterfaceType, ObjectType, Type,
     TypeDefinition, Value,
 };
-use crate::prelude::{ValueType, ENV_VARS};
+use crate::prelude::{ENV_VARS, ValueType};
 use crate::schema::{META_FIELD_TYPE, SCHEMA_TYPE_NAME};
 use std::collections::{BTreeMap, HashMap};
 

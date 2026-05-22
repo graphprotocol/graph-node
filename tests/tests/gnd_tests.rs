@@ -3,13 +3,13 @@ use graph::futures03::StreamExt;
 use graph_tests::config::set_dev_mode;
 use graph_tests::contract::Contract;
 use graph_tests::subgraph::Subgraph;
-use graph_tests::{error, status, CONFIG};
+use graph_tests::{CONFIG, error, status};
 
 mod integration_tests;
 
 use integration_tests::{
-    stop_graph_node, subgraph_data_sources, test_block_handlers,
-    test_multiple_subgraph_datasources, TestCase, TestResult,
+    TestCase, TestResult, stop_graph_node, subgraph_data_sources, test_block_handlers,
+    test_multiple_subgraph_datasources,
 };
 
 /// The main test entrypoint.

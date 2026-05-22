@@ -4,7 +4,7 @@ use graph::{
     env::env_var,
     firehose::{self, FirehoseEndpoint, SubgraphLimit},
     log::logger,
-    prelude::{prost, tokio, tonic, MetricsRegistry},
+    prelude::{MetricsRegistry, prost, tokio, tonic},
 };
 use graph_chain_ethereum::codec;
 use hex::ToHex;

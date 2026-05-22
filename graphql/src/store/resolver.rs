@@ -5,20 +5,20 @@ use async_trait::async_trait;
 use graph::components::graphql::GraphQLMetrics as _;
 use graph::components::store::QueryPermit;
 use graph::data::graphql::load_manager::LoadManager;
-use graph::data::graphql::{object, ObjectOrInterface};
+use graph::data::graphql::{ObjectOrInterface, object};
 use graph::data::query::{CacheStatus, QueryResults, Trace};
 use graph::data::store::ID;
 use graph::data::value::{Object, Word};
 use graph::derive::CheapClone;
 use graph::prelude::alloy::primitives::B256;
 use graph::prelude::*;
+use graph::schema::{BLOCK_FIELD_TYPE, ErrorPolicy};
 use graph::schema::{
-    ast as sast, INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME, META_FIELD_NAME,
-    META_FIELD_TYPE,
+    INTROSPECTION_SCHEMA_FIELD_NAME, INTROSPECTION_TYPE_FIELD_NAME, LOGS_FIELD_NAME,
+    META_FIELD_NAME, META_FIELD_TYPE, ast as sast,
 };
-use graph::schema::{ErrorPolicy, BLOCK_FIELD_TYPE};
 
-use crate::execution::{ast as a, Query};
+use crate::execution::{Query, ast as a};
 use crate::metrics::GraphQLMetrics;
 use crate::prelude::{ExecutionContext, Resolver};
 use crate::query::ext::BlockConstraint;
@@ -329,8 +329,11 @@ impl Resolver for StoreResolver {
                         let child1_id = child_id(&children[1]);
                         QueryExecutionError::InternalError(format!(
                             "expected only one child for {}.{} but got {}. One child has id {}, another has id {}",
-                            object_type.name(), field.name,
-                            children.len(), child0_id, child1_id
+                            object_type.name(),
+                            field.name,
+                            children.len(),
+                            child0_id,
+                            child1_id
                         ))
                     }
                 };
@@ -354,6 +357,23 @@ impl Resolver for StoreResolver {
             return Ok(());
         }
 
+        // Check if the query only contains debugging fields (_meta, _logs).
+        // If so, don't add indexing errors - these queries are specifically for debugging
+        // failed subgraphs and should work without errors.
+        // Introspection queries (__schema, __type) still get the indexing_error to inform
+        // users the subgraph has issues, but they return data.
+        let only_debugging_fields = result
+            .data()
+            .map(|data| {
+                data.iter()
+                    .all(|(key, _)| key == META_FIELD_NAME || key == LOGS_FIELD_NAME)
+            })
+            .unwrap_or(false);
+
+        if only_debugging_fields {
+            return Ok(());
+        }
+
         // Add the "indexing_error" to the response.
         assert!(result.errors_mut().is_empty());
         *result.errors_mut() = vec![QueryError::IndexingError];
@@ -365,9 +385,10 @@ impl Resolver for StoreResolver {
             ErrorPolicy::Deny => {
                 let mut data = result.take_data();
 
-                // Only keep the _meta, __schema and __type fields from the data
+                // Only keep the _meta, _logs, __schema and __type fields from the data
                 let meta_fields = data.as_mut().and_then(|d| {
                     let meta_field = d.remove(META_FIELD_NAME);
+                    let logs_field = d.remove(LOGS_FIELD_NAME);
                     let schema_field = d.remove(INTROSPECTION_SCHEMA_FIELD_NAME);
                     let type_field = d.remove(INTROSPECTION_TYPE_FIELD_NAME);
 
@@ -376,6 +397,9 @@ impl Resolver for StoreResolver {
 
                     if let Some(meta_field) = meta_field {
                         meta_fields.push((Word::from(META_FIELD_NAME), meta_field));
+                    }
+                    if let Some(logs_field) = logs_field {
+                        meta_fields.push((Word::from(LOGS_FIELD_NAME), logs_field));
                     }
                     if let Some(schema_field) = schema_field {
                         meta_fields

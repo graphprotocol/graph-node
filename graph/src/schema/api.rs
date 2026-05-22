@@ -10,13 +10,13 @@ use crate::cheap_clone::CheapClone;
 use crate::data::graphql::{ObjectOrInterface, ObjectTypeExt, TypeExt};
 use crate::data::store::IdType;
 use crate::env::ENV_VARS;
-use crate::schema::{ast, META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME};
+use crate::schema::{LOGS_FIELD_NAME, META_FIELD_NAME, META_FIELD_TYPE, SCHEMA_TYPE_NAME, ast};
 
 use crate::data::graphql::ext::{
-    camel_cased_names, DefinitionExt, DirectiveExt, DocumentExt, ValueExt,
+    DefinitionExt, DirectiveExt, DocumentExt, ValueExt, camel_cased_names,
 };
 use crate::derive::CheapClone;
-use crate::prelude::{q, r, s, DeploymentHash};
+use crate::prelude::{DeploymentHash, q, r, s};
 
 use super::{Aggregation, Field, InputSchema, Schema, TypeKind};
 
@@ -349,7 +349,7 @@ pub(in crate::schema) fn api_schema(
 ) -> Result<s::Document, APISchemaError> {
     // Refactor: Don't clone the schema.
     let mut api = init_api_schema(input_schema)?;
-    add_meta_field_type(&mut api.document);
+    add_builtin_field_types(&mut api.document);
     add_types_for_object_types(&mut api, input_schema)?;
     add_types_for_interface_types(&mut api, input_schema)?;
     add_types_for_aggregation_types(&mut api, input_schema)?;
@@ -444,18 +444,24 @@ fn init_api_schema(input_schema: &InputSchema) -> Result<Schema, APISchemaError>
         .map_err(|e| APISchemaError::SchemaCreationFailed(e.to_string()))
 }
 
-/// Adds a global `_Meta_` type to the schema. The `_meta` field
-/// accepts values of this type
-fn add_meta_field_type(api: &mut s::Document) {
+/// Adds built-in field types to the schema. Currently adds `_Meta_` and `_Log_` types
+/// which are used by the `_meta` and `_logs` fields respectively.
+fn add_builtin_field_types(api: &mut s::Document) {
     lazy_static! {
         static ref META_FIELD_SCHEMA: s::Document = {
             let schema = include_str!("meta.graphql");
             s::parse_schema(schema).expect("the schema `meta.graphql` is invalid")
         };
+        static ref LOGS_FIELD_SCHEMA: s::Document = {
+            let schema = include_str!("logs.graphql");
+            s::parse_schema(schema).expect("the schema `logs.graphql` is invalid")
+        };
     }
 
     api.definitions
         .extend(META_FIELD_SCHEMA.definitions.iter().cloned());
+    api.definitions
+        .extend(LOGS_FIELD_SCHEMA.definitions.iter().cloned());
 }
 
 fn add_types_for_object_types(
@@ -703,6 +709,11 @@ impl FilterOps {
                     "",
                     s::Type::NamedType("OrderDirection".to_string()),
                 ),
+                input_value(
+                    "current",
+                    "",
+                    s::Type::NamedType("Aggregation_current".to_string()),
+                ),
             ],
         };
 
@@ -812,10 +823,10 @@ fn field_filter_input_values(
                 extend_with_child_filter_input_value(field, type_name, &mut input_values);
                 input_values
             }
-            s::TypeDefinition::Scalar(ref t) => {
+            s::TypeDefinition::Scalar(t) => {
                 field_scalar_filter_input_values(&schema.document, field, ops.for_type(t))
             }
-            s::TypeDefinition::Enum(ref t) => {
+            s::TypeDefinition::Enum(t) => {
                 field_enum_filter_input_values(&schema.document, field, t)
             }
             _ => vec![],
@@ -1011,8 +1022,8 @@ fn field_list_filter_input_values(
                 (Some(named_type), Some(name.clone()))
             }
         }
-        s::TypeDefinition::Scalar(ref t) => (Some(s::Type::NamedType(t.name.clone())), None),
-        s::TypeDefinition::Enum(ref t) => (Some(s::Type::NamedType(t.name.clone())), None),
+        s::TypeDefinition::Scalar(t) => (Some(s::Type::NamedType(t.name.clone())), None),
+        s::TypeDefinition::Enum(t) => (Some(s::Type::NamedType(t.name.clone())), None),
         s::TypeDefinition::InputObject(_) | s::TypeDefinition::Union(_) => (None, None),
     };
 
@@ -1093,6 +1104,7 @@ fn add_query_type(api: &mut s::Document, input_schema: &InputSchema) -> Result<(
     fields.append(&mut agg_fields);
     fields.append(&mut fulltext_fields);
     fields.push(meta_field());
+    fields.push(logs_field());
 
     let typedef = s::TypeDefinition::Object(s::ObjectType {
         position: q::Pos::default(),
@@ -1298,14 +1310,122 @@ fn meta_field() -> s::Field {
     META_FIELD.clone()
 }
 
+fn logs_field() -> s::Field {
+    lazy_static! {
+        static ref LOGS_FIELD: s::Field = s::Field {
+            position: q::Pos::default(),
+            description: Some(
+                "Query execution logs emitted by the subgraph during indexing. \
+                Results are sorted by timestamp in descending order (newest first)."
+                .to_string()
+            ),
+            name: LOGS_FIELD_NAME.to_string(),
+            arguments: vec![
+                // level: LogLevel
+                s::InputValue {
+                    position: q::Pos::default(),
+                    description: Some(
+                        "Filter logs by severity level. Only logs at this level will be returned."
+                        .to_string()
+                    ),
+                    name: String::from("level"),
+                    value_type: s::Type::NamedType(String::from("LogLevel")),
+                    default_value: None,
+                    directives: vec![],
+                },
+                // from: String (RFC3339 timestamp)
+                s::InputValue {
+                    position: q::Pos::default(),
+                    description: Some(
+                        "Filter logs from this timestamp onwards (inclusive). \
+                        Must be in RFC3339 format (e.g., '2024-01-15T10:30:00Z')."
+                        .to_string()
+                    ),
+                    name: String::from("from"),
+                    value_type: s::Type::NamedType(String::from("String")),
+                    default_value: None,
+                    directives: vec![],
+                },
+                // to: String (RFC3339 timestamp)
+                s::InputValue {
+                    position: q::Pos::default(),
+                    description: Some(
+                        "Filter logs until this timestamp (inclusive). \
+                        Must be in RFC3339 format (e.g., '2024-01-15T23:59:59Z')."
+                        .to_string()
+                    ),
+                    name: String::from("to"),
+                    value_type: s::Type::NamedType(String::from("String")),
+                    default_value: None,
+                    directives: vec![],
+                },
+                // search: String (full-text search)
+                s::InputValue {
+                    position: q::Pos::default(),
+                    description: Some(
+                        "Search for logs containing this text in the message. \
+                        Case-insensitive substring match. Maximum length: 1000 characters."
+                        .to_string()
+                    ),
+                    name: String::from("search"),
+                    value_type: s::Type::NamedType(String::from("String")),
+                    default_value: None,
+                    directives: vec![],
+                },
+                // first: Int (default 100, max 1000)
+                s::InputValue {
+                    position: q::Pos::default(),
+                    description: Some(
+                        "Maximum number of logs to return. Default: 100, Maximum: 1000."
+                        .to_string()
+                    ),
+                    name: String::from("first"),
+                    value_type: s::Type::NamedType(String::from("Int")),
+                    default_value: Some(s::Value::Int(100.into())),
+                    directives: vec![],
+                },
+                // skip: Int (default 0, max 10000)
+                s::InputValue {
+                    position: q::Pos::default(),
+                    description: Some(
+                        "Number of logs to skip (for pagination). Default: 0, Maximum: 10000."
+                        .to_string()
+                    ),
+                    name: String::from("skip"),
+                    value_type: s::Type::NamedType(String::from("Int")),
+                    default_value: Some(s::Value::Int(0.into())),
+                    directives: vec![],
+                },
+                // orderDirection: OrderDirection (default desc)
+                s::InputValue {
+                    position: q::Pos::default(),
+                    description: Some(
+                        "Sort direction for results. Default: desc (newest first)."
+                        .to_string()
+                    ),
+                    name: String::from("orderDirection"),
+                    value_type: s::Type::NamedType(String::from("OrderDirection")),
+                    default_value: Some(s::Value::Enum(String::from("desc"))),
+                    directives: vec![],
+                },
+            ],
+            field_type: s::Type::NonNullType(Box::new(s::Type::ListType(Box::new(
+                s::Type::NonNullType(Box::new(s::Type::NamedType(String::from("_Log_")))),
+            )))),
+            directives: vec![],
+        };
+    }
+    LOGS_FIELD.clone()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         data::{
-            graphql::{ext::FieldExt, ObjectTypeExt, TypeExt as _},
+            graphql::{ObjectTypeExt, TypeExt as _, ext::FieldExt},
             subgraph::LATEST_VERSION,
         },
-        prelude::{s, DeploymentHash},
+        prelude::{DeploymentHash, s},
         schema::{InputSchema, SCHEMA_TYPE_NAME},
     };
     use lazy_static::lazy_static;
@@ -2039,7 +2159,7 @@ mod tests {
             .expect("Query type is missing in derived API schema");
 
         let singular_field = match query_type {
-            s::TypeDefinition::Object(ref t) => ast::get_field(t, "node"),
+            s::TypeDefinition::Object(t) => ast::get_field(t, "node"),
             _ => None,
         }
         .expect("\"node\" field is missing on Query type");
@@ -2063,7 +2183,7 @@ mod tests {
         );
 
         let plural_field = match query_type {
-            s::TypeDefinition::Object(ref t) => ast::get_field(t, "nodes"),
+            s::TypeDefinition::Object(t) => ast::get_field(t, "nodes"),
             _ => None,
         }
         .expect("\"nodes\" field is missing on Query type");
@@ -2231,6 +2351,8 @@ type Gravatar @entity {
             assert_eq!("Aggregation_interval", interval.value_type.get_base_type());
             let filter = field.argument("where").unwrap();
             assert_eq!(&filter_type, filter.value_type.get_base_type());
+            let current = field.argument("current").unwrap();
+            assert_eq!("Aggregation_current", current.value_type.get_base_type());
 
             let s::TypeDefinition::InputObject(filter) = schema
                 .get_type_definition_from_type(&filter.value_type)
