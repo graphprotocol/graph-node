@@ -1604,7 +1604,6 @@ pub struct WritableStore {
 
     // Cached to avoid querying the database.
     is_deployment_synced: AtomicBool,
-    postponed_indexes_created: AtomicBool,
 }
 
 impl WritableStore {
@@ -1646,7 +1645,6 @@ impl WritableStore {
             block_cursor,
             writer,
             is_deployment_synced: AtomicBool::new(is_deployment_synced),
-            postponed_indexes_created: AtomicBool::new(false),
         })
     }
 
@@ -1892,10 +1890,7 @@ impl WritableStoreTrait for WritableStore {
     }
 
     async fn create_postponed_indexes(&self) -> Result<(), StoreError> {
-        if !self.postponed_indexes_created.swap(true, Ordering::SeqCst) {
-            self.store.create_postponed_indexes().await?;
-        }
-        Ok(())
+        self.store.create_postponed_indexes().await
     }
 
     async fn flush(&self) -> Result<(), StoreError> {

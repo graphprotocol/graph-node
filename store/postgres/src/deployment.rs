@@ -166,6 +166,12 @@ table! {
 
         synced_at -> Nullable<Timestamptz>,
         synced_at_block_number -> Nullable<Int4>,
+
+        /// `true` once the postponed (deferred) attribute indexes have been
+        /// created. Persisted so that we create them exactly once even
+        /// across restarts, and so that we don't recreate indexes that an
+        /// external process removed because they were unused.
+        postponed_indexes_created -> Bool,
     }
 }
 
@@ -829,6 +835,38 @@ pub async fn set_synced(
     ))
     .execute(conn)
     .await?;
+    Ok(())
+}
+
+/// Returns whether the postponed (deferred) attribute indexes have already
+/// been created for this deployment.
+pub async fn postponed_indexes_created(
+    conn: &mut AsyncPgConnection,
+    site: &Site,
+) -> Result<bool, StoreError> {
+    use deployment as d;
+
+    let created = d::table
+        .filter(d::id.eq(site.id))
+        .select(d::postponed_indexes_created)
+        .first::<bool>(conn)
+        .await?;
+    Ok(created)
+}
+
+/// Mark the postponed (deferred) attribute indexes as created for this
+/// deployment. Once set, we never recreate these indexes — even if an
+/// external process removes them.
+pub async fn set_postponed_indexes_created(
+    conn: &mut AsyncPgConnection,
+    site: &Site,
+) -> Result<(), StoreError> {
+    use deployment as d;
+
+    update(d::table.filter(d::id.eq(site.id)))
+        .set(d::postponed_indexes_created.eq(true))
+        .execute(conn)
+        .await?;
     Ok(())
 }
 

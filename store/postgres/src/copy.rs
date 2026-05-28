@@ -1268,6 +1268,10 @@ impl Connection {
             let conn = self.get_conn()?;
             creat.execute_many(conn, &new_idxs).await?;
         }
+        self.transaction(async |conn| {
+            deployment::set_postponed_indexes_created(conn, &state.dst.site).await
+        })?
+        .await?;
 
         self.copy_private_data_sources(&state).await?;
 

@@ -1669,11 +1669,6 @@ impl DeploymentStore {
             .await?;
         }
 
-        // Create any indexes whose creation was postponed when the
-        // deployment was first created. Using `IF NOT EXISTS` and
-        // `CONCURRENTLY` makes this safe to call on every restart.
-        self.create_postponed_indexes(site.cheap_clone()).await?;
-
         // Make sure the block pointer is set. This is important for newly
         // deployed subgraphs so that we respect the 'startBlock' setting
         // the first time the subgraph is started
@@ -1686,13 +1681,20 @@ impl DeploymentStore {
     }
 
     /// Create all indexes whose creation was postponed when the
-    /// deployment was first created. Using `IF NOT EXISTS` and
-    /// `CONCURRENTLY` makes this safe to call even when some or all
-    /// indexes already exist.
+    /// deployment was first created. The decision is persisted in the
+    /// `postponed_indexes_created` flag on `subgraphs.deployment` so that
+    /// this is a one-shot operation: indexes are created exactly once,
+    /// and we never recreate them — even if an external process removes
+    /// indexes that it considers unused.
     pub(crate) async fn create_postponed_indexes(&self, site: Arc<Site>) -> Result<(), StoreError> {
-        let layout = self.find_layout(site).await?;
+        let layout = self.find_layout(site.cheap_clone()).await?;
         let creat = layout.index_creator(true, true);
         let mut conn = self.pool.get_permitted().await?;
+
+        if deployment::postponed_indexes_created(&mut conn, &site).await? {
+            return Ok(());
+        }
+
         for table in layout.tables.values() {
             let indexes = table.indexes(&layout.input_schema).map_err(|e| {
                 StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
@@ -1703,6 +1705,8 @@ impl DeploymentStore {
                 }
             }
         }
+
+        deployment::set_postponed_indexes_created(&mut conn, &site).await?;
         Ok(())
     }
 
