@@ -298,6 +298,51 @@ impl CopyState {
     fn all_tables(&self) -> impl Iterator<Item = &TableState> {
         self.finished.iter().chain(self.unfinished.iter())
     }
+
+    /// Create the indexes that were postponed at the start of the
+    /// copy/graft operation: first the ones that existed in the source
+    /// subgraph, then any indexes for new fields that don't exist in the
+    /// source.
+    async fn create_indexes(
+        &self,
+        conn: &mut AsyncPgConnection,
+        index_list: &IndexList,
+    ) -> Result<(), StoreError> {
+        let creat = self.dst.index_creator(false, true);
+        let dst_nsp = self.dst.site.namespace.to_string();
+
+        // Create the indexes that existed in the source subgraph
+        for table in self.all_tables() {
+            let idxs = index_list
+                .indexes_for_table(&table.dst)
+                .filter(|idx| idx.to_postpone())
+                .map(|idx| idx.with_nsp(dst_nsp.clone()))
+                .collect::<Result<Vec<_>, _>>()?;
+
+            creat.execute_many(conn, &idxs).await?;
+        }
+
+        // Create indexes for new fields that don't exist in the source
+        for table in self.all_tables() {
+            let src_columns: HashSet<&str> =
+                table.src.columns.iter().map(|c| c.name.as_str()).collect();
+            let new_idxs: Vec<_> = table
+                .dst
+                .indexes(&self.dst.input_schema)
+                .map_err(|_| internal_error!("failed to generate indexes for copy"))?
+                .into_iter()
+                .filter(|idx| idx.to_postpone() && idx.references_column_not_in(&src_columns))
+                .collect();
+            creat.execute_many(conn, &new_idxs).await?;
+        }
+
+        conn.transaction(async |conn| {
+            deployment::set_postponed_indexes_created(conn, &self.dst.site).await
+        })
+        .await?;
+
+        Ok(())
+    }
 }
 
 pub(crate) async fn source(
@@ -1237,41 +1282,7 @@ impl Connection {
         }
         debug_assert!(self.conn.is_some());
 
-        // Create indexes for all the attributes that were postponed at the start of
-        // the copy/graft operations.
-        // First recreate the indexes that existed in the original subgraph.
-        let creat = self.dst.index_creator(false, true);
-        for table in state.all_tables() {
-            let dst_nsp = self.dst.site.namespace.to_string();
-            let idxs = index_list
-                .indexes_for_table(&table.dst)
-                .filter(|idx| idx.to_postpone())
-                .map(|idx| idx.with_nsp(dst_nsp.clone()))
-                .collect::<Result<Vec<_>, _>>()?;
-
-            let conn = self.get_conn()?;
-            creat.execute_many(conn, &idxs).await?;
-        }
-
-        // Second create the indexes for the new fields that don't exist in
-        // the source.
-        for table in state.all_tables() {
-            let src_columns: HashSet<&str> =
-                table.src.columns.iter().map(|c| c.name.as_str()).collect();
-            let new_idxs: Vec<_> = table
-                .dst
-                .indexes(&self.dst.input_schema)
-                .map_err(|_| internal_error!("failed to generate indexes for copy"))?
-                .into_iter()
-                .filter(|idx| idx.to_postpone() && idx.references_column_not_in(&src_columns))
-                .collect();
-            let conn = self.get_conn()?;
-            creat.execute_many(conn, &new_idxs).await?;
-        }
-        self.transaction(async |conn| {
-            deployment::set_postponed_indexes_created(conn, &state.dst.site).await
-        })?
-        .await?;
+        state.create_indexes(self.get_conn()?, &index_list).await?;
 
         self.copy_private_data_sources(&state).await?;
 
