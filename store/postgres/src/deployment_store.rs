@@ -1693,7 +1693,9 @@ impl DeploymentStore {
     /// logged and not returned to the caller. The `postponed_indexes_created`
     /// flag is only set once all indexes have been created successfully, so a
     /// failed run is retried the next time `graph-node` starts the
-    /// deployment.
+    /// deployment. A run that was interrupted (for example by a restart while
+    /// a `CREATE INDEX CONCURRENTLY` was still in flight) can leave an invalid
+    /// index behind; such remnants are dropped and rebuilt on the next run.
     pub(crate) fn create_postponed_indexes(&self, site: Arc<Site>) {
         async fn run(store: DeploymentStore, site: Arc<Site>) -> Result<(), StoreError> {
             let layout = store.find_layout(site.cheap_clone()).await?;
@@ -1704,14 +1706,33 @@ impl DeploymentStore {
                 return Ok(());
             }
 
+            let schema_name = site.namespace.as_str();
             for table in layout.tables.values() {
                 let indexes = table.indexes(&layout.input_schema).map_err(|e| {
                     StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
                 })?;
                 for idx in indexes {
-                    if idx.to_postpone() {
-                        IndexCreator::execute(&creat, &mut conn, &idx).await?;
+                    if !idx.to_postpone() {
+                        continue;
                     }
+
+                    // A previous run that was interrupted (e.g. by a node
+                    // restart) can leave an invalid index behind. Since we
+                    // create indexes with `if not exists`, such a leftover
+                    // would be skipped and never rebuilt, so drop it first.
+                    // `check_index_is_valid` returns `false` both when the
+                    // index is missing and when it is invalid; the
+                    // `drop index ... if exists` is a no-op in the former
+                    // case and removes the invalid remnant in the latter.
+                    if let Some(name) = idx.name()
+                        && !catalog::check_index_is_valid(&mut conn, schema_name, &name).await?
+                    {
+                        let drop_sql =
+                            format!("drop index concurrently if exists {schema_name}.{name}");
+                        sql_query(drop_sql).execute(&mut conn).await?;
+                    }
+
+                    IndexCreator::execute(&creat, &mut conn, &idx).await?;
                 }
             }
 
