@@ -495,8 +495,8 @@ impl SyncStore {
 
     async fn create_postponed_indexes(&self) -> Result<(), StoreError> {
         self.writable
-            .create_postponed_indexes(self.site.cheap_clone())
-            .await
+            .create_postponed_indexes(self.site.cheap_clone());
+        Ok(())
     }
 
     fn input_schema(&self) -> InputSchema {

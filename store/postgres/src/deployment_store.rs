@@ -42,7 +42,7 @@ use graph::internal_error;
 use graph::prelude::{
     AttributeNames, BlockNumber, BlockPtr, CheapClone, DeploymentHash, DeploymentState, ENV_VARS,
     Entity, EntityQuery, Error, Logger, QueryExecutionError, StopwatchMetrics, StoreError,
-    UnfailOutcome, Value, anyhow, debug, info, o, warn,
+    UnfailOutcome, Value, anyhow, debug, error, info, o, warn,
 };
 use graph::schema::{ApiSchema, EntityKey, EntityType, InputSchema};
 
@@ -1686,28 +1686,55 @@ impl DeploymentStore {
     /// this is a one-shot operation: indexes are created exactly once,
     /// and we never recreate them — even if an external process removes
     /// indexes that it considers unused.
-    pub(crate) async fn create_postponed_indexes(&self, site: Arc<Site>) -> Result<(), StoreError> {
-        let layout = self.find_layout(site.cheap_clone()).await?;
-        let creat = layout.index_creator(true, true);
-        let mut conn = self.pool.get_permitted().await?;
+    ///
+    /// The actual index creation runs in the background so that callers are
+    /// not blocked while the (potentially long-running) `CREATE INDEX
+    /// CONCURRENTLY` statements execute. Because of that, errors are only
+    /// logged and not returned to the caller. The `postponed_indexes_created`
+    /// flag is only set once all indexes have been created successfully, so a
+    /// failed run is retried the next time `graph-node` starts the
+    /// deployment.
+    pub(crate) fn create_postponed_indexes(&self, site: Arc<Site>) {
+        async fn run(store: DeploymentStore, site: Arc<Site>) -> Result<(), StoreError> {
+            let layout = store.find_layout(site.cheap_clone()).await?;
+            let creat = layout.index_creator(true, true);
+            let mut conn = store.pool.get_permitted().await?;
 
-        if deployment::postponed_indexes_created(&mut conn, &site).await? {
-            return Ok(());
-        }
+            if deployment::postponed_indexes_created(&mut conn, &site).await? {
+                return Ok(());
+            }
 
-        for table in layout.tables.values() {
-            let indexes = table.indexes(&layout.input_schema).map_err(|e| {
-                StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
-            })?;
-            for idx in indexes {
-                if idx.to_postpone() {
-                    IndexCreator::execute(&creat, &mut conn, &idx).await?;
+            for table in layout.tables.values() {
+                let indexes = table.indexes(&layout.input_schema).map_err(|e| {
+                    StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
+                })?;
+                for idx in indexes {
+                    if idx.to_postpone() {
+                        IndexCreator::execute(&creat, &mut conn, &idx).await?;
+                    }
                 }
             }
+
+            deployment::set_postponed_indexes_created(&mut conn, &site).await?;
+            Ok(())
         }
 
-        deployment::set_postponed_indexes_created(&mut conn, &site).await?;
-        Ok(())
+        let store = self.cheap_clone();
+        let logger = Logger::new(&self.logger, o!("component" => "IndexCreation"));
+        graph::spawn(async move {
+            let logger2 = logger.cheap_clone();
+            let res = retry::forever(&logger2, "create_postponed_indexes", || {
+                let store = store.cheap_clone();
+                let site = site.cheap_clone();
+                async move { run(store, site).await }
+            })
+            .await;
+            match res {
+                Ok(()) => debug!(logger, "Created postponed indexes"),
+                Err(e) => error!(logger, "Failed to create postponed indexes";
+                    "error" => e.to_string()),
+            }
+        });
     }
 
     // If the current block of the deployment is the same as the fatal error,
