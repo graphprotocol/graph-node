@@ -666,10 +666,10 @@ impl CreateIndex {
         }
     }
 
-    pub fn name(&self) -> Option<String> {
+    pub fn name(&self) -> Option<&str> {
         match self {
             CreateIndex::Unknown { .. } => None,
-            CreateIndex::Parsed { name, .. } => Some(name.clone()),
+            CreateIndex::Parsed { name, .. } => Some(name.as_str()),
         }
     }
 

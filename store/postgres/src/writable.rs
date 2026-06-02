@@ -495,7 +495,7 @@ impl SyncStore {
 
     async fn create_postponed_indexes(&self) -> Result<(), StoreError> {
         self.writable
-            .create_postponed_indexes(self.site.cheap_clone());
+            .create_postponed_indexes(&self.logger, self.site.cheap_clone());
         Ok(())
     }
 

@@ -1,6 +1,7 @@
 use detail::DeploymentDetail;
 use diesel::sql_query;
 use diesel_async::{AsyncConnection as _, RunQueryDsl, SimpleAsyncConnection};
+use graph::util::backoff::ExponentialBackoff;
 use tokio::task::JoinHandle;
 
 use graph::anyhow::Context;
@@ -1696,17 +1697,88 @@ impl DeploymentStore {
     /// deployment. A run that was interrupted (for example by a restart while
     /// a `CREATE INDEX CONCURRENTLY` was still in flight) can leave an invalid
     /// index behind; such remnants are dropped and rebuilt on the next run.
-    pub(crate) fn create_postponed_indexes(&self, site: Arc<Site>) {
-        async fn run(store: DeploymentStore, site: Arc<Site>) -> Result<(), StoreError> {
-            let layout = store.find_layout(site.cheap_clone()).await?;
-            let creat = layout.index_creator(true, true);
+    pub(crate) fn create_postponed_indexes(&self, logger: &Logger, site: Arc<Site>) {
+        async fn index_creation_is_running(
+            store: &DeploymentStore,
+            site: &Site,
+        ) -> Result<Option<(i32, String)>, StoreError> {
             let mut conn = store.pool.get_permitted().await?;
+            catalog::index_creation_is_running(&mut conn, site.namespace.as_str()).await
+        }
 
-            if deployment::postponed_indexes_created(&mut conn, &site).await? {
+        async fn postponed_indexes_created(
+            store: &DeploymentStore,
+            site: &Site,
+        ) -> Result<bool, StoreError> {
+            let mut conn = store.pool.get_permitted().await?;
+            deployment::postponed_indexes_created(&mut conn, site).await
+        }
+
+        async fn wait_for_concurrent_index_creation(
+            logger: &Logger,
+            store: &DeploymentStore,
+            site: &Site,
+        ) -> Result<(), StoreError> {
+            let mut backoff =
+                ExponentialBackoff::new(Duration::from_secs(1), Duration::from_mins(5));
+            let mut last_log = Instant::now() - Duration::from_mins(2);
+            while let Some((pid, index_name)) = index_creation_is_running(store, site).await? {
+                if last_log.elapsed() > Duration::from_mins(1) {
+                    info!(logger,
+                        "Waiting for concurrent index creation to finish";
+                        "pid" => pid,
+                        "index_name" => index_name,
+                    );
+                    last_log = Instant::now();
+                }
+                backoff.sleep_async().await;
+            }
+            Ok(())
+        }
+
+        async fn create_index(
+            store: &DeploymentStore,
+            layout: &Layout,
+            site: &Site,
+            idx: &CreateIndex,
+        ) -> Result<(), StoreError> {
+            let mut conn = store.pool.get_permitted().await?;
+            let schema_name = site.namespace.as_str();
+
+            // A previous run that was interrupted (e.g. by a node
+            // restart) can leave an invalid index behind. Since we
+            // create indexes with `if not exists`, such a leftover
+            // would be skipped and never rebuilt, so drop it first.
+            // `check_index_is_valid` returns `false` both when the
+            // index is missing and when it is invalid; the
+            // `drop index ... if exists` is a no-op in the former
+            // case and removes the invalid remnant in the latter.
+            if let Some(name) = idx.name()
+                && !catalog::check_index_is_valid(&mut conn, schema_name, name).await?
+            {
+                let drop_sql = format!("drop index concurrently if exists {schema_name}.{name}");
+                sql_query(drop_sql).execute(&mut conn).await?;
+            }
+
+            let creat = layout.index_creator(true, true);
+            IndexCreator::execute(&creat, &mut conn, idx).await
+        }
+
+        async fn run(
+            logger: Logger,
+            store: DeploymentStore,
+            site: Arc<Site>,
+        ) -> Result<(), StoreError> {
+            let layout = store.find_layout(site.cheap_clone()).await?;
+
+            // Since this entire run can take many hours, we avoid holding a
+            // connection for the whole time. Instead, we get a new
+            // connection for each index that we create.
+
+            if postponed_indexes_created(&store, &site).await? {
                 return Ok(());
             }
 
-            let schema_name = site.namespace.as_str();
             for table in layout.tables.values() {
                 let indexes = table.indexes(&layout.input_schema).map_err(|e| {
                     StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
@@ -1716,38 +1788,31 @@ impl DeploymentStore {
                         continue;
                     }
 
-                    // A previous run that was interrupted (e.g. by a node
-                    // restart) can leave an invalid index behind. Since we
-                    // create indexes with `if not exists`, such a leftover
-                    // would be skipped and never rebuilt, so drop it first.
-                    // `check_index_is_valid` returns `false` both when the
-                    // index is missing and when it is invalid; the
-                    // `drop index ... if exists` is a no-op in the former
-                    // case and removes the invalid remnant in the latter.
-                    if let Some(name) = idx.name()
-                        && !catalog::check_index_is_valid(&mut conn, schema_name, &name).await?
-                    {
-                        let drop_sql =
-                            format!("drop index concurrently if exists {schema_name}.{name}");
-                        sql_query(drop_sql).execute(&mut conn).await?;
-                    }
+                    wait_for_concurrent_index_creation(&logger, &store, &site).await?;
 
-                    IndexCreator::execute(&creat, &mut conn, &idx).await?;
+                    create_index(&store, &layout, &site, &idx).await?;
+
+                    debug!(logger, "Created index";
+                        "index_name" => idx.name().unwrap_or("<unknown>"),
+                        "table_name" => table.name.as_str(),
+                    );
                 }
             }
 
+            let mut conn = store.pool.get_permitted().await?;
             deployment::set_postponed_indexes_created(&mut conn, &site).await?;
             Ok(())
         }
 
         let store = self.cheap_clone();
-        let logger = Logger::new(&self.logger, o!("component" => "IndexCreation"));
+        let logger = Logger::new(logger, o!("component" => "IndexCreation"));
         graph::spawn(async move {
             let logger2 = logger.cheap_clone();
             let res = retry::forever(&logger2, "create_postponed_indexes", || {
                 let store = store.cheap_clone();
                 let site = site.cheap_clone();
-                async move { run(store, site).await }
+                let logger = logger2.cheap_clone();
+                async move { run(logger, store, site).await }
             })
             .await;
             match res {
