@@ -670,3 +670,79 @@ fn prune() {
         })
     }
 }
+
+/// `Graft::validate` rejects a graft block that is below the base
+/// subgraph's `earliest_block_number` (i.e. into already-pruned history).
+///
+/// This is the manifest-level check: it is what stops a normal `subgraph
+/// deploy` from registering a graft that cannot be performed correctly.
+/// Defense in depth for callers that bypass the registrar (`test_store`,
+/// graphman, etc.) is exercised by `graft_store_path_rejects_below_prune_floor`
+/// (which goes straight to the store/copy path).
+#[test]
+fn graft_validate_rejects_below_prune_floor() {
+    struct Progress;
+    impl PruneReporter for Progress {}
+
+    run_test(|store, src| async move {
+        // Set up the same pruned state as `graft_store_path_rejects_below_prune_floor`:
+        // close user 2's block-1 version by updating at block 3, then prune
+        // with `history_blocks = 2` over `[0, 6]` so `earliest_block = 4`.
+        let user2_v2 = create_test_entity(
+            "2",
+            USER,
+            "Cindini",
+            "dinici@email.com",
+            44_i32,
+            157.1,
+            true,
+            Some("red"),
+            4,
+        );
+        transact_and_wait(&store, &src, BLOCKS[3].clone(), vec![user2_v2])
+            .await
+            .unwrap();
+        transact_and_wait(&store, &src, BLOCKS[6].clone(), vec![])
+            .await
+            .unwrap();
+        let req = PruneRequest::new(&src, 2, 1, 0, 6)?;
+        store
+            .prune(Box::new(Progress), &src, req)
+            .await
+            .expect("pruning works");
+
+        // Asking `Graft::validate` to graft at block 2 (below earliest_block = 4)
+        // must yield `GraftBaseInvalid` with an actionable message.
+        let graft = Graft {
+            base: src.hash.clone(),
+            block: 2,
+        };
+        let err = graft
+            .validate(store.cheap_clone())
+            .await
+            .expect_err("graft below the prune floor must be rejected");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("only retains data starting at block 4"),
+            "expected prune-floor error mentioning earliest block 4, got: {msg}"
+        );
+
+        // Sanity: the new check is bounded — grafting *at* the prune floor
+        // (block == earliest) must not trigger the prune-floor rejection.
+        // The graft may still fail for unrelated reasons (e.g. reorg
+        // threshold), but never with the prune-floor message.
+        let graft_at_floor = Graft {
+            base: src.hash.clone(),
+            block: 4,
+        };
+        if let Err(err) = graft_at_floor.validate(store.cheap_clone()).await {
+            let msg = err.to_string();
+            assert!(
+                !msg.contains("only retains data starting"),
+                "graft at the prune floor must not trigger the prune-floor \
+                 rejection; got: {msg}"
+            );
+        }
+        Ok(())
+    })
+}

@@ -547,7 +547,23 @@ pub struct Graft {
 }
 
 impl Graft {
-    async fn validate<S: SubgraphStore>(
+    /// Validate that this `Graft` can be performed against the configured
+    /// base subgraph. Checks (in order):
+    /// 1. the base has processed at least one block,
+    /// 2. the graft block is at or above the base's `earliest_block_number`
+    ///    (the prune floor — grafting below it would silently produce a
+    ///    subgraph with reset state for any entity whose live-at-graft
+    ///    version was a closed historical version),
+    /// 3. the base has processed past `self.block` (i.e., its head is at
+    ///    or above the graft block),
+    /// 4. the graft block is at least `reorg_threshold` blocks behind the
+    ///    base's head, so a reorg of the base cannot invalidate the copy,
+    /// 5. if the base is unhealthy, the graft block is strictly before its
+    ///    failure block.
+    ///
+    /// `pub` so that tooling and tests can validate a graft directly
+    /// without resolving a full `UnvalidatedSubgraphManifest`.
+    pub async fn validate<S: SubgraphStore>(
         &self,
         store: Arc<S>,
     ) -> Result<(), SubgraphManifestValidationError> {
@@ -561,6 +577,31 @@ impl Graft {
             .is_healthy(&self.base)
             .await
             .map_err(|e| GraftBaseInvalid(e.to_string()))?;
+
+        // Reject grafts below the base's `earliest_block_number` (its prune
+        // floor). If the base has been pruned past `self.block`, the entity
+        // versions that were live at the graft block are gone, and grafting
+        // would silently produce a subgraph with reset state for any entity
+        // whose live-at-graft version was a closed historical version
+        // (heavily-updated mutable singletons are the worst-affected case).
+        // We only consult `earliest_block_number` when the base has
+        // processed at least one block, since the `(None, _)` arm below
+        // emits a clearer error otherwise.
+        if last_processed_block.is_some() {
+            let earliest_block = store
+                .earliest_block_number(&self.base)
+                .await
+                .map_err(|e| GraftBaseInvalid(e.to_string()))?;
+            if self.block < earliest_block {
+                return Err(GraftBaseInvalid(format!(
+                    "failed to graft onto `{}` at block {} because the base \
+                     subgraph only retains data starting at block {}; earlier \
+                     blocks have been pruned. Graft at block {} or later, or \
+                     use a base subgraph with sufficient retention.",
+                    self.base, self.block, earliest_block, earliest_block
+                )));
+            }
+        }
 
         // We are being defensive here: we don't know which specific
         // instance of a subgraph we will use as the base for the graft,

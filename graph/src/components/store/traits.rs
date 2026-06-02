@@ -219,6 +219,14 @@ pub trait SubgraphStore: Send + Sync + 'static {
     /// being set up
     async fn least_block_ptr(&self, id: &DeploymentHash) -> Result<Option<BlockPtr>, StoreError>;
 
+    /// Return the earliest block for which the deployment with this `id`
+    /// retains complete data. For unpruned deployments this is the start
+    /// block; for pruned deployments it advances as historical entity
+    /// versions are removed. Blocks earlier than this are not queryable
+    /// and cannot be used as a graft point because the entity versions
+    /// live at that block are no longer present.
+    async fn earliest_block_number(&self, id: &DeploymentHash) -> Result<BlockNumber, StoreError>;
+
     async fn is_healthy(&self, id: &DeploymentHash) -> Result<bool, StoreError>;
 
     /// Find all deployment locators for the subgraph with the given hash.
