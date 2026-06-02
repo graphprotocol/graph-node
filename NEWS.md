@@ -1,5 +1,53 @@
 # NEWS
 
+## v0.44.0
+
+```
+$ docker pull graphprotocol/graph-node:v0.44.0
+```
+
+### Critical Fix
+
+- **`EntityCache::load_related` returned wrong derived-collection membership on same-block parent reassignment.** Membership was decided against intermediate cache layers rather than the entity's final state, so entities reassigned to a new parent within the same block could be left in the old collection, omitted from the new one, or wrongly retained after a cross-handler revert. See Upgrade Notes. ([#6548](https://github.com/graphprotocol/graph-node/pull/6548))
+
+### Breaking Changes
+
+- **Elasticsearch CLI flags removed.** `--elasticsearch-url`, `--elasticsearch-user`, `--elasticsearch-password` (and the matching `ELASTICSEARCH_*` env vars) are gone. Configure Elasticsearch under the new `[log_store]` section in `graph-node.toml`. See Upgrade Notes. ([#6278](https://github.com/graphprotocol/graph-node/pull/6278))
+
+### What's New
+
+- **Query subgraph logs over GraphQL.** A new `_logs` field exposes subgraph-emitted logs (mapping `log.*` calls, runtime, system) with filters for level, timestamp range, and text search, plus pagination and `orderDirection`. The old Elasticsearch sink for subgraph logs is replaced by a unified `LogStore` abstraction with three backends configured under a new `[log_store]` section in `graph-node.toml`: File (JSON Lines), Loki, or Elasticsearch. Omit `[log_store]` to disable; logs still go to stdout/stderr. ([#6278](https://github.com/graphprotocol/graph-node/pull/6278))
+
+<!--
+TODO(next release): re-add the postponed-index-creation entry once #6608 is verified in the hosted service.
+The implementation (#6434, #6583) is in this release but disabled via `graph: Disable postponed index creation`
+(`postpone_attribute_index_creation` hardcoded to false). Suggested bullet:
+
+- **Postponed index creation extended to syncing subgraphs.** `GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION` previously only deferred indexes during copies. It now also postpones indexes during the initial sync of any subgraph, with a new `GRAPH_POSTPONE_INDEXES_CREATION_THRESHOLD` (default 10000) controlling how close to chain head the deployment must get before they're created. Tracked per-deployment so creation runs at most once, even if indexes are manually dropped later. ([#6434](https://github.com/graphprotocol/graph-node/pull/6434) [#6583](https://github.com/graphprotocol/graph-node/pull/6583))
+-->
+
+
+### Improvements
+
+- Revert entity versions during copy instead of in a separate post-copy pass, speeding up subgraph copy and graft. ([#6472](https://github.com/graphprotocol/graph-node/pull/6472))
+
+### Bug Fixes
+
+- Fixed `trace_filter` deserialization failing on providers that omit `result.output` (notably Sonic), which caused repeated trace ingestion retries. Fixed upstream in alloy 2.0.5 ([alloy#3931](https://github.com/alloy-rs/alloy/pull/3931)) and picked up via the bump in this release. ([#6576](https://github.com/graphprotocol/graph-node/pull/6576))
+- Fixed runner panics on out-of-range `BigInt` values: `to_signed_u256` replaced by fallible `to_i256`, and `to_unsigned_u256` now errors on values `>= 2^256` instead of panicking. ([#6560](https://github.com/graphprotocol/graph-node/pull/6560))
+- Fixed `graphman chain change-shard` failing with a duplicate-key error on revert to the original shard. Backups now use unique names and revert reuses the existing `<chain>-old`. ([#6199](https://github.com/graphprotocol/graph-node/pull/6199))
+
+### Upgrade Notes
+
+- v0.44.0 changes `EntityCache::load_related` results for same-block parent-reassignment edge cases ([#6548](https://github.com/graphprotocol/graph-node/pull/6548)). Subgraphs that read derived fields within handlers may diverge in POI from v0.43.0 on blocks exhibiting this pattern; resync from before the affected blocks if affected. The v0.44.0 result is canonical.
+- If you set `--elasticsearch-*` flags or `ELASTICSEARCH_*` env vars, migrate to a `[log_store]` section in `graph-node.toml` before upgrading. See `docs/log-store.md`. ([#6278](https://github.com/graphprotocol/graph-node/pull/6278))
+
+### Contributors
+
+Thanks to all contributors for this release: @erayack, @fordN, @incrypto32, @lutter
+
+**Full Changelog**: https://github.com/graphprotocol/graph-node/compare/v0.43.0...v0.44.0
+
 ## v0.43.0
 
 ### What's New
