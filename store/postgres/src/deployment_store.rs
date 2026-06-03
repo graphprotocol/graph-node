@@ -1737,12 +1737,24 @@ impl DeploymentStore {
         }
 
         async fn create_index(
+            logger: &Logger,
             store: &DeploymentStore,
             layout: &Layout,
             site: &Site,
             idx: &CreateIndex,
         ) -> Result<(), StoreError> {
-            let mut conn = store.pool.get_permitted().await?;
+            let mut last_log = Instant::now() - Duration::from_mins(2);
+            // We (ab)use the fdw pool here since `create index` can take a
+            // very long time; with many subgraphs creating indexes, we
+            // might starve the main connection pool which would block the
+            // progress of many subgraphs.
+            let mut conn = store.pool.get_fdw(logger, move || {
+                if last_log.elapsed() > Duration::from_mins(1) {
+                    debug!(logger, "Waiting for a connection to become available so we can create index"; "index_name" => idx.name().unwrap_or("<unknown>"));
+                    last_log = Instant::now();
+                }
+                false
+            }).await?;
             let schema_name = site.namespace.as_str();
 
             // A previous run that was interrupted (e.g. by a node
@@ -1790,7 +1802,7 @@ impl DeploymentStore {
 
                     wait_for_concurrent_index_creation(&logger, &store, &site).await?;
 
-                    create_index(&store, &layout, &site, &idx).await?;
+                    create_index(&logger, &store, &layout, &site, &idx).await?;
 
                     debug!(logger, "Created index";
                         "index_name" => idx.name().unwrap_or("<unknown>"),
