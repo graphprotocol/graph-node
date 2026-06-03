@@ -746,3 +746,73 @@ fn graft_validate_rejects_below_prune_floor() {
         Ok(())
     })
 }
+
+/// The store-level graft path (`DeploymentStore::start_subgraph`) rejects a
+/// graft whose block is below the base subgraph's `earliest_block_number`.
+///
+/// This is the defense-in-depth check that complements
+/// [`graft_validate_rejects_below_prune_floor`]: it covers callers that
+/// reach the store path without going through `Graft::validate` (graphman,
+/// custom deploy tooling, and `test_store::create_subgraph` itself). Without
+/// this check, the copy reads entity versions where
+/// `lower(block_range) <= block` and silently misses the version live at
+/// `block` whenever pruning removed it, leaving heavily-updated mutable
+/// entities reset to their default state in the grafted subgraph.
+#[test]
+fn graft_store_path_rejects_below_prune_floor() {
+    struct Progress;
+    impl PruneReporter for Progress {}
+
+    run_test(|store, src| async move {
+        // Same pruned-base setup as `graft_validate_rejects_below_prune_floor`:
+        // update user 2 at block 3 so its live-at-block-2 version `[1,3)`
+        // becomes a closed historical version, then prune with
+        // `history_blocks = 2` over `[0, 6]` so `earliest_block = 4`.
+        let user2_v2 = create_test_entity(
+            "2",
+            USER,
+            "Cindini",
+            "dinici@email.com",
+            44_i32,
+            157.1,
+            true,
+            Some("red"),
+            4,
+        );
+        transact_and_wait(&store, &src, BLOCKS[3].clone(), vec![user2_v2])
+            .await
+            .unwrap();
+        transact_and_wait(&store, &src, BLOCKS[6].clone(), vec![])
+            .await
+            .unwrap();
+        let req = PruneRequest::new(&src, 2, 1, 0, 6)?;
+        store
+            .prune(Box::new(Progress), &src, req)
+            .await
+            .expect("pruning works");
+
+        // Grafting at block 2 must be rejected even though
+        // `test_store::create_subgraph` bypasses `Graft::validate`. The
+        // store-level pre-copy check fails the start with an actionable
+        // error before any copy work happens.
+        let graft_id = DeploymentHash::new("grafted_below_floor").unwrap();
+        let err =
+            create_grafted_subgraph(&graft_id, GRAFT_GQL, src.hash.as_str(), BLOCKS[2].clone())
+                .await
+                .expect_err("graft below prune floor must be rejected at the store layer");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("only retains data starting at block 4"),
+            "expected prune-floor error mentioning earliest block 4, got: {msg}"
+        );
+
+        // Grafting at the prune floor (block 4) is still allowed: the live
+        // versions there survived pruning and the copy can use them.
+        let graft_ok = DeploymentHash::new("grafted_at_floor").unwrap();
+        create_grafted_subgraph(&graft_ok, GRAFT_GQL, src.hash.as_str(), BLOCKS[4].clone())
+            .await
+            .expect("graft at earliest_block must be accepted");
+
+        Ok(())
+    })
+}

@@ -1562,6 +1562,35 @@ impl DeploymentStore {
                 dst.catalog.site.namespace
             );
 
+            // Defense in depth against grafting below the base's prune
+            // floor. `Graft::validate` enforces this at manifest validation
+            // time, but callers that reach this code path directly
+            // (graphman, tests, custom tooling) bypass the registrar. The
+            // copy reads entity versions whose `lower(block_range) <= block`;
+            // if the version live at `block` has already been pruned, those
+            // versions are silently missing and the resulting graft has
+            // reset state for any entity whose live-at-graft version was
+            // closed.
+            let src_earliest_before = {
+                let mut conn = self.pool.get_permitted().await?;
+                deployment::state(&mut conn, &src.site)
+                    .await?
+                    .earliest_block_number
+            };
+            if block.number < src_earliest_before {
+                return Err(StoreError::Unknown(anyhow::anyhow!(
+                    "cannot graft `{}` onto `{}` at block {} because the base \
+                     subgraph only retains data starting at block {}; earlier \
+                     blocks have been pruned. Graft at block {} or later, or \
+                     use a base subgraph with sufficient retention.",
+                    dst.catalog.site.namespace,
+                    src.catalog.site.namespace,
+                    block.number,
+                    src_earliest_before,
+                    src_earliest_before,
+                )));
+            }
+
             let src_manifest_idx_and_name = src_deployment.manifest.template_idx_and_name()?;
             let dst_manifest_idx_and_name = self
                 .load_deployment(dst.site.clone())
@@ -1659,6 +1688,39 @@ impl DeploymentStore {
                 // that might be incomplete because a prune on the source
                 // removed data just before we copied it
                 deployment::copy_earliest_block(conn, &src.site, &dst.site).await?;
+
+                // Detect the prune-during-copy race: if the base pruned
+                // past our graft block while the copy was running, the
+                // `copy_earliest_block` call above propagated that floor
+                // into `dst`, leaving us with `earliest_block > graft_block`
+                // — a structurally invalid graft. Fail the transaction so
+                // the bookkeeping is rolled back; partial copied data
+                // remains in `dst`'s tables and will require operator
+                // cleanup (e.g. delete + redeploy) before retrying.
+                //
+                // We re-read the source's earliest rather than the
+                // destination's because the destination row exists but has
+                // not yet been advanced past genesis (`forward_block_ptr`
+                // below is what sets its head), so `deployment::state` on
+                // the destination would error with "has not started
+                // syncing yet". The source has a head and is the value
+                // `copy_earliest_block` just propagated.
+                let src_earliest_after = deployment::state(conn, &src.site)
+                    .await?
+                    .earliest_block_number;
+                if src_earliest_after > block.number {
+                    return Err(StoreError::Unknown(anyhow::anyhow!(
+                        "graft of `{}` at block {} was invalidated mid-copy: \
+                         the base subgraph `{}` was pruned past the graft block \
+                         (earliest is now {}). The deployment must be deleted \
+                         and recreated, ideally targeting a graft block within \
+                         the base's retained range.",
+                        dst.catalog.site.namespace,
+                        block.number,
+                        src.catalog.site.namespace,
+                        src_earliest_after,
+                    )));
+                }
 
                 // Set the block ptr to the graft point to signal that we successfully
                 // performed the graft
