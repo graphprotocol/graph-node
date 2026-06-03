@@ -19,7 +19,7 @@ pub use codegen::{CodegenOpt, run_codegen};
 pub use create::{CreateOpt, run_create};
 pub use deploy::{DeployOpt, run_deploy};
 pub use dev::{DevOpt, run_dev};
-pub use init::{InitOpt, run_init};
+pub use init::{InitOpt, Protocol, run_init, validate_contract_address};
 pub use publish::{PublishOpt, run_publish};
 pub use remove::{RemoveOpt, run_remove};
 pub use test::{TestOpt, run_test};
