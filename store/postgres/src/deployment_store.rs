@@ -1592,11 +1592,11 @@ impl DeploymentStore {
             }
 
             let src_manifest_idx_and_name = src_deployment.manifest.template_idx_and_name()?;
-            let dst_manifest_idx_and_name = self
-                .load_deployment(dst.site.clone())
-                .await?
-                .manifest
-                .template_idx_and_name()?;
+            // Keep `dst_deployment` bound so we can read its
+            // `history_blocks` below; otherwise the chained
+            // `.manifest.template_idx_and_name()?` would consume it.
+            let dst_deployment = self.load_deployment(dst.site.clone()).await?;
+            let dst_manifest_idx_and_name = dst_deployment.manifest.template_idx_and_name()?;
 
             // Copy subgraph data
             // We allow both not copying tables at all from the source, as well
@@ -1673,10 +1673,25 @@ impl DeploymentStore {
                 info!(logger, "Rewound subgraph to block {}", block.number;
                   "time_ms" => start.elapsed().as_millis());
 
+                // Use the *maximum* of the source's and destination's
+                // `history_blocks` rather than overwriting the destination
+                // with the source's value. The destination has just
+                // received the source's full retained history, so its
+                // retention must be at least as long as the source's
+                // (otherwise the inherited data would be immediately
+                // eligible for pruning); but if the destination's
+                // manifest requests longer retention (notably
+                // `prune: never`, which yields `BLOCK_NUMBER_MAX`), that
+                // intent must be honoured. The previous unconditional
+                // overwrite silently downgraded `prune: never` children
+                // to whatever retention the parent used.
                 deployment::set_history_blocks(
                     conn,
                     &dst.site,
-                    src_deployment.manifest.history_blocks,
+                    src_deployment
+                        .manifest
+                        .history_blocks
+                        .max(dst_deployment.manifest.history_blocks),
                 )
                 .await?;
 

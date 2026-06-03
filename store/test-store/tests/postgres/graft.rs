@@ -816,3 +816,52 @@ fn graft_store_path_rejects_below_prune_floor() {
         Ok(())
     })
 }
+
+/// Grafting must not silently shorten the destination's `history_blocks`
+/// retention.
+///
+/// Before the fix, `start_subgraph` unconditionally wrote the source
+/// subgraph's `history_blocks` into the destination, so a `prune: never`
+/// child grafted from a `prune: auto` parent silently inherited the
+/// parent's aggressive retention window. The fix takes the *maximum* of
+/// the two, so the destination keeps at least as much history as it has
+/// (the inherited copied data) but is never downgraded from a longer
+/// retention it explicitly requested.
+///
+/// The test setup matches that scenario: the destination is built by
+/// `test_store::create_subgraph`, whose manifest has `indexer_hints: None`
+/// and therefore reports `history_blocks = BLOCK_NUMBER_MAX` (the
+/// `prune: never` equivalent), while we manually lower the source's
+/// retention so old / new behaviour are observably different.
+#[test]
+fn graft_history_blocks_takes_max_of_parent_and_child() {
+    run_test(|store, src| async move {
+        // Lower the source's `history_blocks` to a small value so that
+        // the "max vs overwrite" outcomes diverge measurably.
+        let src_hb = 2;
+        let reorg_threshold = 1;
+        store
+            .set_history_blocks(&src, src_hb, reorg_threshold)
+            .await
+            .expect("lowering source history_blocks");
+
+        let graft_id = DeploymentHash::new("grafted_history_blocks").unwrap();
+        let dst =
+            create_grafted_subgraph(&graft_id, GRAFT_GQL, src.hash.as_str(), BLOCKS[1].clone())
+                .await
+                .expect("graft succeeds");
+
+        let dst_hb = store
+            .history_blocks(&dst)
+            .await
+            .expect("read dst history_blocks");
+        assert_eq!(
+            dst_hb, BLOCK_NUMBER_MAX,
+            "graft must keep the destination's longer retention \
+             (BLOCK_NUMBER_MAX = {BLOCK_NUMBER_MAX}) rather than overwriting it \
+             with the source's smaller value ({src_hb})"
+        );
+
+        Ok(())
+    })
+}

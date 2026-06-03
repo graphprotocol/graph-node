@@ -1520,6 +1520,18 @@ impl Inner {
             .await
     }
 
+    /// Return the current `history_blocks` retention setting recorded in
+    /// the deployment's manifest. Mirrors [`Self::set_history_blocks`] and
+    /// is useful for tooling and tests that need to inspect the effective
+    /// retention after operations such as grafting.
+    pub async fn history_blocks(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<BlockNumber, StoreError> {
+        let site = self.find_site(deployment.id.into()).await?;
+        Ok(self.load_deployment(site).await?.manifest.history_blocks)
+    }
+
     pub async fn load_deployment(
         &self,
         site: Arc<Site>,
