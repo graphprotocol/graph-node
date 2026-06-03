@@ -788,6 +788,71 @@ dataSources:
         );
     }
 
+    /// Test that codegen handles a NEAR manifest: it parses `kind: near`,
+    /// generates schema types, and produces no ABI directories (NEAR has no
+    /// ABIs). This guards the schema-only codegen path for non-Ethereum
+    /// protocols.
+    #[tokio::test]
+    async fn test_codegen_near_schema_only() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path();
+        let output_dir = project_dir.join("generated");
+
+        let manifest_content = r#"
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: near
+    name: receipts
+    network: near-mainnet
+    source:
+      account: wnear.flux-dev
+      startBlock: 100
+    mapping:
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      entities:
+        - ExampleEntity
+      receiptHandlers:
+        - handler: handleReceipt
+      file: ./src/receipts.ts
+"#;
+        fs::write(project_dir.join("subgraph.yaml"), manifest_content).unwrap();
+
+        let schema_content = r#"
+type ExampleEntity @entity(immutable: true) {
+  id: Bytes!
+  count: BigInt!
+}
+"#;
+        fs::write(project_dir.join("schema.graphql"), schema_content).unwrap();
+        fs::create_dir_all(project_dir.join("src")).unwrap();
+        fs::write(project_dir.join("src/receipts.ts"), "").unwrap();
+
+        let opt = CodegenOpt {
+            manifest: project_dir.join("subgraph.yaml"),
+            output_dir: output_dir.clone(),
+            skip_migrations: true,
+            watch: false,
+            ipfs: "https://api.thegraph.com/ipfs/api/v0".to_string(),
+        };
+        generate_types(&opt).await.unwrap();
+
+        // Schema types are generated...
+        assert!(
+            output_dir.join("schema.ts").exists(),
+            "schema.ts should be generated for NEAR"
+        );
+        let schema_ts = fs::read_to_string(output_dir.join("schema.ts")).unwrap();
+        assert!(schema_ts.contains("export class ExampleEntity"));
+        // ...but no per-data-source ABI directory is created.
+        assert!(
+            !output_dir.join("receipts").exists(),
+            "NEAR data source must not produce an ABI directory"
+        );
+    }
+
     /// Test that codegen fails when referenced ABI file does not exist.
     ///
     /// Before Step 2, codegen did not validate the manifest. Now it calls

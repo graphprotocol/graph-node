@@ -172,6 +172,16 @@ pub fn load_manifest(path: &Path) -> Result<Manifest> {
     let raw: serde_yaml::Mapping = serde_yaml::from_str(&manifest_str)
         .with_context(|| format!("Failed to parse manifest YAML: {:?}", path))?;
 
+    // Non-Ethereum protocols (e.g. NEAR) can't be parsed by graph-node's
+    // Ethereum-typed `UnresolvedSubgraphManifest`, and gnd does not depend on
+    // their chain crates. Codegen for these protocols only needs the schema
+    // path plus data-source/template names and mapping files (NEAR has no
+    // ABIs), so we extract just those fields directly from the YAML.
+    if manifest_needs_loose_parse(&raw) {
+        return parse_manifest_loose(&raw)
+            .with_context(|| format!("Failed to parse manifest: {:?}", path));
+    }
+
     // Use a dummy deployment hash for local CLI use
     let id = DeploymentHash::new("QmLocalDev").unwrap();
 
@@ -179,6 +189,162 @@ pub fn load_manifest(path: &Path) -> Result<Manifest> {
         .with_context(|| format!("Failed to parse manifest: {:?}", path))?;
 
     Ok(convert_manifest(parsed))
+}
+
+/// Onchain data-source kinds for protocols that gnd parses loosely (their chain
+/// crates are not gnd dependencies). Everything else (`ethereum`,
+/// `ethereum/contract`, `subgraph`, `file/*`) is handled by the typed path.
+const LOOSE_PROTOCOL_KINDS: &[&str] = &["near", "cosmos", "arweave", "substreams"];
+
+/// Returns true if the manifest contains a data source or template whose kind
+/// belongs to a non-Ethereum protocol that the typed parser cannot handle.
+fn manifest_needs_loose_parse(raw: &serde_yaml::Mapping) -> bool {
+    let kinds = ["dataSources", "templates"].into_iter().flat_map(|key| {
+        raw.get(key)
+            .and_then(|v| v.as_sequence())
+            .into_iter()
+            .flatten()
+            .filter_map(|ds| ds.get("kind").and_then(|k| k.as_str()))
+    });
+
+    kinds.into_iter().any(|kind| {
+        LOOSE_PROTOCOL_KINDS
+            .iter()
+            .any(|p| kind == *p || kind.starts_with(&format!("{}/", p)))
+    })
+}
+
+/// Loosely parse a non-Ethereum manifest, extracting only the fields gnd needs
+/// for codegen. Ethereum-specific fields (`source_abi`, handlers, start/end
+/// block, source address) are left empty/default.
+fn parse_manifest_loose(raw: &serde_yaml::Mapping) -> Result<Manifest> {
+    let spec_version_str = raw
+        .get("specVersion")
+        .and_then(|v| v.as_str())
+        .context("manifest is missing 'specVersion'")?;
+    let spec_version = Version::parse(spec_version_str)
+        .with_context(|| format!("invalid specVersion '{}'", spec_version_str))?;
+
+    let schema = raw
+        .get("schema")
+        .and_then(|s| s.get("file"))
+        .and_then(|f| f.as_str())
+        .map(String::from);
+
+    let features = raw
+        .get("features")
+        .and_then(|v| v.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|f| f.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let graft = raw.get("graft").and_then(|g| {
+        let base = g.get("base").and_then(|b| b.as_str())?.to_string();
+        let block = g.get("block").and_then(|b| b.as_u64()).unwrap_or(0);
+        Some(GraftConfig { base, block })
+    });
+
+    let data_sources = loose_sequence(raw, "dataSources")
+        .iter()
+        .map(loose_data_source)
+        .collect();
+
+    let templates = loose_sequence(raw, "templates")
+        .iter()
+        .map(loose_template)
+        .collect();
+
+    Ok(Manifest {
+        spec_version,
+        schema,
+        features,
+        graft,
+        data_sources,
+        templates,
+    })
+}
+
+/// Extract a top-level YAML sequence (e.g. `dataSources`) as a slice of values.
+fn loose_sequence<'a>(raw: &'a serde_yaml::Mapping, key: &str) -> &'a [serde_yaml::Value] {
+    raw.get(key)
+        .and_then(|v| v.as_sequence())
+        .map(|s| s.as_slice())
+        .unwrap_or(&[])
+}
+
+/// Extract the `mapping.abis` entries from a data source / template YAML value.
+fn loose_abis(ds: &serde_yaml::Value) -> Vec<Abi> {
+    ds.get("mapping")
+        .and_then(|m| m.get("abis"))
+        .and_then(|a| a.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|abi| {
+                    let name = abi.get("name").and_then(|n| n.as_str())?.to_string();
+                    let file = abi.get("file").and_then(|f| f.as_str())?.to_string();
+                    Some(Abi { name, file })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Read a string field from a data source / template YAML value.
+fn loose_str(ds: &serde_yaml::Value, key: &str) -> Option<String> {
+    ds.get(key).and_then(|v| v.as_str()).map(String::from)
+}
+
+/// Read `mapping.<key>` as a string from a data source / template YAML value.
+fn loose_mapping_str(ds: &serde_yaml::Value, key: &str) -> Option<String> {
+    ds.get("mapping")
+        .and_then(|m| m.get(key))
+        .and_then(|v| v.as_str())
+        .map(String::from)
+}
+
+/// Build a gnd `DataSource` from a loosely-parsed non-Ethereum YAML value.
+fn loose_data_source(ds: &serde_yaml::Value) -> DataSource {
+    DataSource {
+        name: loose_str(ds, "name").unwrap_or_default(),
+        kind: loose_str(ds, "kind").unwrap_or_default(),
+        network: loose_str(ds, "network"),
+        mapping_file: loose_mapping_str(ds, "file"),
+        api_version: loose_mapping_str(ds, "apiVersion").and_then(|v| Version::parse(&v).ok()),
+        abis: loose_abis(ds),
+        source_address: None,
+        source_abi: None,
+        start_block: ds
+            .get("source")
+            .and_then(|s| s.get("startBlock"))
+            .and_then(|b| b.as_u64())
+            .unwrap_or(0),
+        end_block: ds
+            .get("source")
+            .and_then(|s| s.get("endBlock"))
+            .and_then(|b| b.as_u64()),
+        event_handlers: vec![],
+        call_handlers: vec![],
+        block_handlers: vec![],
+    }
+}
+
+/// Build a gnd `Template` from a loosely-parsed non-Ethereum YAML value.
+fn loose_template(t: &serde_yaml::Value) -> Template {
+    Template {
+        name: loose_str(t, "name").unwrap_or_default(),
+        kind: loose_str(t, "kind").unwrap_or_default(),
+        network: loose_str(t, "network"),
+        mapping_file: loose_mapping_str(t, "file"),
+        api_version: loose_mapping_str(t, "apiVersion").and_then(|v| Version::parse(&v).ok()),
+        abis: loose_abis(t),
+        source_abi: None,
+        event_handlers: vec![],
+        call_handlers: vec![],
+        block_handlers: vec![],
+    }
 }
 
 /// Convert a graph-node `UnresolvedSubgraphManifest` into gnd's `Manifest`.
@@ -656,6 +822,64 @@ dataSources:
         assert_eq!(manifest.data_sources[1].source_address, None);
         // total_source_count includes both
         assert_eq!(manifest.total_source_count(), 2);
+    }
+
+    #[test]
+    fn test_load_manifest_near() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest_path = temp_dir.path().join("subgraph.yaml");
+
+        // A NEAR manifest: account-based source, receiptHandlers, no abis.
+        // Previously this failed to parse because the typed parser is
+        // Ethereum-only.
+        let manifest_content = r#"
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: near
+    name: receipts
+    network: near-mainnet
+    source:
+      account: wnear.flux-dev
+      startBlock: 100
+    mapping:
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      entities:
+        - ExampleEntity
+      receiptHandlers:
+        - handler: handleReceipt
+      file: ./src/receipts.ts
+"#;
+
+        fs::write(&manifest_path, manifest_content).unwrap();
+
+        let manifest = load_manifest(&manifest_path).unwrap();
+        assert_eq!(manifest.spec_version, Version::new(0, 0, 5));
+        assert_eq!(manifest.schema, Some("./schema.graphql".to_string()));
+        assert_eq!(manifest.data_sources.len(), 1);
+        let ds = &manifest.data_sources[0];
+        assert_eq!(ds.name, "receipts");
+        assert_eq!(ds.kind, "near");
+        assert_eq!(ds.network, Some("near-mainnet".to_string()));
+        assert_eq!(ds.mapping_file, Some("./src/receipts.ts".to_string()));
+        assert_eq!(ds.start_block, 100);
+        // NEAR has no ABIs and no Ethereum-style source.abi
+        assert!(ds.abis.is_empty());
+        assert!(ds.source_abi.is_none());
+    }
+
+    #[test]
+    fn test_manifest_needs_loose_parse() {
+        let near: serde_yaml::Mapping =
+            serde_yaml::from_str("dataSources:\n  - kind: near\n    name: r\n").unwrap();
+        assert!(manifest_needs_loose_parse(&near));
+
+        let eth: serde_yaml::Mapping =
+            serde_yaml::from_str("dataSources:\n  - kind: ethereum/contract\n    name: t\n")
+                .unwrap();
+        assert!(!manifest_needs_loose_parse(&eth));
     }
 
     #[test]
