@@ -351,7 +351,8 @@ impl EnvVars {
             subgraph_error_retry_ceil: Duration::from_secs(inner.subgraph_error_retry_ceil_in_secs),
             subgraph_error_retry_jitter: inner.subgraph_error_retry_jitter,
             enable_select_by_specific_attributes: inner.enable_select_by_specific_attributes.0,
-            postpone_attribute_index_creation: false,
+            postpone_attribute_index_creation: inner.postpone_attribute_index_creation.0
+                || cfg!(debug_assertions),
             postpone_indexes_creation_threshold: inner.postpone_indexes_creation_threshold,
             log_trigger_data: inner.log_trigger_data.0,
             explorer_ttl: Duration::from_secs(inner.explorer_ttl_in_secs),
@@ -556,7 +557,6 @@ struct Inner {
     #[envconfig(from = "GRAPH_ENABLE_SELECT_BY_SPECIFIC_ATTRIBUTES", default = "true")]
     enable_select_by_specific_attributes: EnvVarBoolean,
     #[envconfig(from = "GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION", default = "false")]
-    #[allow(unused)]
     postpone_attribute_index_creation: EnvVarBoolean,
     #[envconfig(from = "GRAPH_POSTPONE_INDEXES_CREATION_THRESHOLD", default = "10000")]
     postpone_indexes_creation_threshold: i32,
