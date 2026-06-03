@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
+use graphql_tools::parser::schema as gql;
 use inflector::Inflector;
 use serde_json::Value as JsonValue;
 
@@ -15,6 +16,7 @@ use crate::config::networks::update_networks_file;
 use crate::formatter::format_typescript;
 use crate::output::{Step, step};
 use crate::scaffold::ScaffoldOptions;
+use crate::scaffold::generate_event_entities;
 use crate::scaffold::manifest::{EventInfo, extract_events_from_abi};
 use crate::services::ContractService;
 
@@ -94,6 +96,14 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
         .map(String::from)
         .unwrap_or_else(|| "mainnet".to_string());
 
+    // Get the schema file path from the manifest (default ./schema.graphql)
+    let schema_rel = manifest
+        .get("schema")
+        .and_then(|s| s.get("file"))
+        .and_then(|f| f.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| "schema.graphql".to_string());
+
     // Fetch or load ABI
     let (abi, contract_name, start_block) = get_contract_info(&opt, &network).await?;
 
@@ -119,6 +129,9 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
 
     // Add mapping file
     add_mapping_file(project_dir, &contract_name, &events)?;
+
+    // Append entity types for the new contract's events to schema.graphql
+    add_schema_entities(project_dir, &schema_rel, &events)?;
 
     // Update manifest
     update_manifest(
@@ -286,6 +299,68 @@ fn add_mapping_file(project_dir: &Path, contract_name: &str, events: &[EventInfo
     fs::write(&mapping_file, formatted).context("Failed to write mapping file")?;
 
     Ok(())
+}
+
+/// Append entity types for the new data source's events to `schema.graphql`.
+///
+/// Entities whose type name already exists in the schema are skipped (with a
+/// notice) so that re-running `add`, or adding a contract that shares event
+/// names with an existing one, never produces duplicate type definitions that
+/// would fail to compile.
+fn add_schema_entities(project_dir: &Path, schema_rel: &str, events: &[EventInfo]) -> Result<()> {
+    let schema_path = project_dir.join(schema_rel);
+
+    let existing = fs::read_to_string(&schema_path).unwrap_or_default();
+    let mut existing_names = existing_type_names(&existing);
+
+    let mut new_blocks: Vec<String> = Vec::new();
+    for (name, block) in generate_event_entities(events) {
+        if existing_names.contains(&name) {
+            step(
+                Step::Skip,
+                &format!("Entity {} already in schema, skipping", name),
+            );
+            continue;
+        }
+        existing_names.insert(name);
+        new_blocks.push(block);
+    }
+
+    if new_blocks.is_empty() {
+        return Ok(());
+    }
+
+    // Build the appended content, preserving existing schema content and
+    // separating type definitions with a blank line.
+    let mut content = existing.trim_end().to_string();
+    if !content.is_empty() {
+        content.push_str("\n\n");
+    }
+    content.push_str(&new_blocks.join("\n\n"));
+    content.push('\n');
+
+    step(Step::Write, &format!("Updating {}", schema_path.display()));
+    fs::write(&schema_path, content).context("Failed to write schema.graphql")?;
+
+    Ok(())
+}
+
+/// Collect the names of all object types defined in a GraphQL schema.
+///
+/// Returns an empty set if the schema is empty or cannot be parsed (a malformed
+/// schema is surfaced later by codegen's schema validation, not here).
+fn existing_type_names(schema: &str) -> std::collections::HashSet<String> {
+    use gql::{Definition, TypeDefinition};
+
+    let mut names = std::collections::HashSet::new();
+    if let Ok(doc) = gql::parse_schema::<String>(schema) {
+        for def in &doc.definitions {
+            if let Definition::TypeDefinition(TypeDefinition::Object(obj)) = def {
+                names.insert(obj.name.clone());
+            }
+        }
+    }
+    names
 }
 
 /// Generate mapping handlers for events.
@@ -590,6 +665,77 @@ mod tests {
         assert!(mapping.contains("../generated/Token/Token"));
         assert!(mapping.contains("import { Transfer }"));
         assert!(mapping.contains("../generated/schema"));
+    }
+
+    #[test]
+    fn test_existing_type_names() {
+        let schema = r#"
+type Transfer @entity(immutable: true) { id: Bytes! }
+type Approval @entity { id: Bytes! }
+"#;
+        let names = existing_type_names(schema);
+        assert!(names.contains("Transfer"));
+        assert!(names.contains("Approval"));
+        assert_eq!(names.len(), 2);
+    }
+
+    #[test]
+    fn test_existing_type_names_empty_or_invalid() {
+        assert!(existing_type_names("").is_empty());
+        assert!(existing_type_names("this is not graphql {{{").is_empty());
+    }
+
+    fn transfer_event() -> EventInfo {
+        EventInfo {
+            name: "Transfer".to_string(),
+            signature: "Transfer(address,address,uint256)".to_string(),
+            inputs: vec![
+                EventInput {
+                    name: "from".to_string(),
+                    solidity_type: "address".to_string(),
+                    indexed: true,
+                },
+                EventInput {
+                    name: "value".to_string(),
+                    solidity_type: "uint256".to_string(),
+                    indexed: false,
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn test_add_schema_entities_appends_new_type() {
+        let dir = tempfile::tempdir().unwrap();
+        let schema = "type Existing @entity { id: Bytes! }\n";
+        fs::write(dir.path().join("schema.graphql"), schema).unwrap();
+
+        add_schema_entities(dir.path(), "schema.graphql", &[transfer_event()]).unwrap();
+
+        let updated = fs::read_to_string(dir.path().join("schema.graphql")).unwrap();
+        // Existing content preserved
+        assert!(updated.contains("type Existing @entity"));
+        // New entity appended with id and standard block fields
+        assert!(updated.contains("type Transfer @entity(immutable: true)"));
+        assert!(updated.contains("id: Bytes!"));
+        assert!(updated.contains("from: Bytes!"));
+        assert!(updated.contains("value: BigInt!"));
+        assert!(updated.contains("blockNumber: BigInt!"));
+        assert!(updated.contains("transactionHash: Bytes!"));
+    }
+
+    #[test]
+    fn test_add_schema_entities_skips_existing() {
+        let dir = tempfile::tempdir().unwrap();
+        // Schema already declares a Transfer type
+        let schema = "type Transfer @entity { id: Bytes! }\n";
+        fs::write(dir.path().join("schema.graphql"), schema).unwrap();
+
+        add_schema_entities(dir.path(), "schema.graphql", &[transfer_event()]).unwrap();
+
+        let updated = fs::read_to_string(dir.path().join("schema.graphql")).unwrap();
+        // The colliding type is skipped: still exactly one `type Transfer`
+        assert_eq!(updated.matches("type Transfer").count(), 1);
     }
 
     #[test]

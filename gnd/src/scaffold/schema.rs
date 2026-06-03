@@ -1,7 +1,7 @@
 //! Schema (schema.graphql) generation for scaffold.
 
 use super::ScaffoldOptions;
-use super::manifest::{EventInput, extract_events_from_abi};
+use super::manifest::{EventInfo, EventInput, extract_events_from_abi};
 
 /// Generate the schema.graphql content.
 pub fn generate_schema(options: &ScaffoldOptions) -> String {
@@ -52,6 +52,23 @@ fn generate_example_entity(inputs: &[EventInput]) -> String {
          type ExampleEntity @entity(immutable: true) {{\n{}}}\n",
         fields
     )
+}
+
+/// Generate one GraphQL entity type per event.
+///
+/// Returns `(entity_name, graphql_block)` pairs so callers can deduplicate by
+/// name before appending to an existing schema (used by `gnd add`). Unlike
+/// [`generate_schema`], this never emits the `ExampleEntity` placeholder.
+pub fn generate_event_entities(events: &[EventInfo]) -> Vec<(String, String)> {
+    events
+        .iter()
+        .map(|event| {
+            (
+                event.name.clone(),
+                generate_event_entity(&event.name, &event.inputs),
+            )
+        })
+        .collect()
 }
 
 /// Generate an entity type for an event.
