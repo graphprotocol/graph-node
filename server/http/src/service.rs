@@ -492,9 +492,10 @@ mod tests {
         }
 
         async fn run_query(self: Arc<Self>, _query: Query, _target: QueryTarget) -> QueryResults {
-            QueryResults::from(Object::from_iter(
-                vec![(Word::from("name"), r::Value::String(String::from("Jordi")))].into_iter(),
-            ))
+            QueryResults::from(Object::from_iter(vec![(
+                Word::from("name"),
+                r::Value::String(String::from("Jordi")),
+            )]))
         }
 
         fn metrics(&self) -> Arc<dyn GraphQLMetrics> {

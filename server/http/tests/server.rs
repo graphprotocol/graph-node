@@ -56,13 +56,15 @@ impl GraphQlRunner for TestGraphQlRunner {
                 .unwrap()
                 == &r::Value::String(String::from("John"))
         {
-            Object::from_iter(
-                vec![(Word::from("name"), r::Value::String(String::from("John")))].into_iter(),
-            )
+            Object::from_iter(vec![(
+                Word::from("name"),
+                r::Value::String(String::from("John")),
+            )])
         } else {
-            Object::from_iter(
-                vec![(Word::from("name"), r::Value::String(String::from("Jordi")))].into_iter(),
-            )
+            Object::from_iter(vec![(
+                Word::from("name"),
+                r::Value::String(String::from("Jordi")),
+            )])
         }
         .into()
     }

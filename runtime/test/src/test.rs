@@ -195,7 +195,9 @@ impl WasmInstanceExt for WasmInstance {
             .typed(self.store.as_context())
             .unwrap()
             .clone();
-        func.call_async(&mut self.store.as_context_mut(), ()).await
+        func.call_async(&mut self.store.as_context_mut(), ())
+            .await
+            .map_err(anyhow::Error::from)
     }
 
     async fn invoke_export0<R>(&mut self, f: &str) -> AscPtr<R> {
@@ -309,6 +311,7 @@ impl WasmInstanceExt for WasmInstance {
             (arg0.wasm_ptr(), arg1.wasm_ptr()),
         )
         .await
+        .map_err(anyhow::Error::from)
     }
 
     async fn invoke_export0_val<V: wasmtime::WasmTy + Sync>(&mut self, func: &str) -> V {

@@ -93,12 +93,14 @@ impl WasmInstance {
         self.instance
             .get_func(self.store.as_context_mut(), handler_name)
             .with_context(|| format!("function {} not found", handler_name))?
-            .typed::<(u32, u32), ()>(self.store.as_context_mut())?
+            .typed::<(u32, u32), ()>(self.store.as_context_mut())
+            .map_err(anyhow::Error::from)?
             .call_async(
                 self.store.as_context_mut(),
                 (value?.wasm_ptr(), user_data?.wasm_ptr()),
             )
             .await
+            .map_err(anyhow::Error::from)
             .with_context(|| format!("Failed to handle callback '{}'", handler_name))?;
 
         let mut wasm_ctx = self.store.into_data();
@@ -159,6 +161,7 @@ impl WasmInstance {
 
         let func = func
             .typed(self.store.as_context_mut())
+            .map_err(anyhow::Error::from)
             .context("wasm function has incorrect signature")?;
 
         // Caution: Make sure all exit paths from this function call `exit_handler`.
@@ -168,6 +171,7 @@ impl WasmInstance {
         let deterministic_error: Option<Error> = match func
             .call_async(self.store.as_context_mut(), arg.wasm_ptr())
             .await
+            .map_err(anyhow::Error::from)
         {
             Ok(()) => {
                 assert!(!self.instance_ctx().as_ref().possible_reorg);
@@ -281,10 +285,10 @@ fn link_chain_host_fn(
                         .iter()
                         .find(|hf| hf.name == name)
                         .ok_or_else(|| {
-                            anyhow::anyhow!(
+                            wasmtime::Error::msg(format!(
                                 "chain host function '{}' is not available for this chain",
                                 name
-                            )
+                            ))
                         })?
                         .cheap_clone();
 
@@ -302,17 +306,20 @@ fn link_chain_host_fn(
                         metrics: host_metrics.cheap_clone(),
                         heap: &mut WasmInstanceContext::new(&mut caller),
                     };
-                    let ret = (host_fn.func)(ctx, call_ptr).await.map_err(|e| match e {
-                        HostExportError::Deterministic(e) => {
-                            caller.data_mut().deterministic_host_trap = true;
-                            e
-                        }
-                        HostExportError::PossibleReorg(e) => {
-                            caller.data_mut().possible_reorg = true;
-                            e
-                        }
-                        HostExportError::Unknown(e) => e,
-                    })?;
+                    let ret = (host_fn.func)(ctx, call_ptr)
+                        .await
+                        .map_err(|e| match e {
+                            HostExportError::Deterministic(e) => {
+                                caller.data_mut().deterministic_host_trap = true;
+                                e
+                            }
+                            HostExportError::PossibleReorg(e) => {
+                                caller.data_mut().possible_reorg = true;
+                                e
+                            }
+                            HostExportError::Unknown(e) => e,
+                        })
+                        .map_err(wasmtime::Error::from_anyhow)?;
                     host_metrics.observe_host_fn_execution_time(
                         start.elapsed().as_secs_f64(),
                         &name_for_metrics,
@@ -576,7 +583,9 @@ pub(crate) fn build_linker(
     linker.func_wrap(
         "gas",
         "gas",
-        |mut caller: wasmtime::Caller<'_, WasmInstanceData>, gas_used: u64| -> anyhow::Result<()> {
+        |mut caller: wasmtime::Caller<'_, WasmInstanceData>,
+         gas_used: u64|
+         -> wasmtime::Result<()> {
             // Gas metering has a relevant execution cost cost, being called tens of thousands
             // of times per handler, but it's not worth having a stopwatch section here because
             // the cost of measuring would be greater than the cost of `consume_host_fn`. Last
@@ -587,7 +596,7 @@ pub(crate) fn build_linker(
                 .consume_host_fn_with_metrics(Gas::new(gas_used), "gas")
             {
                 caller.data_mut().deterministic_host_trap = true;
-                return Err(e.into());
+                return Err(wasmtime::Error::from_anyhow(e.into()));
             }
 
             Ok(())
