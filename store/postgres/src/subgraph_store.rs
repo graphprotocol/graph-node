@@ -1888,6 +1888,12 @@ impl SubgraphStoreTrait for SubgraphStore {
         store.block_ptr(site.cheap_clone()).await
     }
 
+    async fn earliest_block_number(&self, id: &DeploymentHash) -> Result<BlockNumber, StoreError> {
+        let (store, site) = self.store(id).await?;
+        let state = store.deployment_state(site.cheap_clone()).await?;
+        Ok(state.earliest_block_number)
+    }
+
     async fn is_healthy(&self, id: &DeploymentHash) -> Result<bool, StoreError> {
         let (store, site) = self.store(id).await?;
         let health = store.health(&site).await?;

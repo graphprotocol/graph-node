@@ -600,7 +600,24 @@ impl Graft {
                 self.block,
                 ptr.number - 1
             ))),
-            (Some(_), _) => Ok(()),
+            (Some(_), _) => {
+                // The graft block must be at or above the base's earliest
+                // available block. Below that the base store no longer has
+                // the entity versions the copy step would need: either the
+                // base started above the graft block, or pruning has
+                // removed the history.
+                let earliest_block = store
+                    .earliest_block_number(&self.base)
+                    .await
+                    .map_err(|e| GraftBaseInvalid(e.to_string()))?;
+                if self.block < earliest_block {
+                    return Err(GraftBaseInvalid(format!(
+                        "failed to graft onto `{}` at block {} since its earliest available block is {}",
+                        self.base, self.block, earliest_block
+                    )));
+                }
+                Ok(())
+            }
         }
     }
 }
