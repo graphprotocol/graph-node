@@ -74,6 +74,18 @@ Thanks to all contributors for this release: @erayack, @fordN, @incrypto32, @lut
 - Fixed `graphman config pools` not working due to hardcoded pool size override. ([#6444](https://github.com/graphprotocol/graph-node/pull/6444))
 - Fixed unfail retry mechanism stopping after the first attempt when the deployment head was still behind the error block. ([#6529](https://github.com/graphprotocol/graph-node/pull/6529))
 
+### Note on `ethereum.decode()` whitespace handling
+
+The migration from `ethabi` to `alloy` in v0.42.0 ([#6063](https://github.com/graphprotocol/graph-node/pull/6063)) incidentally fixed a long-standing parsing bug in `ethabi` where type strings containing whitespace before a type name (e.g. `" address"` with a leading space) were silently decoded as `Uint(8)` instead of the intended type. `alloy` parses these correctly.
+
+Subgraphs that relied on the incorrect `Uint(8)` decoding to subsequently call `.toBigInt()` on what is actually an `Address` value will abort on v0.42.0+ with:
+
+```
+Mapping aborted ... Ethereum value is not an int or uint.
+```
+
+This is not a graph-node regression. Recompile the subgraph with the correct accessor (`.toAddress()` for addresses) to fix. See [#6461](https://github.com/graphprotocol/graph-node/issues/6461) for details.
+
 ### gnd (Graph Node Dev)
 
 - `gnd indexer` command that delegates to `graph-indexer`, allowing indexer management (allocations, rules, cost models, status) directly through gnd. ([#6492](https://github.com/graphprotocol/graph-node/pull/6492))
