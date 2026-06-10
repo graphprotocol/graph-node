@@ -3,6 +3,10 @@ name: Build gnd Binaries
 on:
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: 'Existing release tag to upload binaries to and publish as on npm (e.g. v0.44.0). Leave empty to only build artifacts.'
+        type: string
+        default: ''
       dry_run:
         description: 'Dry-run npm publish (no actual publish)'
         type: boolean
@@ -130,7 +134,7 @@ jobs:
   release:
     name: Create Release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -153,10 +157,8 @@ jobs:
 
       - name: Upload Assets to Release
         run: |
-          # Extract version from ref (remove refs/tags/ prefix)
-          VERSION=${GITHUB_REF#refs/tags/}
-          
-          # Upload Linux x86_64 asset
+          VERSION="${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}"
+
           gh release upload $VERSION --clobber --repo $GITHUB_REPOSITORY \
             artifacts/gnd-linux-x86_64/gnd-linux-x86_64.gz \
             artifacts/gnd-linux-aarch64/gnd-linux-aarch64.gz \
@@ -169,7 +171,7 @@ jobs:
   publish-npm:
     name: Publish npm package for ${{ matrix.platform }}
     needs: release
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -212,7 +214,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download "${{ github.ref_name }}" \
+          gh release download "${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}" \
             --repo "${{ github.repository }}" \
             --pattern "${{ matrix.asset }}" \
             --output ./binary-archive
@@ -232,7 +234,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          VERSION="${{ github.ref_name }}"
+          VERSION="${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}"
           VERSION="${VERSION#v}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           # Prerelease versions (e.g. 0.42.2-dev.1) need an explicit --tag
@@ -283,7 +285,7 @@ jobs:
   publish-npm-wrapper:
     name: Publish @graphprotocol/gnd wrapper
     needs: publish-npm
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || inputs.release_tag != ''
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -299,7 +301,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          VERSION="${{ github.ref_name }}"
+          VERSION="${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}"
           VERSION="${VERSION#v}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           if [[ "$VERSION" == *-* ]]; then
