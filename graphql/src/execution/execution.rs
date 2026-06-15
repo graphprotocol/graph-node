@@ -303,6 +303,17 @@ pub(crate) async fn execute_root_selection_set_uncached(
         )]);
     }
 
+    // If a client requests `_logs` but this indexer has no log store
+    // configured, return an error rather than silently returning empty
+    // results, which would otherwise be indistinguishable from a subgraph that
+    // genuinely produced no logs. Checked before prefetch/introspection so we
+    // don't do that work only to error out.
+    if !logs_fields.is_empty() && !ctx.log_store.is_available() {
+        return Err(vec![QueryExecutionError::NotSupported(
+            "the `_logs` query is not enabled on this indexer".to_string(),
+        )]);
+    }
+
     // If we are getting regular data, prefetch it from the database
     let (mut values, trace) = if data_set.is_empty() && meta_items.is_empty() {
         (Object::default(), Trace::None)

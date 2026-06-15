@@ -17,9 +17,6 @@ pub enum LogStoreError {
     #[error("log store query failed: {0}")]
     QueryFailed(#[from] anyhow::Error),
 
-    #[error("log store is unavailable")]
-    Unavailable,
-
     #[error("log store initialization failed: {0}")]
     InitializationFailed(anyhow::Error),
 
