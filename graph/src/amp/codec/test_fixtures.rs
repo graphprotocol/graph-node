@@ -282,10 +282,10 @@ pub static BINARY_RECORD_BATCH: LazyLock<RecordBatch> = LazyLock::new(|| {
         vec![
             Arc::new(BinaryArray::from(vec![b"aa".as_ref(), b"bb", b"cc"])),
             Arc::new(BinaryViewArray::from(vec![b"aa".as_ref(), b"bb", b"cc"])),
-            Arc::new(FixedSizeBinaryArray::from(vec![b"aa", b"bb", b"cc"])),
-            Arc::new(FixedSizeBinaryArray::from(vec![
-                &[10; 32], &[20; 32], &[30; 32],
-            ])),
+            Arc::new(FixedSizeBinaryArray::try_from(vec![b"aa", b"bb", b"cc"]).unwrap()),
+            Arc::new(
+                FixedSizeBinaryArray::try_from(vec![&[10; 32], &[20; 32], &[30; 32]]).unwrap(),
+            ),
             Arc::new(LargeBinaryArray::from(vec![b"aa".as_ref(), b"bb", b"cc"])),
         ],
     )
