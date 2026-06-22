@@ -945,7 +945,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7188,7 +7188,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -7246,7 +7246,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8148,7 +8148,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -8675,7 +8675,7 @@ dependencies = [
 [[package]]
 name = "tower"
 version = "0.5.3"
-source = "git+https://github.com/tower-rs/tower.git#251296dc54a044383dffd16d2179b443e2615672"
+source = "git+https://github.com/tower-rs/tower.git#df06d70dbea345facbffb5881fe8647f53bf424d"
 dependencies = [
  "futures-core",
  "futures-util",
@@ -8733,7 +8733,7 @@ checksum = "121c2a6cda46980bb0fcd1647ffaf6cd3fc79a013de288782836f6df9c48780e"
 [[package]]
 name = "tower-layer"
 version = "0.3.3"
-source = "git+https://github.com/tower-rs/tower.git#251296dc54a044383dffd16d2179b443e2615672"
+source = "git+https://github.com/tower-rs/tower.git#df06d70dbea345facbffb5881fe8647f53bf424d"
 
 [[package]]
 name = "tower-service"
@@ -8744,12 +8744,12 @@ checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 [[package]]
 name = "tower-service"
 version = "0.3.3"
-source = "git+https://github.com/tower-rs/tower.git#251296dc54a044383dffd16d2179b443e2615672"
+source = "git+https://github.com/tower-rs/tower.git#df06d70dbea345facbffb5881fe8647f53bf424d"
 
 [[package]]
 name = "tower-test"
 version = "0.4.1"
-source = "git+https://github.com/tower-rs/tower.git#251296dc54a044383dffd16d2179b443e2615672"
+source = "git+https://github.com/tower-rs/tower.git#df06d70dbea345facbffb5881fe8647f53bf424d"
 dependencies = [
  "pin-project-lite",
  "tokio",
