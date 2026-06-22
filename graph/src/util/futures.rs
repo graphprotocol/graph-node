@@ -305,7 +305,7 @@ where
 
     let mut attempt_count = 0;
 
-    Retry::spawn(retry_strategy(limit_opt, max_delay), move || {
+    Retry::start(retry_strategy(limit_opt, max_delay), move || {
         let operation_name = operation_name.clone();
         let logger = logger.clone();
         let condition = condition.clone();

@@ -420,7 +420,7 @@ async fn resolve_start_block(
         .expect("cannot identify minimum start block because there are no data sources")
     {
         0 => Ok(None),
-        min_start_block => Retry::spawn(retry_strategy(Some(2), RETRY_DEFAULT_LIMIT), move || {
+        min_start_block => Retry::start(retry_strategy(Some(2), RETRY_DEFAULT_LIMIT), move || {
             chain
                 .block_pointer_from_number(logger, min_start_block - 1)
                 .inspect_err(move |e| warn!(&logger, "Failed to get block number: {}", e))
