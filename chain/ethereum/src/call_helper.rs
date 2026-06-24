@@ -58,6 +58,17 @@ const RPC_EXECUTION_ERRORS: &[&str] = &[
     "invalidjump",
     "notactivated",
     "invalidfeopcode",
+    // Reth surfaces EVM halts via `EvmHalt(HaltReason)`, formatted with the
+    // reason's `Debug` repr (`"EVM error: {0:?}"`). revm's `HaltReason`
+    // variants are CamelCase with no spaces, so e.g. a stack underflow arrives
+    // as "EVM error: StackUnderflow", which the space-separated "stack
+    // underflow" above does not match. "invalidjump"/"invalidfeopcode" already
+    // cover the matching variants; these add the rest. Reth's OutOfGas is
+    // handled before EvmHalt and rendered as "out of gas: ...", so it is
+    // already covered above. See https://github.com/streamingfast/eth-go/pull/10.
+    "stackunderflow",
+    "stackoverflow",
+    "opcodenotfound",
 ];
 
 /// Helper that checks if a geth style RPC error message corresponds to a revert.
