@@ -2315,13 +2315,31 @@ async fn batch_get_transaction_receipts(
     Ok(results)
 }
 
+/// Fetch block receipts by hash, sending the block hash as a plain string
+/// param (`["0x.."]`) rather than alloy's default EIP-1898 object
+/// (`[{"blockHash":".."}]`).
+///
+/// `eth_getBlockReceipts` accepts both forms on most clients, but some (e.g.
+/// taraxa-node) only accept the plain-string hash and reject the object with
+/// `INVALID_PARAMS`. The string form is accepted by all known implementations,
+/// so we always use it; alloy's typed `get_block_receipts` would always emit
+/// the object form. See issue #5835.
+async fn get_block_receipts_by_hash(
+    alloy: &AlloyProvider,
+    block_hash: B256,
+) -> Result<Option<Vec<AnyTransactionReceiptBare>>, RpcError<TransportErrorKind>> {
+    alloy
+        .client()
+        .request("eth_getBlockReceipts", (block_hash,))
+        .await
+}
+
 pub(crate) async fn check_block_receipt_support(
     alloy: Arc<AlloyProvider>,
     block_hash: B256,
     supports_eip_1898: bool,
     call_only: bool,
 ) -> Result<(), Error> {
-    use alloy::rpc::types::BlockId;
     if call_only {
         return Err(anyhow!("Provider is call-only"));
     }
@@ -2331,7 +2349,7 @@ pub(crate) async fn check_block_receipt_support(
     }
 
     // Fetch block receipts from the provider for the latest block.
-    let block_receipts_result = alloy.get_block_receipts(BlockId::from(block_hash)).await;
+    let block_receipts_result = get_block_receipts_by_hash(&alloy, block_hash).await;
 
     // Determine if the provider supports block receipts based on the fetched result.
     match block_receipts_result {
@@ -2406,7 +2424,6 @@ async fn fetch_block_receipts_with_retry(
     logger: ProviderLogger,
     settings: &ChainSettings,
 ) -> Result<Vec<Arc<AnyTransactionReceiptBare>>, IngestorError> {
-    use graph::prelude::alloy::rpc::types::BlockId;
     let retry_log_message = format!("eth_getBlockReceipts RPC call for block {:?}", block_hash);
 
     // Perform the retry operation
@@ -2414,7 +2431,10 @@ async fn fetch_block_receipts_with_retry(
         .redact_log_urls(true)
         .limit(settings.request_retries)
         .timeout_secs(settings.json_rpc_timeout.as_secs())
-        .run(move || alloy.get_block_receipts(BlockId::from(block_hash)).boxed())
+        .run(move || {
+            let alloy = alloy.clone();
+            async move { get_block_receipts_by_hash(&alloy, block_hash).await }.boxed()
+        })
         .await
         .map_err(|_timeout| -> IngestorError { anyhow!(block_hash).into() })?;
 
@@ -2706,6 +2726,30 @@ mod tests {
     use std::collections::HashSet;
     use std::iter::FromIterator;
     use std::sync::Arc;
+
+    #[test]
+    fn block_receipts_param_is_plain_hash_string() {
+        use graph::prelude::alloy::rpc::types::BlockId;
+
+        let hash = B256::repeat_byte(0xab);
+
+        // The fix: the block hash is sent as a bare string param, i.e. `["0x.."]`.
+        // This is the form all known clients accept (issue #5835).
+        let new_params: Value = serde_json::to_value((hash,)).unwrap();
+        let arr = new_params.as_array().expect("params must be an array");
+        assert_eq!(arr.len(), 1);
+        assert!(
+            arr[0].is_string(),
+            "param must be a plain hash string, got {new_params}"
+        );
+        assert_eq!(arr[0].as_str().unwrap(), format!("{hash:#x}"));
+
+        // Regression guard: alloy's typed call serializes the hash to an
+        // EIP-1898 object `[{"blockHash":".."}]`, which strict nodes reject.
+        let old_params: Value = serde_json::to_value((BlockId::from(hash),)).unwrap();
+        assert!(old_params[0].is_object());
+        assert!(old_params[0].get("blockHash").is_some());
+    }
 
     #[test]
     fn parse_block_triggers_every_block() {
