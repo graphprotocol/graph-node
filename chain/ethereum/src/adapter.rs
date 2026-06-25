@@ -1964,7 +1964,6 @@ fn log_filter_require_transacion_receipt_method() {
     //     event_b -- contract_a [ receipt=false ]
     // }
     // ```
-    // TODO(krishna): Test events with topic filters
     let mut filter = EthereumLogFilter::default();
     filter
         .contracts_and_events_graph
