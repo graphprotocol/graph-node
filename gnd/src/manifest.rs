@@ -172,6 +172,14 @@ pub fn load_manifest(path: &Path) -> Result<Manifest> {
     let raw: serde_yaml::Mapping = serde_yaml::from_str(&manifest_str)
         .with_context(|| format!("Failed to parse manifest YAML: {:?}", path))?;
 
+    // graph-node no longer supports cosmos, arweave, or substreams chains, so
+    // reject such manifests up front with guidance to use an older graph-cli.
+    // (This does not affect the still-supported `file/arweave` offchain data
+    // source, which is matched neither by `arweave` nor `arweave/`.)
+    if let Some(name) = manifest_removed_protocol(&raw) {
+        return Err(anyhow::anyhow!(removed_protocol_message(&name)));
+    }
+
     // Non-Ethereum protocols (e.g. NEAR) can't be parsed by graph-node's
     // Ethereum-typed `UnresolvedSubgraphManifest`, and gnd does not depend on
     // their chain crates. Codegen for these protocols only needs the schema
@@ -192,25 +200,62 @@ pub fn load_manifest(path: &Path) -> Result<Manifest> {
 }
 
 /// Onchain data-source kinds for protocols that gnd parses loosely (their chain
-/// crates are not gnd dependencies). Everything else (`ethereum`,
-/// `ethereum/contract`, `subgraph`, `file/*`) is handled by the typed path.
-const LOOSE_PROTOCOL_KINDS: &[&str] = &["near", "cosmos", "arweave", "substreams"];
+/// crates are not gnd dependencies). NEAR is the only non-Ethereum protocol gnd
+/// still supports this way; everything else (`ethereum`, `ethereum/contract`,
+/// `subgraph`, `file/*`) is handled by the typed path.
+const LOOSE_PROTOCOL_KINDS: &[&str] = &["near"];
 
-/// Returns true if the manifest contains a data source or template whose kind
-/// belongs to a non-Ethereum protocol that the typed parser cannot handle.
-fn manifest_needs_loose_parse(raw: &serde_yaml::Mapping) -> bool {
-    let kinds = ["dataSources", "templates"].into_iter().flat_map(|key| {
+/// Chain kinds graph-node no longer supports. gnd refuses to create or load
+/// subgraphs for these. Note this is the *chain* `arweave`, not the still-
+/// supported `file/arweave` offchain file data source: the matcher below keys
+/// on `kind == p || kind.starts_with("{p}/")`, and `file/arweave` neither
+/// equals `arweave` nor starts with `arweave/`, so it is never matched here.
+pub const REMOVED_PROTOCOL_KINDS: &[&str] = &["cosmos", "arweave", "substreams"];
+
+/// Build the user-facing error explaining that a protocol has been dropped.
+pub fn removed_protocol_message(name: &str) -> String {
+    format!(
+        "graph-node no longer supports {name} subgraphs. To work with {name} \
+         subgraphs, install and use an older version of graph-cli \
+         (https://github.com/graphprotocol/graph-tooling)."
+    )
+}
+
+/// Returns true if `kind` belongs to `protocol` (either exactly `protocol` or a
+/// sub-kind like `protocol/handler`).
+fn kind_belongs_to(kind: &str, protocol: &str) -> bool {
+    kind == protocol || kind.starts_with(&format!("{}/", protocol))
+}
+
+/// Iterate over the `kind` of every data source and template in a manifest.
+fn manifest_kinds(raw: &serde_yaml::Mapping) -> impl Iterator<Item = &str> {
+    ["dataSources", "templates"].into_iter().flat_map(|key| {
         raw.get(key)
             .and_then(|v| v.as_sequence())
             .into_iter()
             .flatten()
             .filter_map(|ds| ds.get("kind").and_then(|k| k.as_str()))
-    });
+    })
+}
 
-    kinds.into_iter().any(|kind| {
+/// Returns the base name (e.g. `cosmos`) of the first removed-protocol data
+/// source or template in the manifest, if any.
+fn manifest_removed_protocol(raw: &serde_yaml::Mapping) -> Option<String> {
+    manifest_kinds(raw).find_map(|kind| {
+        REMOVED_PROTOCOL_KINDS
+            .iter()
+            .find(|p| kind_belongs_to(kind, p))
+            .map(|p| p.to_string())
+    })
+}
+
+/// Returns true if the manifest contains a data source or template whose kind
+/// belongs to a non-Ethereum protocol that the typed parser cannot handle.
+fn manifest_needs_loose_parse(raw: &serde_yaml::Mapping) -> bool {
+    manifest_kinds(raw).any(|kind| {
         LOOSE_PROTOCOL_KINDS
             .iter()
-            .any(|p| kind == *p || kind.starts_with(&format!("{}/", p)))
+            .any(|p| kind_belongs_to(kind, p))
     })
 }
 
@@ -880,6 +925,128 @@ dataSources:
             serde_yaml::from_str("dataSources:\n  - kind: ethereum/contract\n    name: t\n")
                 .unwrap();
         assert!(!manifest_needs_loose_parse(&eth));
+
+        // Removed protocols are no longer loose-parsed (they are rejected).
+        let cosmos: serde_yaml::Mapping =
+            serde_yaml::from_str("dataSources:\n  - kind: cosmos\n    name: c\n").unwrap();
+        assert!(!manifest_needs_loose_parse(&cosmos));
+    }
+
+    #[test]
+    fn test_manifest_removed_protocol() {
+        for kind in ["cosmos", "arweave", "substreams"] {
+            let raw: serde_yaml::Mapping =
+                serde_yaml::from_str(&format!("dataSources:\n  - kind: {}\n    name: d\n", kind))
+                    .unwrap();
+            assert_eq!(manifest_removed_protocol(&raw).as_deref(), Some(kind));
+        }
+
+        // Sub-kinds (e.g. `cosmos/events`) are matched and mapped to the base.
+        let sub: serde_yaml::Mapping =
+            serde_yaml::from_str("templates:\n  - kind: cosmos/events\n    name: d\n").unwrap();
+        assert_eq!(manifest_removed_protocol(&sub).as_deref(), Some("cosmos"));
+
+        // Supported kinds are not flagged.
+        for kind in ["ethereum/contract", "near", "subgraph", "file/ipfs"] {
+            let raw: serde_yaml::Mapping =
+                serde_yaml::from_str(&format!("dataSources:\n  - kind: {}\n    name: d\n", kind))
+                    .unwrap();
+            assert_eq!(manifest_removed_protocol(&raw), None, "kind: {}", kind);
+        }
+
+        // The still-supported `file/arweave` offchain data source must NOT be
+        // treated as the removed `arweave` chain.
+        let file_arweave: serde_yaml::Mapping =
+            serde_yaml::from_str("dataSources:\n  - kind: file/arweave\n    name: d\n").unwrap();
+        assert_eq!(manifest_removed_protocol(&file_arweave), None);
+    }
+
+    #[test]
+    fn test_load_manifest_removed_protocol_rejected() {
+        for kind in ["cosmos", "arweave", "substreams"] {
+            let temp_dir = TempDir::new().unwrap();
+            let manifest_path = temp_dir.path().join("subgraph.yaml");
+
+            let manifest_content = format!(
+                r#"
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: {}
+    name: source
+    network: somenet
+    source:
+      startBlock: 0
+    mapping:
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      entities:
+        - ExampleEntity
+      file: ./src/mapping.ts
+"#,
+                kind
+            );
+
+            fs::write(&manifest_path, manifest_content).unwrap();
+
+            let result = load_manifest(&manifest_path);
+            assert!(result.is_err(), "{} manifest should be rejected", kind);
+            let err = format!("{:#}", result.unwrap_err());
+            assert!(
+                err.contains("no longer supports") && err.contains(kind),
+                "Error should mention the dropped protocol, got: {}",
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn test_load_manifest_file_arweave_not_rejected() {
+        // A `file/arweave` offchain data source is still supported and must
+        // parse via the typed path, not be rejected as the removed chain.
+        let temp_dir = TempDir::new().unwrap();
+        let manifest_path = temp_dir.path().join("subgraph.yaml");
+
+        let manifest_content = r#"
+specVersion: 1.0.0
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum/contract
+    name: Token
+    network: mainnet
+    source:
+      abi: ERC20
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/mapping.ts
+      entities:
+        - MyEntity
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+templates:
+  - kind: file/arweave
+    name: ArweaveContent
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      file: ./src/mapping.ts
+      entities:
+        - MyEntity
+      abis: []
+      handler: handleArweaveContent
+"#;
+
+        fs::write(&manifest_path, manifest_content).unwrap();
+
+        let manifest = load_manifest(&manifest_path).unwrap();
+        assert_eq!(manifest.templates.len(), 1);
+        assert_eq!(manifest.templates[0].kind, "file/arweave");
     }
 
     #[test]

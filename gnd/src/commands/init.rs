@@ -22,6 +22,7 @@ use regex::Regex;
 use crate::commands::add::{AddOpt, run_add};
 use crate::commands::codegen::{CodegenOpt, run_codegen};
 use crate::config::networks::update_networks_file;
+use crate::manifest::removed_protocol_message;
 use crate::output::{Step, step, with_spinner};
 use crate::prompt::{
     InitForm, SourceType, get_subgraph_basename, prompt_add_another_contract,
@@ -32,12 +33,21 @@ use crate::scaffold::{ScaffoldOptions, generate_scaffold, init_git, install_depe
 use crate::services::{ContractInfo, ContractService, IpfsClient, NetworksRegistry};
 
 /// Available protocols for subgraph development.
+///
+/// The removed protocols (`cosmos`, `arweave`, `substreams`) are kept as
+/// variants so the `--protocol` flag still parses them and gnd can answer with
+/// a helpful message (see [`Protocol::is_removed`] and the guard in
+/// [`run_init`]). They are marked `hide` so they do not appear as valid values
+/// in `--help` or shell completion.
 #[derive(Clone, Debug, ValueEnum)]
 pub enum Protocol {
     Ethereum,
     Near,
+    #[value(hide = true)]
     Cosmos,
+    #[value(hide = true)]
     Arweave,
+    #[value(hide = true)]
     Substreams,
 }
 
@@ -50,6 +60,22 @@ impl std::fmt::Display for Protocol {
             Protocol::Arweave => write!(f, "arweave"),
             Protocol::Substreams => write!(f, "substreams"),
         }
+    }
+}
+
+impl Protocol {
+    /// Whether graph-node has dropped support for this protocol's chain.
+    ///
+    /// The variants are kept so `--protocol` still accepts these values and
+    /// gnd can answer with a helpful message (see [`removed_protocol_message`])
+    /// rather than a generic "invalid value" error. Note this concerns the
+    /// `arweave` *chain*, not the still-supported `file/arweave` offchain data
+    /// source.
+    pub fn is_removed(&self) -> bool {
+        matches!(
+            self,
+            Protocol::Cosmos | Protocol::Arweave | Protocol::Substreams
+        )
     }
 }
 
@@ -69,8 +95,9 @@ lazy_static! {
 ///
 /// - `Ethereum`: `0x` followed by 40 hex characters.
 /// - `Near`: account id of length 2..=64 matching NEAR's naming rules.
-/// - Other protocols: only checked for non-emptiness (precise validation is
-///   out of scope for now).
+/// - Removed protocols (`Cosmos`, `Arweave`, `Substreams`): rejected with a
+///   message pointing users to an older graph-cli, since graph-node no longer
+///   supports them.
 pub fn validate_contract_address(protocol: &Protocol, value: &str) -> Result<(), String> {
     match protocol {
         Protocol::Ethereum => {
@@ -104,10 +131,7 @@ pub fn validate_contract_address(protocol: &Protocol, value: &str) -> Result<(),
             Ok(())
         }
         Protocol::Cosmos | Protocol::Arweave | Protocol::Substreams => {
-            if value.trim().is_empty() {
-                return Err("Contract identifier cannot be empty".to_string());
-            }
-            Ok(())
+            Err(removed_protocol_message(&protocol.to_string()))
         }
     }
 }
@@ -178,6 +202,15 @@ pub struct InitOpt {
 
 /// Run the init command.
 pub async fn run_init(opt: InitOpt) -> Result<()> {
+    // Refuse protocols graph-node no longer supports, regardless of source
+    // mode. Protocol defaults to Ethereum, so this only trips on an explicit
+    // `--protocol cosmos|arweave|substreams`.
+    if let Some(protocol) = &opt.protocol
+        && protocol.is_removed()
+    {
+        return Err(anyhow!(removed_protocol_message(&protocol.to_string())));
+    }
+
     // Check if we need interactive mode
     let needs_interactive = should_run_interactive(&opt);
 
@@ -1214,6 +1247,28 @@ mod tests {
         assert_eq!(Protocol::Cosmos.to_string(), "cosmos");
         assert_eq!(Protocol::Arweave.to_string(), "arweave");
         assert_eq!(Protocol::Substreams.to_string(), "substreams");
+    }
+
+    #[test]
+    fn test_protocol_is_removed() {
+        assert!(!Protocol::Ethereum.is_removed());
+        assert!(!Protocol::Near.is_removed());
+        assert!(Protocol::Cosmos.is_removed());
+        assert!(Protocol::Arweave.is_removed());
+        assert!(Protocol::Substreams.is_removed());
+    }
+
+    #[test]
+    fn test_validate_contract_address_removed_protocols() {
+        for protocol in [Protocol::Cosmos, Protocol::Arweave, Protocol::Substreams] {
+            let err = validate_contract_address(&protocol, "anything").unwrap_err();
+            assert!(
+                err.contains("no longer supports") && err.contains(&protocol.to_string()),
+                "Expected removed-protocol message for {}, got: {}",
+                protocol,
+                err
+            );
+        }
     }
 
     #[test]
