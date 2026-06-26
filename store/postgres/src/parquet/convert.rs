@@ -58,6 +58,39 @@ pub fn rows_to_record_batch(schema: &Schema, rows: &[OidRow]) -> Result<RecordBa
         .map_err(|e| StoreError::InternalError(format!("failed to build RecordBatch: {e}")))
 }
 
+/// Conservative estimate of the number of payload bytes a row contributes to an
+/// Arrow `RecordBatch`. The dumper uses this to bound batch size so that no
+/// single 32-bit-offset string/binary column can exceed Arrow's 2 GiB offset
+/// limit while a large table is dumped (issue #6609). Variable-length payloads
+/// (`String`/`Bytes`) dominate that limit and are counted exactly; fixed-width
+/// values use their in-memory width.
+pub(crate) fn estimate_row_bytes(row: &OidRow) -> usize {
+    row.into_iter().map(estimate_value_bytes).sum()
+}
+
+fn estimate_value_bytes(value: &OidValue) -> usize {
+    match value {
+        OidValue::Null => 0,
+        OidValue::Bool(_) => 1,
+        OidValue::Int(_) => 4,
+        OidValue::Int8(_) => 8,
+        OidValue::Timestamp(_) => 8,
+        OidValue::Int4Range(_, _) => 8,
+        OidValue::Bytes(v) => v.as_ref().len(),
+        OidValue::String(v) => v.len(),
+        // Decimals are dumped as their decimal-string representation; 64 bytes
+        // is a comfortable upper bound for realistic values.
+        OidValue::BigDecimal(_) => 64,
+        OidValue::BoolArray(v) => v.len(),
+        OidValue::Ints(v) => v.len() * 4,
+        OidValue::Int8Array(v) => v.len() * 8,
+        OidValue::TimestampArray(v) => v.len() * 8,
+        OidValue::BytesArray(v) => v.iter().map(|b| b.as_ref().len()).sum(),
+        OidValue::StringArray(v) => v.iter().map(|s| s.len()).sum(),
+        OidValue::BigDecimalArray(v) => v.len() * 64,
+    }
+}
+
 /// A type-erased column builder that wraps the appropriate Arrow array builder.
 enum ColumnBuilder {
     Boolean(BooleanBuilder),
