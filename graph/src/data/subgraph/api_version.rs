@@ -24,6 +24,9 @@ pub const API_VERSION_0_0_8: Version = Version::new(0, 0, 8);
 /// Enables new host function `eth_get_balance`
 pub const API_VERSION_0_0_9: Version = Version::new(0, 0, 9);
 
+/// Enables new host function `ethereum.decodeParams`
+pub const API_VERSION_0_0_10: Version = Version::new(0, 0, 10);
+
 /// Before this check was introduced, there were already subgraphs in the wild with spec version
 /// 0.0.3, due to confusion with the api version. To avoid breaking those, we accept 0.0.3 though it
 /// doesn't exist.

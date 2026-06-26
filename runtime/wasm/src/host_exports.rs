@@ -1236,6 +1236,30 @@ impl HostExports {
         ty.abi_decode(&data).context("Failed to decode")
     }
 
+    /// Like [`Self::ethereum_decode`], but decodes `data` as ABI function
+    /// parameters (the layout used by transaction calldata and event data)
+    /// rather than as a single ABI value. The two differ only for a top-level
+    /// tuple with at least one dynamic field: calldata has no leading offset
+    /// word, which `abi_decode` would otherwise expect.
+    pub(crate) fn ethereum_decode_params(
+        &self,
+        types: String,
+        data: Vec<u8>,
+        gas: &GasCounter,
+        state: &mut BlockState,
+    ) -> Result<abi::DynSolValue, anyhow::Error> {
+        Self::track_gas_and_ops(
+            gas,
+            state,
+            gas::DEFAULT_GAS_OP.with_args(complexity::Size, &data),
+            "ethereum_decode_params",
+        )?;
+
+        let ty: abi::DynSolType = types.parse().context("Failed to read types")?;
+
+        ty.abi_decode_params(&data).context("Failed to decode")
+    }
+
     pub(crate) fn yaml_from_bytes(
         &self,
         bytes: &[u8],

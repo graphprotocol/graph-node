@@ -1180,6 +1180,26 @@ impl WasmInstanceContext<'_> {
         }
     }
 
+    /// function decodeParams(types: String, data: Bytes): ethereum.Value | null
+    pub async fn ethereum_decode_params(
+        &mut self,
+        gas: &GasCounter,
+        types_ptr: AscPtr<AscString>,
+        data_ptr: AscPtr<Uint8Array>,
+    ) -> Result<AscPtr<AscEnum<EthereumValueKind>>, HostExportError> {
+        let types = asc_get(self, types_ptr, gas)?;
+        let data = asc_get(self, data_ptr, gas)?;
+        let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
+        let ctx = &mut self.as_mut().ctx;
+        let result = host_exports.ethereum_decode_params(types, data, gas, &mut ctx.state);
+
+        // return `null` if it fails
+        match result {
+            Ok(token) => asc_new(self, &token, gas).await,
+            Err(_) => Ok(AscPtr::null()),
+        }
+    }
+
     /// function arweave.transactionData(txId: string): Bytes | null
     pub async fn arweave_transaction_data(
         &self,
