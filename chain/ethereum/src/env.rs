@@ -13,9 +13,9 @@ lazy_static! {
 pub struct EnvVars {
     /// Additional deterministic errors that have not yet been hardcoded.
     ///
-    /// Set by the environment variable `GRAPH_GETH_ETH_CALL_ERRORS`, separated
+    /// Set by the environment variable `GRAPH_RPC_ETH_CALL_ERRORS`, separated
     /// by `;`.
-    pub geth_eth_call_errors: Vec<String>,
+    pub rpc_eth_call_errors: Vec<String>,
     /// Set by the environment variable `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`. The
     /// default value is 2000.
     pub get_logs_max_contracts: usize,
@@ -114,8 +114,8 @@ impl From<Inner> for EnvVars {
     fn from(x: Inner) -> Self {
         Self {
             get_logs_max_contracts: x.get_logs_max_contracts,
-            geth_eth_call_errors: x
-                .geth_eth_call_errors
+            rpc_eth_call_errors: x
+                .rpc_eth_call_errors
                 .split(';')
                 .filter(|s| !s.is_empty())
                 .map(str::to_string)
@@ -158,8 +158,8 @@ impl Default for EnvVars {
 
 #[derive(Clone, Debug, Envconfig)]
 struct Inner {
-    #[envconfig(from = "GRAPH_GETH_ETH_CALL_ERRORS", default = "")]
-    geth_eth_call_errors: String,
+    #[envconfig(from = "GRAPH_RPC_ETH_CALL_ERRORS", default = "")]
+    rpc_eth_call_errors: String,
     #[envconfig(from = "GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", default = "2000")]
     get_logs_max_contracts: usize,
 
