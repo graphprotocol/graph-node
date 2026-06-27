@@ -71,13 +71,13 @@ const RPC_EXECUTION_ERRORS: &[&str] = &[
     "opcodenotfound",
 ];
 
-/// Helper that checks if a geth style RPC error message corresponds to a revert.
+/// Helper that checks if a RPC error message corresponds to a revert.
 fn is_rpc_revert_message(message: &str) -> bool {
-    let env_geth_call_errors = ENV_VARS.geth_eth_call_errors.iter();
+    let env_rpc_call_errors = ENV_VARS.rpc_eth_call_errors.iter();
     let mut execution_errors = RPC_EXECUTION_ERRORS
         .iter()
         .copied()
-        .chain(env_geth_call_errors.map(|s| s.as_str()));
+        .chain(env_rpc_call_errors.map(|s| s.as_str()));
     execution_errors.any(|e| message.to_lowercase().contains(e))
 }
 
