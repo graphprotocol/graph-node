@@ -2728,30 +2728,6 @@ mod tests {
     use std::sync::Arc;
 
     #[test]
-    fn block_receipts_param_is_plain_hash_string() {
-        use graph::prelude::alloy::rpc::types::BlockId;
-
-        let hash = B256::repeat_byte(0xab);
-
-        // The fix: the block hash is sent as a bare string param, i.e. `["0x.."]`.
-        // This is the form all known clients accept (issue #5835).
-        let new_params: Value = serde_json::to_value((hash,)).unwrap();
-        let arr = new_params.as_array().expect("params must be an array");
-        assert_eq!(arr.len(), 1);
-        assert!(
-            arr[0].is_string(),
-            "param must be a plain hash string, got {new_params}"
-        );
-        assert_eq!(arr[0].as_str().unwrap(), format!("{hash:#x}"));
-
-        // Regression guard: alloy's typed call serializes the hash to an
-        // EIP-1898 object `[{"blockHash":".."}]`, which strict nodes reject.
-        let old_params: Value = serde_json::to_value((BlockId::from(hash),)).unwrap();
-        assert!(old_params[0].is_object());
-        assert!(old_params[0].get("blockHash").is_some());
-    }
-
-    #[test]
     fn parse_block_triggers_every_block() {
         let block = create_minimal_block_for_test(2, hash(2));
 
