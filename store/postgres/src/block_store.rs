@@ -253,7 +253,27 @@ impl BlockStore {
         const CHAIN_HEAD_CACHE_TTL: Duration = Duration::from_secs(2);
 
         let mirror = PrimaryMirror::new(&pools);
-        let existing_chains = mirror.read_async(primary::load_chains).await?;
+        // Treat a chain whose shard has no connection pool (i.e. a shard
+        // configured with `pool_size = 0`, which `store_builder` drops) as if it
+        // doesn't exist: skip it here so we neither create a chain store for it
+        // nor fail startup. See issue #6195.
+        let existing_chains: Vec<_> = mirror
+            .read_async(primary::load_chains)
+            .await?
+            .into_iter()
+            .filter(|chain| {
+                let has_pool = pools.contains_key(&chain.shard);
+                if !has_pool {
+                    warn!(
+                        &logger,
+                        "Ignoring chain `{}`: its shard `{}` has no connection pool (pool_size = 0)",
+                        chain.name,
+                        chain.shard,
+                    );
+                }
+                has_pool
+            })
+            .collect();
         let chain_head_cache = TimedCache::new(CHAIN_HEAD_CACHE_TTL);
         let chains = shards.clone();
 
@@ -275,18 +295,6 @@ impl BlockStore {
                 .iter()
                 .find(|chain| chain.name == chain_name)
             {
-                // A shard configured with `pool_size = 0` is intentionally
-                // ignored and has no connection pool. Skip chains that live in
-                // such a shard rather than failing startup. See issue #6195.
-                if !block_store.pools.contains_key(&chain.shard) {
-                    warn!(
-                        &block_store.logger,
-                        "Skipping chain `{}`: its shard `{}` has no connection pool (pool_size = 0)",
-                        chain.name,
-                        chain.shard,
-                    );
-                    continue;
-                }
                 if chain.shard != shard {
                     warn!(
                         &block_store.logger,
@@ -312,17 +320,6 @@ impl BlockStore {
             .iter()
             .filter(|chain| !configured_chains.contains(&chain.name))
         {
-            // Skip chains whose shard has no connection pool (pool_size = 0)
-            // instead of failing startup. See issue #6195.
-            if !block_store.pools.contains_key(&chain.shard) {
-                warn!(
-                    &block_store.logger,
-                    "Skipping chain `{}`: its shard `{}` has no connection pool (pool_size = 0)",
-                    chain.name,
-                    chain.shard,
-                );
-                continue;
-            }
             block_store.add_chain_store(chain, false).await?;
         }
         Ok(block_store)
