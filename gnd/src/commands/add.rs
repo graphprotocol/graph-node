@@ -350,9 +350,8 @@ fn resolve_events(
 
         let (entity_name, declare_in_schema) = if existing.contains(&event.name) {
             if merge_entities {
-                // Reuse the existing entity. NOTE: this does not verify that the
-                // two events share a signature; an incompatible merge surfaces at
-                // codegen/build.
+                // Reuse the existing entity. Merge is by name only, so a
+                // signature mismatch surfaces at codegen/build, not here.
                 (event.name.clone(), false)
             } else {
                 let prefixed = format!("{}{}", contract_name, alias);
