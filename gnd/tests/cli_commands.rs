@@ -541,6 +541,68 @@ fn test_add_merge_entities_reuses_existing() {
 }
 
 #[test]
+fn test_add_overloaded_events_disambiguate() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("over-test");
+
+    // A base subgraph without overloaded events.
+    let abi_path = test_abis_path().join("LimitedContract.json");
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            abi_path.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "Base",
+            "over-test",
+        ],
+        temp_dir.path(),
+    );
+
+    // An ABI with two events of the same name (a Solidity overload).
+    let overloaded_abi = temp_dir.path().join("Overloaded.json");
+    fs::write(
+        &overloaded_abi,
+        r#"[
+          {"type":"event","name":"Ping","inputs":[{"name":"account","type":"address","indexed":true}]},
+          {"type":"event","name":"Ping","inputs":[{"name":"amount","type":"uint256","indexed":false}]}
+        ]"#,
+    )
+    .unwrap();
+
+    run_gnd_success(
+        &[
+            "add",
+            "0x2222222222222222222222222222222222222222",
+            "--abi",
+            overloaded_abi.to_str().unwrap(),
+            "--contract-name",
+            "Over",
+        ],
+        &subgraph_dir,
+    );
+
+    // The two Ping events get distinct entities and handlers.
+    let schema = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        schema.contains("type Ping @entity") && schema.contains("type Ping1 @entity"),
+        "overloaded events should produce Ping and Ping1 entities, got:\n{}",
+        schema
+    );
+
+    let mapping = fs::read_to_string(subgraph_dir.join("src").join("over.ts")).unwrap();
+    assert!(
+        mapping.contains("handlePing(") && mapping.contains("handlePing1("),
+        "overloaded events should produce handlePing and handlePing1, got:\n{}",
+        mapping
+    );
+}
+
+#[test]
 fn test_add_duplicate_name_errors() {
     let temp_dir = TempDir::new().unwrap();
     let subgraph_dir = temp_dir.path().join("dup-test");
