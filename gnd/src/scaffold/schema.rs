@@ -89,6 +89,7 @@ fn solidity_to_graphql(solidity_type: &str) -> &'static str {
         return match solidity_to_graphql(inner) {
             "Bytes" => "[Bytes!]",
             "BigInt" => "[BigInt!]",
+            "Int" => "[Int!]",
             "String" => "[String!]",
             "Boolean" => "[Boolean!]",
             _ => "[Bytes!]",
@@ -113,12 +114,35 @@ fn solidity_to_graphql(solidity_type: &str) -> &'static str {
         | "bytes23" | "bytes24" | "bytes25" | "bytes26" | "bytes27" | "bytes28" | "bytes29"
         | "bytes30" | "bytes31" | "bytes32" => "Bytes",
 
-        // Integer types - all map to BigInt for simplicity
-        t if t.starts_with("uint") || t.starts_with("int") => "BigInt",
+        // Integers: small widths fit in an i32 (GraphQL Int), the rest need BigInt.
+        t if t.starts_with("uint") || t.starts_with("int") => int_to_graphql(t),
 
         // Default to Bytes for unknown types
         _ => "Bytes",
     }
+}
+
+/// Map a Solidity integer type to GraphQL `Int` when it fits in an i32, else
+/// `BigInt`. An i32 holds signed ints up to 32 bits and unsigned ints up to 24
+/// bits, matching graph-cli's AssemblyScript type conversion.
+fn int_to_graphql(solidity_type: &str) -> &'static str {
+    let (signed, width) = match solidity_type.strip_prefix("uint") {
+        Some(rest) => (false, rest),
+        None => match solidity_type.strip_prefix("int") {
+            Some(rest) => (true, rest),
+            None => return "BigInt",
+        },
+    };
+
+    // A bare `int` / `uint` is 256 bits.
+    let bits: u32 = if width.is_empty() {
+        256
+    } else {
+        width.parse().unwrap_or(256)
+    };
+
+    let fits_i32 = if signed { bits <= 32 } else { bits <= 24 };
+    if fits_i32 { "Int" } else { "BigInt" }
 }
 
 #[cfg(test)]
@@ -230,11 +254,27 @@ mod tests {
         assert_eq!(solidity_to_graphql("address"), "Bytes");
         assert_eq!(solidity_to_graphql("bool"), "Boolean");
         assert_eq!(solidity_to_graphql("string"), "String");
-        assert_eq!(solidity_to_graphql("uint256"), "BigInt");
-        assert_eq!(solidity_to_graphql("int8"), "BigInt");
         assert_eq!(solidity_to_graphql("bytes32"), "Bytes");
         assert_eq!(solidity_to_graphql("bytes"), "Bytes");
         assert_eq!(solidity_to_graphql("address[]"), "[Bytes!]");
         assert_eq!(solidity_to_graphql("uint256[]"), "[BigInt!]");
+    }
+
+    #[test]
+    fn test_integer_width_mapping() {
+        // Small widths that fit in an i32 map to Int.
+        assert_eq!(solidity_to_graphql("int8"), "Int");
+        assert_eq!(solidity_to_graphql("int32"), "Int");
+        assert_eq!(solidity_to_graphql("uint8"), "Int");
+        assert_eq!(solidity_to_graphql("uint24"), "Int");
+        // Wider integers need BigInt (uint32 does not fit an i32).
+        assert_eq!(solidity_to_graphql("uint32"), "BigInt");
+        assert_eq!(solidity_to_graphql("int40"), "BigInt");
+        assert_eq!(solidity_to_graphql("uint256"), "BigInt");
+        assert_eq!(solidity_to_graphql("int"), "BigInt");
+        assert_eq!(solidity_to_graphql("uint"), "BigInt");
+        // Arrays follow the element type.
+        assert_eq!(solidity_to_graphql("int8[]"), "[Int!]");
+        assert_eq!(solidity_to_graphql("uint64[]"), "[BigInt!]");
     }
 }
