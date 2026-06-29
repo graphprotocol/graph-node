@@ -17,7 +17,7 @@ pub fn generate_mapping(options: &ScaffoldOptions) -> String {
         return generate_placeholder_mapping(contract_name, &events, options);
     }
 
-    let resolved: Vec<ResolvedEvent> = events.into_iter().map(ResolvedEvent::passthrough).collect();
+    let resolved = super::disambiguate_events(events);
     generate_event_handlers(contract_name, &resolved)
 }
 
@@ -53,18 +53,20 @@ fn generate_placeholder_mapping(
     events: &[EventInfo],
     options: &ScaffoldOptions,
 ) -> String {
+    let resolved = super::disambiguate_events(events.to_vec());
+
     let mut output = String::new();
 
     // Import graph-ts types
     output.push_str("import {\n  BigInt,\n  Bytes\n} from \"@graphprotocol/graph-ts\"\n");
 
-    // Import contract class and all events
+    // Import contract class and all events (by disambiguated alias).
     output.push_str(&format!("import {{\n  {contract_name},\n"));
-    for (i, event) in events.iter().enumerate() {
-        let suffix = if i < events.len() - 1 { ",\n" } else { "\n" };
+    for (i, event) in resolved.iter().enumerate() {
+        let suffix = if i < resolved.len() - 1 { ",\n" } else { "\n" };
         output.push_str(&format!(
             "  {} as {}Event{}",
-            event.name, event.name, suffix
+            event.alias, event.alias, suffix
         ));
     }
     output.push_str(&format!(
@@ -75,18 +77,17 @@ fn generate_placeholder_mapping(
     output.push_str("import { ExampleEntity } from \"../generated/schema\"\n");
 
     // Generate first handler with full example code
-    let first_event = &events[0];
     output.push_str(&generate_first_placeholder_handler(
-        first_event,
+        &resolved[0],
         contract_name,
         options,
     ));
 
     // Generate empty stub handlers for remaining events
-    for event in events.iter().skip(1) {
+    for event in resolved.iter().skip(1) {
         output.push_str(&format!(
             "\nexport function handle{}(event: {}Event): void {{}}\n",
-            event.name, event.name
+            event.alias, event.alias
         ));
     }
 
@@ -95,15 +96,15 @@ fn generate_placeholder_mapping(
 
 /// Generate the first handler with full example code.
 fn generate_first_placeholder_handler(
-    event: &EventInfo,
+    event: &ResolvedEvent,
     contract_name: &str,
     options: &ScaffoldOptions,
 ) -> String {
-    let event_name = &event.name;
+    let event_name = &event.alias;
 
     // Generate field assignments for first 2 event params
     let mut field_assignments = String::new();
-    for input in event.inputs.iter().take(2) {
+    for input in event.event.inputs.iter().take(2) {
         let field_name = sanitize_field_name(&input.name);
         field_assignments.push_str(&format!(
             "  entity.{} = event.params.{}\n",

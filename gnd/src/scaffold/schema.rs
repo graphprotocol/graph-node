@@ -18,11 +18,11 @@ pub fn generate_schema(options: &ScaffoldOptions) -> String {
         return generate_example_entity(&events[0].inputs);
     }
 
-    // Generate entity for each event
+    // Generate an entity for each event, disambiguating overloaded names.
     let mut schema = String::new();
 
-    for event in events {
-        let entity = generate_event_entity(&event.name, &event.inputs);
+    for resolved in super::disambiguate_events(events) {
+        let entity = generate_event_entity(&resolved.entity_name, &resolved.event.inputs);
         schema.push_str(&entity);
         schema.push_str("\n\n");
     }

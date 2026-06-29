@@ -1,5 +1,7 @@
 //! Manifest (subgraph.yaml) generation for scaffold.
 
+use std::collections::HashMap;
+
 use super::ScaffoldOptions;
 
 /// Generate the subgraph.yaml manifest content.
@@ -21,8 +23,10 @@ pub fn generate_manifest(options: &ScaffoldOptions) -> String {
         source.push_str(&format!("      startBlock: {}\n", start_block));
     }
 
-    // Get event handlers from ABI
-    let event_handlers = get_event_handlers(options);
+    // Resolve events once (disambiguating overloaded names) so the handlers and
+    // entities lists stay consistent.
+    let events = disambiguate_events(extract_events_from_abi(options));
+    let event_handlers = get_event_handlers(contract_name, &events);
 
     format!(
         r#"specVersion: {spec_version}
@@ -48,15 +52,12 @@ dataSources:
 "#,
         spec_version = super::SPEC_VERSION,
         api_version = super::MAPPING_API_VERSION,
-        entities = get_entities(options),
+        entities = get_entities(&events),
     )
 }
 
-/// Get event handlers from ABI.
-fn get_event_handlers(options: &ScaffoldOptions) -> String {
-    let contract_name = &options.contract_name;
-    let events = extract_events_from_abi(options);
-
+/// Get event handlers for the manifest.
+fn get_event_handlers(contract_name: &str, events: &[ResolvedEvent]) -> String {
     if events.is_empty() {
         // Default placeholder handler
         return format!(
@@ -68,28 +69,24 @@ fn get_event_handlers(options: &ScaffoldOptions) -> String {
 
     let mut handlers = String::new();
     for event in events {
-        let handler_name = format!("handle{}", event.name);
         handlers.push_str(&format!(
-            "\n        - event: {}\n          handler: {}",
-            event.signature, handler_name
+            "\n        - event: {}\n          handler: handle{}",
+            event.event.signature, event.alias
         ));
     }
 
     handlers
 }
 
-/// Get entities list for manifest.
-fn get_entities(options: &ScaffoldOptions) -> String {
-    let events = extract_events_from_abi(options);
-
+/// Get entities list for the manifest.
+fn get_entities(events: &[ResolvedEvent]) -> String {
     if events.is_empty() {
         return "\n        - ExampleEntity".to_string();
     }
 
-    // Always use event names from ABI, regardless of index_events
     let mut entities = String::new();
     for event in events {
-        entities.push_str(&format!("\n        - {}", event.name));
+        entities.push_str(&format!("\n        - {}", event.entity_name));
     }
     entities
 }
@@ -121,19 +118,30 @@ pub struct ResolvedEvent {
     pub declare_in_schema: bool,
 }
 
-impl ResolvedEvent {
-    /// Resolve an event with no disambiguation or collision handling: all names
-    /// equal the raw event name. Used where there are no existing entities to
-    /// collide with (a fresh scaffold).
-    pub fn passthrough(event: EventInfo) -> Self {
-        let name = event.name.clone();
-        Self {
-            event,
-            alias: name.clone(),
-            entity_name: name,
-            declare_in_schema: true,
-        }
-    }
+/// Resolve events for a fresh scaffold, disambiguating names that are overloaded
+/// within one ABI by suffixing repeats (`Transfer`, `Transfer1`, ...). There are
+/// no existing entities to collide with, so each entity is declared as-is.
+pub fn disambiguate_events(events: Vec<EventInfo>) -> Vec<ResolvedEvent> {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    events
+        .into_iter()
+        .map(|event| {
+            let count = seen.entry(event.name.clone()).or_insert(0);
+            let alias = if *count == 0 {
+                event.name.clone()
+            } else {
+                format!("{}{}", event.name, count)
+            };
+            *count += 1;
+            let entity_name = alias.clone();
+            ResolvedEvent {
+                event,
+                alias,
+                entity_name,
+                declare_in_schema: true,
+            }
+        })
+        .collect()
 }
 
 /// Event input parameter.
@@ -359,5 +367,22 @@ mod tests {
 
         let sig = format_event_signature("Transfer", &inputs);
         assert_eq!(sig, "Transfer(indexed address,uint256)");
+    }
+
+    #[test]
+    fn test_disambiguate_events() {
+        let ev = |name: &str| EventInfo {
+            name: name.to_string(),
+            signature: format!("{}()", name),
+            inputs: vec![],
+        };
+        let resolved = disambiguate_events(vec![ev("Transfer"), ev("Transfer"), ev("Approval")]);
+        // Repeated names are suffixed; the first occurrence is unchanged.
+        assert_eq!(resolved[0].alias, "Transfer");
+        assert_eq!(resolved[0].entity_name, "Transfer");
+        assert_eq!(resolved[1].alias, "Transfer1");
+        assert_eq!(resolved[1].entity_name, "Transfer1");
+        assert_eq!(resolved[2].alias, "Approval");
+        assert!(resolved.iter().all(|r| r.declare_in_schema));
     }
 }

@@ -603,6 +603,55 @@ fn test_add_overloaded_events_disambiguate() {
 }
 
 #[test]
+fn test_init_overloaded_events_disambiguate() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("over-init");
+
+    // An ABI with two events of the same name (a Solidity overload).
+    let overloaded_abi = temp_dir.path().join("Overloaded.json");
+    fs::write(
+        &overloaded_abi,
+        r#"[
+          {"type":"event","name":"Ping","inputs":[{"name":"account","type":"address","indexed":true}]},
+          {"type":"event","name":"Ping","inputs":[{"name":"amount","type":"uint256","indexed":false}]}
+        ]"#,
+    )
+    .unwrap();
+
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            overloaded_abi.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "Over",
+            "--index-events",
+            "over-init",
+        ],
+        temp_dir.path(),
+    );
+
+    // init must disambiguate too, or it emits duplicate types / handlers.
+    let schema = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        schema.contains("type Ping @entity") && schema.contains("type Ping1 @entity"),
+        "init should disambiguate overloaded events, got:\n{}",
+        schema
+    );
+
+    let mapping = fs::read_to_string(subgraph_dir.join("src").join("over.ts")).unwrap();
+    assert!(
+        mapping.contains("handlePing(") && mapping.contains("handlePing1("),
+        "init mapping should disambiguate overloaded handlers, got:\n{}",
+        mapping
+    );
+}
+
+#[test]
 fn test_add_duplicate_name_errors() {
     let temp_dir = TempDir::new().unwrap();
     let subgraph_dir = temp_dir.path().join("dup-test");

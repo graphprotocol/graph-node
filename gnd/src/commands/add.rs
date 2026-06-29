@@ -3,7 +3,7 @@
 //! This command adds a new data source to an existing subgraph, generating
 //! the necessary manifest entries, schema types, and mapping stubs.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -16,8 +16,8 @@ use crate::formatter::format_typescript;
 use crate::output::{Step, step};
 use crate::scaffold::manifest::{EventInfo, extract_events_from_abi};
 use crate::scaffold::{
-    MAPPING_API_VERSION, ResolvedEvent, ScaffoldOptions, generate_event_entity,
-    generate_event_handlers, to_kebab_case,
+    MAPPING_API_VERSION, ResolvedEvent, ScaffoldOptions, disambiguate_events,
+    generate_event_entity, generate_event_handlers, to_kebab_case,
 };
 use crate::services::ContractService;
 
@@ -335,45 +335,28 @@ fn resolve_events(
     contract_name: &str,
     merge_entities: bool,
 ) -> Result<Vec<ResolvedEvent>> {
-    let mut seen: HashMap<String, usize> = HashMap::new();
-    let mut resolved = Vec::with_capacity(events.len());
+    let mut resolved = disambiguate_events(events);
 
-    for event in events {
-        // Disambiguate events overloaded within this ABI.
-        let count = seen.entry(event.name.clone()).or_insert(0);
-        let alias = if *count == 0 {
-            event.name.clone()
+    for r in &mut resolved {
+        if !existing.contains(&r.event.name) {
+            continue;
+        }
+        if merge_entities {
+            // Reuse the existing entity. Merge is by name only, so a
+            // signature mismatch surfaces at codegen/build, not here.
+            r.entity_name = r.event.name.clone();
+            r.declare_in_schema = false;
         } else {
-            format!("{}{}", event.name, count)
-        };
-        *count += 1;
-
-        let (entity_name, declare_in_schema) = if existing.contains(&event.name) {
-            if merge_entities {
-                // Reuse the existing entity. Merge is by name only, so a
-                // signature mismatch surfaces at codegen/build, not here.
-                (event.name.clone(), false)
-            } else {
-                let prefixed = format!("{}{}", contract_name, alias);
-                if existing.contains(&prefixed) {
-                    return Err(anyhow!(
-                        "Entity '{}' already exists; cannot rename '{}' to avoid a collision. Choose a different contract name.",
-                        prefixed,
-                        event.name
-                    ));
-                }
-                (prefixed, true)
+            let prefixed = format!("{}{}", contract_name, r.alias);
+            if existing.contains(&prefixed) {
+                return Err(anyhow!(
+                    "Entity '{}' already exists; cannot rename '{}' to avoid a collision. Choose a different contract name.",
+                    prefixed,
+                    r.event.name
+                ));
             }
-        } else {
-            (alias.clone(), true)
-        };
-
-        resolved.push(ResolvedEvent {
-            event,
-            alias,
-            entity_name,
-            declare_in_schema,
-        });
+            r.entity_name = prefixed;
+        }
     }
 
     Ok(resolved)
