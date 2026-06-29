@@ -111,11 +111,14 @@ pub struct EventInfo {
 /// - `entity_name` names the GraphQL entity type, the `new` expression and the
 ///   schema import; it gains a contract prefix when it collides with an entity
 ///   that already exists in the subgraph.
+/// - `declare_in_schema` is false when the event reuses an entity that already
+///   exists (a merge), so the type must not be redeclared.
 #[derive(Debug, Clone)]
 pub struct ResolvedEvent {
     pub event: EventInfo,
     pub alias: String,
     pub entity_name: String,
+    pub declare_in_schema: bool,
 }
 
 impl ResolvedEvent {
@@ -128,6 +131,7 @@ impl ResolvedEvent {
             event,
             alias: name.clone(),
             entity_name: name,
+            declare_in_schema: true,
         }
     }
 }

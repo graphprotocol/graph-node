@@ -473,12 +473,70 @@ fn test_add_datasource() {
         "Updated manifest should have second contract address"
     );
 
-    // The new event entity must be declared in the schema so codegen/build work.
+    // The added Trigger event collides with the first contract's Trigger entity;
+    // without --merge-entities it is renamed with the contract prefix so both
+    // can coexist, and declared in the schema.
     let schema_after = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
     assert!(
-        schema_after.contains("type Trigger @entity"),
-        "Updated schema should declare the Trigger entity, got:\n{}",
+        schema_after.contains("type SecondContractTrigger @entity"),
+        "Updated schema should declare the renamed entity, got:\n{}",
         schema_after
+    );
+}
+
+#[test]
+fn test_add_merge_entities_reuses_existing() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("merge-test");
+
+    // Init with --index-events so the schema actually declares the event entities.
+    let abi_path = test_abis_path().join("SimpleContract.json");
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            abi_path.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "FirstContract",
+            "--index-events",
+            "merge-test",
+        ],
+        temp_dir.path(),
+    );
+
+    // Add a contract whose Trigger event collides, with --merge-entities.
+    let second_abi_path = test_abis_path().join("LimitedContract.json");
+    run_gnd_success(
+        &[
+            "add",
+            "0x2222222222222222222222222222222222222222",
+            "--abi",
+            second_abi_path.to_str().unwrap(),
+            "--contract-name",
+            "SecondContract",
+            "--merge-entities",
+        ],
+        &subgraph_dir,
+    );
+
+    // Merge reuses the existing Trigger entity: no renamed type is declared...
+    let schema_after = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        !schema_after.contains("SecondContractTrigger"),
+        "merge should reuse Trigger, not declare a renamed entity, got:\n{}",
+        schema_after
+    );
+
+    // ...but the handler is still generated, writing into the shared entity.
+    let mapping = fs::read_to_string(subgraph_dir.join("src").join("second-contract.ts")).unwrap();
+    assert!(
+        mapping.contains("new Trigger("),
+        "merged handler should write into the existing Trigger entity, got:\n{}",
+        mapping
     );
 }
 

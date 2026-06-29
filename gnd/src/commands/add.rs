@@ -3,7 +3,7 @@
 //! This command adds a new data source to an existing subgraph, generating
 //! the necessary manifest entries, schema types, and mapping stubs.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -122,14 +122,21 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
         index_events: true, // Always index events for add command
     };
 
-    // Extract events from ABI
+    // Extract events from the ABI and resolve their names against the entities
+    // already present in the subgraph (handles overloads and collisions).
     let events = extract_events_from_abi(&scaffold_options);
+    let resolved = resolve_events(
+        events,
+        &existing_entities(&manifest),
+        &contract_name,
+        opt.merge_entities,
+    )?;
 
     // Add ABI file
     add_abi_file(project_dir, &contract_name, &abi)?;
 
     // Add mapping file
-    add_mapping_file(project_dir, &contract_name, &events)?;
+    add_mapping_file(project_dir, &contract_name, &resolved)?;
 
     // Update manifest
     update_manifest(
@@ -138,11 +145,11 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
         &contract_name,
         &network,
         start_block,
-        &events,
+        &resolved,
     )?;
 
     // Declare the new event entities in the schema so codegen/build succeed.
-    add_schema_entities(project_dir, &manifest, &events)?;
+    add_schema_entities(project_dir, &manifest, &resolved)?;
 
     // Update networks.json if the subgraph uses one.
     let networks_path = project_dir.join(&opt.network_file);
@@ -249,7 +256,11 @@ fn add_abi_file(project_dir: &Path, contract_name: &str, abi: &JsonValue) -> Res
 }
 
 /// Add mapping file for the new data source.
-fn add_mapping_file(project_dir: &Path, contract_name: &str, events: &[EventInfo]) -> Result<()> {
+fn add_mapping_file(
+    project_dir: &Path,
+    contract_name: &str,
+    events: &[ResolvedEvent],
+) -> Result<()> {
     let src_dir = project_dir.join("src");
     fs::create_dir_all(&src_dir).context("Failed to create src directory")?;
 
@@ -263,12 +274,7 @@ fn add_mapping_file(project_dir: &Path, contract_name: &str, events: &[EventInfo
         return Ok(());
     }
 
-    let resolved: Vec<ResolvedEvent> = events
-        .iter()
-        .cloned()
-        .map(ResolvedEvent::passthrough)
-        .collect();
-    let mapping_content = generate_event_handlers(contract_name, &resolved);
+    let mapping_content = generate_event_handlers(contract_name, events);
     let formatted = format_typescript(&mapping_content).unwrap_or(mapping_content);
 
     step(
@@ -295,6 +301,85 @@ fn existing_source_names(manifest: &serde_yaml::Value) -> HashSet<String> {
     names
 }
 
+/// Collect the entity names already declared by existing data sources / templates.
+fn existing_entities(manifest: &serde_yaml::Value) -> HashSet<String> {
+    let mut entities = HashSet::new();
+    for key in ["dataSources", "templates"] {
+        if let Some(seq) = manifest.get(key).and_then(|v| v.as_sequence()) {
+            for item in seq {
+                if let Some(list) = item
+                    .get("mapping")
+                    .and_then(|m| m.get("entities"))
+                    .and_then(|e| e.as_sequence())
+                {
+                    for entity in list.iter().filter_map(|e| e.as_str()) {
+                        entities.insert(entity.to_string());
+                    }
+                }
+            }
+        }
+    }
+    entities
+}
+
+/// Resolve event names against the entities already present in the subgraph.
+///
+/// - Events overloaded within this ABI are disambiguated (`Transfer`, `Transfer1`).
+/// - An event whose name collides with an existing entity is either merged into
+///   that entity (`merge_entities`: reuse it, keeping the handler so this
+///   contract's events are still indexed, but don't redeclare the type) or
+///   renamed with the contract prefix so both entities can coexist.
+fn resolve_events(
+    events: Vec<EventInfo>,
+    existing: &HashSet<String>,
+    contract_name: &str,
+    merge_entities: bool,
+) -> Result<Vec<ResolvedEvent>> {
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    let mut resolved = Vec::with_capacity(events.len());
+
+    for event in events {
+        // Disambiguate events overloaded within this ABI.
+        let count = seen.entry(event.name.clone()).or_insert(0);
+        let alias = if *count == 0 {
+            event.name.clone()
+        } else {
+            format!("{}{}", event.name, count)
+        };
+        *count += 1;
+
+        let (entity_name, declare_in_schema) = if existing.contains(&event.name) {
+            if merge_entities {
+                // Reuse the existing entity. NOTE: this does not verify that the
+                // two events share a signature; an incompatible merge surfaces at
+                // codegen/build.
+                (event.name.clone(), false)
+            } else {
+                let prefixed = format!("{}{}", contract_name, alias);
+                if existing.contains(&prefixed) {
+                    return Err(anyhow!(
+                        "Entity '{}' already exists; cannot rename '{}' to avoid a collision. Choose a different contract name.",
+                        prefixed,
+                        event.name
+                    ));
+                }
+                (prefixed, true)
+            }
+        } else {
+            (alias.clone(), true)
+        };
+
+        resolved.push(ResolvedEvent {
+            event,
+            alias,
+            entity_name,
+            declare_in_schema,
+        });
+    }
+
+    Ok(resolved)
+}
+
 /// Append entity type definitions for the new events to the subgraph schema.
 ///
 /// The mapping and manifest reference one entity per event; without this the
@@ -302,9 +387,23 @@ fn existing_source_names(manifest: &serde_yaml::Value) -> HashSet<String> {
 fn add_schema_entities(
     project_dir: &Path,
     manifest: &serde_yaml::Value,
-    events: &[EventInfo],
+    events: &[ResolvedEvent],
 ) -> Result<()> {
-    if events.is_empty() {
+    let mut additions = String::new();
+    for resolved in events {
+        // Reused entities already exist in the schema; don't redeclare them.
+        if !resolved.declare_in_schema {
+            continue;
+        }
+        additions.push('\n');
+        additions.push_str(&generate_event_entity(
+            &resolved.entity_name,
+            &resolved.event.inputs,
+        ));
+        additions.push('\n');
+    }
+
+    if additions.is_empty() {
         return Ok(());
     }
 
@@ -314,13 +413,6 @@ fn add_schema_entities(
         .and_then(|f| f.as_str())
         .unwrap_or("schema.graphql");
     let schema_path = project_dir.join(schema_file);
-
-    let mut additions = String::new();
-    for event in events {
-        additions.push('\n');
-        additions.push_str(&generate_event_entity(&event.name, &event.inputs));
-        additions.push('\n');
-    }
 
     step(Step::Write, &format!("Updating {}", schema_path.display()));
 
@@ -343,7 +435,7 @@ fn update_manifest(
     contract_name: &str,
     network: &str,
     start_block: Option<u64>,
-    events: &[EventInfo],
+    events: &[ResolvedEvent],
 ) -> Result<()> {
     let content = fs::read_to_string(manifest_path).context("Failed to read manifest")?;
 
@@ -369,15 +461,15 @@ fn update_manifest(
 
     // Build event handlers
     let mut event_handlers = Vec::new();
-    for event in events {
+    for resolved in events {
         let mut handler = serde_yaml::Mapping::new();
         handler.insert(
             serde_yaml::Value::String("event".to_string()),
-            serde_yaml::Value::String(event.signature.clone()),
+            serde_yaml::Value::String(resolved.event.signature.clone()),
         );
         handler.insert(
             serde_yaml::Value::String("handler".to_string()),
-            serde_yaml::Value::String(format!("handle{}", event.name)),
+            serde_yaml::Value::String(format!("handle{}", resolved.alias)),
         );
         event_handlers.push(serde_yaml::Value::Mapping(handler));
     }
@@ -385,7 +477,7 @@ fn update_manifest(
     // Build entities list
     let entities: Vec<serde_yaml::Value> = events
         .iter()
-        .map(|e| serde_yaml::Value::String(e.name.clone()))
+        .map(|e| serde_yaml::Value::String(e.entity_name.clone()))
         .collect();
 
     // Build ABI entry
@@ -512,5 +604,80 @@ mod tests {
         let result = run_add(opt).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Manifest file"));
+    }
+
+    fn ev(name: &str) -> EventInfo {
+        EventInfo {
+            name: name.to_string(),
+            signature: format!("{}()", name),
+            inputs: vec![],
+        }
+    }
+
+    fn entities(names: &[&str]) -> HashSet<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn test_resolve_events_no_collision() {
+        let resolved =
+            resolve_events(vec![ev("Transfer")], &entities(&[]), "Token", false).unwrap();
+        assert_eq!(resolved.len(), 1);
+        assert_eq!(resolved[0].alias, "Transfer");
+        assert_eq!(resolved[0].entity_name, "Transfer");
+        assert!(resolved[0].declare_in_schema);
+    }
+
+    #[test]
+    fn test_resolve_events_overload_disambiguates() {
+        // Two events named Transfer in one ABI get distinct aliases.
+        let resolved = resolve_events(
+            vec![ev("Transfer"), ev("Transfer")],
+            &entities(&[]),
+            "Token",
+            false,
+        )
+        .unwrap();
+        assert_eq!(resolved[0].alias, "Transfer");
+        assert_eq!(resolved[1].alias, "Transfer1");
+        assert_eq!(resolved[1].entity_name, "Transfer1");
+    }
+
+    #[test]
+    fn test_resolve_events_collision_merge_reuses() {
+        let resolved = resolve_events(
+            vec![ev("Transfer")],
+            &entities(&["Transfer"]),
+            "Token",
+            true,
+        )
+        .unwrap();
+        // Reuse the existing entity, don't redeclare it, but keep the handler.
+        assert_eq!(resolved[0].entity_name, "Transfer");
+        assert!(!resolved[0].declare_in_schema);
+    }
+
+    #[test]
+    fn test_resolve_events_collision_no_merge_renames() {
+        let resolved = resolve_events(
+            vec![ev("Transfer")],
+            &entities(&["Transfer"]),
+            "Token",
+            false,
+        )
+        .unwrap();
+        assert_eq!(resolved[0].entity_name, "TokenTransfer");
+        assert!(resolved[0].declare_in_schema);
+    }
+
+    #[test]
+    fn test_resolve_events_collision_renamed_also_exists_errors() {
+        let result = resolve_events(
+            vec![ev("Transfer")],
+            &entities(&["Transfer", "TokenTransfer"]),
+            "Token",
+            false,
+        );
+        assert!(result.is_err());
     }
 }
