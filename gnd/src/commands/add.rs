@@ -3,6 +3,7 @@
 //! This command adds a new data source to an existing subgraph, generating
 //! the necessary manifest entries, schema types, and mapping stubs.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -15,7 +16,8 @@ use crate::formatter::format_typescript;
 use crate::output::{Step, step};
 use crate::scaffold::manifest::{EventInfo, extract_events_from_abi};
 use crate::scaffold::{
-    MAPPING_API_VERSION, ResolvedEvent, ScaffoldOptions, generate_event_handlers, to_kebab_case,
+    MAPPING_API_VERSION, ResolvedEvent, ScaffoldOptions, generate_event_entity,
+    generate_event_handlers, to_kebab_case,
 };
 use crate::services::ContractService;
 
@@ -98,6 +100,14 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
     // Fetch or load ABI
     let (abi, contract_name, start_block) = get_contract_info(&opt, &network).await?;
 
+    // A data source / template name must be unique within the subgraph.
+    if existing_source_names(&manifest).contains(&contract_name) {
+        return Err(anyhow!(
+            "Data source or template named '{}' already exists. Choose a different name with --contract-name.",
+            contract_name
+        ));
+    }
+
     // Get project directory
     let project_dir = crate::manifest::manifest_dir(&opt.manifest);
 
@@ -131,19 +141,24 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
         &events,
     )?;
 
-    // Update networks.json
+    // Declare the new event entities in the schema so codegen/build succeed.
+    add_schema_entities(project_dir, &manifest, &events)?;
+
+    // Update networks.json if the subgraph uses one.
     let networks_path = project_dir.join(&opt.network_file);
-    update_networks_file(
-        &networks_path,
-        &network,
-        &contract_name,
-        &opt.address,
-        start_block,
-    )?;
-    step(
-        Step::Write,
-        &format!("Updated {}", opt.network_file.display()),
-    );
+    if networks_path.exists() {
+        update_networks_file(
+            &networks_path,
+            &network,
+            &contract_name,
+            &opt.address,
+            start_block,
+        )?;
+        step(
+            Step::Write,
+            &format!("Updated {}", opt.network_file.display()),
+        );
+    }
 
     step(Step::Done, &format!("Added data source: {}", contract_name));
 
@@ -261,6 +276,62 @@ fn add_mapping_file(project_dir: &Path, contract_name: &str, events: &[EventInfo
         &format!("Writing mapping to {}", mapping_file.display()),
     );
     fs::write(&mapping_file, formatted).context("Failed to write mapping file")?;
+
+    Ok(())
+}
+
+/// Collect the names of all existing data sources and templates in the manifest.
+fn existing_source_names(manifest: &serde_yaml::Value) -> HashSet<String> {
+    let mut names = HashSet::new();
+    for key in ["dataSources", "templates"] {
+        if let Some(seq) = manifest.get(key).and_then(|v| v.as_sequence()) {
+            for item in seq {
+                if let Some(name) = item.get("name").and_then(|n| n.as_str()) {
+                    names.insert(name.to_string());
+                }
+            }
+        }
+    }
+    names
+}
+
+/// Append entity type definitions for the new events to the subgraph schema.
+///
+/// The mapping and manifest reference one entity per event; without this the
+/// referenced types never exist in schema.graphql and codegen/build fail.
+fn add_schema_entities(
+    project_dir: &Path,
+    manifest: &serde_yaml::Value,
+    events: &[EventInfo],
+) -> Result<()> {
+    if events.is_empty() {
+        return Ok(());
+    }
+
+    let schema_file = manifest
+        .get("schema")
+        .and_then(|s| s.get("file"))
+        .and_then(|f| f.as_str())
+        .unwrap_or("schema.graphql");
+    let schema_path = project_dir.join(schema_file);
+
+    let mut additions = String::new();
+    for event in events {
+        additions.push('\n');
+        additions.push_str(&generate_event_entity(&event.name, &event.inputs));
+        additions.push('\n');
+    }
+
+    step(Step::Write, &format!("Updating {}", schema_path.display()));
+
+    use std::io::Write;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&schema_path)
+        .with_context(|| format!("Failed to open schema file: {}", schema_path.display()))?;
+    file.write_all(additions.as_bytes())
+        .context("Failed to append entities to schema")?;
 
     Ok(())
 }

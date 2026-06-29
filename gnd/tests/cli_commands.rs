@@ -431,6 +431,13 @@ fn test_add_datasource() {
         "Initial manifest should not have SecondContract"
     );
 
+    // The added contract's event entity should not exist in the schema yet.
+    let schema_before = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        !schema_before.contains("type Trigger"),
+        "Initial schema should not have the Trigger entity"
+    );
+
     // Now add another datasource
     let second_abi_path = test_abis_path().join("LimitedContract.json");
     let output = run_gnd(
@@ -464,6 +471,62 @@ fn test_add_datasource() {
     assert!(
         manifest_after.contains("0x2222222222222222222222222222222222222222"),
         "Updated manifest should have second contract address"
+    );
+
+    // The new event entity must be declared in the schema so codegen/build work.
+    let schema_after = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        schema_after.contains("type Trigger @entity"),
+        "Updated schema should declare the Trigger entity, got:\n{}",
+        schema_after
+    );
+}
+
+#[test]
+fn test_add_duplicate_name_errors() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("dup-test");
+
+    let abi_path = test_abis_path().join("SimpleContract.json");
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            abi_path.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "FirstContract",
+            "dup-test",
+        ],
+        temp_dir.path(),
+    );
+
+    // Adding a data source whose name already exists must fail.
+    let second_abi_path = test_abis_path().join("LimitedContract.json");
+    let output = run_gnd(
+        &[
+            "add",
+            "0x2222222222222222222222222222222222222222",
+            "--abi",
+            second_abi_path.to_str().unwrap(),
+            "--contract-name",
+            "FirstContract",
+        ],
+        &subgraph_dir,
+    );
+
+    assert!(
+        !output.status.success(),
+        "gnd add should fail when the data source name already exists"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("already exists"),
+        "error should mention the name already exists, got: {}",
+        stderr
     );
 }
 

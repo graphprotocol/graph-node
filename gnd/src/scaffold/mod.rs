@@ -13,7 +13,7 @@ pub use manifest::{
 };
 pub use mapping::{generate_event_handlers, generate_mapping};
 pub(crate) use naming::sanitize_field_name;
-pub use schema::generate_schema;
+pub use schema::{generate_event_entity, generate_schema};
 
 use std::fs;
 use std::path::Path;
