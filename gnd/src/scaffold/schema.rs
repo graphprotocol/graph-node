@@ -2,6 +2,7 @@
 
 use super::ScaffoldOptions;
 use super::manifest::{EventInput, extract_events_from_abi};
+use super::sanitize_field_name;
 
 /// Generate the schema.graphql content.
 pub fn generate_schema(options: &ScaffoldOptions) -> String {
@@ -55,7 +56,7 @@ fn generate_example_entity(inputs: &[EventInput]) -> String {
 }
 
 /// Generate an entity type for an event.
-fn generate_event_entity(event_name: &str, inputs: &[EventInput]) -> String {
+pub fn generate_event_entity(entity_name: &str, inputs: &[EventInput]) -> String {
     let mut fields = String::new();
 
     // ID field
@@ -76,7 +77,7 @@ fn generate_event_entity(event_name: &str, inputs: &[EventInput]) -> String {
     format!(
         "# Declare entity types as immutable when possible for better performance\n\
          type {} @entity(immutable: true) {{\n{}\n}}",
-        event_name, fields
+        entity_name, fields
     )
 }
 
@@ -117,47 +118,6 @@ fn solidity_to_graphql(solidity_type: &str) -> &'static str {
 
         // Default to Bytes for unknown types
         _ => "Bytes",
-    }
-}
-
-/// Sanitize a field name to be a valid GraphQL identifier.
-fn sanitize_field_name(name: &str) -> String {
-    if name.is_empty() {
-        return "value".to_string();
-    }
-
-    // GraphQL field names must start with a letter or underscore
-    let mut result = String::new();
-
-    for (i, c) in name.chars().enumerate() {
-        if i == 0 && c.is_ascii_digit() {
-            result.push('_');
-        }
-        if c.is_alphanumeric() || c == '_' {
-            result.push(c);
-        } else {
-            result.push('_');
-        }
-    }
-
-    // Convert to camelCase if starts with uppercase
-    if result
-        .chars()
-        .next()
-        .map(|c| c.is_uppercase())
-        .unwrap_or(false)
-    {
-        let mut chars = result.chars();
-        if let Some(first) = chars.next() {
-            result = first.to_lowercase().collect::<String>() + chars.as_str();
-        }
-    }
-
-    // Avoid reserved words
-    match result.as_str() {
-        "id" => "eventId".to_string(),
-        "type" => "eventType".to_string(),
-        _ => result,
     }
 }
 
@@ -276,15 +236,5 @@ mod tests {
         assert_eq!(solidity_to_graphql("bytes"), "Bytes");
         assert_eq!(solidity_to_graphql("address[]"), "[Bytes!]");
         assert_eq!(solidity_to_graphql("uint256[]"), "[BigInt!]");
-    }
-
-    #[test]
-    fn test_sanitize_field_name() {
-        assert_eq!(sanitize_field_name("from"), "from");
-        assert_eq!(sanitize_field_name("tokenId"), "tokenId");
-        assert_eq!(sanitize_field_name("TokenId"), "tokenId");
-        assert_eq!(sanitize_field_name("123value"), "_123value");
-        assert_eq!(sanitize_field_name("id"), "eventId");
-        assert_eq!(sanitize_field_name(""), "value");
     }
 }

@@ -25,7 +25,7 @@ pub fn generate_manifest(options: &ScaffoldOptions) -> String {
     let event_handlers = get_event_handlers(options);
 
     format!(
-        r#"specVersion: 1.3.0
+        r#"specVersion: {spec_version}
 indexerHints:
   prune: auto
 schema:
@@ -37,7 +37,7 @@ dataSources:
     source:
 {source}    mapping:
       kind: ethereum/events
-      apiVersion: 0.0.9
+      apiVersion: {api_version}
       language: wasm/assemblyscript
       entities:{entities}
       abis:
@@ -46,6 +46,8 @@ dataSources:
       eventHandlers:{event_handlers}
       file: {mapping_file}
 "#,
+        spec_version = super::SPEC_VERSION,
+        api_version = super::MAPPING_API_VERSION,
         entities = get_entities(options),
     )
 }
@@ -93,11 +95,41 @@ fn get_entities(options: &ScaffoldOptions) -> String {
 }
 
 /// Event info extracted from ABI.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EventInfo {
     pub name: String,
     pub signature: String,
     pub inputs: Vec<EventInput>,
+}
+
+/// An event resolved to the concrete names the generators render.
+///
+/// Decided once (here / by collision resolution) so the schema, mapping and
+/// manifest generators never derive names independently:
+/// - `alias` names the handler function and the ABI event-type import; it is
+///   disambiguated for events overloaded within a single ABI.
+/// - `entity_name` names the GraphQL entity type, the `new` expression and the
+///   schema import; it gains a contract prefix when it collides with an entity
+///   that already exists in the subgraph.
+#[derive(Debug, Clone)]
+pub struct ResolvedEvent {
+    pub event: EventInfo,
+    pub alias: String,
+    pub entity_name: String,
+}
+
+impl ResolvedEvent {
+    /// Resolve an event with no disambiguation or collision handling: all names
+    /// equal the raw event name. Used where there are no existing entities to
+    /// collide with (a fresh scaffold).
+    pub fn passthrough(event: EventInfo) -> Self {
+        let name = event.name.clone();
+        Self {
+            event,
+            alias: name.clone(),
+            entity_name: name,
+        }
+    }
 }
 
 /// Event input parameter.

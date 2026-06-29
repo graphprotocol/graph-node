@@ -1,7 +1,8 @@
 //! Mapping (AssemblyScript) generation for scaffold.
 
 use super::ScaffoldOptions;
-use super::manifest::{EventInfo, extract_events_from_abi};
+use super::manifest::{EventInfo, ResolvedEvent, extract_events_from_abi};
+use super::sanitize_field_name;
 
 /// Generate the mapping.ts content.
 pub fn generate_mapping(options: &ScaffoldOptions) -> String {
@@ -16,7 +17,8 @@ pub fn generate_mapping(options: &ScaffoldOptions) -> String {
         return generate_placeholder_mapping(contract_name, &events, options);
     }
 
-    generate_event_handlers(contract_name, &events, options)
+    let resolved: Vec<ResolvedEvent> = events.into_iter().map(ResolvedEvent::passthrough).collect();
+    generate_event_handlers(contract_name, &resolved)
 }
 
 /// Generate a fallback mapping when no events are found in ABI.
@@ -102,7 +104,7 @@ fn generate_first_placeholder_handler(
     // Generate field assignments for first 2 event params
     let mut field_assignments = String::new();
     for input in event.inputs.iter().take(2) {
-        let field_name = sanitize_param_name(&input.name);
+        let field_name = sanitize_field_name(&input.name);
         field_assignments.push_str(&format!(
             "  entity.{} = event.params.{}\n",
             field_name, input.name
@@ -153,22 +155,18 @@ export function handle{event_name}(event: {event_name}Event): void {{
     )
 }
 
-/// Generate event handlers for all events in the ABI.
-fn generate_event_handlers(
-    contract_name: &str,
-    events: &[super::manifest::EventInfo],
-    _options: &ScaffoldOptions,
-) -> String {
-    let mut imports = String::new();
-    let mut handlers = String::new();
+/// Generate event handlers for all resolved events.
+pub fn generate_event_handlers(contract_name: &str, events: &[ResolvedEvent]) -> String {
+    let mut imports = String::from("import { BigInt, Bytes } from \"@graphprotocol/graph-ts\"\n");
 
-    // Import graph-ts types
-    imports.push_str("import { BigInt, Bytes } from \"@graphprotocol/graph-ts\"\n");
+    if events.is_empty() {
+        return imports;
+    }
 
-    // Import event types
+    // Import event types (by ABI alias).
     let event_imports: Vec<String> = events
         .iter()
-        .map(|e| format!("{} as {}Event", e.name, e.name))
+        .map(|e| format!("{} as {}Event", e.alias, e.alias))
         .collect();
 
     imports.push_str(&format!(
@@ -178,15 +176,16 @@ fn generate_event_handlers(
         contract_name
     ));
 
-    // Import entity types
-    let entity_imports: Vec<String> = events.iter().map(|e| e.name.clone()).collect();
+    // Import entity types.
+    let entity_imports: Vec<String> = events.iter().map(|e| e.entity_name.clone()).collect();
 
     imports.push_str(&format!(
         "import {{ {} }} from \"../generated/schema\"\n",
         entity_imports.join(", ")
     ));
 
-    // Generate handler for each event
+    // Generate handler for each event.
+    let mut handlers = String::new();
     for event in events {
         handlers.push('\n');
         handlers.push_str(&generate_single_handler(event));
@@ -195,14 +194,15 @@ fn generate_event_handlers(
     format!("{}\n{}", imports, handlers)
 }
 
-/// Generate a handler function for a single event.
-fn generate_single_handler(event: &super::manifest::EventInfo) -> String {
-    let event_name = &event.name;
+/// Generate a handler function for a single resolved event.
+fn generate_single_handler(resolved: &ResolvedEvent) -> String {
+    let alias = &resolved.alias;
+    let entity_name = &resolved.entity_name;
 
-    // Generate field assignments from event parameters
+    // Generate field assignments from event parameters.
     let mut field_assignments = String::new();
-    for input in &event.inputs {
-        let field_name = sanitize_param_name(&input.name);
+    for input in &resolved.event.inputs {
+        let field_name = sanitize_field_name(&input.name);
         field_assignments.push_str(&format!(
             "  entity.{} = event.params.{}\n",
             field_name, input.name
@@ -210,8 +210,8 @@ fn generate_single_handler(event: &super::manifest::EventInfo) -> String {
     }
 
     format!(
-        r#"export function handle{event_name}(event: {event_name}Event): void {{
-  let entity = new {event_name}(
+        r#"export function handle{alias}(event: {alias}Event): void {{
+  let entity = new {entity_name}(
     event.transaction.hash.concatI32(event.logIndex.toI32())
   )
 
@@ -223,34 +223,6 @@ fn generate_single_handler(event: &super::manifest::EventInfo) -> String {
 }}
 "#
     )
-}
-
-/// Sanitize parameter name for use in AssemblyScript.
-fn sanitize_param_name(name: &str) -> String {
-    if name.is_empty() {
-        return "value".to_string();
-    }
-
-    // Convert to camelCase if starts with uppercase
-    let mut result = name.to_string();
-    if result
-        .chars()
-        .next()
-        .map(|c| c.is_uppercase())
-        .unwrap_or(false)
-    {
-        let mut chars = result.chars();
-        if let Some(first) = chars.next() {
-            result = first.to_lowercase().collect::<String>() + chars.as_str();
-        }
-    }
-
-    // Avoid reserved words
-    match result.as_str() {
-        "id" => "eventId".to_string(),
-        "type" => "eventType".to_string(),
-        _ => result,
-    }
 }
 
 /// Extract callable functions from ABI for documentation comments.
@@ -392,14 +364,6 @@ mod tests {
         assert!(mapping.contains("event.params.from"));
         assert!(mapping.contains("event.params.to"));
         assert!(mapping.contains("event.params.value"));
-    }
-
-    #[test]
-    fn test_sanitize_param_name() {
-        assert_eq!(sanitize_param_name("from"), "from");
-        assert_eq!(sanitize_param_name("TokenId"), "tokenId");
-        assert_eq!(sanitize_param_name("id"), "eventId");
-        assert_eq!(sanitize_param_name(""), "value");
     }
 
     #[test]

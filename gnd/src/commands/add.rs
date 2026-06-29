@@ -8,14 +8,15 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
-use inflector::Inflector;
 use serde_json::Value as JsonValue;
 
 use crate::config::networks::update_networks_file;
 use crate::formatter::format_typescript;
 use crate::output::{Step, step};
-use crate::scaffold::ScaffoldOptions;
 use crate::scaffold::manifest::{EventInfo, extract_events_from_abi};
+use crate::scaffold::{
+    MAPPING_API_VERSION, ResolvedEvent, ScaffoldOptions, generate_event_handlers, to_kebab_case,
+};
 use crate::services::ContractService;
 
 #[derive(Clone, Debug, Parser)]
@@ -232,41 +233,12 @@ fn add_abi_file(project_dir: &Path, contract_name: &str, abi: &JsonValue) -> Res
     Ok(())
 }
 
-/// Sanitize a field name for GraphQL.
-fn sanitize_field_name(name: &str) -> String {
-    if name.is_empty() {
-        return "value".to_string();
-    }
-
-    let mut result = name.to_string();
-
-    // Convert to camelCase if starts with uppercase
-    if result
-        .chars()
-        .next()
-        .map(|c| c.is_uppercase())
-        .unwrap_or(false)
-    {
-        let mut chars = result.chars();
-        if let Some(first) = chars.next() {
-            result = first.to_lowercase().collect::<String>() + chars.as_str();
-        }
-    }
-
-    // Avoid reserved words
-    match result.as_str() {
-        "id" => "eventId".to_string(),
-        "type" => "eventType".to_string(),
-        _ => result,
-    }
-}
-
 /// Add mapping file for the new data source.
 fn add_mapping_file(project_dir: &Path, contract_name: &str, events: &[EventInfo]) -> Result<()> {
     let src_dir = project_dir.join("src");
     fs::create_dir_all(&src_dir).context("Failed to create src directory")?;
 
-    let mapping_file = src_dir.join(format!("{}.ts", contract_name.to_kebab_case()));
+    let mapping_file = src_dir.join(format!("{}.ts", to_kebab_case(contract_name)));
 
     if mapping_file.exists() {
         step(
@@ -276,7 +248,12 @@ fn add_mapping_file(project_dir: &Path, contract_name: &str, events: &[EventInfo
         return Ok(());
     }
 
-    let mapping_content = generate_mapping(contract_name, events);
+    let resolved: Vec<ResolvedEvent> = events
+        .iter()
+        .cloned()
+        .map(ResolvedEvent::passthrough)
+        .collect();
+    let mapping_content = generate_event_handlers(contract_name, &resolved);
     let formatted = format_typescript(&mapping_content).unwrap_or(mapping_content);
 
     step(
@@ -286,76 +263,6 @@ fn add_mapping_file(project_dir: &Path, contract_name: &str, events: &[EventInfo
     fs::write(&mapping_file, formatted).context("Failed to write mapping file")?;
 
     Ok(())
-}
-
-/// Generate mapping handlers for events.
-fn generate_mapping(contract_name: &str, events: &[EventInfo]) -> String {
-    let mut imports = String::new();
-    let mut handlers = String::new();
-
-    imports.push_str("import { BigInt, Bytes } from \"@graphprotocol/graph-ts\"\n");
-
-    if events.is_empty() {
-        return imports;
-    }
-
-    // Import event types
-    let event_imports: Vec<String> = events
-        .iter()
-        .map(|e| format!("{} as {}Event", e.name, e.name))
-        .collect();
-
-    imports.push_str(&format!(
-        "import {{ {} }} from \"../generated/{}/{}\"\n",
-        event_imports.join(", "),
-        contract_name,
-        contract_name
-    ));
-
-    // Import entity types
-    let entity_imports: Vec<String> = events.iter().map(|e| e.name.clone()).collect();
-
-    imports.push_str(&format!(
-        "import {{ {} }} from \"../generated/schema\"\n",
-        entity_imports.join(", ")
-    ));
-
-    // Generate handler for each event
-    for event in events {
-        handlers.push('\n');
-        handlers.push_str(&generate_event_handler(event));
-    }
-
-    format!("{}\n{}", imports, handlers)
-}
-
-/// Generate a handler function for an event.
-fn generate_event_handler(event: &EventInfo) -> String {
-    let event_name = &event.name;
-
-    let mut field_assignments = String::new();
-    for input in &event.inputs {
-        let field_name = sanitize_field_name(&input.name);
-        field_assignments.push_str(&format!(
-            "  entity.{} = event.params.{}\n",
-            field_name, input.name
-        ));
-    }
-
-    format!(
-        r#"export function handle{event_name}(event: {event_name}Event): void {{
-  let entity = new {event_name}(
-    event.transaction.hash.concatI32(event.logIndex.toI32())
-  )
-
-{field_assignments}  entity.blockNumber = event.block.number
-  entity.blockTimestamp = event.block.timestamp
-  entity.transactionHash = event.transaction.hash
-
-  entity.save()
-}}
-"#
-    )
 }
 
 /// Update the manifest with the new data source.
@@ -429,7 +336,7 @@ fn update_manifest(
     );
     mapping.insert(
         serde_yaml::Value::String("apiVersion".to_string()),
-        serde_yaml::Value::String("0.0.9".to_string()),
+        serde_yaml::Value::String(MAPPING_API_VERSION.to_string()),
     );
     mapping.insert(
         serde_yaml::Value::String("language".to_string()),
@@ -449,7 +356,7 @@ fn update_manifest(
     );
     mapping.insert(
         serde_yaml::Value::String("file".to_string()),
-        serde_yaml::Value::String(format!("./src/{}.ts", contract_name.to_kebab_case())),
+        serde_yaml::Value::String(format!("./src/{}.ts", to_kebab_case(contract_name))),
     );
 
     // Build the data source
@@ -494,7 +401,6 @@ fn update_manifest(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scaffold::manifest::{EventInfo, EventInput};
 
     #[tokio::test]
     async fn test_invalid_address() {
@@ -517,87 +423,6 @@ mod tests {
                 .to_string()
                 .contains("Invalid contract address")
         );
-    }
-
-    #[test]
-    fn test_sanitize_field_name() {
-        assert_eq!(sanitize_field_name("owner"), "owner");
-        assert_eq!(sanitize_field_name("Owner"), "owner");
-        assert_eq!(sanitize_field_name(""), "value");
-        // Reserved words
-        assert_eq!(sanitize_field_name("id"), "eventId");
-        assert_eq!(sanitize_field_name("type"), "eventType");
-    }
-
-    #[test]
-    fn test_to_kebab_case() {
-        assert_eq!("MyContract".to_kebab_case(), "my-contract");
-        assert_eq!("SimpleToken".to_kebab_case(), "simple-token");
-        assert_eq!("Contract".to_kebab_case(), "contract");
-        assert_eq!("contract".to_kebab_case(), "contract");
-        assert_eq!("ERC20Token".to_kebab_case(), "erc20-token");
-    }
-
-    #[test]
-    fn test_generate_event_handler() {
-        let event = EventInfo {
-            name: "Approval".to_string(),
-            signature: "Approval(address,address,uint256)".to_string(),
-            inputs: vec![
-                EventInput {
-                    name: "owner".to_string(),
-                    solidity_type: "address".to_string(),
-                    indexed: true,
-                },
-                EventInput {
-                    name: "spender".to_string(),
-                    solidity_type: "address".to_string(),
-                    indexed: true,
-                },
-                EventInput {
-                    name: "value".to_string(),
-                    solidity_type: "uint256".to_string(),
-                    indexed: false,
-                },
-            ],
-        };
-
-        let handler = generate_event_handler(&event);
-        assert!(handler.contains("export function handleApproval"));
-        assert!(handler.contains("event: ApprovalEvent"));
-        assert!(handler.contains("new Approval("));
-        assert!(handler.contains("entity.owner = event.params.owner"));
-        assert!(handler.contains("entity.spender = event.params.spender"));
-        assert!(handler.contains("entity.value = event.params.value"));
-        assert!(handler.contains("entity.save()"));
-    }
-
-    #[test]
-    fn test_generate_mapping() {
-        let events = vec![EventInfo {
-            name: "Transfer".to_string(),
-            signature: "Transfer(address,address,uint256)".to_string(),
-            inputs: vec![EventInput {
-                name: "from".to_string(),
-                solidity_type: "address".to_string(),
-                indexed: true,
-            }],
-        }];
-
-        let mapping = generate_mapping("Token", &events);
-        assert!(mapping.contains("import { BigInt, Bytes }"));
-        assert!(mapping.contains("Transfer as TransferEvent"));
-        assert!(mapping.contains("../generated/Token/Token"));
-        assert!(mapping.contains("import { Transfer }"));
-        assert!(mapping.contains("../generated/schema"));
-    }
-
-    #[test]
-    fn test_generate_mapping_empty_events() {
-        let events: Vec<EventInfo> = vec![];
-        let mapping = generate_mapping("Empty", &events);
-        assert!(mapping.contains("import { BigInt, Bytes }"));
-        assert!(!mapping.contains("export function handle"));
     }
 
     #[tokio::test]
