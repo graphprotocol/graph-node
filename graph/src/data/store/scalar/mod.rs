@@ -4,9 +4,9 @@ mod bytes;
 mod timestamp;
 
 pub use bigdecimal::BigDecimal;
+pub use bigdecimal::ToPrimitive;
 pub use bigint::{BigInt, BigIntSign};
 pub use bytes::Bytes;
-pub use old_bigdecimal::ToPrimitive;
 pub use timestamp::Timestamp;
 
 // Test helpers for BigInt and BigDecimal tests

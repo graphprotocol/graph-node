@@ -47,6 +47,7 @@ async-graphql = { version = "7.2.1", features = ["chrono"] }
 async-graphql-axum = "7.2.1"
 async-trait = "0.1.74"
 axum = "0.8.9"
+bigdecimal = { version = "0.3", features = ["serde"] }
 chrono = "0.4.44"
 bs58 = "0.5.1"
 clap = { version = "4.5.4", features = ["derive", "env", "wrap_help"] }
@@ -80,6 +81,7 @@ indicatif = "0.18"
 Inflector = "0.11.3"
 itertools = "0.14.0"
 lazy_static = "1.5.0"
+num-bigint = { version = "0.4", features = ["serde"] }
 prost = "0.14"
 prost-types = "0.14"
 redis = { version = "1.2.2", features = [
