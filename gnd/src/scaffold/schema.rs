@@ -169,16 +169,19 @@ mod tests {
                 name: "from".to_string(),
                 solidity_type: "address".to_string(),
                 indexed: true,
+                components: vec![],
             },
             EventInput {
                 name: "to".to_string(),
                 solidity_type: "address".to_string(),
                 indexed: true,
+                components: vec![],
             },
             EventInput {
                 name: "value".to_string(),
                 solidity_type: "uint256".to_string(),
                 indexed: false,
+                components: vec![],
             },
         ];
 

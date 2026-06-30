@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use serde_json::Value;
+
 use super::ScaffoldOptions;
 use crate::shared::handle_reserved_word;
 
@@ -178,6 +180,8 @@ pub struct EventInput {
     pub name: String,
     pub solidity_type: String,
     pub indexed: bool,
+    /// Nested fields for `tuple` / `tuple[]` inputs; empty otherwise.
+    pub components: Vec<EventInput>,
 }
 
 /// Extract events from ABI JSON.
@@ -204,23 +208,7 @@ pub fn extract_events_from_abi(options: &ScaffoldOptions) -> Vec<EventInfo> {
         let inputs = item
             .get("inputs")
             .and_then(|i| i.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|input| {
-                        let name = input.get("name").and_then(|n| n.as_str())?.to_string();
-                        let solidity_type = input.get("type").and_then(|t| t.as_str())?.to_string();
-                        let indexed = input
-                            .get("indexed")
-                            .and_then(|i| i.as_bool())
-                            .unwrap_or(false);
-                        Some(EventInput {
-                            name,
-                            solidity_type,
-                            indexed,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            })
+            .map(|arr| arr.iter().filter_map(parse_event_input).collect::<Vec<_>>())
             .unwrap_or_default();
 
         let signature = format_event_signature(name, &inputs);
@@ -235,20 +223,64 @@ pub fn extract_events_from_abi(options: &ScaffoldOptions) -> Vec<EventInfo> {
     events
 }
 
-/// Format an event signature string.
-fn format_event_signature(name: &str, inputs: &[EventInput]) -> String {
-    let params: Vec<String> = inputs
-        .iter()
-        .map(|input| {
-            if input.indexed {
-                format!("indexed {}", input.solidity_type)
-            } else {
-                input.solidity_type.clone()
-            }
-        })
-        .collect();
+/// Recursively parse an ABI input, including nested tuple components.
+fn parse_event_input(input: &Value) -> Option<EventInput> {
+    let name = input.get("name").and_then(|n| n.as_str())?.to_string();
+    let solidity_type = input.get("type").and_then(|t| t.as_str())?.to_string();
+    let indexed = input
+        .get("indexed")
+        .and_then(|i| i.as_bool())
+        .unwrap_or(false);
+    let components = input
+        .get("components")
+        .and_then(|c| c.as_array())
+        .map(|arr| arr.iter().filter_map(parse_event_input).collect())
+        .unwrap_or_default();
+    Some(EventInput {
+        name,
+        solidity_type,
+        indexed,
+        components,
+    })
+}
 
+/// Format an event signature, recursing into tuple components so the topic0
+/// hash matches the on-chain event, e.g. `Foo((address,uint256),uint256)`.
+fn format_event_signature(name: &str, inputs: &[EventInput]) -> String {
+    let params: Vec<String> = inputs.iter().map(signature_param).collect();
     format!("{}({})", name, params.join(","))
+}
+
+/// One parameter's signature, preserving the `indexed` marker at the top level.
+fn signature_param(input: &EventInput) -> String {
+    let ty = signature_type(input);
+    if input.indexed {
+        format!("indexed {}", ty)
+    } else {
+        ty
+    }
+}
+
+/// Canonical Solidity type for a signature; a tuple expands to its components.
+fn signature_type(input: &EventInput) -> String {
+    match tuple_suffix(&input.solidity_type) {
+        Some(suffix) => {
+            let inner: Vec<String> = input.components.iter().map(signature_type).collect();
+            format!("({}){}", inner.join(","), suffix)
+        }
+        None => input.solidity_type.clone(),
+    }
+}
+
+/// If `t` is `tuple`, `tuple[]`, `tuple[N]`, … returns the array suffix (possibly
+/// empty); otherwise `None`.
+fn tuple_suffix(t: &str) -> Option<&str> {
+    let rest = t.strip_prefix("tuple")?;
+    if rest.is_empty() || rest.starts_with('[') {
+        Some(rest)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -385,16 +417,52 @@ mod tests {
                 name: "from".to_string(),
                 solidity_type: "address".to_string(),
                 indexed: true,
+                components: vec![],
             },
             EventInput {
                 name: "value".to_string(),
                 solidity_type: "uint256".to_string(),
                 indexed: false,
+                components: vec![],
             },
         ];
 
         let sig = format_event_signature("Transfer", &inputs);
         assert_eq!(sig, "Transfer(indexed address,uint256)");
+    }
+
+    #[test]
+    fn test_format_event_signature_tuple() {
+        let scalar = |name: &str, ty: &str| EventInput {
+            name: name.to_string(),
+            solidity_type: ty.to_string(),
+            indexed: false,
+            components: vec![],
+        };
+
+        // A tuple param expands to its components so topic0 matches the chain.
+        let inputs = vec![
+            EventInput {
+                name: "data".to_string(),
+                solidity_type: "tuple".to_string(),
+                indexed: false,
+                components: vec![scalar("account", "address"), scalar("amount", "uint256")],
+            },
+            scalar("id", "uint256"),
+        ];
+        assert_eq!(
+            format_event_signature("Foo", &inputs),
+            "Foo((address,uint256),uint256)"
+        );
+
+        // Arrays of tuples keep the array suffix.
+        let arr = vec![EventInput {
+            name: "items".to_string(),
+            solidity_type: "tuple[]".to_string(),
+            indexed: false,
+            components: vec![scalar("a", "address")],
+        }];
+        assert_eq!(format_event_signature("Bar", &arr), "Bar((address)[])");
     }
 
     #[test]
