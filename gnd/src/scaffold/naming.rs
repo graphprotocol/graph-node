@@ -43,58 +43,10 @@ pub(crate) fn sanitize_field_name(name: &str) -> String {
         _ => result,
     };
 
-    // Suffix reserved words so the generated AssemblyScript stays valid.
-    if RESERVED_WORDS.contains(&result.as_str()) {
-        format!("{result}_")
-    } else {
-        result
-    }
+    // Escape reserved words via the shared list, so the entity field name
+    // matches the member the schema/ABI codegen generates from the same list.
+    crate::shared::handle_reserved_word(&result)
 }
-
-/// Words reserved in JS / AssemblyScript that cannot be used as identifiers as-is.
-const RESERVED_WORDS: &[&str] = &[
-    "await",
-    "break",
-    "case",
-    "catch",
-    "class",
-    "const",
-    "continue",
-    "debugger",
-    "delete",
-    "do",
-    "else",
-    "enum",
-    "export",
-    "extends",
-    "false",
-    "finally",
-    "function",
-    "if",
-    "implements",
-    "import",
-    "in",
-    "interface",
-    "let",
-    "new",
-    "package",
-    "private",
-    "protected",
-    "public",
-    "return",
-    "super",
-    "switch",
-    "static",
-    "this",
-    "throw",
-    "true",
-    "try",
-    "typeof",
-    "var",
-    "while",
-    "with",
-    "yield",
-];
 
 #[cfg(test)]
 mod tests {
@@ -113,10 +65,17 @@ mod tests {
         // Names that clash with the entity id / GraphQL keyword.
         assert_eq!(sanitize_field_name("id"), "eventId");
         assert_eq!(sanitize_field_name("type"), "eventType");
-        // Reserved words are suffixed so the generated code compiles.
+        // Reserved words are suffixed so the generated code compiles. These use
+        // the shared list, so words only in it (for/default/null/void/instanceof)
+        // are covered too — and stay consistent with the schema/ABI codegen.
         assert_eq!(sanitize_field_name("new"), "new_");
         assert_eq!(sanitize_field_name("class"), "class_");
         assert_eq!(sanitize_field_name("return"), "return_");
+        assert_eq!(sanitize_field_name("for"), "for_");
+        assert_eq!(sanitize_field_name("default"), "default_");
+        assert_eq!(sanitize_field_name("null"), "null_");
+        assert_eq!(sanitize_field_name("void"), "void_");
+        assert_eq!(sanitize_field_name("instanceof"), "instanceof_");
         // Leading uppercase reserved word still resolves after camelCasing.
         assert_eq!(sanitize_field_name("New"), "new_");
         // Leading digit -> underscore prefix.
