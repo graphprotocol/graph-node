@@ -89,13 +89,12 @@ impl NetworkDetails for Arc<FirehoseEndpoint> {
 
     async fn provides_extended_blocks(&self) -> anyhow::Result<bool> {
         let info = self.clone().info().await?;
-        let pred = if info.chain_name.contains("arbitrum-one")
-            || info.chain_name.contains("optimism-mainnet")
-        {
-            |x: &String| x.starts_with("extended") || x == "hybrid"
-        } else {
-            |x: &String| x == "extended"
-        };
+        let pred =
+            if info.chain_name.contains("arbitrum-one") || info.chain_name.contains("optimism") {
+                |x: &String| x.starts_with("extended") || x == "hybrid"
+            } else {
+                |x: &String| x == "extended"
+            };
 
         Ok(info.block_features.iter().any(pred))
     }
