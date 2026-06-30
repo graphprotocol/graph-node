@@ -201,16 +201,22 @@ fn generate_single_handler(resolved: &ResolvedEvent) -> String {
     let alias = &resolved.alias;
     let entity_name = &resolved.entity_name;
 
-    // Generate field assignments from event parameters. The accessor mirrors the
-    // generated binding getter (escaped reserved words, param<index> for unnamed).
+    // Generate field assignments: tuples are unrolled, arrays of address/tuple
+    // are changetype'd, and accessors mirror the generated binding getters
+    // (escaped reserved words, param<index> for unnamed).
     let mut field_assignments = String::new();
-    let accessors = super::event_param_accessors(&resolved.event.inputs);
-    for (input, accessor) in resolved.event.inputs.iter().zip(&accessors) {
-        let field_name = sanitize_field_name(&input.name);
-        field_assignments.push_str(&format!(
-            "  entity.{} = event.params.{}\n",
-            field_name, accessor
-        ));
+    for leaf in super::flatten_event_inputs(&resolved.event.inputs) {
+        if needs_bytes_array_cast(&leaf.solidity_type) {
+            field_assignments.push_str(&format!(
+                "  entity.{} = changetype<Bytes[]>(event.params.{})\n",
+                leaf.field, leaf.accessor
+            ));
+        } else {
+            field_assignments.push_str(&format!(
+                "  entity.{} = event.params.{}\n",
+                leaf.field, leaf.accessor
+            ));
+        }
     }
 
     format!(
@@ -227,6 +233,24 @@ fn generate_single_handler(resolved: &ResolvedEvent) -> String {
 }}
 "#
     )
+}
+
+/// Whether a leaf type is a (possibly fixed-size) array of `address` or `tuple`.
+/// The bindings expose these as `Array<Address>` / `Array<ethereum.Tuple>`, which
+/// must be `changetype`'d to fit a `Bytes[]` entity field.
+fn needs_bytes_array_cast(solidity_type: &str) -> bool {
+    ["address", "tuple"]
+        .iter()
+        .any(|base| match solidity_type.strip_prefix(base) {
+            Some("[]") => true,
+            Some(rest) => rest
+                .strip_prefix('[')
+                .and_then(|r| r.strip_suffix(']'))
+                .is_some_and(|inner| {
+                    !inner.is_empty() && inner.chars().all(|c| c.is_ascii_digit())
+                }),
+            None => false,
+        })
 }
 
 /// Extract callable functions from ABI for documentation comments.
@@ -432,6 +456,43 @@ mod tests {
         assert!(
             mapping.contains("event.params.param1"),
             "unnamed param accessor should be param<index>, got:\n{}",
+            mapping
+        );
+    }
+
+    #[test]
+    fn test_generate_mapping_tuple_and_array() {
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Deposit",
+                "inputs": [
+                    {"name": "data", "type": "tuple", "components": [
+                        {"name": "account", "type": "address"}
+                    ]},
+                    {"name": "owners", "type": "address[]"}
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            contract_name: "Vault".to_string(),
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+
+        let mapping = generate_mapping(&options);
+        // Tuple components are unrolled into nested accessors.
+        assert!(
+            mapping.contains("entity.data_account = event.params.data.account"),
+            "{}",
+            mapping
+        );
+        // Arrays of address are changetype'd to Bytes[].
+        assert!(
+            mapping.contains("entity.owners = changetype<Bytes[]>(event.params.owners)"),
+            "{}",
             mapping
         );
     }
