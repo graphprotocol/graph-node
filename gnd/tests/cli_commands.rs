@@ -652,6 +652,60 @@ fn test_init_overloaded_events_disambiguate() {
 }
 
 #[test]
+fn test_init_tuple_event_unrolls() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("tuple-init");
+
+    // An event with a tuple parameter.
+    let tuple_abi = temp_dir.path().join("Tuple.json");
+    fs::write(
+        &tuple_abi,
+        r#"[
+          {"type":"event","name":"Deposit","inputs":[
+            {"name":"data","type":"tuple","indexed":false,"components":[
+              {"name":"account","type":"address"},
+              {"name":"amount","type":"uint256"}
+            ]}
+          ]}
+        ]"#,
+    )
+    .unwrap();
+
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            tuple_abi.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "Vault",
+            "--index-events",
+            "tuple-init",
+        ],
+        temp_dir.path(),
+    );
+
+    // The tuple is unrolled into one schema field per component.
+    let schema = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        schema.contains("data_account: Bytes!") && schema.contains("data_amount: BigInt!"),
+        "tuple should unroll into schema fields, got:\n{}",
+        schema
+    );
+
+    // The mapping reads the components via the nested accessor.
+    let mapping = fs::read_to_string(subgraph_dir.join("src").join("vault.ts")).unwrap();
+    assert!(
+        mapping.contains("event.params.data.account"),
+        "mapping should use the nested tuple accessor, got:\n{}",
+        mapping
+    );
+}
+
+#[test]
 fn test_add_duplicate_name_errors() {
     let temp_dir = TempDir::new().unwrap();
     let subgraph_dir = temp_dir.path().join("dup-test");
