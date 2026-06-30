@@ -1815,17 +1815,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bigdecimal"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6773ddc0eafc0e509fb60e48dff7f450f8e674a0686ae8605e8d9901bd5eefa"
-dependencies = [
- "num-bigint 0.4.6",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
 name = "bimap"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2993,14 +2982,14 @@ version = "2.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9940fb8467a0a06312218ed384185cb8536aa10d8ec017d0ce7fad2c1bd882d5"
 dependencies = [
- "bigdecimal 0.3.1",
+ "bigdecimal",
  "bitflags 2.11.1",
  "byteorder",
  "chrono",
  "diesel_derives",
  "downcast-rs",
  "itoa",
- "num-bigint 0.4.6",
+ "num-bigint 0.2.6",
  "num-integer",
  "num-traits",
  "pq-sys",
@@ -3010,9 +2999,9 @@ dependencies = [
 
 [[package]]
 name = "diesel-async"
-version = "0.9.0"
+version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c20ddcc6737cecdaef3dfecb2796bdfe3002456521189d30be8e4c5a1bc821d"
+checksum = "dd39af30158d444884f166fe4c58f35dc40ad71ad017bb59408a3448526ff4bd"
 dependencies = [
  "deadpool 0.13.0",
  "diesel",
@@ -3908,7 +3897,7 @@ dependencies = [
  "async-trait",
  "atomic_refcell",
  "base64 0.21.7",
- "bigdecimal 0.1.2",
+ "bigdecimal",
  "bs58 0.5.1",
  "bytes",
  "chrono",
