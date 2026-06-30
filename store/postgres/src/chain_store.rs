@@ -3304,7 +3304,7 @@ impl ChainStoreTrait for ChainStore {
         let mut last_log = Instant::now();
 
         loop {
-            let current_size = batch_size.size;
+            let current_size = batch_size.size.max(1);
             let start = Instant::now();
             let deleted = self
                 .storage

@@ -23,6 +23,7 @@ const INITIAL_BATCH_SIZE: i64 = 10_000;
 /// arrays can be large and large arrays will slow down copying a lot. We
 /// therefore tread lightly in that case
 const INITIAL_BATCH_SIZE_LIST: i64 = 100;
+const MIN_BATCH_SIZE: i64 = 1;
 
 /// Track the desired size of a batch in such a way that doing the next
 /// batch gets close to TARGET_DURATION for the time it takes to copy one
@@ -34,9 +35,13 @@ pub(crate) struct AdaptiveBatchSize {
 }
 
 impl AdaptiveBatchSize {
+    fn clamp_size(size: i64) -> i64 {
+        size.max(MIN_BATCH_SIZE)
+    }
+
     pub fn with_size(size: i64) -> Self {
         Self {
-            size,
+            size: Self::clamp_size(size),
             target: ENV_VARS.store.batch_target_duration,
         }
     }
@@ -48,10 +53,7 @@ impl AdaptiveBatchSize {
             INITIAL_BATCH_SIZE
         };
 
-        Self {
-            size,
-            target: ENV_VARS.store.batch_target_duration,
-        }
+        Self::with_size(size)
     }
 
     // adjust batch size by trying to extrapolate in such a way that we
@@ -61,7 +63,7 @@ impl AdaptiveBatchSize {
         // Avoid division by zero
         let duration = duration.as_millis().max(1);
         let new_batch_size = self.size as f64 * self.target.as_millis() as f64 / duration as f64;
-        self.size = (2 * self.size).min(new_batch_size.round() as i64);
+        self.size = Self::clamp_size((2 * self.size).min(new_batch_size.round() as i64));
         self.size
     }
 }
@@ -185,7 +187,7 @@ impl VidBatcher {
 
     /// Explicitly set the batch size
     pub fn with_batch_size(mut self: VidBatcher, size: usize) -> Self {
-        self.batch_size.size = size as i64;
+        self.batch_size.size = AdaptiveBatchSize::clamp_size(size as i64);
         self
     }
 
@@ -243,6 +245,7 @@ impl VidBatcher {
     }
 
     pub(crate) fn set_batch_size(&mut self, size: usize) {
+        let size = AdaptiveBatchSize::clamp_size(size as i64) as usize;
         self.batch_size.size = size as i64;
         self.end = match &self.ogive {
             Some(ogive) => ogive.next_point(self.start, size).unwrap(),
@@ -461,6 +464,17 @@ mod tests {
 
         batcher.at(360, 359, 80);
         batcher.step(360, 359, S010).await;
+    }
+
+    #[test]
+    fn adaptive_batch_size_never_shrinks_to_zero() {
+        let mut batch_size = AdaptiveBatchSize {
+            size: 100,
+            target: S100,
+        };
+
+        assert_eq!(batch_size.adapt(Duration::from_secs(20_001)), 1);
+        assert_eq!(batch_size.size, 1);
     }
 
     #[test]
