@@ -652,6 +652,100 @@ fn test_init_overloaded_events_disambiguate() {
 }
 
 #[test]
+fn test_init_tuple_event_unrolls() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("tuple-init");
+
+    // One event carrying a non-indexed tuple (fully in `data`, so unrollable)
+    // alongside an indexed tuple and an indexed array (keccak'd into a topic, so
+    // only a hash survives).
+    let tuple_abi = temp_dir.path().join("Tuple.json");
+    fs::write(
+        &tuple_abi,
+        r#"[
+          {"type":"event","name":"Deposit","inputs":[
+            {"name":"data","type":"tuple","indexed":false,"components":[
+              {"name":"account","type":"address"},
+              {"name":"amount","type":"uint256"}
+            ]},
+            {"name":"key","type":"tuple","indexed":true,"components":[
+              {"name":"account","type":"address"}
+            ]},
+            {"name":"owners","type":"address[]","indexed":true}
+          ]}
+        ]"#,
+    )
+    .unwrap();
+
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            tuple_abi.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "Vault",
+            "--index-events",
+            "--skip-install",
+            "--skip-git",
+            "tuple-init",
+        ],
+        temp_dir.path(),
+    );
+    run_gnd_success(&["codegen"], &subgraph_dir);
+
+    let schema = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    let mapping = fs::read_to_string(subgraph_dir.join("src").join("vault.ts")).unwrap();
+    let bindings = fs::read_to_string(
+        subgraph_dir
+            .join("generated")
+            .join("Vault")
+            .join("Vault.ts"),
+    )
+    .unwrap();
+
+    // The non-indexed tuple is unrolled into one field per component, read via
+    // the nested accessor that codegen's tuple class actually exposes.
+    assert!(
+        schema.contains("data_account: Bytes!") && schema.contains("data_amount: BigInt!"),
+        "tuple should unroll into schema fields, got:\n{}",
+        schema
+    );
+    assert!(
+        mapping.contains("event.params.data.account"),
+        "mapping should use the nested tuple accessor, got:\n{}",
+        mapping
+    );
+
+    // The indexed params are only hashes on-chain: codegen types both getters
+    // Bytes, so they must be read whole, with no unroll and no changetype.
+    assert!(
+        bindings.contains("get key(): Bytes") && bindings.contains("get owners(): Bytes"),
+        "indexed reference getters should be Bytes\nbindings:\n{}",
+        bindings
+    );
+    assert!(
+        schema.contains("key: Bytes!") && schema.contains("owners: Bytes!"),
+        "indexed reference params should each be a single Bytes field, got:\n{}",
+        schema
+    );
+    assert!(
+        mapping.contains("entity.key = event.params.key")
+            && mapping.contains("entity.owners = event.params.owners"),
+        "indexed reference params should be read whole, got:\n{}",
+        mapping
+    );
+    assert!(
+        !mapping.contains("key.account") && !mapping.contains("changetype"),
+        "indexed reference params must not be unrolled or cast, got:\n{}",
+        mapping
+    );
+}
+
+#[test]
 fn test_add_duplicate_name_errors() {
     let temp_dir = TempDir::new().unwrap();
     let subgraph_dir = temp_dir.path().join("dup-test");
