@@ -16,10 +16,13 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, ValueEnum};
 use graphql_tools::parser::schema as gql;
+use lazy_static::lazy_static;
+use regex::Regex;
 
 use crate::commands::add::{AddOpt, run_add};
 use crate::commands::codegen::{CodegenOpt, run_codegen};
 use crate::config::networks::update_networks_file;
+use crate::manifest::removed_protocol_message;
 use crate::output::{Step, step, with_spinner};
 use crate::prompt::{
     InitForm, SourceType, get_subgraph_basename, prompt_add_another_contract,
@@ -30,12 +33,21 @@ use crate::scaffold::{ScaffoldOptions, generate_scaffold, init_git, install_depe
 use crate::services::{ContractInfo, ContractService, IpfsClient, NetworksRegistry};
 
 /// Available protocols for subgraph development.
+///
+/// The removed protocols (`cosmos`, `arweave`, `substreams`) are kept as
+/// variants so the `--protocol` flag still parses them and gnd can answer with
+/// a helpful message (see [`Protocol::is_removed`] and the guard in
+/// [`run_init`]). They are marked `hide` so they do not appear as valid values
+/// in `--help` or shell completion.
 #[derive(Clone, Debug, ValueEnum)]
 pub enum Protocol {
     Ethereum,
     Near,
+    #[value(hide = true)]
     Cosmos,
+    #[value(hide = true)]
     Arweave,
+    #[value(hide = true)]
     Substreams,
 }
 
@@ -47,6 +59,79 @@ impl std::fmt::Display for Protocol {
             Protocol::Cosmos => write!(f, "cosmos"),
             Protocol::Arweave => write!(f, "arweave"),
             Protocol::Substreams => write!(f, "substreams"),
+        }
+    }
+}
+
+impl Protocol {
+    /// Whether graph-node has dropped support for this protocol's chain.
+    ///
+    /// The variants are kept so `--protocol` still accepts these values and
+    /// gnd can answer with a helpful message (see [`removed_protocol_message`])
+    /// rather than a generic "invalid value" error. Note this concerns the
+    /// `arweave` *chain*, not the still-supported `file/arweave` offchain data
+    /// source.
+    pub fn is_removed(&self) -> bool {
+        matches!(
+            self,
+            Protocol::Cosmos | Protocol::Arweave | Protocol::Substreams
+        )
+    }
+}
+
+lazy_static! {
+    /// NEAR account-id naming rules. See
+    /// https://docs.near.org/concepts/protocol/account-id
+    static ref NEAR_ACCOUNT_RE: Regex =
+        Regex::new(r"^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$").unwrap();
+}
+
+/// Validate a contract address/account for the given protocol.
+///
+/// Different protocols identify contracts differently, so validation must be
+/// protocol-aware: Ethereum uses `0x`-prefixed hex addresses while NEAR uses
+/// named accounts like `wnear.flux-dev`. Returns a human-readable error
+/// message on failure.
+///
+/// - `Ethereum`: `0x` followed by 40 hex characters.
+/// - `Near`: account id of length 2..=64 matching NEAR's naming rules.
+/// - Removed protocols (`Cosmos`, `Arweave`, `Substreams`): rejected with a
+///   message pointing users to an older graph-cli, since graph-node no longer
+///   supports them.
+pub fn validate_contract_address(protocol: &Protocol, value: &str) -> Result<(), String> {
+    match protocol {
+        Protocol::Ethereum => {
+            if !value.starts_with("0x") || value.len() != 42 {
+                return Err(format!(
+                    "Invalid contract address '{}'. Expected format: 0x followed by 40 hex characters.",
+                    value
+                ));
+            }
+            if !value[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+                return Err(format!(
+                    "Invalid contract address '{}'. Address must contain only hex characters.",
+                    value
+                ));
+            }
+            Ok(())
+        }
+        Protocol::Near => {
+            if value.len() < 2 || value.len() > 64 {
+                return Err(format!(
+                    "Invalid NEAR account '{}'. Account must be between 2 and 64 characters.",
+                    value
+                ));
+            }
+            if !NEAR_ACCOUNT_RE.is_match(value) {
+                return Err(format!(
+                    "Invalid NEAR account '{}'. See https://docs.near.org/concepts/protocol/account-id",
+                    value
+                ));
+            }
+            Ok(())
+        }
+        Protocol::Cosmos | Protocol::Arweave | Protocol::Substreams => {
+            Err(removed_protocol_message(&protocol.to_string()))
         }
     }
 }
@@ -117,6 +202,15 @@ pub struct InitOpt {
 
 /// Run the init command.
 pub async fn run_init(opt: InitOpt) -> Result<()> {
+    // Refuse protocols graph-node no longer supports, regardless of source
+    // mode. Protocol defaults to Ethereum, so this only trips on an explicit
+    // `--protocol cosmos|arweave|substreams`.
+    if let Some(protocol) = &opt.protocol
+        && protocol.is_removed()
+    {
+        return Err(anyhow!(removed_protocol_message(&protocol.to_string())));
+    }
+
     // Check if we need interactive mode
     let needs_interactive = should_run_interactive(&opt);
 
@@ -192,6 +286,7 @@ async fn run_interactive(opt: InitOpt) -> Result<()> {
     // Run the interactive form
     let form = InitForm::run_interactive(
         &registry,
+        opt.protocol.clone().unwrap_or(Protocol::Ethereum),
         opt.network.clone(),
         opt.subgraph_name.clone(),
         opt.directory
@@ -223,6 +318,7 @@ async fn run_interactive(opt: InitOpt) -> Result<()> {
             let contract_opt = InitOpt {
                 subgraph_name: Some(form.subgraph_name),
                 directory: Some(PathBuf::from(&form.directory)),
+                protocol: opt.protocol.clone(),
                 from_contract: form.contract_address,
                 contract_name: Some(form.contract_name),
                 network: Some(form.network),
@@ -254,13 +350,9 @@ async fn init_from_contract(opt: &InitOpt, prefetched: Option<ContractInfo>) -> 
         .as_ref()
         .ok_or_else(|| anyhow!("Contract address is required"))?;
 
-    // Validate address format
-    if !address.starts_with("0x") || address.len() != 42 {
-        return Err(anyhow!(
-            "Invalid contract address '{}'. Expected format: 0x followed by 40 hex characters.",
-            address
-        ));
-    }
+    // Validate address format (protocol-aware: Ethereum hex vs NEAR account, etc.)
+    let protocol = opt.protocol.clone().unwrap_or(Protocol::Ethereum);
+    validate_contract_address(&protocol, address).map_err(|e| anyhow!(e))?;
 
     let network = opt.network.as_deref().unwrap_or("mainnet");
 
@@ -427,8 +519,9 @@ async fn init_from_contract(opt: &InitOpt, prefetched: Option<ContractInfo>) -> 
 /// Loop to add more contracts interactively.
 async fn add_more_contracts_loop(directory: &Path, network: &str) -> Result<()> {
     while prompt_add_another_contract(network)? {
-        // Prompt for contract address
-        let address = prompt_contract_address()?;
+        // Prompt for contract address (the add flow fetches an ABI, so it is
+        // Ethereum-only)
+        let address = prompt_contract_address(&Protocol::Ethereum)?;
 
         // Fetch contract info to get defaults
         let fetched_info = fetch_contract_info_for_add(network, &address).await;
@@ -1154,6 +1247,66 @@ mod tests {
         assert_eq!(Protocol::Cosmos.to_string(), "cosmos");
         assert_eq!(Protocol::Arweave.to_string(), "arweave");
         assert_eq!(Protocol::Substreams.to_string(), "substreams");
+    }
+
+    #[test]
+    fn test_protocol_is_removed() {
+        assert!(!Protocol::Ethereum.is_removed());
+        assert!(!Protocol::Near.is_removed());
+        assert!(Protocol::Cosmos.is_removed());
+        assert!(Protocol::Arweave.is_removed());
+        assert!(Protocol::Substreams.is_removed());
+    }
+
+    #[test]
+    fn test_validate_contract_address_removed_protocols() {
+        for protocol in [Protocol::Cosmos, Protocol::Arweave, Protocol::Substreams] {
+            let err = validate_contract_address(&protocol, "anything").unwrap_err();
+            assert!(
+                err.contains("no longer supports") && err.contains(&protocol.to_string()),
+                "Expected removed-protocol message for {}, got: {}",
+                protocol,
+                err
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_contract_address_ethereum() {
+        assert!(
+            validate_contract_address(
+                &Protocol::Ethereum,
+                "0x1234567890123456789012345678901234567890"
+            )
+            .is_ok()
+        );
+        // Too short / missing 0x
+        assert!(validate_contract_address(&Protocol::Ethereum, "0x1234").is_err());
+        assert!(validate_contract_address(&Protocol::Ethereum, "wnear.flux-dev").is_err());
+        // Right length but non-hex characters
+        assert!(
+            validate_contract_address(
+                &Protocol::Ethereum,
+                "0xzzzz567890123456789012345678901234567890"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_validate_contract_address_near() {
+        // Valid NEAR named accounts (the case the user reported was rejected)
+        assert!(validate_contract_address(&Protocol::Near, "wnear.flux-dev").is_ok());
+        assert!(validate_contract_address(&Protocol::Near, "token.near").is_ok());
+        assert!(validate_contract_address(&Protocol::Near, "a.b.c.near").is_ok());
+        // Uppercase is not allowed by NEAR rules
+        assert!(validate_contract_address(&Protocol::Near, "UPPER.case").is_err());
+        // Too short
+        assert!(validate_contract_address(&Protocol::Near, "a").is_err());
+        // Leading dot / empty segment
+        assert!(validate_contract_address(&Protocol::Near, ".near").is_err());
+        // A NEAR account is not a hex address but must still be accepted
+        assert!(validate_contract_address(&Protocol::Near, "aurora").is_ok());
     }
 
     #[test]

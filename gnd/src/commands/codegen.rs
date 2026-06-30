@@ -15,7 +15,7 @@ use graph::abi::JsonAbi;
 use graphql_tools::parser::schema as gql;
 use semver::Version;
 
-use crate::abi::normalize_abi_json;
+use crate::abi::preprocess_abi_json;
 use crate::codegen::{
     AbiCodeGenerator, Class, GENERATED_FILE_NOTE, ModuleImports, SchemaCodeGenerator,
     Template as CodegenTemplate, TemplateCodeGenerator, TemplateKind,
@@ -235,58 +235,6 @@ fn generate_schema_types(
         .with_context(|| format!("Failed to write schema types: {:?}", output_file))?;
 
     Ok(true)
-}
-
-/// Preprocess ABI JSON to normalize artifact formats and add defaults
-/// required by alloy's ABI parser:
-/// - `anonymous: false` for events (alloy requires this field)
-/// - `param{index}` names for unnamed event parameters (to match graph-cli behavior)
-fn preprocess_abi_json(abi_str: &str) -> Result<String> {
-    // Normalize to get the ABI array from various artifact formats
-    let mut abi = normalize_abi_json(abi_str)?;
-
-    if let Some(items) = abi.as_array_mut() {
-        for item in items {
-            if let Some(obj) = item.as_object_mut() {
-                let is_event = obj
-                    .get("type")
-                    .and_then(|t| t.as_str())
-                    .map(|t| t == "event")
-                    .unwrap_or(false);
-
-                if is_event {
-                    // Add anonymous: false for events if missing (alloy requires it)
-                    if !obj.contains_key("anonymous") {
-                        obj.insert("anonymous".to_string(), serde_json::Value::Bool(false));
-                    }
-
-                    // Add param{index} names for unnamed event parameters
-                    if let Some(inputs) = obj.get_mut("inputs") {
-                        add_default_event_param_names(inputs);
-                    }
-                }
-            }
-        }
-    }
-
-    serde_json::to_string(&abi).context("Failed to serialize processed ABI")
-}
-
-/// Add `param{index}` names to unnamed event parameters to match graph-cli behavior.
-/// Alloy defaults missing names to empty strings, but for events we want `param0`, `param1`, etc.
-fn add_default_event_param_names(params: &mut serde_json::Value) {
-    if let Some(params_arr) = params.as_array_mut() {
-        for (index, param) in params_arr.iter_mut().enumerate() {
-            if let Some(obj) = param.as_object_mut()
-                && !obj.contains_key("name")
-            {
-                obj.insert(
-                    "name".to_string(),
-                    serde_json::Value::String(format!("param{}", index)),
-                );
-            }
-        }
-    }
 }
 
 /// Generate types from an ABI file.
@@ -837,6 +785,71 @@ dataSources:
         assert!(
             abi_ts.contains("static bind(address: Address): ExampleContract"),
             "Contract should have static bind method"
+        );
+    }
+
+    /// Test that codegen handles a NEAR manifest: it parses `kind: near`,
+    /// generates schema types, and produces no ABI directories (NEAR has no
+    /// ABIs). This guards the schema-only codegen path for non-Ethereum
+    /// protocols.
+    #[tokio::test]
+    async fn test_codegen_near_schema_only() {
+        let temp_dir = TempDir::new().unwrap();
+        let project_dir = temp_dir.path();
+        let output_dir = project_dir.join("generated");
+
+        let manifest_content = r#"
+specVersion: 0.0.5
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: near
+    name: receipts
+    network: near-mainnet
+    source:
+      account: wnear.flux-dev
+      startBlock: 100
+    mapping:
+      apiVersion: 0.0.5
+      language: wasm/assemblyscript
+      entities:
+        - ExampleEntity
+      receiptHandlers:
+        - handler: handleReceipt
+      file: ./src/receipts.ts
+"#;
+        fs::write(project_dir.join("subgraph.yaml"), manifest_content).unwrap();
+
+        let schema_content = r#"
+type ExampleEntity @entity(immutable: true) {
+  id: Bytes!
+  count: BigInt!
+}
+"#;
+        fs::write(project_dir.join("schema.graphql"), schema_content).unwrap();
+        fs::create_dir_all(project_dir.join("src")).unwrap();
+        fs::write(project_dir.join("src/receipts.ts"), "").unwrap();
+
+        let opt = CodegenOpt {
+            manifest: project_dir.join("subgraph.yaml"),
+            output_dir: output_dir.clone(),
+            skip_migrations: true,
+            watch: false,
+            ipfs: "https://api.thegraph.com/ipfs/api/v0".to_string(),
+        };
+        generate_types(&opt).await.unwrap();
+
+        // Schema types are generated...
+        assert!(
+            output_dir.join("schema.ts").exists(),
+            "schema.ts should be generated for NEAR"
+        );
+        let schema_ts = fs::read_to_string(output_dir.join("schema.ts")).unwrap();
+        assert!(schema_ts.contains("export class ExampleEntity"));
+        // ...but no per-data-source ABI directory is created.
+        assert!(
+            !output_dir.join("receipts").exists(),
+            "NEAR data source must not produce an ABI directory"
         );
     }
 
