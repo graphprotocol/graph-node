@@ -283,6 +283,63 @@ fn tuple_suffix(t: &str) -> Option<&str> {
     }
 }
 
+/// A flattened leaf of an event input: the entity field name, the matching
+/// `event.params` accessor, and the leaf's Solidity type. A single `tuple`
+/// expands to one leaf per component (`data` -> `data_a`, `data_b`).
+pub struct InputLeaf {
+    pub field: String,
+    pub accessor: String,
+    pub solidity_type: String,
+}
+
+/// Flatten an event's inputs into leaves, unrolling a single `tuple` into its
+/// components (`tuple[]` stays one leaf, handled as a Bytes array downstream).
+/// The top-level accessor mirrors the generated binding getter
+/// (`event_param_accessors`) so `event.params.<x>` resolves; field names are
+/// sanitized for the schema/entity side.
+pub fn flatten_event_inputs(inputs: &[EventInput]) -> Vec<InputLeaf> {
+    let accessors = event_param_accessors(inputs);
+    let mut leaves = Vec::new();
+    for (input, accessor) in inputs.iter().zip(&accessors) {
+        flatten_input_into(
+            &mut leaves,
+            std::slice::from_ref(accessor),
+            &[super::sanitize_field_name(&input.name)],
+            input,
+        );
+    }
+    leaves
+}
+
+fn flatten_input_into(
+    out: &mut Vec<InputLeaf>,
+    accessor_path: &[String],
+    field_path: &[String],
+    input: &EventInput,
+) {
+    if input.solidity_type != "tuple" {
+        out.push(InputLeaf {
+            field: field_path.join("_"),
+            accessor: accessor_path.join("."),
+            solidity_type: input.solidity_type.clone(),
+        });
+        return;
+    }
+
+    for (i, comp) in input.components.iter().enumerate() {
+        let (raw, field) = if comp.name.is_empty() {
+            (format!("value{i}"), format!("value{i}"))
+        } else {
+            (comp.name.clone(), super::sanitize_field_name(&comp.name))
+        };
+        let mut accessor = accessor_path.to_vec();
+        accessor.push(raw);
+        let mut fields = field_path.to_vec();
+        fields.push(field);
+        flatten_input_into(out, &accessor, &fields, comp);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -463,6 +520,36 @@ mod tests {
             components: vec![scalar("a", "address")],
         }];
         assert_eq!(format_event_signature("Bar", &arr), "Bar((address)[])");
+    }
+
+    #[test]
+    fn test_flatten_input_tuple() {
+        let scalar = |name: &str, ty: &str| EventInput {
+            name: name.to_string(),
+            solidity_type: ty.to_string(),
+            indexed: false,
+            components: vec![],
+        };
+
+        // A tuple flattens into one leaf per component.
+        let tuple = EventInput {
+            name: "data".to_string(),
+            solidity_type: "tuple".to_string(),
+            indexed: false,
+            components: vec![scalar("account", "address"), scalar("amount", "uint256")],
+        };
+        let leaves = flatten_event_inputs(&[tuple]);
+        assert_eq!(leaves.len(), 2);
+        assert_eq!(leaves[0].field, "data_account");
+        assert_eq!(leaves[0].accessor, "data.account");
+        assert_eq!(leaves[1].field, "data_amount");
+        assert_eq!(leaves[1].accessor, "data.amount");
+
+        // A non-tuple input is a single leaf.
+        let leaves = flatten_event_inputs(&[scalar("from", "address")]);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].field, "from");
+        assert_eq!(leaves[0].accessor, "from");
     }
 
     #[test]

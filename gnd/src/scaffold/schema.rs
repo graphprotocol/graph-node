@@ -62,11 +62,10 @@ pub fn generate_event_entity(entity_name: &str, inputs: &[EventInput]) -> String
     // ID field
     fields.push_str("  id: Bytes!\n");
 
-    // Fields from event inputs
-    for input in inputs {
-        let field_name = sanitize_field_name(&input.name);
-        let graphql_type = solidity_to_graphql(&input.solidity_type);
-        fields.push_str(&format!("  {}: {}!\n", field_name, graphql_type));
+    // Fields from event inputs (tuples are unrolled into a field per component).
+    for leaf in super::flatten_event_inputs(inputs) {
+        let graphql_type = solidity_to_graphql(&leaf.solidity_type);
+        fields.push_str(&format!("  {}: {}!\n", leaf.field, graphql_type));
     }
 
     // Standard blockchain fields
@@ -279,5 +278,32 @@ mod tests {
         // Arrays follow the element type.
         assert_eq!(solidity_to_graphql("int8[]"), "[Int!]");
         assert_eq!(solidity_to_graphql("uint64[]"), "[BigInt!]");
+    }
+
+    #[test]
+    fn test_generate_schema_unrolls_tuple() {
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Deposit",
+                "inputs": [
+                    {"name": "data", "type": "tuple", "components": [
+                        {"name": "account", "type": "address"},
+                        {"name": "amount", "type": "uint256"}
+                    ]}
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+
+        let schema = generate_schema(&options);
+        // The tuple is flattened into one field per component.
+        assert!(schema.contains("data_account: Bytes!"), "{}", schema);
+        assert!(schema.contains("data_amount: BigInt!"), "{}", schema);
     }
 }
