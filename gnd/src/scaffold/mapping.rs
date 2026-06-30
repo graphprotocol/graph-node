@@ -104,11 +104,12 @@ fn generate_first_placeholder_handler(
 
     // Generate field assignments for first 2 event params
     let mut field_assignments = String::new();
-    for input in event.event.inputs.iter().take(2) {
+    let accessors = super::event_param_accessors(&event.event.inputs);
+    for (input, accessor) in event.event.inputs.iter().zip(&accessors).take(2) {
         let field_name = sanitize_field_name(&input.name);
         field_assignments.push_str(&format!(
             "  entity.{} = event.params.{}\n",
-            field_name, input.name
+            field_name, accessor
         ));
     }
 
@@ -200,13 +201,15 @@ fn generate_single_handler(resolved: &ResolvedEvent) -> String {
     let alias = &resolved.alias;
     let entity_name = &resolved.entity_name;
 
-    // Generate field assignments from event parameters.
+    // Generate field assignments from event parameters. The accessor mirrors the
+    // generated binding getter (escaped reserved words, param<index> for unnamed).
     let mut field_assignments = String::new();
-    for input in &resolved.event.inputs {
+    let accessors = super::event_param_accessors(&resolved.event.inputs);
+    for (input, accessor) in resolved.event.inputs.iter().zip(&accessors) {
         let field_name = sanitize_field_name(&input.name);
         field_assignments.push_str(&format!(
             "  entity.{} = event.params.{}\n",
-            field_name, input.name
+            field_name, accessor
         ));
     }
 
@@ -397,5 +400,39 @@ mod tests {
         assert!(functions.contains("totalSupply"));
         // transfer is nonpayable, should not be included
         assert!(!functions.contains("transfer"));
+    }
+
+    #[test]
+    fn test_generate_mapping_reserved_and_unnamed_params() {
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Act",
+                "inputs": [
+                    {"name": "new", "type": "uint256", "indexed": false},
+                    {"name": "", "type": "address", "indexed": false}
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            contract_name: "RW".to_string(),
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+
+        let mapping = generate_mapping(&options);
+        // The RHS must match the generated getter: `new` -> `new_`, unnamed -> `param1`.
+        assert!(
+            mapping.contains("event.params.new_"),
+            "reserved param accessor should be escaped, got:\n{}",
+            mapping
+        );
+        assert!(
+            mapping.contains("event.params.param1"),
+            "unnamed param accessor should be param<index>, got:\n{}",
+            mapping
+        );
     }
 }

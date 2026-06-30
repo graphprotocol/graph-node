@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use super::ScaffoldOptions;
+use crate::shared::handle_reserved_word;
 
 /// Generate the subgraph.yaml manifest content.
 pub fn generate_manifest(options: &ScaffoldOptions) -> String {
@@ -140,6 +141,33 @@ pub fn disambiguate_events(events: Vec<EventInfo>) -> Vec<ResolvedEvent> {
                 entity_name,
                 declare_in_schema: true,
             }
+        })
+        .collect()
+}
+
+/// The `event.params.<name>` accessor for each input, mirroring the names the
+/// ABI codegen gives the generated getters: reserved words are escaped and
+/// unnamed params become `param<index>`, with a counter for any collisions.
+/// Keeps the mapping's right-hand side in sync with the generated bindings.
+pub fn event_param_accessors(inputs: &[EventInput]) -> Vec<String> {
+    let mut seen: HashMap<String, u32> = HashMap::new();
+    inputs
+        .iter()
+        .enumerate()
+        .map(|(index, input)| {
+            let base = if input.name.is_empty() {
+                format!("param{index}")
+            } else {
+                handle_reserved_word(&input.name)
+            };
+            let count = seen.entry(base.clone()).or_insert(0);
+            let name = if *count == 0 {
+                base.clone()
+            } else {
+                format!("{base}{count}")
+            };
+            *count += 1;
+            name
         })
         .collect()
 }

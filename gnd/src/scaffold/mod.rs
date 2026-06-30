@@ -9,8 +9,8 @@ mod naming;
 mod schema;
 
 pub use manifest::{
-    EventInfo, EventInput, ResolvedEvent, disambiguate_events, extract_events_from_abi,
-    generate_manifest,
+    EventInfo, EventInput, ResolvedEvent, disambiguate_events, event_param_accessors,
+    extract_events_from_abi, generate_manifest,
 };
 pub use mapping::{generate_event_handlers, generate_mapping};
 pub(crate) use naming::sanitize_field_name;
