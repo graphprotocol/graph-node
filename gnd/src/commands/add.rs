@@ -375,13 +375,15 @@ fn resolve_events(
     let mut resolved = disambiguate_events(events);
 
     for r in &mut resolved {
-        if !existing.contains(&r.event.name) {
+        // Check the name we would actually declare (the disambiguated alias),
+        // not the raw event name, so an overload alias like `Transfer1` that
+        // collides with an existing entity is still caught.
+        if !existing.contains(&r.entity_name) {
             continue;
         }
         if merge_entities {
-            // Reuse the existing entity. Merge is by name only, so a
-            // signature mismatch surfaces at codegen/build, not here.
-            r.entity_name = r.event.name.clone();
+            // Reuse the existing entity (entity_name already equals it). Merge is
+            // by name only, so a signature mismatch surfaces at codegen/build.
             r.declare_in_schema = false;
         } else {
             let prefixed = format!("{}{}", contract_name, r.alias);
@@ -389,7 +391,7 @@ fn resolve_events(
                 return Err(anyhow!(
                     "Entity '{}' already exists; cannot rename '{}' to avoid a collision. Choose a different contract name.",
                     prefixed,
-                    r.event.name
+                    r.entity_name
                 ));
             }
             r.entity_name = prefixed;
@@ -698,6 +700,23 @@ mod tests {
             false,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_events_overload_alias_collision_renames() {
+        // The second overload's disambiguated alias (Transfer1) collides with an
+        // existing entity; the collision must be detected on the alias, not the
+        // raw event name.
+        let resolved = resolve_events(
+            vec![ev("Transfer"), ev("Transfer")],
+            &entities(&["Transfer1"]),
+            "Token",
+            false,
+        )
+        .unwrap();
+        assert_eq!(resolved[0].entity_name, "Transfer");
+        assert_eq!(resolved[1].alias, "Transfer1");
+        assert_eq!(resolved[1].entity_name, "TokenTransfer1");
     }
 
     #[test]
