@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
+use graphql_tools::parser::schema as gql;
 use serde_json::Value as JsonValue;
 
 use crate::config::networks::update_networks_file;
@@ -123,14 +124,13 @@ pub async fn run_add(opt: AddOpt) -> Result<()> {
     };
 
     // Extract events from the ABI and resolve their names against the entities
-    // already present in the subgraph (handles overloads and collisions).
+    // already present in the subgraph (handles overloads and collisions). Both
+    // the manifest's entity lists and the types declared in schema.graphql count
+    // as existing, since either can be the source of a name collision.
     let events = extract_events_from_abi(&scaffold_options);
-    let resolved = resolve_events(
-        events,
-        &existing_entities(&manifest),
-        &contract_name,
-        opt.merge_entities,
-    )?;
+    let mut existing = existing_entities(&manifest);
+    existing.extend(schema_entity_types(project_dir, &manifest));
+    let resolved = resolve_events(events, &existing, &contract_name, opt.merge_entities)?;
 
     // Add ABI file
     add_abi_file(project_dir, &contract_name, &abi)?;
@@ -320,6 +320,43 @@ fn existing_entities(manifest: &serde_yaml::Value) -> HashSet<String> {
         }
     }
     entities
+}
+
+/// Collect the `@entity` type names declared in the subgraph's schema.graphql.
+///
+/// The schema is the real source of truth for declared types, so a hand-written
+/// `type Foo @entity` that no mapping lists in its `entities` still counts as a
+/// collision. Returns empty on a missing or unparseable schema (falling back to
+/// the manifest's entity lists).
+fn schema_entity_types(project_dir: &Path, manifest: &serde_yaml::Value) -> HashSet<String> {
+    let schema_file = manifest
+        .get("schema")
+        .and_then(|s| s.get("file"))
+        .and_then(|f| f.as_str())
+        .unwrap_or("schema.graphql");
+    let Ok(content) = fs::read_to_string(project_dir.join(schema_file)) else {
+        return HashSet::new();
+    };
+    entity_types_in_schema(&content)
+}
+
+/// Parse GraphQL schema text and return the names of object types marked
+/// `@entity`. Returns empty if the schema does not parse.
+fn entity_types_in_schema(content: &str) -> HashSet<String> {
+    let Ok(ast) = gql::parse_schema::<String>(content) else {
+        return HashSet::new();
+    };
+    ast.definitions
+        .into_iter()
+        .filter_map(|def| match def {
+            gql::Definition::TypeDefinition(gql::TypeDefinition::Object(obj))
+                if obj.directives.iter().any(|d| d.name == "entity") =>
+            {
+                Some(obj.name)
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// Resolve event names against the entities already present in the subgraph.
@@ -661,5 +698,20 @@ mod tests {
             false,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_entity_types_in_schema() {
+        let schema = r#"
+            type Foo @entity { id: Bytes! }
+            type Bar @entity(immutable: true) { id: Bytes! }
+            type NotAnEntity { id: Bytes! }
+        "#;
+        let types = entity_types_in_schema(schema);
+        assert!(types.contains("Foo"));
+        assert!(types.contains("Bar"));
+        assert!(!types.contains("NotAnEntity"));
+        // A schema that doesn't parse yields no types rather than erroring.
+        assert!(entity_types_in_schema("this is not graphql {{{").is_empty());
     }
 }
