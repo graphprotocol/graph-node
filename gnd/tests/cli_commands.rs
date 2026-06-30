@@ -706,6 +706,63 @@ fn test_init_tuple_event_unrolls() {
 }
 
 #[test]
+fn test_init_reserved_and_unnamed_params_codegen() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("rw-sub");
+
+    // A reserved-word param (`new`) and an unnamed param.
+    let abi = temp_dir.path().join("RW.json");
+    fs::write(
+        &abi,
+        r#"[
+          {"type":"event","name":"Act","inputs":[
+            {"name":"new","type":"uint256","indexed":false},
+            {"name":"","type":"address","indexed":false}
+          ]}
+        ]"#,
+    )
+    .unwrap();
+
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            abi.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "RW",
+            "--index-events",
+            "--skip-install",
+            "--skip-git",
+            "rw-sub",
+        ],
+        temp_dir.path(),
+    );
+    run_gnd_success(&["codegen"], &subgraph_dir);
+
+    // The mapping's event.params accessor must match the getter the codegen
+    // actually generates: `new` is escaped to `new_`, the unnamed param is
+    // `param1`. (Regression guard for the LHS/RHS escaping mismatch.)
+    let mapping = fs::read_to_string(subgraph_dir.join("src").join("rw.ts")).unwrap();
+    let bindings =
+        fs::read_to_string(subgraph_dir.join("generated").join("RW").join("RW.ts")).unwrap();
+
+    assert!(
+        bindings.contains("get new_(") && mapping.contains("event.params.new_"),
+        "reserved getter and accessor should both be new_\nmapping:\n{}",
+        mapping
+    );
+    assert!(
+        bindings.contains("get param1(") && mapping.contains("event.params.param1"),
+        "unnamed getter and accessor should both be param1\nmapping:\n{}",
+        mapping
+    );
+}
+
+#[test]
 fn test_add_duplicate_name_errors() {
     let temp_dir = TempDir::new().unwrap();
     let subgraph_dir = temp_dir.path().join("dup-test");
