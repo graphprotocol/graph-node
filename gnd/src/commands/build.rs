@@ -486,7 +486,8 @@ fn create_ipfs_manifest(
     let manifest_str = fs::read_to_string(&manifest_path)
         .with_context(|| format!("Failed to read manifest: {}", manifest_path.display()))?;
 
-    let mut value: serde_yaml::Value = serde_yaml::from_str(&manifest_str)?;
+    let mut value: serde_yaml::Value = serde_yaml::from_str(&manifest_str)
+        .with_context(|| format!("Failed to parse manifest: {}", manifest_path.display()))?;
 
     // Update schema path to IPFS reference
     if let Some(schema_path) = &manifest.schema {
@@ -747,7 +748,8 @@ fn write_output_manifest(
     let manifest_str = fs::read_to_string(manifest_path)
         .with_context(|| format!("Failed to read manifest: {:?}", manifest_path))?;
 
-    let mut value: serde_yaml::Value = serde_yaml::from_str(&manifest_str)?;
+    let mut value: serde_yaml::Value = serde_yaml::from_str(&manifest_str)
+        .with_context(|| format!("Failed to parse manifest: {:?}", manifest_path))?;
 
     // Update schema path
     if let Some(schema) = value.get_mut("schema")
