@@ -499,6 +499,30 @@ impl BlockStore {
         Ok(())
     }
 
+    pub async fn has_namespace(&self, chain: &primary::Chain) -> Result<bool, StoreError> {
+        let pool = self
+            .pools
+            .get(&chain.shard)
+            .ok_or_else(|| internal_error!("no pool for shard {}", chain.shard))?;
+        let nsp = crate::primary::Namespace::special(chain.storage.to_string());
+        let mut conn = pool.get_permitted().await?;
+        crate::catalog::has_namespace(&mut conn, &nsp).await
+    }
+
+    pub async fn rebuild_chain_storage(
+        &self,
+        chain: &str,
+        ident: &ChainIdentifier,
+        drop_schema: bool,
+    ) -> Result<(), StoreError> {
+        let chain_store = self
+            .store(chain)
+            .await
+            .ok_or_else(|| internal_error!("No chain store found for {}", chain))?;
+
+        Ok(chain_store.rebuild_storage(ident, drop_schema).await?)
+    }
+
     // Helper to clone the list of chain stores to avoid holding the lock
     // while awaiting
     fn stores(&self) -> Vec<Arc<ChainStore>> {

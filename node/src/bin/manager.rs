@@ -604,6 +604,20 @@ pub enum ChainCommand {
         /// The block number to ingest
         number: BlockNumber,
     },
+
+    /// Rebuild a chain's storage schema and reset head metadata.
+    ///
+    /// If the storage schema is missing, rebuilds it silently.
+    /// If the storage already exists, prompts for confirmation before
+    /// dropping and rebuilding it (use --force to skip the prompt).
+    RebuildStorage {
+        /// Chain name (must be an existing chain, see 'chain list')
+        #[clap(value_parser = clap::builder::NonEmptyStringValueParser::new())]
+        chain_name: String,
+        /// Skip confirmation prompt when storage already exists
+        #[clap(long, short)]
+        force: bool,
+    },
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -1592,6 +1606,10 @@ async fn main() -> anyhow::Result<()> {
                     let (chain_store, ethereum_adapter) =
                         ctx.chain_store_and_adapter(&name).await?;
                     commands::chain::ingest(&logger, chain_store, ethereum_adapter, number).await
+                }
+                RebuildStorage { chain_name, force } => {
+                    let (block_store, primary) = ctx.block_store_and_primary_pool().await;
+                    commands::chain::rebuild_storage(primary, block_store, chain_name, force).await
                 }
             }
         }
