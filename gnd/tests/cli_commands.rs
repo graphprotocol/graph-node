@@ -431,6 +431,13 @@ fn test_add_datasource() {
         "Initial manifest should not have SecondContract"
     );
 
+    // The added contract's event entity should not exist in the schema yet.
+    let schema_before = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        !schema_before.contains("type Trigger"),
+        "Initial schema should not have the Trigger entity"
+    );
+
     // Now add another datasource
     let second_abi_path = test_abis_path().join("LimitedContract.json");
     let output = run_gnd(
@@ -464,6 +471,231 @@ fn test_add_datasource() {
     assert!(
         manifest_after.contains("0x2222222222222222222222222222222222222222"),
         "Updated manifest should have second contract address"
+    );
+
+    // The added Trigger event collides with the first contract's Trigger entity;
+    // without --merge-entities it is renamed with the contract prefix so both
+    // can coexist, and declared in the schema.
+    let schema_after = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        schema_after.contains("type SecondContractTrigger @entity"),
+        "Updated schema should declare the renamed entity, got:\n{}",
+        schema_after
+    );
+}
+
+#[test]
+fn test_add_merge_entities_reuses_existing() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("merge-test");
+
+    // Init with --index-events so the schema actually declares the event entities.
+    let abi_path = test_abis_path().join("SimpleContract.json");
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            abi_path.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "FirstContract",
+            "--index-events",
+            "merge-test",
+        ],
+        temp_dir.path(),
+    );
+
+    // Add a contract whose Trigger event collides, with --merge-entities.
+    let second_abi_path = test_abis_path().join("LimitedContract.json");
+    run_gnd_success(
+        &[
+            "add",
+            "0x2222222222222222222222222222222222222222",
+            "--abi",
+            second_abi_path.to_str().unwrap(),
+            "--contract-name",
+            "SecondContract",
+            "--merge-entities",
+        ],
+        &subgraph_dir,
+    );
+
+    // Merge reuses the existing Trigger entity: no renamed type is declared...
+    let schema_after = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        !schema_after.contains("SecondContractTrigger"),
+        "merge should reuse Trigger, not declare a renamed entity, got:\n{}",
+        schema_after
+    );
+
+    // ...but the handler is still generated, writing into the shared entity.
+    let mapping = fs::read_to_string(subgraph_dir.join("src").join("second-contract.ts")).unwrap();
+    assert!(
+        mapping.contains("new Trigger("),
+        "merged handler should write into the existing Trigger entity, got:\n{}",
+        mapping
+    );
+}
+
+#[test]
+fn test_add_overloaded_events_disambiguate() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("over-test");
+
+    // A base subgraph without overloaded events.
+    let abi_path = test_abis_path().join("LimitedContract.json");
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            abi_path.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "Base",
+            "over-test",
+        ],
+        temp_dir.path(),
+    );
+
+    // An ABI with two events of the same name (a Solidity overload).
+    let overloaded_abi = temp_dir.path().join("Overloaded.json");
+    fs::write(
+        &overloaded_abi,
+        r#"[
+          {"type":"event","name":"Ping","inputs":[{"name":"account","type":"address","indexed":true}]},
+          {"type":"event","name":"Ping","inputs":[{"name":"amount","type":"uint256","indexed":false}]}
+        ]"#,
+    )
+    .unwrap();
+
+    run_gnd_success(
+        &[
+            "add",
+            "0x2222222222222222222222222222222222222222",
+            "--abi",
+            overloaded_abi.to_str().unwrap(),
+            "--contract-name",
+            "Over",
+        ],
+        &subgraph_dir,
+    );
+
+    // The two Ping events get distinct entities and handlers.
+    let schema = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        schema.contains("type Ping @entity") && schema.contains("type Ping1 @entity"),
+        "overloaded events should produce Ping and Ping1 entities, got:\n{}",
+        schema
+    );
+
+    let mapping = fs::read_to_string(subgraph_dir.join("src").join("over.ts")).unwrap();
+    assert!(
+        mapping.contains("handlePing(") && mapping.contains("handlePing1("),
+        "overloaded events should produce handlePing and handlePing1, got:\n{}",
+        mapping
+    );
+}
+
+#[test]
+fn test_init_overloaded_events_disambiguate() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("over-init");
+
+    // An ABI with two events of the same name (a Solidity overload).
+    let overloaded_abi = temp_dir.path().join("Overloaded.json");
+    fs::write(
+        &overloaded_abi,
+        r#"[
+          {"type":"event","name":"Ping","inputs":[{"name":"account","type":"address","indexed":true}]},
+          {"type":"event","name":"Ping","inputs":[{"name":"amount","type":"uint256","indexed":false}]}
+        ]"#,
+    )
+    .unwrap();
+
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            overloaded_abi.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "Over",
+            "--index-events",
+            "over-init",
+        ],
+        temp_dir.path(),
+    );
+
+    // init must disambiguate too, or it emits duplicate types / handlers.
+    let schema = fs::read_to_string(subgraph_dir.join("schema.graphql")).unwrap();
+    assert!(
+        schema.contains("type Ping @entity") && schema.contains("type Ping1 @entity"),
+        "init should disambiguate overloaded events, got:\n{}",
+        schema
+    );
+
+    let mapping = fs::read_to_string(subgraph_dir.join("src").join("over.ts")).unwrap();
+    assert!(
+        mapping.contains("handlePing(") && mapping.contains("handlePing1("),
+        "init mapping should disambiguate overloaded handlers, got:\n{}",
+        mapping
+    );
+}
+
+#[test]
+fn test_add_duplicate_name_errors() {
+    let temp_dir = TempDir::new().unwrap();
+    let subgraph_dir = temp_dir.path().join("dup-test");
+
+    let abi_path = test_abis_path().join("SimpleContract.json");
+    run_gnd_success(
+        &[
+            "init",
+            "--from-contract",
+            "0x1111111111111111111111111111111111111111",
+            "--abi",
+            abi_path.to_str().unwrap(),
+            "--network",
+            "mainnet",
+            "--contract-name",
+            "FirstContract",
+            "dup-test",
+        ],
+        temp_dir.path(),
+    );
+
+    // Adding a data source whose name already exists must fail.
+    let second_abi_path = test_abis_path().join("LimitedContract.json");
+    let output = run_gnd(
+        &[
+            "add",
+            "0x2222222222222222222222222222222222222222",
+            "--abi",
+            second_abi_path.to_str().unwrap(),
+            "--contract-name",
+            "FirstContract",
+        ],
+        &subgraph_dir,
+    );
+
+    assert!(
+        !output.status.success(),
+        "gnd add should fail when the data source name already exists"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("already exists"),
+        "error should mention the name already exists, got: {}",
+        stderr
     );
 }
 

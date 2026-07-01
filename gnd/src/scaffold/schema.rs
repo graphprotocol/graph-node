@@ -2,6 +2,7 @@
 
 use super::ScaffoldOptions;
 use super::manifest::{EventInput, extract_events_from_abi};
+use super::sanitize_field_name;
 
 /// Generate the schema.graphql content.
 pub fn generate_schema(options: &ScaffoldOptions) -> String {
@@ -17,11 +18,11 @@ pub fn generate_schema(options: &ScaffoldOptions) -> String {
         return generate_example_entity(&events[0].inputs);
     }
 
-    // Generate entity for each event
+    // Generate an entity for each event, disambiguating overloaded names.
     let mut schema = String::new();
 
-    for event in events {
-        let entity = generate_event_entity(&event.name, &event.inputs);
+    for resolved in super::disambiguate_events(events) {
+        let entity = generate_event_entity(&resolved.entity_name, &resolved.event.inputs);
         schema.push_str(&entity);
         schema.push_str("\n\n");
     }
@@ -55,7 +56,7 @@ fn generate_example_entity(inputs: &[EventInput]) -> String {
 }
 
 /// Generate an entity type for an event.
-fn generate_event_entity(event_name: &str, inputs: &[EventInput]) -> String {
+pub fn generate_event_entity(entity_name: &str, inputs: &[EventInput]) -> String {
     let mut fields = String::new();
 
     // ID field
@@ -76,7 +77,7 @@ fn generate_event_entity(event_name: &str, inputs: &[EventInput]) -> String {
     format!(
         "# Declare entity types as immutable when possible for better performance\n\
          type {} @entity(immutable: true) {{\n{}\n}}",
-        event_name, fields
+        entity_name, fields
     )
 }
 
@@ -88,6 +89,7 @@ fn solidity_to_graphql(solidity_type: &str) -> &'static str {
         return match solidity_to_graphql(inner) {
             "Bytes" => "[Bytes!]",
             "BigInt" => "[BigInt!]",
+            "Int" => "[Int!]",
             "String" => "[String!]",
             "Boolean" => "[Boolean!]",
             _ => "[Bytes!]",
@@ -112,53 +114,35 @@ fn solidity_to_graphql(solidity_type: &str) -> &'static str {
         | "bytes23" | "bytes24" | "bytes25" | "bytes26" | "bytes27" | "bytes28" | "bytes29"
         | "bytes30" | "bytes31" | "bytes32" => "Bytes",
 
-        // Integer types - all map to BigInt for simplicity
-        t if t.starts_with("uint") || t.starts_with("int") => "BigInt",
+        // Integers: small widths fit in an i32 (GraphQL Int), the rest need BigInt.
+        t if t.starts_with("uint") || t.starts_with("int") => int_to_graphql(t),
 
         // Default to Bytes for unknown types
         _ => "Bytes",
     }
 }
 
-/// Sanitize a field name to be a valid GraphQL identifier.
-fn sanitize_field_name(name: &str) -> String {
-    if name.is_empty() {
-        return "value".to_string();
-    }
+/// Map a Solidity integer type to GraphQL `Int` when it fits in an i32, else
+/// `BigInt`. An i32 holds signed ints up to 32 bits and unsigned ints up to 24
+/// bits, matching graph-cli's AssemblyScript type conversion.
+fn int_to_graphql(solidity_type: &str) -> &'static str {
+    let (signed, width) = match solidity_type.strip_prefix("uint") {
+        Some(rest) => (false, rest),
+        None => match solidity_type.strip_prefix("int") {
+            Some(rest) => (true, rest),
+            None => return "BigInt",
+        },
+    };
 
-    // GraphQL field names must start with a letter or underscore
-    let mut result = String::new();
+    // A bare `int` / `uint` is 256 bits.
+    let bits: u32 = if width.is_empty() {
+        256
+    } else {
+        width.parse().unwrap_or(256)
+    };
 
-    for (i, c) in name.chars().enumerate() {
-        if i == 0 && c.is_ascii_digit() {
-            result.push('_');
-        }
-        if c.is_alphanumeric() || c == '_' {
-            result.push(c);
-        } else {
-            result.push('_');
-        }
-    }
-
-    // Convert to camelCase if starts with uppercase
-    if result
-        .chars()
-        .next()
-        .map(|c| c.is_uppercase())
-        .unwrap_or(false)
-    {
-        let mut chars = result.chars();
-        if let Some(first) = chars.next() {
-            result = first.to_lowercase().collect::<String>() + chars.as_str();
-        }
-    }
-
-    // Avoid reserved words
-    match result.as_str() {
-        "id" => "eventId".to_string(),
-        "type" => "eventType".to_string(),
-        _ => result,
-    }
+    let fits_i32 = if signed { bits <= 32 } else { bits <= 24 };
+    if fits_i32 { "Int" } else { "BigInt" }
 }
 
 #[cfg(test)]
@@ -270,8 +254,6 @@ mod tests {
         assert_eq!(solidity_to_graphql("address"), "Bytes");
         assert_eq!(solidity_to_graphql("bool"), "Boolean");
         assert_eq!(solidity_to_graphql("string"), "String");
-        assert_eq!(solidity_to_graphql("uint256"), "BigInt");
-        assert_eq!(solidity_to_graphql("int8"), "BigInt");
         assert_eq!(solidity_to_graphql("bytes32"), "Bytes");
         assert_eq!(solidity_to_graphql("bytes"), "Bytes");
         assert_eq!(solidity_to_graphql("address[]"), "[Bytes!]");
@@ -279,12 +261,20 @@ mod tests {
     }
 
     #[test]
-    fn test_sanitize_field_name() {
-        assert_eq!(sanitize_field_name("from"), "from");
-        assert_eq!(sanitize_field_name("tokenId"), "tokenId");
-        assert_eq!(sanitize_field_name("TokenId"), "tokenId");
-        assert_eq!(sanitize_field_name("123value"), "_123value");
-        assert_eq!(sanitize_field_name("id"), "eventId");
-        assert_eq!(sanitize_field_name(""), "value");
+    fn test_integer_width_mapping() {
+        // Small widths that fit in an i32 map to Int.
+        assert_eq!(solidity_to_graphql("int8"), "Int");
+        assert_eq!(solidity_to_graphql("int32"), "Int");
+        assert_eq!(solidity_to_graphql("uint8"), "Int");
+        assert_eq!(solidity_to_graphql("uint24"), "Int");
+        // Wider integers need BigInt (uint32 does not fit an i32).
+        assert_eq!(solidity_to_graphql("uint32"), "BigInt");
+        assert_eq!(solidity_to_graphql("int40"), "BigInt");
+        assert_eq!(solidity_to_graphql("uint256"), "BigInt");
+        assert_eq!(solidity_to_graphql("int"), "BigInt");
+        assert_eq!(solidity_to_graphql("uint"), "BigInt");
+        // Arrays follow the element type.
+        assert_eq!(solidity_to_graphql("int8[]"), "[Int!]");
+        assert_eq!(solidity_to_graphql("uint64[]"), "[BigInt!]");
     }
 }

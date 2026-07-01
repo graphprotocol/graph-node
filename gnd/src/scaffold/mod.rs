@@ -5,11 +5,16 @@
 
 pub mod manifest;
 mod mapping;
+mod naming;
 mod schema;
 
-pub use manifest::{EventInfo, EventInput, extract_events_from_abi, generate_manifest};
-pub use mapping::generate_mapping;
-pub use schema::generate_schema;
+pub use manifest::{
+    EventInfo, EventInput, ResolvedEvent, disambiguate_events, event_param_accessors,
+    extract_events_from_abi, generate_manifest,
+};
+pub use mapping::{generate_event_handlers, generate_mapping};
+pub(crate) use naming::sanitize_field_name;
+pub use schema::{generate_event_entity, generate_schema};
 
 use std::fs;
 use std::path::Path;
@@ -59,6 +64,10 @@ impl Default for ScaffoldOptions {
 const GRAPH_CLI_VERSION: &str = "0.98.0";
 const GRAPH_TS_VERSION: &str = "0.37.0";
 const MATCHSTICK_VERSION: &str = "0.6.0";
+
+/// Manifest format versions emitted by the scaffolder.
+pub(crate) const SPEC_VERSION: &str = "1.3.0";
+pub(crate) const MAPPING_API_VERSION: &str = "0.0.9";
 
 /// Generate all scaffold files and write to directory.
 pub fn generate_scaffold(dir: &Path, options: &ScaffoldOptions) -> Result<()> {
