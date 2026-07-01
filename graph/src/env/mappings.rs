@@ -175,7 +175,7 @@ pub struct InnerMappingHandlers {
     entity_cache_dead_weight: EnvVarBoolean,
     #[envconfig(from = "GRAPH_ENTITY_CACHE_SIZE", default = "10000")]
     entity_cache_size_in_kb: usize,
-    #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.9")]
+    #[envconfig(from = "GRAPH_MAX_API_VERSION", default = "0.0.10")]
     max_api_version: Version,
     #[envconfig(from = "GRAPH_MAPPING_HANDLER_TIMEOUT")]
     mapping_handler_timeout_in_secs: Option<u64>,

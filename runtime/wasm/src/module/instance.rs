@@ -462,6 +462,12 @@ pub(crate) fn build_linker(
 
     link!("ethereum.encode", ethereum_encode, params_ptr);
     link!("ethereum.decode", ethereum_decode, params_ptr, data_ptr);
+    link!(
+        "ethereum.decodeParams",
+        ethereum_decode_params,
+        params_ptr,
+        data_ptr
+    );
 
     link!("abort", abort, message_ptr, file_name_ptr, line, column);
 
