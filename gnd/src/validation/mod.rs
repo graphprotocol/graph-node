@@ -776,19 +776,23 @@ fn validate_handler_signatures(
             && let Some(abi_entry) = ds.abis.iter().find(|a| a.name == *source_abi)
         {
             let abi_path = manifest_dir.join(&abi_entry.file);
-            if let Some(contract) = load_abi(&abi_path) {
-                errors.extend(validate_event_signatures(
-                    &ds.name,
-                    source_abi,
-                    &ds.event_handlers,
-                    &contract,
-                ));
-                errors.extend(validate_function_signatures(
-                    &ds.name,
-                    source_abi,
-                    &ds.call_handlers,
-                    &contract,
-                ));
+            match load_abi(&abi_path) {
+                Ok(Some(contract)) => {
+                    errors.extend(validate_event_signatures(
+                        &ds.name,
+                        source_abi,
+                        &ds.event_handlers,
+                        &contract,
+                    ));
+                    errors.extend(validate_function_signatures(
+                        &ds.name,
+                        source_abi,
+                        &ds.call_handlers,
+                        &contract,
+                    ));
+                }
+                Ok(None) => {}
+                Err(e) => errors.push(e),
             }
         }
     }
@@ -798,19 +802,23 @@ fn validate_handler_signatures(
             && let Some(abi_entry) = t.abis.iter().find(|a| a.name == *source_abi)
         {
             let abi_path = manifest_dir.join(&abi_entry.file);
-            if let Some(contract) = load_abi(&abi_path) {
-                errors.extend(validate_event_signatures(
-                    &t.name,
-                    source_abi,
-                    &t.event_handlers,
-                    &contract,
-                ));
-                errors.extend(validate_function_signatures(
-                    &t.name,
-                    source_abi,
-                    &t.call_handlers,
-                    &contract,
-                ));
+            match load_abi(&abi_path) {
+                Ok(Some(contract)) => {
+                    errors.extend(validate_event_signatures(
+                        &t.name,
+                        source_abi,
+                        &t.event_handlers,
+                        &contract,
+                    ));
+                    errors.extend(validate_function_signatures(
+                        &t.name,
+                        source_abi,
+                        &t.call_handlers,
+                        &contract,
+                    ));
+                }
+                Ok(None) => {}
+                Err(e) => errors.push(e),
             }
         }
     }
@@ -818,15 +826,34 @@ fn validate_handler_signatures(
     errors
 }
 
-/// Try to load an ABI file as a `JsonAbi`.
+/// Load an ABI file as a `JsonAbi` for signature validation.
 ///
-/// Returns `None` if the file doesn't exist or can't be parsed (those errors
-/// are reported separately by file existence and ABI JSON validation).
-fn load_abi(abi_path: &Path) -> Option<JsonAbi> {
-    let content = std::fs::read_to_string(abi_path).ok()?;
-    let normalized = crate::abi::normalize_abi_json(&content).ok()?;
-    let json_str = normalized.to_string();
-    serde_json::from_str(&json_str).ok()
+/// Returns:
+/// - `Ok(None)` if the file does not exist (this is reported separately by
+///   [`validate_file_existence`], so we don't duplicate the error here).
+/// - `Err(InvalidFile)` if the file exists but cannot be read or parsed. This
+///   surfaces the failure instead of silently skipping signature validation.
+/// - `Ok(Some(abi))` on success.
+///
+/// The ABI is preprocessed with [`crate::abi::preprocess_abi_json`] — the same
+/// step codegen uses — so that validation parses exactly what codegen parses.
+fn load_abi(abi_path: &Path) -> Result<Option<JsonAbi>, ManifestValidationError> {
+    if !abi_path.exists() {
+        return Ok(None);
+    }
+
+    let invalid = |reason: String| ManifestValidationError::InvalidFile {
+        path: abi_path.display().to_string(),
+        reason,
+    };
+
+    let content =
+        std::fs::read_to_string(abi_path).map_err(|e| invalid(format!("failed to read: {}", e)))?;
+    let processed =
+        crate::abi::preprocess_abi_json(&content).map_err(|e| invalid(format!("{}", e)))?;
+    let contract: JsonAbi =
+        serde_json::from_str(&processed).map_err(|e| invalid(format!("invalid ABI: {}", e)))?;
+    Ok(Some(contract))
 }
 
 /// Build the event signature with `indexed` hints: `Name(indexed type1,type2,...)`.
@@ -2115,6 +2142,41 @@ type Post @entity {
         // Should produce no errors (file not found is reported elsewhere)
         let errors = validate_handler_signatures(&manifest, temp_dir.path());
         assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_validate_handler_signatures_reports_unparseable_abi() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // ABI file exists but is not valid ABI JSON. Previously this was
+        // silently skipped; now it must surface as an InvalidFile error.
+        fs::create_dir_all(temp_dir.path().join("abis")).unwrap();
+        fs::write(
+            temp_dir.path().join("abis/ERC20.json"),
+            r#"{"not": "an abi"}"#,
+        )
+        .unwrap();
+
+        let mut ds = create_data_source("ds1", Some("mainnet"), Some(Version::new(0, 0, 6)));
+        ds.abis = vec![Abi {
+            name: "ERC20".to_string(),
+            file: "abis/ERC20.json".to_string(),
+        }];
+        ds.source_abi = Some("ERC20".to_string());
+        ds.event_handlers = vec![EventHandler {
+            event: "Transfer(address,address,uint256)".to_string(),
+            handler: "handleTransfer".to_string(),
+            receipt: false,
+            has_call_decls: false,
+        }];
+
+        let manifest = create_test_manifest(vec![ds], vec![]);
+        let errors = validate_handler_signatures(&manifest, temp_dir.path());
+        assert_eq!(errors.len(), 1, "Expected one error, got: {:?}", errors);
+        assert!(matches!(
+            &errors[0],
+            ManifestValidationError::InvalidFile { .. }
+        ));
     }
 
     #[test]

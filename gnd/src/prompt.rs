@@ -8,9 +8,10 @@ use std::path::Path;
 use anyhow::Result;
 use console::{Term, style};
 use inquire::parser::CustomTypeParser;
-use inquire::validator::Validation;
+use inquire::validator::{ErrorMessage, Validation};
 use inquire::{Autocomplete, Confirm, CustomType, CustomUserError, Select, Text};
 
+use crate::commands::{Protocol, validate_contract_address};
 use crate::output::{Step, step};
 use crate::services::{ContractInfo, ContractService, Network, NetworksRegistry};
 
@@ -121,23 +122,21 @@ pub fn prompt_directory(default: Option<&str>) -> Result<String> {
     Ok(prompt.prompt()?)
 }
 
-/// Prompt for a contract address.
-pub fn prompt_contract_address() -> Result<String> {
+/// Prompt for a contract address/account, validated for the given protocol.
+pub fn prompt_contract_address(protocol: &Protocol) -> Result<String> {
+    let help = match protocol {
+        Protocol::Near => "named account of the contract (e.g. wnear.flux-dev)",
+        _ => "0x... address of the contract",
+    };
+    let protocol = protocol.clone();
     Text::new("Contract address:")
-        .with_help_message("0x... address of the contract")
-        .with_validator(|input: &str| {
-            if !input.starts_with("0x") || input.len() != 42 {
-                Ok(Validation::Invalid(
-                    "Address must start with 0x and be 42 characters".into(),
-                ))
-            } else if !input[2..].chars().all(|c| c.is_ascii_hexdigit()) {
-                Ok(Validation::Invalid(
-                    "Address must contain only hex characters".into(),
-                ))
-            } else {
-                Ok(Validation::Valid)
-            }
-        })
+        .with_help_message(help)
+        .with_validator(
+            move |input: &str| match validate_contract_address(&protocol, input) {
+                Ok(()) => Ok(Validation::Valid),
+                Err(e) => Ok(Validation::Invalid(ErrorMessage::Custom(e))),
+            },
+        )
         .prompt()
         .map_err(Into::into)
 }
@@ -446,6 +445,7 @@ impl InitForm {
     pub async fn run_interactive(
         registry: &NetworksRegistry,
         // Pre-filled values from CLI args
+        protocol: Protocol,
         network: Option<String>,
         subgraph_name: Option<String>,
         directory: Option<String>,
@@ -503,7 +503,7 @@ impl InitForm {
         // Step 2: Contract address
         let contract_address = match from_contract {
             Some(addr) => addr,
-            None => prompt_contract_address()?,
+            None => prompt_contract_address(&protocol)?,
         };
 
         // Step 3: Fetch contract info immediately after getting address

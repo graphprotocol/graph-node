@@ -9,7 +9,7 @@ mod schema;
 
 pub use manifest::{EventInfo, EventInput, extract_events_from_abi, generate_manifest};
 pub use mapping::generate_mapping;
-pub use schema::generate_schema;
+pub use schema::{generate_event_entities, generate_schema};
 
 use std::fs;
 use std::path::Path;
