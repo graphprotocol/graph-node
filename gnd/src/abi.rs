@@ -1,11 +1,42 @@
 //! ABI normalization utilities.
 //!
 //! Handles extraction of bare ABI arrays from various artifact formats
-//! (raw arrays, Hardhat/Foundry, Truffle) and the preprocessing alloy's ABI
-//! parser needs (`anonymous` and `param{index}` defaults).
+//! (raw arrays, Hardhat/Foundry, Truffle), the preprocessing alloy's ABI
+//! parser needs (`anonymous` and `param{index}` defaults), and the shared
+//! event-signature format the manifest uses.
 
 use anyhow::{Context, Result, anyhow};
+use graph::abi::Event;
 use serde_json::Value;
+
+/// Build a manifest event signature, e.g.
+/// `Transfer(indexed address,indexed address,uint256)`.
+///
+/// The `indexed ` marker is graph-node's own convention: it is stripped before
+/// hashing topic0, and only the strict manifest-vs-ABI matcher reads it.
+///
+/// Types come from `selector_type`, which expands a tuple to its components so
+/// the hash covers the real shape. It does not normalize the `uint`/`int`
+/// aliases, so an ABI declaring `uint` rather than `uint256` yields a signature
+/// that hashes to the wrong topic0 and matches no log. graph-node's matcher
+/// builds its comparison string the same way, so such a manifest still
+/// validates.
+pub fn event_signature_with_indexed(event: &Event) -> String {
+    let params: Vec<String> = event
+        .inputs
+        .iter()
+        .map(|input| {
+            let ty = input.selector_type();
+            if input.indexed {
+                format!("indexed {}", ty)
+            } else {
+                ty.into_owned()
+            }
+        })
+        .collect();
+
+    format!("{}({})", event.name, params.join(","))
+}
 
 /// Normalize ABI JSON to extract the actual ABI array from various artifact formats.
 pub fn normalize_abi_json(abi_str: &str) -> Result<Value> {

@@ -205,7 +205,7 @@ pub fn extract_events_from_abi(options: &ScaffoldOptions) -> Vec<EventInfo> {
 
         match serde_json::from_value::<Event>(item.clone()) {
             Ok(event) => {
-                let signature = format_event_signature(&event.name, &event.inputs);
+                let signature = crate::abi::event_signature_with_indexed(&event);
                 events.push(EventInfo {
                     name: event.name,
                     signature,
@@ -223,24 +223,6 @@ pub fn extract_events_from_abi(options: &ScaffoldOptions) -> Vec<EventInfo> {
     }
 
     events
-}
-
-/// Format an event signature for the manifest, e.g.
-/// `Transfer(indexed address,indexed address,uint256)`. The `indexed ` marker is
-/// graph-node's own convention; the type comes from the canonical Solidity type.
-fn format_event_signature(name: &str, inputs: &[EventParam]) -> String {
-    let params: Vec<String> = inputs
-        .iter()
-        .map(|input| {
-            if input.indexed {
-                format!("indexed {}", input.ty)
-            } else {
-                input.ty.clone()
-            }
-        })
-        .collect();
-
-    format!("{}({})", name, params.join(","))
 }
 
 #[cfg(test)]
@@ -446,20 +428,34 @@ mod tests {
     }
 
     #[test]
-    fn test_format_event_signature() {
-        let param = |name: &str, ty: &str, indexed: bool| EventParam {
-            name: name.to_string(),
-            ty: ty.to_string(),
-            indexed,
+    fn test_extract_events_expands_tuple_signature() {
+        // A tuple param expands to its components so the topic0 hash matches the
+        // on-chain event; array suffixes are preserved.
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Filled",
+                "inputs": [
+                    {"name": "order", "type": "tuple", "components": [
+                        {"name": "maker", "type": "address"},
+                        {"name": "price", "type": "uint256"}
+                    ]},
+                    {"name": "fills", "type": "tuple[]", "components": [
+                        {"name": "amount", "type": "uint256"}
+                    ]},
+                    {"name": "fee", "type": "uint256"}
+                ]
+            }
+        ]);
+        let options = ScaffoldOptions {
+            abi: Some(abi),
             ..Default::default()
         };
-        let inputs = vec![
-            param("from", "address", true),
-            param("value", "uint256", false),
-        ];
-
-        let sig = format_event_signature("Transfer", &inputs);
-        assert_eq!(sig, "Transfer(indexed address,uint256)");
+        let events = extract_events_from_abi(&options);
+        assert_eq!(
+            events[0].signature,
+            "Filled((address,uint256),(uint256)[],uint256)"
+        );
     }
 
     #[test]
