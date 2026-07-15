@@ -6,8 +6,45 @@
 //! event-signature format the manifest uses.
 
 use anyhow::{Context, Result, anyhow};
-use graph::abi::Event;
+use graph::abi::{DynSolType, Event, EventParam};
 use serde_json::Value;
+
+/// Resolve an `EventParam`'s declared type to `DynSolType`.
+pub fn resolve_event_param_type(param: &EventParam) -> DynSolType {
+    param
+        .selector_type()
+        .parse::<DynSolType>()
+        .expect("valid ABI type")
+}
+
+/// The type an indexed param actually carries in the log.
+///
+/// A topic is exactly 32 bytes, so reference types (strings, bytes, arrays and
+/// tuples) do not fit: the EVM stores `keccak256(encoding)` instead and the
+/// value itself is not in the log at all. Value types are stored as-is.
+pub fn indexed_input_type(param_type: &DynSolType) -> DynSolType {
+    match param_type {
+        DynSolType::String | DynSolType::Bytes | DynSolType::Tuple(_) => DynSolType::FixedBytes(32),
+        DynSolType::Array(_) | DynSolType::FixedArray(_, _) => DynSolType::FixedBytes(32),
+        _ => param_type.clone(),
+    }
+}
+
+/// Whether an event param is reduced to a `bytes32` hash by being indexed, so
+/// its value cannot be read back out of the log.
+///
+/// A type that does not parse (a malformed ABI can declare `tuple` with no
+/// components) is reported as not hashed: scaffolding must not abort on an ABI
+/// that alloy accepted.
+pub fn is_hashed_when_indexed(param: &EventParam) -> bool {
+    if !param.indexed {
+        return false;
+    }
+    match param.selector_type().parse::<DynSolType>() {
+        Ok(declared) => indexed_input_type(&declared) != declared,
+        Err(_) => false,
+    }
+}
 
 /// Build a manifest event signature, e.g.
 /// `Transfer(indexed address,indexed address,uint256)`.
@@ -134,6 +171,8 @@ fn add_default_event_param_names(params: &mut Value) {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
     #[test]
@@ -189,5 +228,15 @@ mod tests {
                 .to_string()
                 .contains("Invalid ABI format")
         );
+    }
+
+    #[test]
+    fn test_is_hashed_when_indexed_tolerates_unparseable_type() {
+        // alloy accepts a component-less `tuple`, whose selector type is the
+        // bare word "tuple" and does not parse as a Solidity type. Scaffolding
+        // must not abort on an ABI that parsed.
+        let param: EventParam =
+            serde_json::from_value(json!({"name": "x", "type": "tuple", "indexed": true})).unwrap();
+        assert!(!is_hashed_when_indexed(&param));
     }
 }

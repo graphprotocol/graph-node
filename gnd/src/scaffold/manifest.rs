@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use graph::abi::{Event, EventParam};
+use graph::abi::{Event, EventParam, Param};
 
 use super::ScaffoldOptions;
 use crate::shared::handle_reserved_word;
@@ -172,6 +172,76 @@ pub fn event_param_accessors(inputs: &[EventParam]) -> Vec<String> {
             name
         })
         .collect()
+}
+
+/// A flattened leaf of an event input: the entity field name, the matching
+/// `event.params` accessor, and the leaf's Solidity type. A single `tuple`
+/// expands to one leaf per component (`data` -> `data_a`, `data_b`).
+pub struct InputLeaf {
+    pub field: String,
+    pub accessor: String,
+    pub solidity_type: String,
+}
+
+/// Flatten an event's inputs into leaves, unrolling a single `tuple` into its
+/// components (`tuple[]` stays one leaf). The top-level accessor mirrors the
+/// generated binding getter (`event_param_accessors`) so `event.params.<x>`
+/// resolves; field names are sanitized for the schema/entity side.
+///
+/// An indexed reference type is reduced to a `bytes32` hash by the EVM, so the
+/// binding getter yields `Bytes` and there is nothing to unroll: it becomes a
+/// single hash leaf.
+pub fn flatten_event_inputs(inputs: &[EventParam]) -> Vec<InputLeaf> {
+    let accessors = event_param_accessors(inputs);
+    let mut leaves = Vec::new();
+    for (input, accessor) in inputs.iter().zip(&accessors) {
+        if crate::abi::is_hashed_when_indexed(input) {
+            leaves.push(InputLeaf {
+                field: super::sanitize_field_name(&input.name),
+                accessor: accessor.clone(),
+                solidity_type: "bytes32".to_string(),
+            });
+            continue;
+        }
+        flatten_into(
+            &mut leaves,
+            std::slice::from_ref(accessor),
+            &[super::sanitize_field_name(&input.name)],
+            &input.ty,
+            &input.components,
+        );
+    }
+    leaves
+}
+
+fn flatten_into(
+    out: &mut Vec<InputLeaf>,
+    accessor_path: &[String],
+    field_path: &[String],
+    solidity_type: &str,
+    components: &[Param],
+) {
+    if solidity_type != "tuple" {
+        out.push(InputLeaf {
+            field: field_path.join("_"),
+            accessor: accessor_path.join("."),
+            solidity_type: solidity_type.to_string(),
+        });
+        return;
+    }
+
+    for (i, comp) in components.iter().enumerate() {
+        let (raw, field) = if comp.name.is_empty() {
+            (format!("value{i}"), format!("value{i}"))
+        } else {
+            (comp.name.clone(), super::sanitize_field_name(&comp.name))
+        };
+        let mut accessor = accessor_path.to_vec();
+        accessor.push(raw);
+        let mut fields = field_path.to_vec();
+        fields.push(field);
+        flatten_into(out, &accessor, &fields, &comp.ty, &comp.components);
+    }
 }
 
 /// Extract events from the ABI, in file order.
