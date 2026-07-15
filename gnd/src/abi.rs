@@ -1,20 +1,25 @@
 //! ABI normalization utilities.
 //!
 //! Handles extraction of bare ABI arrays from various artifact formats
-//! (raw arrays, Hardhat/Foundry, Truffle).
+//! (raw arrays, Hardhat/Foundry, Truffle) and the preprocessing alloy's ABI
+//! parser needs (`anonymous` and `param{index}` defaults).
 
 use anyhow::{Context, Result, anyhow};
+use serde_json::Value;
 
 /// Normalize ABI JSON to extract the actual ABI array from various artifact formats.
+pub fn normalize_abi_json(abi_str: &str) -> Result<Value> {
+    let value: Value = serde_json::from_str(abi_str).context("Failed to parse ABI JSON")?;
+    normalize_abi_value(value)
+}
+
+/// Extract the bare ABI array from a parsed value, unwrapping artifact formats.
 ///
 /// Supports:
 /// - Raw ABI array: `[{...}]`
 /// - Foundry/Hardhat format: `{"abi": [...], ...}`
 /// - Truffle format: `{"compilerOutput": {"abi": [...], ...}, ...}`
-pub fn normalize_abi_json(abi_str: &str) -> Result<serde_json::Value> {
-    let value: serde_json::Value =
-        serde_json::from_str(abi_str).context("Failed to parse ABI JSON")?;
-
+pub fn normalize_abi_value(value: Value) -> Result<Value> {
     // Case 1: Already an array - return as-is
     if value.is_array() {
         return Ok(value);
@@ -38,6 +43,62 @@ pub fn normalize_abi_json(abi_str: &str) -> Result<serde_json::Value> {
     Err(anyhow!(
         "Invalid ABI format: expected an array or an object with 'abi' field"
     ))
+}
+
+/// Normalize a parsed ABI value and add the defaults alloy's parser requires:
+/// - `anonymous: false` on events (alloy requires the field)
+/// - `param{index}` names for unnamed top-level event parameters (matches
+///   graph-cli, so the generated getters and manifest signature agree)
+pub fn preprocess_abi_value(value: Value) -> Result<Value> {
+    let mut abi = normalize_abi_value(value)?;
+
+    if let Some(items) = abi.as_array_mut() {
+        for item in items {
+            if let Some(obj) = item.as_object_mut() {
+                let is_event = obj.get("type").and_then(|t| t.as_str()) == Some("event");
+                if is_event {
+                    if !obj.contains_key("anonymous") {
+                        obj.insert("anonymous".to_string(), Value::Bool(false));
+                    }
+                    if let Some(inputs) = obj.get_mut("inputs") {
+                        add_default_event_param_names(inputs);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(abi)
+}
+
+/// Normalize and preprocess ABI JSON, returning the serialized array string that
+/// alloy's `JsonAbi` parser accepts.
+pub fn preprocess_abi_json(abi_str: &str) -> Result<String> {
+    let value: Value = serde_json::from_str(abi_str).context("Failed to parse ABI JSON")?;
+    let abi = preprocess_abi_value(value)?;
+    serde_json::to_string(&abi).context("Failed to serialize processed ABI")
+}
+
+/// Add `param{index}` names to unnamed event parameters to match graph-cli.
+///
+/// An unnamed param reaches us two ways: solc emits `"name": ""` (the key is
+/// always present), while a hand-written ABI may omit the key entirely. Both
+/// count as unnamed. The index matches the one the codegen counts from, so the
+/// generated getter and this name agree.
+fn add_default_event_param_names(params: &mut Value) {
+    if let Some(params_arr) = params.as_array_mut() {
+        for (index, param) in params_arr.iter_mut().enumerate() {
+            if let Some(obj) = param.as_object_mut() {
+                let unnamed = obj
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .is_none_or(|name| name.is_empty());
+                if unnamed {
+                    obj.insert("name".to_string(), Value::String(format!("param{}", index)));
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

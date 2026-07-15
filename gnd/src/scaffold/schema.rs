@@ -1,7 +1,9 @@
 //! Schema (schema.graphql) generation for scaffold.
 
+use graph::abi::EventParam;
+
 use super::ScaffoldOptions;
-use super::manifest::{EventInput, extract_events_from_abi};
+use super::manifest::extract_events_from_abi;
 use super::sanitize_field_name;
 
 /// Generate the schema.graphql content.
@@ -32,7 +34,7 @@ pub fn generate_schema(options: &ScaffoldOptions) -> String {
 
 /// Generate an example entity for placeholder mode.
 /// Uses first 2 event params if available, with type comments.
-fn generate_example_entity(inputs: &[EventInput]) -> String {
+fn generate_example_entity(inputs: &[EventParam]) -> String {
     let mut fields = String::new();
     fields.push_str("  # Use Bytes when possible for better performance\n");
     fields.push_str("  id: Bytes!\n");
@@ -41,10 +43,10 @@ fn generate_example_entity(inputs: &[EventInput]) -> String {
     // Include first 2 event params with type comments
     for input in inputs.iter().take(2) {
         let field_name = sanitize_field_name(&input.name);
-        let graphql_type = solidity_to_graphql(&input.solidity_type);
+        let graphql_type = solidity_to_graphql(&input.ty);
         fields.push_str(&format!(
             "  {}: {}! # {}\n",
-            field_name, graphql_type, input.solidity_type
+            field_name, graphql_type, input.ty
         ));
     }
 
@@ -56,7 +58,7 @@ fn generate_example_entity(inputs: &[EventInput]) -> String {
 }
 
 /// Generate an entity type for an event.
-pub fn generate_event_entity(entity_name: &str, inputs: &[EventInput]) -> String {
+pub fn generate_event_entity(entity_name: &str, inputs: &[EventParam]) -> String {
     let mut fields = String::new();
 
     // ID field
@@ -65,7 +67,7 @@ pub fn generate_event_entity(entity_name: &str, inputs: &[EventInput]) -> String
     // Fields from event inputs
     for input in inputs {
         let field_name = sanitize_field_name(&input.name);
-        let graphql_type = solidity_to_graphql(&input.solidity_type);
+        let graphql_type = solidity_to_graphql(&input.ty);
         fields.push_str(&format!("  {}: {}!\n", field_name, graphql_type));
     }
 
@@ -164,22 +166,16 @@ mod tests {
 
     #[test]
     fn test_generate_example_entity_with_inputs() {
+        let param = |name: &str, ty: &str, indexed: bool| EventParam {
+            name: name.to_string(),
+            ty: ty.to_string(),
+            indexed,
+            ..Default::default()
+        };
         let inputs = vec![
-            EventInput {
-                name: "from".to_string(),
-                solidity_type: "address".to_string(),
-                indexed: true,
-            },
-            EventInput {
-                name: "to".to_string(),
-                solidity_type: "address".to_string(),
-                indexed: true,
-            },
-            EventInput {
-                name: "value".to_string(),
-                solidity_type: "uint256".to_string(),
-                indexed: false,
-            },
+            param("from", "address", true),
+            param("to", "address", true),
+            param("value", "uint256", false),
         ];
 
         let schema = generate_example_entity(&inputs);
