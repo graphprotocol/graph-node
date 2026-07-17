@@ -123,7 +123,7 @@ url = "2.5.8"
 ahash = "0.8.11"
 arrow = { version = "=59.0.0" }
 arrow-flight = { version = "=59.0.0", features = ["flight-sql-experimental"] }
-parquet = { version = "=59.0.0" }
+parquet = { version = "=59.1.0" }
 futures = "0.3.31"
 half = "2.7.1"
 indoc = "2.0.7"
