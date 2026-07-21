@@ -386,15 +386,23 @@ fn resolve_events(
             // by name only, so a signature mismatch surfaces at codegen/build.
             r.declare_in_schema = false;
         } else {
-            let prefixed = format!("{}{}", contract_name, r.alias);
-            if existing.contains(&prefixed) {
-                return Err(anyhow!(
-                    "Entity '{}' already exists; cannot rename '{}' to avoid a collision. Choose a different contract name.",
-                    prefixed,
-                    r.entity_name
-                ));
-            }
-            r.entity_name = prefixed;
+            r.entity_name = format!("{}{}", contract_name, r.alias);
+        }
+    }
+
+    // No two declared entities may share a name, with each other or with an
+    // existing entity. This catches a batch sibling whose raw name equals another
+    // event's contract-prefixed rename: existing `Transfer` + an ABI with both
+    // `Transfer` and `TokenTransfer` would otherwise declare `TokenTransfer`
+    // twice. Overloads within one ABI are already separated by
+    // `disambiguate_events`, so they don't trip this.
+    let mut declared = existing.clone();
+    for r in &resolved {
+        if r.declare_in_schema && !declared.insert(r.entity_name.clone()) {
+            return Err(anyhow!(
+                "Adding this contract would declare entity '{}' twice. Rename the contract or use --merge-entities.",
+                r.entity_name
+            ));
         }
     }
 
@@ -717,6 +725,37 @@ mod tests {
         assert_eq!(resolved[0].entity_name, "Transfer");
         assert_eq!(resolved[1].alias, "Transfer1");
         assert_eq!(resolved[1].entity_name, "TokenTransfer1");
+    }
+
+    #[test]
+    fn test_resolve_events_batch_sibling_collision_errors() {
+        // Existing `Transfer` renames the ABI's `Transfer` to `TokenTransfer`,
+        // which collides with the ABI's own `TokenTransfer`. That duplicate must
+        // be caught rather than silently declared twice.
+        let result = resolve_events(
+            vec![ev("Transfer"), ev("TokenTransfer")],
+            &entities(&["Transfer"]),
+            "Token",
+            false,
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_events_batch_sibling_collision_merge_ok() {
+        // With --merge-entities the existing `Transfer` is reused (not redeclared),
+        // so there is no duplicate and `TokenTransfer` is declared normally.
+        let resolved = resolve_events(
+            vec![ev("Transfer"), ev("TokenTransfer")],
+            &entities(&["Transfer"]),
+            "Token",
+            true,
+        )
+        .unwrap();
+        assert_eq!(resolved[0].entity_name, "Transfer");
+        assert!(!resolved[0].declare_in_schema);
+        assert_eq!(resolved[1].entity_name, "TokenTransfer");
+        assert!(resolved[1].declare_in_schema);
     }
 
     #[test]
