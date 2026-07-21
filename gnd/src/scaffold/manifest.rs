@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use graph::abi::{Event, EventParam, Param};
+use graph::abi::{DynSolType, Event, EventParam, Param};
 
 use super::ScaffoldOptions;
 use crate::shared::handle_reserved_word;
@@ -179,12 +179,12 @@ pub fn event_param_accessors(inputs: &[EventParam]) -> Vec<String> {
 }
 
 /// A flattened leaf of an event input: the entity field name, the matching
-/// `event.params` accessor, and the leaf's Solidity type. A single `tuple`
+/// `event.params` accessor, and the leaf's resolved type. A single `tuple`
 /// expands to one leaf per component (`data` -> `data_a`, `data_b`).
 pub struct InputLeaf {
     pub field: String,
     pub accessor: String,
-    pub solidity_type: String,
+    pub ty: DynSolType,
 }
 
 /// Flatten an event's inputs into leaves, unrolling a single `tuple` into its
@@ -203,7 +203,7 @@ pub fn flatten_event_inputs(inputs: &[EventParam]) -> Vec<InputLeaf> {
             leaves.push(InputLeaf {
                 field: super::sanitize_field_name(&input.name),
                 accessor: accessor.clone(),
-                solidity_type: "bytes32".to_string(),
+                ty: DynSolType::FixedBytes(32),
             });
             continue;
         }
@@ -211,7 +211,7 @@ pub fn flatten_event_inputs(inputs: &[EventParam]) -> Vec<InputLeaf> {
             &mut leaves,
             std::slice::from_ref(accessor),
             &[super::sanitize_field_name(&input.name)],
-            &input.ty,
+            &input.selector_type(),
             &input.components,
         );
     }
@@ -238,14 +238,24 @@ fn flatten_into(
     out: &mut Vec<InputLeaf>,
     accessor_path: &[String],
     field_path: &[String],
-    solidity_type: &str,
+    selector_type: &str,
     components: &[Param],
 ) {
-    if solidity_type != "tuple" {
+    // `Tuple(_)` is the unroll discriminator; its payload is never read (names and
+    // recursion come from `components`), so dropping the component names alloy does
+    // is harmless. `tuple[]` resolves to `Array(Tuple(_))` and stays a leaf.
+    let resolved = crate::abi::try_resolve_selector_type(selector_type);
+    if !matches!(resolved, Some(DynSolType::Tuple(_))) {
+        let ty = resolved.unwrap_or_else(|| {
+            // alloy accepted the ABI but can't resolve this type (a component-less
+            // `tuple`); emit a Bytes leaf rather than abort scaffolding.
+            eprintln!("warning: scaffold could not resolve type `{selector_type}`, using Bytes");
+            DynSolType::Bytes
+        });
         out.push(InputLeaf {
             field: field_path.join("_"),
             accessor: accessor_path.join("."),
-            solidity_type: solidity_type.to_string(),
+            ty,
         });
         return;
     }
@@ -260,7 +270,13 @@ fn flatten_into(
         accessor.push(raw);
         let mut fields = field_path.to_vec();
         fields.push(field);
-        flatten_into(out, &accessor, &fields, &comp.ty, &comp.components);
+        flatten_into(
+            out,
+            &accessor,
+            &fields,
+            &comp.selector_type(),
+            &comp.components,
+        );
     }
 }
 

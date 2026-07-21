@@ -45,10 +45,16 @@ fn generate_example_entity(inputs: &[EventParam]) -> String {
     // Include first 2 event params with type comments
     for input in inputs.iter().take(2) {
         let field_name = sanitize_field_name(&input.name);
-        let graphql_type = solidity_to_graphql(&input.ty);
+        // Resolve from `selector_type` (a tuple's `ty` is the bare "tuple"), but
+        // keep the `# {ty}` comment on the raw declared type. Bytes is the
+        // fallback for a type alloy can't resolve.
+        let ty = crate::abi::try_resolve_selector_type(&input.selector_type())
+            .unwrap_or(DynSolType::Bytes);
         fields.push_str(&format!(
             "  {}: {}! # {}\n",
-            field_name, graphql_type, input.ty
+            field_name,
+            graphql_type(&ty),
+            input.ty
         ));
     }
 
@@ -68,8 +74,7 @@ pub fn generate_event_entity(entity_name: &str, inputs: &[EventParam]) -> String
 
     // Fields from event inputs (tuples are unrolled into a field per component).
     for leaf in super::flatten_event_inputs(inputs) {
-        let graphql_type = solidity_to_graphql(&leaf.solidity_type);
-        fields.push_str(&format!("  {}: {}!\n", leaf.field, graphql_type));
+        fields.push_str(&format!("  {}: {}!\n", leaf.field, graphql_type(&leaf.ty)));
     }
 
     // Standard blockchain fields
@@ -84,64 +89,49 @@ pub fn generate_event_entity(entity_name: &str, inputs: &[EventParam]) -> String
     )
 }
 
-/// Convert Solidity type to GraphQL type.
-fn solidity_to_graphql(solidity_type: &str) -> &'static str {
-    // Handle arrays
-    if solidity_type.ends_with("[]") {
-        let inner = &solidity_type.strip_suffix("[]").unwrap();
-        return match solidity_to_graphql(inner) {
-            "Bytes" => "[Bytes!]",
-            "BigInt" => "[BigInt!]",
-            "Int" => "[Int!]",
-            // Mid-size int arrays stay `[BigInt!]`: `ethereum.Value` has no i64
-            // array accessor, so `Int8` applies to scalar ints only. Matches the
-            // codegen, which decodes int arrays of this band via `toBigIntArray()`
-            // (see codegen/abi.rs).
-            "Int8" => "[BigInt!]",
-            "String" => "[String!]",
-            "Boolean" => "[Boolean!]",
-            _ => "[Bytes!]",
-        };
-    }
-
-    match solidity_type {
-        // Address types
-        "address" => "Bytes",
-
-        // Boolean
-        "bool" => "Boolean",
-
-        // String
-        "string" => "String",
-
-        // Bytes types
-        "bytes" => "Bytes",
-        "bytes1" | "bytes2" | "bytes3" | "bytes4" | "bytes5" | "bytes6" | "bytes7" | "bytes8"
-        | "bytes9" | "bytes10" | "bytes11" | "bytes12" | "bytes13" | "bytes14" | "bytes15"
-        | "bytes16" | "bytes17" | "bytes18" | "bytes19" | "bytes20" | "bytes21" | "bytes22"
-        | "bytes23" | "bytes24" | "bytes25" | "bytes26" | "bytes27" | "bytes28" | "bytes29"
-        | "bytes30" | "bytes31" | "bytes32" => "Bytes",
-
-        // Integers: small widths fit in an i32 (GraphQL Int), the rest need BigInt.
-        t if t.starts_with("uint") || t.starts_with("int") => int_to_graphql(t),
-
-        // Default to Bytes for unknown types
-        _ => "Bytes",
+/// Map a resolved Solidity type to the GraphQL scalar the scaffold emits.
+///
+/// The match is exhaustive on purpose: enabling alloy's `eip712` feature adds a
+/// `CustomStruct` variant, and a missing arm should fail to compile rather than
+/// silently fall through.
+fn graphql_type(ty: &DynSolType) -> &'static str {
+    match ty {
+        DynSolType::Address | DynSolType::Bytes | DynSolType::FixedBytes(_) => "Bytes",
+        // A Solidity `function` (bytes24). codegen decodes it as `ethereum.Tuple`
+        // (`.toTuple()`), so schema and binding disagree; kept as the pre-existing
+        // scaffold behavior, tracked in #6684.
+        DynSolType::Function => "Bytes",
+        DynSolType::Bool => "Boolean",
+        DynSolType::String => "String",
+        DynSolType::Int(bits) => int_scalar(true, *bits as u32),
+        DynSolType::Uint(bits) => int_scalar(false, *bits as u32),
+        // An indexed reference type arrives as a `bytes32` hash leaf, and a
+        // placeholder tuple renders opaque: either way one `Bytes` field.
+        DynSolType::Tuple(_) => "Bytes",
+        DynSolType::Array(inner) | DynSolType::FixedArray(inner, _) => list_of(inner),
     }
 }
 
-/// Map a Solidity integer type to the narrowest GraphQL scalar that holds it:
-/// `Int` (i32), `Int8` (i64), or `BigInt`. Parses the type with alloy (the same
-/// parser the codegen uses) and classifies the width; see
-/// [`classify_int_width`] for the cutoffs. Anything that isn't an integer type
-/// falls back to `BigInt`.
-fn int_to_graphql(solidity_type: &str) -> &'static str {
-    let (signed, bits) = match solidity_type.parse::<DynSolType>() {
-        Ok(DynSolType::Int(bits)) => (true, bits as u32),
-        Ok(DynSolType::Uint(bits)) => (false, bits as u32),
-        _ => return "BigInt",
-    };
+/// The GraphQL list type for an array element. The `Int8` (i64) band collapses to
+/// `[BigInt!]`: `ethereum.Value` has no i64 array accessor, so the codegen decodes
+/// int arrays of that band via `toBigIntArray()` (see codegen/abi.rs). Nested
+/// lists flatten to one dimension, matching graph-node's store, which has none.
+fn list_of(inner: &DynSolType) -> &'static str {
+    match graphql_type(inner) {
+        "Int" => "[Int!]",
+        "Boolean" => "[Boolean!]",
+        "String" => "[String!]",
+        "Int8" | "BigInt" => "[BigInt!]",
+        // Bytes, and any nested list degraded to one dimension.
+        _ => "[Bytes!]",
+    }
+}
 
+/// Map a Solidity integer to the narrowest GraphQL scalar that holds it:
+/// `Int` (i32), `Int8` (i64), or `BigInt`; see [`classify_int_width`] for the
+/// cutoffs. Must match codegen's `asc_type_for_ethereum`, or the schema and the
+/// generated bindings disagree.
+fn int_scalar(signed: bool, bits: u32) -> &'static str {
     match classify_int_width(signed, bits) {
         IntWidth::I32 => "Int",
         IntWidth::I64 => "Int8",
@@ -247,40 +237,47 @@ mod tests {
         assert!(schema.contains("value: BigInt!"));
     }
 
+    /// Resolve a Solidity type string and map it, exercising the same path the
+    /// generators use.
+    fn graphql_type_of(solidity_type: &str) -> &'static str {
+        graphql_type(&solidity_type.parse::<DynSolType>().unwrap())
+    }
+
     #[test]
-    fn test_solidity_to_graphql() {
-        assert_eq!(solidity_to_graphql("address"), "Bytes");
-        assert_eq!(solidity_to_graphql("bool"), "Boolean");
-        assert_eq!(solidity_to_graphql("string"), "String");
-        assert_eq!(solidity_to_graphql("bytes32"), "Bytes");
-        assert_eq!(solidity_to_graphql("bytes"), "Bytes");
-        assert_eq!(solidity_to_graphql("address[]"), "[Bytes!]");
-        assert_eq!(solidity_to_graphql("uint256[]"), "[BigInt!]");
+    fn test_graphql_type() {
+        assert_eq!(graphql_type_of("address"), "Bytes");
+        assert_eq!(graphql_type_of("bool"), "Boolean");
+        assert_eq!(graphql_type_of("string"), "String");
+        assert_eq!(graphql_type_of("bytes32"), "Bytes");
+        assert_eq!(graphql_type_of("bytes"), "Bytes");
+        assert_eq!(graphql_type_of("address[]"), "[Bytes!]");
+        assert_eq!(graphql_type_of("uint256[]"), "[BigInt!]");
     }
 
     #[test]
     fn test_integer_width_mapping() {
         // Widths that fit an i32 -> Int.
-        assert_eq!(solidity_to_graphql("int8"), "Int");
-        assert_eq!(solidity_to_graphql("int32"), "Int");
-        assert_eq!(solidity_to_graphql("uint8"), "Int");
-        assert_eq!(solidity_to_graphql("uint24"), "Int");
+        assert_eq!(graphql_type_of("int8"), "Int");
+        assert_eq!(graphql_type_of("int32"), "Int");
+        assert_eq!(graphql_type_of("uint8"), "Int");
+        assert_eq!(graphql_type_of("uint24"), "Int");
         // Wider widths that still fit an i64 -> Int8.
-        assert_eq!(solidity_to_graphql("uint32"), "Int8"); // first unsigned to overflow i32
-        assert_eq!(solidity_to_graphql("int40"), "Int8");
-        assert_eq!(solidity_to_graphql("int64"), "Int8");
-        assert_eq!(solidity_to_graphql("uint56"), "Int8"); // largest unsigned that fits i64
+        assert_eq!(graphql_type_of("uint32"), "Int8"); // first unsigned to overflow i32
+        assert_eq!(graphql_type_of("int40"), "Int8");
+        assert_eq!(graphql_type_of("int64"), "Int8");
+        assert_eq!(graphql_type_of("uint56"), "Int8"); // largest unsigned that fits i64
         // Too wide for i64 -> BigInt.
-        assert_eq!(solidity_to_graphql("int72"), "BigInt");
-        assert_eq!(solidity_to_graphql("uint64"), "BigInt"); // 2^64-1 overflows i64
-        assert_eq!(solidity_to_graphql("uint256"), "BigInt");
-        assert_eq!(solidity_to_graphql("int"), "BigInt");
-        assert_eq!(solidity_to_graphql("uint"), "BigInt");
+        assert_eq!(graphql_type_of("int72"), "BigInt");
+        assert_eq!(graphql_type_of("uint64"), "BigInt"); // 2^64-1 overflows i64
+        assert_eq!(graphql_type_of("uint256"), "BigInt");
+        // Bare `uint`/`int` canonicalize to the 256-bit form.
+        assert_eq!(graphql_type_of("int"), "BigInt");
+        assert_eq!(graphql_type_of("uint"), "BigInt");
         // Arrays: the i32 band keeps Int; the Int8 band collapses to BigInt (no
         // i64 array accessor), and wider stays BigInt.
-        assert_eq!(solidity_to_graphql("int8[]"), "[Int!]");
-        assert_eq!(solidity_to_graphql("int40[]"), "[BigInt!]");
-        assert_eq!(solidity_to_graphql("uint64[]"), "[BigInt!]");
+        assert_eq!(graphql_type_of("int8[]"), "[Int!]");
+        assert_eq!(graphql_type_of("int40[]"), "[BigInt!]");
+        assert_eq!(graphql_type_of("uint64[]"), "[BigInt!]");
     }
 
     #[test]

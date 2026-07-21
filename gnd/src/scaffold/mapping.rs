@@ -1,5 +1,7 @@
 //! Mapping (AssemblyScript) generation for scaffold.
 
+use graph::abi::DynSolType;
+
 use super::ScaffoldOptions;
 use super::manifest::{EventInfo, ResolvedEvent, extract_events_from_abi};
 use super::sanitize_field_name;
@@ -205,7 +207,7 @@ fn generate_single_handler(resolved: &ResolvedEvent) -> String {
     // param<index> for unnamed).
     let mut field_assignments = String::new();
     for leaf in super::flatten_event_inputs(&resolved.event.inputs) {
-        if needs_bytes_array_cast(&leaf.solidity_type) {
+        if needs_bytes_array_cast(&leaf.ty) {
             field_assignments.push_str(&format!(
                 "  entity.{} = changetype<Bytes[]>(event.params.{})\n",
                 leaf.field, leaf.accessor
@@ -242,8 +244,8 @@ fn generate_single_handler(resolved: &ResolvedEvent) -> String {
 /// `tuple[]` would be an unchecked reinterpret that compiles and then writes
 /// heap pointers into the entity. It has no `Bytes[]` form, so it gets no cast
 /// and fails to compile instead.
-fn needs_bytes_array_cast(solidity_type: &str) -> bool {
-    solidity_type == "address[]"
+fn needs_bytes_array_cast(ty: &DynSolType) -> bool {
+    matches!(ty, DynSolType::Array(inner) if matches!(**inner, DynSolType::Address))
 }
 
 /// Extract callable functions from ABI for documentation comments.
