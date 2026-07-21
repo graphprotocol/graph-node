@@ -236,16 +236,25 @@ fn generate_single_handler(resolved: &ResolvedEvent) -> String {
     )
 }
 
-/// Whether a leaf is an `address[]`, whose binding type `Array<Address>` needs a
-/// `changetype` to fit a `Bytes[]` entity field.
+/// Whether a leaf is an address array (`address[]` or `address[N]`), whose
+/// binding type `Array<Address>` needs a `changetype` to fit a `Bytes[]` entity
+/// field.
 ///
 /// Only `address` qualifies: `Address extends Bytes`, so the cast is an upcast.
 /// `ethereum.Tuple` extends `Array<Value>` and is not a `Bytes`, so casting a
 /// `tuple[]` would be an unchecked reinterpret that compiles and then writes
 /// heap pointers into the entity. It has no `Bytes[]` form, so it gets no cast
 /// and fails to compile instead.
+///
+/// An indexed address array reaches the entity as a `bytes32` hash leaf, not an
+/// array (`flatten_event_inputs` short-circuits it), so it never gets here and
+/// this cast cannot reinterpret a hash.
 fn needs_bytes_array_cast(ty: &DynSolType) -> bool {
-    matches!(ty, DynSolType::Array(inner) if matches!(**inner, DynSolType::Address))
+    matches!(
+        ty,
+        DynSolType::Array(inner) | DynSolType::FixedArray(inner, _)
+            if matches!(**inner, DynSolType::Address)
+    )
 }
 
 /// Extract callable functions from ABI for documentation comments.
@@ -522,6 +531,20 @@ mod tests {
             "tuple[] must never be changetype'd to Bytes[], got:\n{}",
             mapping
         );
+    }
+
+    #[test]
+    fn test_needs_bytes_array_cast() {
+        let cast = |t: &str| needs_bytes_array_cast(&t.parse::<DynSolType>().unwrap());
+        // Both dynamic and fixed-size address arrays need the upcast to Bytes[].
+        assert!(cast("address[]"));
+        assert!(cast("address[3]"));
+        // Nothing else does: a plain address, a non-address array, or a tuple
+        // array (which has no Bytes[] form and must fail to compile instead).
+        assert!(!cast("address"));
+        assert!(!cast("uint256[]"));
+        assert!(!cast("uint256[3]"));
+        assert!(!cast("(address,uint256)[]"));
     }
 
     #[test]
