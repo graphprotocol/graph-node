@@ -334,29 +334,47 @@ fn schema_entity_types(project_dir: &Path, manifest: &serde_yaml::Value) -> Hash
         .and_then(|s| s.get("file"))
         .and_then(|f| f.as_str())
         .unwrap_or("schema.graphql");
-    let Ok(content) = fs::read_to_string(project_dir.join(schema_file)) else {
-        return HashSet::new();
+    // A missing schema is normal for a fresh project, so stay quiet. A file that
+    // exists but can't be read or parsed silently limits collision detection to
+    // the manifest's entity lists, so warn about it.
+    let content = match fs::read_to_string(project_dir.join(schema_file)) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return HashSet::new(),
+        Err(e) => {
+            eprintln!(
+                "Warning: could not read {schema_file}: {e}; entity-name collision detection is limited"
+            );
+            return HashSet::new();
+        }
     };
-    entity_types_in_schema(&content)
+    match entity_types_in_schema(&content) {
+        Some(types) => types,
+        None => {
+            eprintln!(
+                "Warning: could not parse {schema_file}; entity-name collision detection is limited"
+            );
+            HashSet::new()
+        }
+    }
 }
 
 /// Parse GraphQL schema text and return the names of object types marked
-/// `@entity`. Returns empty if the schema does not parse.
-fn entity_types_in_schema(content: &str) -> HashSet<String> {
-    let Ok(ast) = gql::parse_schema::<String>(content) else {
-        return HashSet::new();
-    };
-    ast.definitions
-        .into_iter()
-        .filter_map(|def| match def {
-            gql::Definition::TypeDefinition(gql::TypeDefinition::Object(obj))
-                if obj.directives.iter().any(|d| d.name == "entity") =>
-            {
-                Some(obj.name)
-            }
-            _ => None,
-        })
-        .collect()
+/// `@entity`, or `None` if the schema does not parse.
+fn entity_types_in_schema(content: &str) -> Option<HashSet<String>> {
+    let ast = gql::parse_schema::<String>(content).ok()?;
+    Some(
+        ast.definitions
+            .into_iter()
+            .filter_map(|def| match def {
+                gql::Definition::TypeDefinition(gql::TypeDefinition::Object(obj))
+                    if obj.directives.iter().any(|d| d.name == "entity") =>
+                {
+                    Some(obj.name)
+                }
+                _ => None,
+            })
+            .collect(),
+    )
 }
 
 /// Resolve event names against the entities already present in the subgraph.
@@ -765,11 +783,12 @@ mod tests {
             type Bar @entity(immutable: true) { id: Bytes! }
             type NotAnEntity { id: Bytes! }
         "#;
-        let types = entity_types_in_schema(schema);
+        let types = entity_types_in_schema(schema).expect("valid schema parses");
         assert!(types.contains("Foo"));
         assert!(types.contains("Bar"));
         assert!(!types.contains("NotAnEntity"));
-        // A schema that doesn't parse yields no types rather than erroring.
-        assert!(entity_types_in_schema("this is not graphql {{{").is_empty());
+        // A schema that doesn't parse yields `None` (so the caller can warn),
+        // rather than an empty set indistinguishable from an entity-less schema.
+        assert!(entity_types_in_schema("this is not graphql {{{").is_none());
     }
 }
