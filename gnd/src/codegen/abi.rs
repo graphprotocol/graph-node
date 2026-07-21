@@ -941,22 +941,13 @@ impl AbiCodeGenerator {
 
     /// Disambiguate events with duplicate names.
     fn disambiguate_events(&self) -> Vec<(&Event, String)> {
-        let mut result = Vec::new();
-        let mut collision_counter: HashMap<String, u32> = HashMap::new();
-
-        for event in self.contract.events() {
-            let name = handle_reserved_word(&event.name);
-            let counter = collision_counter.entry(name.clone()).or_insert(0);
-            let alias = if *counter == 0 {
-                name.clone()
-            } else {
-                format!("{}{}", name, counter)
-            };
-            *counter += 1;
-            result.push((event, alias));
-        }
-
-        result
+        let events: Vec<&Event> = self.contract.events().collect();
+        let names: Vec<String> = events
+            .iter()
+            .map(|event| handle_reserved_word(&event.name))
+            .collect();
+        let aliases = crate::shared::disambiguate_names(&names);
+        events.into_iter().zip(aliases).collect()
     }
 
     /// Disambiguate functions.
@@ -1496,6 +1487,45 @@ mod tests {
             indexed_input_type(&DynSolType::Uint(256)),
             DynSolType::Uint(256)
         );
+    }
+
+    /// The scaffold (entity/handler names) and the ABI codegen (class names) must
+    /// assign the same event aliases — including escaping reserved words — or the
+    /// generated mapping imports a class under a name the bindings never export.
+    #[test]
+    fn test_event_aliases_agree_with_scaffold() {
+        // `await` is an AssemblyScript reserved word but a valid Solidity
+        // identifier, so both sides must escape it to `await_`.
+        let abi_json = r#"[
+            {"type":"event","name":"await","inputs":[],"anonymous":false},
+            {"type":"event","name":"await","inputs":[{"name":"x","type":"uint256","indexed":false}],"anonymous":false},
+            {"type":"event","name":"Transfer","inputs":[],"anonymous":false}
+        ]"#;
+        let generator = AbiCodeGenerator::new(parse_abi(abi_json), "Token");
+        let mut codegen: Vec<String> = generator
+            .disambiguate_events()
+            .into_iter()
+            .map(|(_, alias)| alias)
+            .collect();
+
+        use crate::scaffold::manifest::{EventInfo, disambiguate_events};
+        let ev = |name: &str| EventInfo {
+            name: name.to_string(),
+            signature: format!("{name}()"),
+            inputs: vec![],
+        };
+        let mut scaffold: Vec<String> =
+            disambiguate_events(vec![ev("await"), ev("await"), ev("Transfer")])
+                .into_iter()
+                .map(|r| r.alias)
+                .collect();
+
+        // Compare as sets: alloy groups events by name, so the two may emit the
+        // aliases in a different order, but every event must get the same alias.
+        codegen.sort();
+        scaffold.sort();
+        assert_eq!(codegen, scaffold);
+        assert_eq!(codegen, vec!["Transfer", "await_", "await_1"]);
     }
 
     /// Test that overloaded events (same name, different inputs) are disambiguated.
