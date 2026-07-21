@@ -1,6 +1,8 @@
 //! Schema (schema.graphql) generation for scaffold.
 
-use graph::abi::EventParam;
+use graph::abi::{DynSolType, EventParam};
+
+use crate::abi::{IntWidth, classify_int_width};
 
 use super::ScaffoldOptions;
 use super::manifest::extract_events_from_abi;
@@ -91,6 +93,11 @@ fn solidity_to_graphql(solidity_type: &str) -> &'static str {
             "Bytes" => "[Bytes!]",
             "BigInt" => "[BigInt!]",
             "Int" => "[Int!]",
+            // Mid-size int arrays stay `[BigInt!]`: `ethereum.Value` has no i64
+            // array accessor, so `Int8` applies to scalar ints only. Matches the
+            // codegen, which decodes int arrays of this band via `toBigIntArray()`
+            // (see codegen/abi.rs).
+            "Int8" => "[BigInt!]",
             "String" => "[String!]",
             "Boolean" => "[Boolean!]",
             _ => "[Bytes!]",
@@ -123,27 +130,23 @@ fn solidity_to_graphql(solidity_type: &str) -> &'static str {
     }
 }
 
-/// Map a Solidity integer type to GraphQL `Int` when it fits in an i32, else
-/// `BigInt`. An i32 holds signed ints up to 32 bits and unsigned ints up to 24
-/// bits, matching graph-cli's AssemblyScript type conversion.
+/// Map a Solidity integer type to the narrowest GraphQL scalar that holds it:
+/// `Int` (i32), `Int8` (i64), or `BigInt`. Parses the type with alloy (the same
+/// parser the codegen uses) and classifies the width; see
+/// [`classify_int_width`] for the cutoffs. Anything that isn't an integer type
+/// falls back to `BigInt`.
 fn int_to_graphql(solidity_type: &str) -> &'static str {
-    let (signed, width) = match solidity_type.strip_prefix("uint") {
-        Some(rest) => (false, rest),
-        None => match solidity_type.strip_prefix("int") {
-            Some(rest) => (true, rest),
-            None => return "BigInt",
-        },
+    let (signed, bits) = match solidity_type.parse::<DynSolType>() {
+        Ok(DynSolType::Int(bits)) => (true, bits as u32),
+        Ok(DynSolType::Uint(bits)) => (false, bits as u32),
+        _ => return "BigInt",
     };
 
-    // A bare `int` / `uint` is 256 bits.
-    let bits: u32 = if width.is_empty() {
-        256
-    } else {
-        width.parse().unwrap_or(256)
-    };
-
-    let fits_i32 = if signed { bits <= 32 } else { bits <= 24 };
-    if fits_i32 { "Int" } else { "BigInt" }
+    match classify_int_width(signed, bits) {
+        IntWidth::I32 => "Int",
+        IntWidth::I64 => "Int8",
+        IntWidth::Big => "BigInt",
+    }
 }
 
 #[cfg(test)]
@@ -257,19 +260,26 @@ mod tests {
 
     #[test]
     fn test_integer_width_mapping() {
-        // Small widths that fit in an i32 map to Int.
+        // Widths that fit an i32 -> Int.
         assert_eq!(solidity_to_graphql("int8"), "Int");
         assert_eq!(solidity_to_graphql("int32"), "Int");
         assert_eq!(solidity_to_graphql("uint8"), "Int");
         assert_eq!(solidity_to_graphql("uint24"), "Int");
-        // Wider integers need BigInt (uint32 does not fit an i32).
-        assert_eq!(solidity_to_graphql("uint32"), "BigInt");
-        assert_eq!(solidity_to_graphql("int40"), "BigInt");
+        // Wider widths that still fit an i64 -> Int8.
+        assert_eq!(solidity_to_graphql("uint32"), "Int8"); // first unsigned to overflow i32
+        assert_eq!(solidity_to_graphql("int40"), "Int8");
+        assert_eq!(solidity_to_graphql("int64"), "Int8");
+        assert_eq!(solidity_to_graphql("uint56"), "Int8"); // largest unsigned that fits i64
+        // Too wide for i64 -> BigInt.
+        assert_eq!(solidity_to_graphql("int72"), "BigInt");
+        assert_eq!(solidity_to_graphql("uint64"), "BigInt"); // 2^64-1 overflows i64
         assert_eq!(solidity_to_graphql("uint256"), "BigInt");
         assert_eq!(solidity_to_graphql("int"), "BigInt");
         assert_eq!(solidity_to_graphql("uint"), "BigInt");
-        // Arrays follow the element type.
+        // Arrays: the i32 band keeps Int; the Int8 band collapses to BigInt (no
+        // i64 array accessor), and wider stays BigInt.
         assert_eq!(solidity_to_graphql("int8[]"), "[Int!]");
+        assert_eq!(solidity_to_graphql("int40[]"), "[BigInt!]");
         assert_eq!(solidity_to_graphql("uint64[]"), "[BigInt!]");
     }
 
