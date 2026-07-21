@@ -534,6 +534,41 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_mapping_casts_fixed_size_address_array() {
+        // A non-indexed `address[N]` reaches the entity as an array, so it needs
+        // the same upcast as `address[]`; a fixed uint array does not.
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Signers",
+                "inputs": [
+                    {"name": "owners", "type": "address[3]"},
+                    {"name": "amounts", "type": "uint256[3]"}
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            contract_name: "Vault".to_string(),
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+
+        let mapping = generate_mapping(&options);
+        assert!(
+            mapping.contains("entity.owners = changetype<Bytes[]>(event.params.owners)"),
+            "{}",
+            mapping
+        );
+        assert!(
+            mapping.contains("entity.amounts = event.params.amounts\n"),
+            "{}",
+            mapping
+        );
+    }
+
+    #[test]
     fn test_needs_bytes_array_cast() {
         let cast = |t: &str| needs_bytes_array_cast(&t.parse::<DynSolType>().unwrap());
         // Both dynamic and fixed-size address arrays need the upcast to Bytes[].

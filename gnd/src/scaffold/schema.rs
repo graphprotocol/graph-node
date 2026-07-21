@@ -281,6 +281,67 @@ mod tests {
     }
 
     #[test]
+    fn test_generate_schema_covers_all_type_mappings() {
+        // One event exercising every schema-side mapping row, including the
+        // fixed-size arrays the old `ends_with("[]")` matcher could not see and
+        // that scaffolded to non-building scalar fields.
+        let param = |name: &str, ty: &str| json!({"name": name, "type": ty, "indexed": false});
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "AllTypes",
+                "inputs": [
+                    param("addr", "address"),
+                    param("flag", "bool"),
+                    param("text", "string"),
+                    param("tiny", "uint8"),      // i32 band
+                    param("mid", "uint32"),      // i64 band
+                    param("big", "uint256"),     // BigInt
+                    param("addrsDyn", "address[]"),
+                    param("addrsFixed", "address[3]"),
+                    param("numsFixed", "uint256[3]"),
+                    param("tinyFixed", "uint8[3]"),
+                    param("flagsFixed", "bool[2]"),
+                    param("textFixed", "string[2]"),
+                    param("hashesFixed", "bytes32[4]"),
+                    param("tinyDyn", "int8[]"),  // i32 band keeps Int
+                    param("midDyn", "int40[]"),  // i64 band collapses to BigInt
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+        let schema = generate_schema(&options);
+
+        for (field, ty) in [
+            ("addr", "Bytes!"),
+            ("flag", "Boolean!"),
+            ("text", "String!"),
+            ("tiny", "Int!"),
+            ("mid", "Int8!"),
+            ("big", "BigInt!"),
+            ("addrsDyn", "[Bytes!]!"),
+            ("addrsFixed", "[Bytes!]!"),
+            ("numsFixed", "[BigInt!]!"),
+            ("tinyFixed", "[Int!]!"),
+            ("flagsFixed", "[Boolean!]!"),
+            ("textFixed", "[String!]!"),
+            ("hashesFixed", "[Bytes!]!"),
+            ("tinyDyn", "[Int!]!"),
+            ("midDyn", "[BigInt!]!"),
+        ] {
+            assert!(
+                schema.contains(&format!("{field}: {ty}")),
+                "expected `{field}: {ty}` in:\n{schema}"
+            );
+        }
+    }
+
+    #[test]
     fn test_generate_schema_unrolls_tuple() {
         let abi = json!([
             {

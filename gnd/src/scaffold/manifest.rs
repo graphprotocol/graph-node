@@ -623,4 +623,21 @@ mod tests {
         let fields: Vec<&str> = leaves.iter().map(|l| l.field.as_str()).collect();
         assert_eq!(fields, vec!["value", "value2", "value1"]);
     }
+
+    #[test]
+    fn test_flatten_component_less_tuple_falls_back_to_bytes() {
+        // alloy accepts a `tuple` with no components (solc never emits one), whose
+        // selector type is the bare "tuple" and does not resolve. Scaffolding must
+        // fall back to a single Bytes leaf, not panic like codegen's resolver.
+        let input = EventParam {
+            name: "data".to_string(),
+            ty: "tuple".to_string(),
+            components: vec![],
+            ..Default::default()
+        };
+        let leaves = flatten_event_inputs(&[input]);
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].field, "data");
+        assert_eq!(leaves[0].ty, DynSolType::Bytes);
+    }
 }
