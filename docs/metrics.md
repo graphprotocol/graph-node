@@ -46,7 +46,7 @@ Counts **Prometheus metrics register errors**
 - `metrics_unregister_errors`
 Counts **Prometheus metrics unregister errors**
 - `query_cache_status_count`
-Count **toplevel GraphQL fields executed** and their cache status
+Count **toplevel GraphQL fields executed** by `deployment` and `cache_status`
 - `query_effort_ms`
 Moving **average of time spent running queries**
 - `query_execution_time`
