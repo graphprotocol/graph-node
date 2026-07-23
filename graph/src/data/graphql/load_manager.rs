@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use crate::parking_lot::RwLock;
 
-use crate::components::metrics::{CounterVec, GaugeVec, MetricsRegistry};
+use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec, MetricsRegistry};
 use crate::components::store::{DeploymentId, PoolWaitStats};
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
@@ -217,6 +217,7 @@ pub struct LoadManager {
     kill_state: HashMap<String, RwLock<KillState>>,
     effort_gauge: Box<GaugeVec>,
     query_counters: CounterVec,
+    query_cache_duration: Box<HistogramVec>,
     kill_rate_gauge: Box<GaugeVec>,
 }
 
@@ -264,6 +265,14 @@ impl LoadManager {
                 &["deployment", "cache_status"],
             )
             .expect("Failed to register query_counter metric");
+        let query_cache_duration = registry
+            .new_histogram_vec(
+                "query_cache_status_duration_seconds",
+                "Duration of toplevel GraphQL field execution by deployment and cache status",
+                vec!["deployment".to_owned(), "cache_status".to_owned()],
+                vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+            )
+            .expect("Failed to register query_cache_duration metric");
 
         let effort = HashMap::from_iter(
             shards
@@ -285,6 +294,7 @@ impl LoadManager {
             kill_state,
             effort_gauge,
             query_counters,
+            query_cache_duration,
             kill_rate_gauge,
         }
     }
@@ -304,6 +314,9 @@ impl LoadManager {
         self.query_counters
             .with_label_values(&[deployment_hash, cache_status.as_str()])
             .inc();
+        self.query_cache_duration
+            .with_label_values(&[deployment_hash, cache_status.as_str()])
+            .observe(duration.as_secs_f64());
         if !ENV_VARS.load_management_is_disabled() {
             let qref = QueryRef::new(deployment, shape_hash);
             if let Some(effort) = self.effort.get(shard) {
@@ -597,5 +610,16 @@ mod tests {
                 .get(),
             0.0
         );
+        let hit_duration = manager
+            .query_cache_duration
+            .with_label_values(&["QmDeploymentOne", "hit"]);
+        assert_eq!(hit_duration.get_sample_count(), 1);
+        assert_eq!(hit_duration.get_sample_sum(), 0.01);
+
+        let miss_duration = manager
+            .query_cache_duration
+            .with_label_values(&["QmDeploymentTwo", "miss"]);
+        assert_eq!(miss_duration.get_sample_count(), 1);
+        assert_eq!(miss_duration.get_sample_sum(), 0.02);
     }
 }
