@@ -874,8 +874,9 @@ impl DataSource {
                     .abi_decode_input(&call.input.0[4..])
                     .with_context(|| {
                         format!(
-                            "Generating function inputs for the call {:?} failed, {}",
-                            &function_abi, call_context
+                            "Generating function inputs for the call {} failed, {}",
+                            function_abi.signature_with_outputs(),
+                            call_context
                         )
                     }) {
                     Ok(val) => val,
@@ -905,9 +906,9 @@ impl DataSource {
                     .abi_decode_output(&call.output.0)
                     .with_context(|| {
                         format!(
-                            "Decoding function outputs for the call {:?} failed, {}, \
+                            "Decoding function outputs for the call {} failed, {}, \
                             raw output: 0x{}",
-                            &function_abi,
+                            function_abi.signature_with_outputs(),
                             call_context,
                             hex::encode(&call.output.0)
                         )
