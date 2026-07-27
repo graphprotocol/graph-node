@@ -189,6 +189,20 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn test_save_deploy_key_creates_private_file() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let config_file = temp_dir.path().join(".graph-cli.json");
+
+        save_deploy_key_to(&config_file, "https://example.com/", "new-key").unwrap();
+
+        assert_eq!(
+            fs::metadata(&config_file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn test_save_deploy_key_restricts_existing_file_permissions() {
         let temp_dir = tempfile::TempDir::new().unwrap();
         let config_file = temp_dir.path().join(".graph-cli.json");
