@@ -854,13 +854,28 @@ impl DataSource {
                         )
                     })?;
 
+                // Details that let a subgraph developer identify and reproduce the
+                // exact on-chain call that failed to decode. Shared by both the input
+                // and the output decoding errors below.
+                let call_context = format!(
+                    "contract: {:#x}, from: {:#x}, block: #{} ({:#x}), transaction: {}, \
+                    raw input: 0x{}",
+                    call.to,
+                    call.from,
+                    call.block_number,
+                    call.block_hash,
+                    call.transaction_hash
+                        .map(|hash| format!("{:#x}", hash))
+                        .unwrap_or_else(|| "none".to_string()),
+                    hex::encode(&call.input.0),
+                );
+
                 let values = match function_abi
                     .abi_decode_input(&call.input.0[4..])
                     .with_context(|| {
                         format!(
-                            "Generating function inputs for the call {:?} failed, raw input: {}",
-                            &function_abi,
-                            hex::encode(&call.input.0)
+                            "Generating function inputs for the call {:?} failed, {}",
+                            &function_abi, call_context
                         )
                     }) {
                     Ok(val) => val,
@@ -890,8 +905,10 @@ impl DataSource {
                     .abi_decode_output(&call.output.0)
                     .with_context(|| {
                         format!(
-                            "Decoding function outputs for the call {:?} failed, raw output: {}",
+                            "Decoding function outputs for the call {:?} failed, {}, \
+                            raw output: 0x{}",
                             &function_abi,
+                            call_context,
                             hex::encode(&call.output.0)
                         )
                     })?;
