@@ -130,6 +130,25 @@ pub fn get_deploy_key(node: &str) -> Result<Option<String>> {
     get_deploy_key_from(&config_path()?, node)
 }
 
+/// Resolve an explicit access token or load the stored deploy key.
+pub(super) fn resolve_access_token(
+    access_token: Option<&str>,
+    node: &str,
+) -> Result<Option<String>> {
+    resolve_access_token_with_loader(access_token, node, get_deploy_key)
+}
+
+fn resolve_access_token_with_loader(
+    access_token: Option<&str>,
+    node: &str,
+    load_deploy_key: impl FnOnce(&str) -> Result<Option<String>>,
+) -> Result<Option<String>> {
+    match access_token {
+        Some(token) => Ok(Some(token.to_owned())),
+        None => load_deploy_key(node),
+    }
+}
+
 /// Get the deploy key for a node from a specific config file
 fn get_deploy_key_from(config_file: &PathBuf, node: &str) -> Result<Option<String>> {
     let normalized_node = normalize_node_url(node)?;
@@ -234,6 +253,34 @@ mod tests {
             get_deploy_key_from(&config_file, new_node).unwrap(),
             Some("new-key".to_string())
         );
+    }
+
+    #[test]
+    fn test_resolve_access_token_propagates_config_error() {
+        let result = resolve_access_token_with_loader(None, "https://example.com", |_| {
+            Err(anyhow::anyhow!("config unavailable"))
+        });
+
+        assert_eq!(result.unwrap_err().to_string(), "config unavailable");
+    }
+
+    #[test]
+    fn test_resolve_access_token_preserves_missing_key() {
+        let result =
+            resolve_access_token_with_loader(None, "https://example.com", |_| Ok(None)).unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_access_token_prefers_explicit_token() {
+        let result =
+            resolve_access_token_with_loader(Some("explicit-token"), "https://example.com", |_| {
+                panic!("stored key lookup should not run")
+            })
+            .unwrap();
+
+        assert_eq!(result.as_deref(), Some("explicit-token"));
     }
 
     #[test]
