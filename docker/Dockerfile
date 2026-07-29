@@ -87,7 +87,8 @@ EXPOSE 8020
 EXPOSE 8030
 
 RUN apt-get update \
-    && apt-get install -y libpq-dev ca-certificates netcat-openbsd
+    && apt-get install -y --no-install-recommends libpq5 ca-certificates netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
 
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-build /usr/local/bin/graph-node /usr/local/bin/graphman /usr/local/bin/
