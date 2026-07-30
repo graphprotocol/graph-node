@@ -15,6 +15,7 @@ use never::Never;
 
 use crate::HostExports;
 use crate::asc_abi::class::*;
+use crate::host_exports::DecodeError;
 use graph::data::store;
 
 use crate::ExperimentalFeatures;
@@ -1152,12 +1153,10 @@ impl WasmInstanceContext<'_> {
         let token = asc_get(self, token_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let ctx = &mut self.as_mut().ctx;
-        let data = host_exports.ethereum_encode(token, gas, &mut ctx.state);
-        // return `null` if it fails
-        match data {
-            Ok(bytes) => asc_new(self, &*bytes, gas).await,
-            Err(_) => Ok(AscPtr::null()),
-        }
+        // `abi_encode` is infallible, so the only error here is gas, which must
+        // abort the mapping rather than surface as `null`.
+        let bytes = host_exports.ethereum_encode(token, gas, &mut ctx.state)?;
+        asc_new(self, &*bytes, gas).await
     }
 
     /// function decode(types: String, data: Bytes): ethereum.Value | null
@@ -1171,12 +1170,14 @@ impl WasmInstanceContext<'_> {
         let data = asc_get(self, data_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let ctx = &mut self.as_mut().ctx;
-        let result = host_exports.ethereum_decode(types, data, gas, &mut ctx.state);
+        let result = host_exports.ethereum_decode(types, data, gas, &mut ctx.state)?;
 
-        // return `null` if it fails
         match result {
             Ok(token) => asc_new(self, &token, gas).await,
-            Err(_) => Ok(AscPtr::null()),
+            Err(e) => {
+                self.report_decode_failure("ethereum.decode", &e);
+                Ok(AscPtr::null())
+            }
         }
     }
 
@@ -1191,13 +1192,51 @@ impl WasmInstanceContext<'_> {
         let data = asc_get(self, data_ptr, gas)?;
         let host_exports = self.as_ref().ctx.host_exports.cheap_clone();
         let ctx = &mut self.as_mut().ctx;
-        let result = host_exports.ethereum_decode_params(types, data, gas, &mut ctx.state);
+        let result = host_exports.ethereum_decode_params(types, data, gas, &mut ctx.state)?;
 
-        // return `null` if it fails
         match result {
             Ok(token) => asc_new(self, &token, gas).await,
-            Err(_) => Ok(AscPtr::null()),
+            Err(e) => {
+                self.report_decode_failure("ethereum.decodeParams", &e);
+                Ok(AscPtr::null())
+            }
         }
+    }
+
+    /// Log a decode failure and count it in `deployment_ethereum_decode_failures`.
+    fn report_decode_failure(&self, host_fn: &'static str, err: &DecodeError) {
+        let data = self.as_ref();
+
+        // The type string comes from the mapping and has no length limit, and
+        // the parse error quotes it back, so cap both for logging. The value
+        // passed to the decoder is never truncated.
+        let types = truncate_for_logging(err.types());
+        let source = truncate_for_logging(&format!("{:#}", err.source()));
+
+        match err {
+            // Recurs on every matching trigger and never clears without
+            // republishing the subgraph.
+            DecodeError::InvalidType { .. } => error!(
+                data.ctx.logger,
+                "{} returned null: invalid ABI type string, so every such call fails \
+                 and the mapping may be dropping data",
+                host_fn;
+                "types" => &types,
+                "kind" => err.kind(),
+                "error" => &source,
+            ),
+            DecodeError::InvalidData { .. } => warn!(
+                data.ctx.logger,
+                "{} returned null: data does not match the type",
+                host_fn;
+                "types" => &types,
+                "kind" => err.kind(),
+                "error" => &source,
+            ),
+        }
+
+        data.host_metrics
+            .inc_ethereum_decode_failure(host_fn, err.kind());
     }
 
     /// function arweave.transactionData(txId: string): Bytes | null
@@ -1269,6 +1308,15 @@ impl WasmInstanceContext<'_> {
             });
 
         asc_new(self, &result, gas).await
+    }
+}
+
+/// Mapping-supplied strings have no length limit, so only log the first 1024
+/// characters. Splits on a character boundary since the string is arbitrary.
+fn truncate_for_logging(s: &str) -> String {
+    match s.char_indices().nth(1024) {
+        Some((end, _)) => format!("(truncated) {}", &s[..end]),
+        None => s.to_string(),
     }
 }
 
