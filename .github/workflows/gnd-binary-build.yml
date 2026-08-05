@@ -366,5 +366,8 @@ jobs:
           EOF
 
       - name: Publish
-        run: npm publish --provenance --access public --tag ${{ steps.version.outputs.tag }} ${{ inputs.dry_run && '--dry-run' || '' }}
+        env:
+          DRY_RUN_FLAG: ${{ inputs.dry_run && '--dry-run' || '' }}
+          NPM_TAG: ${{ steps.version.outputs.tag }}
+        run: npm publish --provenance --access public --tag "$NPM_TAG" $DRY_RUN_FLAG
         working-directory: pkg
