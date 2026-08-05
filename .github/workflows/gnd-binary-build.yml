@@ -160,8 +160,9 @@ jobs:
       - name: Upload Assets to Release
         env:
           VERSION: ${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload $VERSION --clobber --repo $GITHUB_REPOSITORY \
+          gh release upload "$VERSION" --clobber --repo "$GITHUB_REPOSITORY" \
             artifacts/gnd-linux-x86_64/gnd-linux-x86_64.gz \
             artifacts/gnd-linux-aarch64/gnd-linux-aarch64.gz \
             artifacts/gnd-macos-x86_64/gnd-macos-x86_64.gz \
