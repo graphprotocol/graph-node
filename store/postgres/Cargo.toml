@@ -27,7 +27,7 @@ postgres-openssl = "0.5.3"
 rand.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
-stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }
+stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", rev = "42b85d936c6b9f1b7a4b8385d2f081d5564daa69", package = "stable-hash" }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 anyhow = "1.0.102"

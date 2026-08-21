@@ -56,8 +56,8 @@ sqlparser = { workspace = true }
 # TODO: This should be reverted to the latest version once it's published
 # stable-hash_legacy = { version = "0.3.3", package = "stable-hash" }
 # stable-hash = { version = "0.4.2" }
-stable-hash = { git = "https://github.com/graphprotocol/stable-hash", branch = "main" }
-stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", branch = "old", package = "stable-hash" }
+stable-hash = { git = "https://github.com/graphprotocol/stable-hash", rev = "70300f974e61529675aef3f20803f26a23f0e0ea" }
+stable-hash_legacy = { git = "https://github.com/graphprotocol/stable-hash", rev = "42b85d936c6b9f1b7a4b8385d2f081d5564daa69", package = "stable-hash" }
 strum_macros = "0.28.0"
 slog-async = "2.5.0"
 slog-envlogger = "2.1.0"
