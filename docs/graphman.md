@@ -5,7 +5,7 @@
 - [Unassign](#unassign)
 - [Unused Record](#unused-record)
 - [Unused Remove](#unused-remove)
-- [Drop](#drop)
+- [Drop (removed)](#drop)
 - [Copy Create](#copy-create)
 - [Copy Activate](#copy-activate)
 - [Copy List](#copy-list)
@@ -236,63 +236,21 @@ Remove a specific unused deployment
     graphman --config config.toml unused remove --deployment QmfWRZCjT8pri4Amey3e3mb2Bga75Vuh2fPYyNVnmPYL66
 
 <a id="drop"></a>
-# ⌘ Drop
+# ⌘ Drop (removed)
 
-### SYNOPSIS
+`graphman drop` was removed in [#5974](https://github.com/graphprotocol/graph-node/pull/5974).
+It is documented here only so that anyone looking for it finds out where it went.
 
-    Delete a deployment and all its indexed data
+To delete a deployment and all its indexed data, run the sequence `drop` used to
+wrap, which is the same one its description always listed:
 
-    The deployment can be specified as either a subgraph name, an IPFS hash `Qm..`, or the database
-    namespace `sgdNNN`. Since the same IPFS hash can be deployed in multiple shards, it is possible to
-    specify the shard by adding `:shard` to the IPFS hash.
-
-    USAGE:
-        graphman --config <CONFIG> drop [OPTIONS] <DEPLOYMENT>
-
-    ARGS:
-        <DEPLOYMENT>
-                The deployment identifier
-
-    OPTIONS:
-        -c, --current
-                Search only for current versions
-
-        -f, --force
-                Skip confirmation prompt
-
-        -h, --help
-                Print help information
-
-        -p, --pending
-                Search only for pending versions
-
-        -u, --used
-                Search only for used (current and pending) versions
-
-### DESCRIPTION
-
-Stops, unassigns and remove all data from deployments matching the search term.
+1. `graphman info <search term>` to find the deployment id and name
+2. [`graphman unassign <deployment id>`](#unassign)
+3. [`graphman remove <deployment name>`](#remove)
+4. [`graphman unused record`](#unused-record)
+5. [`graphman unused remove <deployment id>`](#unused-remove)
 
 This operation is irreversible.
-
-This command is a combination of other graphman commands applied in sequence:
-
-1. `graphman info <search term>`
-2. `graphman unassign <deployment id>`
-3. `graphman remove <deployment name>`
-4. `graphman unused record`
-5. `graphman unused remove <deployment id>`
-
-### EXAMPLES
-
-Stop, unassign and delete all indexed data from a specific deployment by its deployment id
-
-    graphman --config config.toml drop QmfWRZCjT8pri4Amey3e3mb2Bga75Vuh2fPYyNVnmPYL66
-
-
-Stop, unassign and delete all indexed data from a specific deployment by its subgraph name
-
-    graphman --config config.toml drop author/subgraph-name
 
 <a id="copy-create"></a>
 # ⌘ Copy Create
