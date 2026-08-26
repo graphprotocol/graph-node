@@ -296,6 +296,7 @@ where
 
         self.load_manager.record_work(
             store.shard(),
+            req.deployment.as_str(),
             store.deployment_id(),
             query_hash,
             query_start.elapsed(),

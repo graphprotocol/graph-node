@@ -1,6 +1,5 @@
 //! Utilities to keep moving statistics about queries
 
-use prometheus::core::GenericCounter;
 use rand::{prelude::Rng, rng};
 use std::collections::{HashMap, HashSet};
 use std::iter::FromIterator;
@@ -9,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use crate::parking_lot::RwLock;
 
-use crate::components::metrics::{Counter, GaugeVec, MetricsRegistry};
+use crate::components::metrics::{CounterVec, GaugeVec, HistogramVec, MetricsRegistry};
 use crate::components::store::{DeploymentId, PoolWaitStats};
 use crate::data::graphql::shape_hash::shape_hash;
 use crate::data::query::{CacheStatus, QueryExecutionError};
@@ -217,7 +216,8 @@ pub struct LoadManager {
     /// Per shard state of whether we are killing queries or not
     kill_state: HashMap<String, RwLock<KillState>>,
     effort_gauge: Box<GaugeVec>,
-    query_counters: HashMap<CacheStatus, Counter>,
+    query_counters: CounterVec,
+    query_cache_duration: Box<HistogramVec>,
     kill_rate_gauge: Box<GaugeVec>,
 }
 
@@ -258,19 +258,21 @@ impl LoadManager {
                 shard_label,
             )
             .expect("failed to create `query_kill_rate` counter");
-        let query_counters = CacheStatus::iter()
-            .map(|s| {
-                let labels = HashMap::from_iter(vec![("cache_status".to_owned(), s.to_string())]);
-                let counter = registry
-                    .global_counter(
-                        "query_cache_status_count",
-                        "Count toplevel GraphQL fields executed and their cache status",
-                        labels,
-                    )
-                    .expect("Failed to register query_counter metric");
-                (*s, counter)
-            })
-            .collect::<HashMap<_, _>>();
+        let query_counters = registry
+            .global_counter_vec(
+                "query_cache_status_count",
+                "Count toplevel GraphQL fields executed by deployment and cache status",
+                &["deployment", "cache_status"],
+            )
+            .expect("Failed to register query_counter metric");
+        let query_cache_duration = registry
+            .new_histogram_vec(
+                "query_cache_status_duration_seconds",
+                "Duration of toplevel GraphQL field execution by deployment and cache status",
+                vec!["deployment".to_owned(), "cache_status".to_owned()],
+                vec![0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
+            )
+            .expect("Failed to register query_cache_duration metric");
 
         let effort = HashMap::from_iter(
             shards
@@ -292,6 +294,7 @@ impl LoadManager {
             kill_state,
             effort_gauge,
             query_counters,
+            query_cache_duration,
             kill_rate_gauge,
         }
     }
@@ -302,14 +305,18 @@ impl LoadManager {
     pub fn record_work(
         &self,
         shard: &str,
+        deployment_hash: &str,
         deployment: DeploymentId,
         shape_hash: u64,
         duration: Duration,
         cache_status: CacheStatus,
     ) {
         self.query_counters
-            .get(&cache_status)
-            .map(GenericCounter::inc);
+            .with_label_values(&[deployment_hash, cache_status.as_str()])
+            .inc();
+        self.query_cache_duration
+            .with_label_values(&[deployment_hash, cache_status.as_str()])
+            .observe(duration.as_secs_f64());
         if !ENV_VARS.load_management_is_disabled() {
             let qref = QueryRef::new(deployment, shape_hash);
             if let Some(effort) = self.effort.get(shard) {
@@ -548,5 +555,71 @@ impl LoadManager {
             .with_label_values(&[shard])
             .set(kill_rate);
         kill_rate
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_status_metrics_are_scoped_by_deployment() {
+        let logger = crate::log::logger(false);
+        let manager = LoadManager::new(
+            &logger,
+            vec!["primary".to_owned()],
+            Vec::new(),
+            Arc::new(MetricsRegistry::mock()),
+        );
+
+        manager.record_work(
+            "primary",
+            "QmDeploymentOne",
+            DeploymentId::new(1),
+            1,
+            Duration::from_millis(10),
+            CacheStatus::Hit,
+        );
+        manager.record_work(
+            "primary",
+            "QmDeploymentTwo",
+            DeploymentId::new(2),
+            2,
+            Duration::from_millis(20),
+            CacheStatus::Miss,
+        );
+
+        assert_eq!(
+            manager
+                .query_counters
+                .with_label_values(&["QmDeploymentOne", "hit"])
+                .get(),
+            1.0
+        );
+        assert_eq!(
+            manager
+                .query_counters
+                .with_label_values(&["QmDeploymentTwo", "miss"])
+                .get(),
+            1.0
+        );
+        assert_eq!(
+            manager
+                .query_counters
+                .with_label_values(&["QmDeploymentOne", "miss"])
+                .get(),
+            0.0
+        );
+        let hit_duration = manager
+            .query_cache_duration
+            .with_label_values(&["QmDeploymentOne", "hit"]);
+        assert_eq!(hit_duration.get_sample_count(), 1);
+        assert_eq!(hit_duration.get_sample_sum(), 0.01);
+
+        let miss_duration = manager
+            .query_cache_duration
+            .with_label_values(&["QmDeploymentTwo", "miss"]);
+        assert_eq!(miss_duration.get_sample_count(), 1);
+        assert_eq!(miss_duration.get_sample_sum(), 0.02);
     }
 }
