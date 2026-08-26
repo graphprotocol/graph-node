@@ -6,6 +6,10 @@
 - [Unused Record](#unused-record)
 - [Unused Remove](#unused-remove)
 - [Drop](#drop)
+- [Copy Create](#copy-create)
+- [Copy Activate](#copy-activate)
+- [Copy List](#copy-list)
+- [Copy Status](#copy-status)
 - [Chain Check Blocks](#check-blocks)
 - [Chain Call Cache Remove](#chain-call-cache-remove)
 
@@ -289,6 +293,208 @@ Stop, unassign and delete all indexed data from a specific deployment by its dep
 Stop, unassign and delete all indexed data from a specific deployment by its subgraph name
 
     graphman --config config.toml drop author/subgraph-name
+
+<a id="copy-create"></a>
+# ⌘ Copy Create
+
+### SYNOPSIS
+
+    Create a copy of an existing subgraph
+
+    The copy will be treated as its own deployment. The deployment with IPFS hash `src` will be
+    copied to a new deployment in the database shard `shard` and will be assigned to `node` for
+    indexing. The new subgraph will start as a copy of all blocks of `src` that are `offset` behind
+    the current subgraph head of `src`. The offset should be chosen such that only final blocks are
+    copied
+
+    USAGE:
+        graphman --config <CONFIG> copy create [OPTIONS] <SRC> <SHARD> <NODE>
+
+    ARGS:
+        <SRC>
+                The source deployment (see `help info`)
+
+        <SHARD>
+                The name of the database shard into which to copy
+
+        <NODE>
+                The name of the node that should index the copy
+
+    OPTIONS:
+        -a, --activate
+                Activate this copy once it has synced
+
+        -h, --help
+                Print help information
+
+        -o, --offset <OFFSET>
+                How far behind `src` subgraph head to copy [default: 200]
+
+        -r, --replace
+                Replace the source with this copy once it has synced
+
+### DESCRIPTION
+
+Copies the data of an existing deployment into another database shard. The copy becomes a new
+deployment with its own `sgdNNN` namespace, assigned to `node`, which performs the copy. The source
+deployment is not modified and is not removed.
+
+The copy is made from the state of `src` as of `offset` blocks behind its current head, and the new
+deployment then indexes forward from that point on its own. The default offset of 200 exists so that
+only final blocks are copied; choosing an offset smaller than the reorg threshold of the chain risks
+copying a block that is later reorged away.
+
+`--activate` and `--replace` control what happens once the copy has caught up, and are mutually
+exclusive:
+
+| Flag | Behaviour once synced |
+| --- | --- |
+| neither | Nothing. The copy stays synced and inactive until activated manually. |
+| `--activate` | Queries are routed to the copy; the previously active copy becomes inactive. |
+| `--replace` | As `--activate`, and additionally unassigns any other copies of the same deployment. |
+
+Use `--replace` when the intent is to move a deployment to another shard rather than to keep a second
+copy of it.
+
+Copying is done in batches so that it does not hold long-running transactions open, which would cause
+table bloat elsewhere in the system. The batch size adapts so that each batch takes approximately a
+fixed target duration, and the copy backs off when database replication lag becomes too large.
+Progress is recorded per table in `subgraphs.copy_state` and `subgraphs.copy_table_state`, so a copy
+that is interrupted, for example by restarting `graph-node`, resumes where it left off rather than
+starting again.
+
+The command refuses to start a copy when:
+
+1.  The source has not indexed any blocks yet.
+2.  The source has not yet indexed `offset` blocks.
+3.  The block at `offset` behind the source head is earlier than the source's `earliest_block_number`.
+    This happens when the source has been pruned past the point being copied from.
+4.  The block at that height is not present in the chain block cache.
+5.  The block cache holds more than one hash for that height.
+6.  `shard` is not one of the configured shards.
+
+After a copy has been activated, the source deployment still exists and still occupies disk. Use
+`graphman unused record` followed by `graphman unused remove` to reclaim it. Note that a deployment is
+not eligible to be recorded as unused while it is the source of a currently running copy operation.
+
+### EXAMPLES
+
+Copy a deployment into the `shard2` shard, to be indexed by `index_node_1`, keeping the original:
+
+    graphman --config config.toml copy create QmfWRZCjT8pri4Amey3e3mb2Bga75Vuh2fPYyNVnmPYL66 shard2 index_node_1
+
+Move a deployment to another shard, activating the copy and unassigning the original once it has
+synced:
+
+    graphman --config config.toml copy create --replace QmfWRZCjT8pri4Amey3e3mb2Bga75Vuh2fPYyNVnmPYL66 shard2 index_node_1
+
+Copy from further behind the chain head than the default:
+
+    graphman --config config.toml copy create --offset 500 QmfWRZCjT8pri4Amey3e3mb2Bga75Vuh2fPYyNVnmPYL66 shard2 index_node_1
+
+
+<a id="copy-activate"></a>
+# ⌘ Copy Activate
+
+### SYNOPSIS
+
+    Activate the copy of a deployment
+
+    This will route queries to that specific copy (with some delay); the previously active copy will
+    become inactive. Only copies that have progressed at least as far as the original should be
+    activated
+
+    USAGE:
+        graphman --config <CONFIG> copy activate <DEPLOYMENT> <SHARD>
+
+    ARGS:
+        <DEPLOYMENT>
+                The IPFS hash of the deployment to activate
+
+        <SHARD>
+                The name of the database shard that holds the copy
+
+    OPTIONS:
+        -h, --help
+                Print help information
+
+### DESCRIPTION
+
+Makes the copy of a deployment in `shard` the active one, so that queries for that deployment are
+served from it. The previously active copy becomes inactive but is not removed.
+
+This is the manual equivalent of having passed `--activate` to `graphman copy create`, and is used
+when a copy was created without that flag.
+
+Query routing changes take effect with some delay rather than immediately.
+
+Activating a copy that is behind the currently active one will serve queries from the less advanced
+copy. Check progress with `graphman copy status` before activating.
+
+### EXAMPLES
+
+Activate the copy of a deployment held in `shard2`:
+
+    graphman --config config.toml copy activate QmfWRZCjT8pri4Amey3e3mb2Bga75Vuh2fPYyNVnmPYL66 shard2
+
+
+<a id="copy-list"></a>
+# ⌘ Copy List
+
+### SYNOPSIS
+
+    List all currently running copy and graft operations
+
+    USAGE:
+        graphman --config <CONFIG> copy list
+
+    OPTIONS:
+        -h, --help
+                Print help information
+
+### DESCRIPTION
+
+Lists the copy and graft operations that are currently in progress across all shards.
+
+### EXAMPLES
+
+    graphman --config config.toml copy list
+
+
+<a id="copy-status"></a>
+# ⌘ Copy Status
+
+### SYNOPSIS
+
+    Print the progress of a copy operation
+
+    USAGE:
+        graphman --config <CONFIG> copy status <DST>
+
+    ARGS:
+        <DST>
+                The destination deployment of the copy operation (see `help info`)
+
+    OPTIONS:
+        -h, --help
+                Print help information
+
+### DESCRIPTION
+
+Prints the progress of the copy operation whose destination is `dst`, reading the state that the copy
+records as it runs.
+
+The output covers the copy as a whole, including the target block, when it started and, if it has
+ended, when it finished or was cancelled. It also breaks progress down per entity type, showing how
+far through the table's `vid` range the copy has reached, the batch size currently in use and how long
+that table has taken so far.
+
+### EXAMPLES
+
+Show the progress of a copy by the destination deployment:
+
+    graphman --config config.toml copy status sgd1234
+
 
 <a id="check-blocks"></a>
 # ⌘ Check Blocks
