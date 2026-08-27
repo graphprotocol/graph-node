@@ -1528,9 +1528,9 @@ impl EthereumAdapterTrait for EthereumAdapter {
 
             trace!(logger, "eth_call";
                 "fn" => &call.function.name,
-                "address" => hex::encode(call.address),
-                "data" => hex::encode(req.encoded_call.as_ref()),
-                "block_hash" => call.block_ptr.hash_hex(),
+                "address" => format!("{:#x}", call.address),
+                "data" => format!("0x{}", hex::encode(req.encoded_call.as_ref())),
+                "block_hash" => format!("0x{}", call.block_ptr.hash_hex()),
                 "block_number" => call.block_ptr.block_number()
             );
             Ok(req)
@@ -1544,8 +1544,13 @@ impl EthereumAdapterTrait for EthereumAdapter {
             let call::Response {
                 retval,
                 source,
-                req: _,
+                req,
             } = resp;
+            // Details of the `eth_call` that failed, so that it can be reproduced by
+            // hand. Mirrors the field names used by the `eth_call` trace above.
+            let address = format!("{:#x}", req.address);
+            let data = format!("0x{}", hex::encode(req.encoded_call.as_ref()));
+            let block_hash = format!("0x{}", call.block_ptr.hash_hex());
             match retval {
                 call::Retval::Value(output) => match call.function.abi_decode_output(&output) {
                     Ok(tokens) => (Some(tokens), source),
@@ -1553,7 +1558,15 @@ impl EthereumAdapterTrait for EthereumAdapter {
                         // Decode failures are reverts. The reasoning is that if Solidity fails to
                         // decode an argument, that's a revert, so the same goes for the output.
                         let reason = format!("failed to decode output: {}", e);
-                        info!(logger, "Contract call reverted"; "reason" => reason);
+                        info!(logger, "Contract call reverted";
+                            "reason" => reason,
+                            "fn" => &call.function.name,
+                            "address" => address,
+                            "data" => data,
+                            "output" => format!("0x{}", hex::encode(&output)),
+                            "block_hash" => block_hash,
+                            "block_number" => call.block_ptr.block_number()
+                        );
                         (None, call::Source::Rpc)
                     }
                 },
@@ -1561,33 +1574,64 @@ impl EthereumAdapterTrait for EthereumAdapter {
                     // We got a `0x` response. For old Geth, this can mean a revert. It can also be
                     // that the contract actually returned an empty response. A view call is meant
                     // to return something, so we treat empty responses the same as reverts.
-                    info!(logger, "Contract call reverted"; "reason" => "empty response");
+                    info!(logger, "Contract call reverted";
+                        "reason" => "empty response",
+                        "fn" => &call.function.name,
+                        "address" => address,
+                        "data" => data,
+                        "output" => "0x",
+                        "block_hash" => block_hash,
+                        "block_number" => call.block_ptr.block_number()
+                    );
                     (None, call::Source::Rpc)
                 }
             }
         }
 
         fn log_call_error(logger: &ProviderLogger, e: &ContractCallError, call: &ContractCall) {
+            // Identify the call that failed so it can be reproduced by hand. The
+            // calldata is re-encoded here because the request may have failed before
+            // one was built; encoding errors are reported rather than propagated
+            // since this is only ever run on an error path.
+            let address = format!("{:#x}", call.address);
+            let data = match call.function.abi_encode_input(&call.args) {
+                Ok(encoded) => format!("0x{}", hex::encode(encoded)),
+                Err(e) => format!("<failed to encode: {}>", e),
+            };
+            let block_hash = format!("0x{}", call.block_ptr.hash_hex());
+            let block_number = call.block_ptr.block_number();
             match e {
                 ContractCallError::AlloyError(e) => error!(
                     logger,
                     "Ethereum node returned an error when calling function \"{}\" of contract \"{}\": {}",
                     call.function.name,
                     call.contract_name,
-                    e
+                    e;
+                    "address" => address,
+                    "data" => data,
+                    "block_hash" => block_hash,
+                    "block_number" => block_number
                 ),
                 ContractCallError::Timeout => error!(
                     logger,
                     "Ethereum node did not respond when calling function \"{}\" of contract \"{}\"",
                     call.function.name,
-                    call.contract_name
+                    call.contract_name;
+                    "address" => address,
+                    "data" => data,
+                    "block_hash" => block_hash,
+                    "block_number" => block_number
                 ),
                 _ => error!(
                     logger,
                     "Failed to call function \"{}\" of contract \"{}\": {}",
                     call.function.name,
                     call.contract_name,
-                    e
+                    e;
+                    "address" => address,
+                    "data" => data,
+                    "block_hash" => block_hash,
+                    "block_number" => block_number
                 ),
             }
         }
