@@ -42,6 +42,52 @@ impl IntoTrap for HostExportError {
     }
 }
 
+/// Why an `ethereum.decode` / `ethereum.decodeParams` call could not produce a
+/// value. Both variants make the host function return `null` to the mapping.
+#[derive(Debug)]
+pub(crate) enum DecodeError {
+    /// The type string is not a valid ABI type. It is typically a literal in
+    /// the mapping, so this fails identically on every block: the subgraph can
+    /// never decode this value.
+    InvalidType {
+        types: String,
+        source: anyhow::Error,
+    },
+
+    /// The type is valid but `data` does not match it. This can legitimately
+    /// vary from one event to the next.
+    InvalidData {
+        types: String,
+        source: anyhow::Error,
+    },
+}
+
+impl DecodeError {
+    /// Metric label. Kept short and stable; operators alert on this.
+    pub(crate) fn kind(&self) -> &'static str {
+        match self {
+            DecodeError::InvalidType { .. } => "invalid_type",
+            DecodeError::InvalidData { .. } => "invalid_data",
+        }
+    }
+
+    pub(crate) fn types(&self) -> &str {
+        match self {
+            DecodeError::InvalidType { types, .. } | DecodeError::InvalidData { types, .. } => {
+                types
+            }
+        }
+    }
+
+    pub(crate) fn source(&self) -> &anyhow::Error {
+        match self {
+            DecodeError::InvalidType { source, .. } | DecodeError::InvalidData { source, .. } => {
+                source
+            }
+        }
+    }
+}
+
 pub struct HostExports {
     pub(crate) subgraph_id: DeploymentHash,
     subgraph_network: String,
@@ -1217,13 +1263,16 @@ impl HostExports {
         Ok(encoded)
     }
 
+    /// The outer `Result` is whether the host function could run at all; gas
+    /// errors must abort the mapping rather than surface as `null`. The inner
+    /// one is the decode outcome, which the caller turns into `null`.
     pub(crate) fn ethereum_decode(
         &self,
         types: String,
         data: Vec<u8>,
         gas: &GasCounter,
         state: &mut BlockState,
-    ) -> Result<abi::DynSolValue, anyhow::Error> {
+    ) -> Result<Result<abi::DynSolValue, DecodeError>, DeterministicHostError> {
         Self::track_gas_and_ops(
             gas,
             state,
@@ -1231,9 +1280,7 @@ impl HostExports {
             "ethereum_decode",
         )?;
 
-        let ty: abi::DynSolType = types.parse().context("Failed to read types")?;
-
-        ty.abi_decode(&data).context("Failed to decode")
+        Ok(decode_abi(&types, &data))
     }
 
     /// Like [`Self::ethereum_decode`], but decodes `data` as ABI function
@@ -1247,7 +1294,7 @@ impl HostExports {
         data: Vec<u8>,
         gas: &GasCounter,
         state: &mut BlockState,
-    ) -> Result<abi::DynSolValue, anyhow::Error> {
+    ) -> Result<Result<abi::DynSolValue, DecodeError>, DeterministicHostError> {
         Self::track_gas_and_ops(
             gas,
             state,
@@ -1255,9 +1302,7 @@ impl HostExports {
             "ethereum_decode_params",
         )?;
 
-        let ty: abi::DynSolType = types.parse().context("Failed to read types")?;
-
-        ty.abi_decode_params(&data).context("Failed to decode")
+        Ok(decode_abi_params(&types, &data))
     }
 
     pub(crate) fn yaml_from_bytes(
@@ -1311,6 +1356,38 @@ fn bytes_to_string(logger: &Logger, bytes: Vec<u8>) -> String {
     // The string may have been encoded in a fixed length buffer and padded with null
     // characters, so trim trailing nulls.
     s.trim_end_matches('\u{0000}').to_string()
+}
+
+fn parse_type(types: &str) -> Result<abi::DynSolType, DecodeError> {
+    types
+        .parse::<abi::DynSolType>()
+        .map_err(|e| DecodeError::InvalidType {
+            types: types.to_string(),
+            source: anyhow::Error::new(e),
+        })
+}
+
+/// Decode `data` as a single ABI value of type `types`.
+fn decode_abi(types: &str, data: &[u8]) -> Result<abi::DynSolValue, DecodeError> {
+    let ty = parse_type(types)?;
+
+    ty.abi_decode(data).map_err(|e| DecodeError::InvalidData {
+        types: types.to_string(),
+        source: anyhow::Error::new(e),
+    })
+}
+
+/// Like [`decode_abi`], but decodes `data` as ABI function parameters (the
+/// layout used by transaction calldata and event data) rather than as a single
+/// ABI value.
+fn decode_abi_params(types: &str, data: &[u8]) -> Result<abi::DynSolValue, DecodeError> {
+    let ty = parse_type(types)?;
+
+    ty.abi_decode_params(data)
+        .map_err(|e| DecodeError::InvalidData {
+            types: types.to_string(),
+            source: anyhow::Error::new(e),
+        })
 }
 
 /// Expose some host functions for testing only
@@ -1411,4 +1488,92 @@ fn bytes_to_string_is_lossy() {
             ],
         )
     )
+}
+
+#[cfg(test)]
+mod decode_tests {
+    use super::*;
+
+    /// `(uint32, bytes32)` holding `7` and 32 bytes of `0xaa`. Both fields are
+    /// static, so `abi_decode` and `abi_decode_params` accept the same layout.
+    fn encoded_uint32_bytes32() -> Vec<u8> {
+        let mut data = vec![0u8; 32];
+        data[31] = 7;
+        data.extend_from_slice(&[0xaa; 32]);
+        data
+    }
+
+    /// `bytes128` is not an ABI type at all — fixed size bytes stop at
+    /// `bytes32` — but ethabi read it as `FixedBytes(128)`, so subgraphs using
+    /// it kept working until v0.42.0. See #6683.
+    #[test]
+    fn unparseable_type_strings_are_invalid_type() {
+        let types = [
+            "bytes128",
+            "(uint32,uint32,uint32,uint64,bytes32,bytes32,bytes32,bytes128)",
+            "(uint32,",
+            "uint7",
+            // Leading whitespace is only tolerated inside a tuple, so
+            // `"(uint256, address)"` parses but a bare `" address"` does not.
+            " address",
+        ];
+
+        for ty in types {
+            for err in [
+                decode_abi(ty, &encoded_uint32_bytes32()).unwrap_err(),
+                decode_abi_params(ty, &encoded_uint32_bytes32()).unwrap_err(),
+            ] {
+                assert!(
+                    matches!(err, DecodeError::InvalidType { .. }),
+                    "expected `{ty}` to be rejected as an invalid type, got {err:?}"
+                );
+                assert_eq!(err.kind(), "invalid_type");
+                assert_eq!(err.types(), ty);
+            }
+        }
+    }
+
+    /// Data that cannot be read against an otherwise valid type. Unlike an
+    /// unparseable type string this can legitimately differ per event, which is
+    /// why the two are kept apart.
+    #[test]
+    fn data_not_matching_a_valid_type_is_invalid_data() {
+        for data in [vec![], vec![0u8; 8], vec![0u8; 63]] {
+            for err in [
+                decode_abi("(uint32,bytes32)", &data).unwrap_err(),
+                decode_abi_params("(uint32,bytes32)", &data).unwrap_err(),
+            ] {
+                assert!(
+                    matches!(err, DecodeError::InvalidData { .. }),
+                    "expected {} bytes to fail as invalid data, got {err:?}",
+                    data.len()
+                );
+                assert_eq!(err.kind(), "invalid_data");
+                assert_eq!(err.types(), "(uint32,bytes32)");
+            }
+        }
+    }
+
+    #[test]
+    fn valid_type_and_data_decodes() {
+        for decoded in [
+            decode_abi("(uint32,bytes32)", &encoded_uint32_bytes32()).unwrap(),
+            decode_abi_params("(uint32,bytes32)", &encoded_uint32_bytes32()).unwrap(),
+        ] {
+            let abi::DynSolValue::Tuple(fields) = decoded else {
+                panic!("expected a tuple, got {decoded:?}");
+            };
+
+            assert!(
+                matches!(fields[0], abi::DynSolValue::Uint(v, 32) if v == abi::AlloyU256::from(7)),
+                "unexpected first field: {:?}",
+                fields[0]
+            );
+            assert!(
+                matches!(&fields[1], abi::DynSolValue::FixedBytes(b, 32) if b[..32] == [0xaa; 32]),
+                "unexpected second field: {:?}",
+                fields[1]
+            );
+        }
+    }
 }
