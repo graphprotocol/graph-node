@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 
-use crate::commands::auth::get_deploy_key;
+use crate::commands::auth::resolve_access_token;
 use crate::services::GraphNodeClient;
 
 #[derive(Clone, Debug, Parser)]
@@ -25,13 +25,7 @@ pub async fn run_create(opt: CreateOpt) -> Result<()> {
     println!("Creating subgraph in Graph node: {}", opt.node);
 
     // Get access token (from flag or from config)
-    let access_token = match &opt.access_token {
-        Some(token) => Some(token.clone()),
-        None => get_deploy_key(&opt.node)
-            .ok()
-            .flatten()
-            .map(|key| key.to_string()),
-    };
+    let access_token = resolve_access_token(opt.access_token.as_deref(), &opt.node)?;
 
     let client = GraphNodeClient::new(&opt.node, access_token.as_deref())
         .context("Failed to create Graph Node client")?;

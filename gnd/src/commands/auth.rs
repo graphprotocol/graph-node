@@ -1,5 +1,11 @@
 use std::collections::HashMap;
 use std::fs;
+#[cfg(unix)]
+use std::fs::{OpenOptions, Permissions};
+#[cfg(unix)]
+use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -10,10 +16,10 @@ use url::Url;
 const SUBGRAPH_STUDIO_URL: &str = "https://api.studio.thegraph.com/deploy/";
 
 /// Get the path to the config file (~/.graph-cli.json)
-fn config_path() -> PathBuf {
-    std::env::home_dir()
-        .expect("Could not determine home directory")
-        .join(".graph-cli.json")
+fn config_path() -> Result<PathBuf> {
+    Ok(std::env::home_dir()
+        .context("Could not determine home directory")?
+        .join(".graph-cli.json"))
 }
 
 /// Normalize a node URL by parsing and re-serializing it
@@ -38,13 +44,37 @@ fn load_config_from(path: &PathBuf) -> Result<HashMap<String, String>> {
 /// Save the config file to a specific path
 fn save_config_to(path: &PathBuf, config: &HashMap<String, String>) -> Result<()> {
     let content = serde_json::to_string(config).context("Failed to serialize config")?;
-    fs::write(path, content)
-        .with_context(|| format!("Failed to write config file: {}", path.display()))
+
+    #[cfg(unix)]
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(path)
+            .with_context(|| format!("Failed to open config file: {}", path.display()))?;
+
+        file.set_permissions(Permissions::from_mode(0o600))
+            .with_context(|| {
+                format!("Failed to set config file permissions: {}", path.display())
+            })?;
+        file.set_len(0)
+            .with_context(|| format!("Failed to truncate config file: {}", path.display()))?;
+        file.write_all(content.as_bytes())
+            .with_context(|| format!("Failed to write config file: {}", path.display()))
+    }
+
+    #[cfg(not(unix))]
+    {
+        fs::write(path, content)
+            .with_context(|| format!("Failed to write config file: {}", path.display()))
+    }
 }
 
 /// Save a deploy key for a node (uses default config path)
 pub fn save_deploy_key(node: &str, deploy_key: &str) -> Result<()> {
-    save_deploy_key_to(&config_path(), node, deploy_key)
+    save_deploy_key_to(&config_path()?, node, deploy_key)
 }
 
 /// Save a deploy key for a node to a specific config file
@@ -97,7 +127,26 @@ pub fn run_auth(opt: AuthOpt) -> Result<()> {
 
 /// Get the deploy key for a node, if one is saved (uses default config path)
 pub fn get_deploy_key(node: &str) -> Result<Option<String>> {
-    get_deploy_key_from(&config_path(), node)
+    get_deploy_key_from(&config_path()?, node)
+}
+
+/// Resolve an explicit access token or load the stored deploy key.
+pub(super) fn resolve_access_token(
+    access_token: Option<&str>,
+    node: &str,
+) -> Result<Option<String>> {
+    resolve_access_token_with_loader(access_token, node, get_deploy_key)
+}
+
+fn resolve_access_token_with_loader(
+    access_token: Option<&str>,
+    node: &str,
+    load_deploy_key: impl FnOnce(&str) -> Result<Option<String>>,
+) -> Result<Option<String>> {
+    match access_token {
+        Some(token) => Ok(Some(token.to_owned())),
+        None => load_deploy_key(node),
+    }
 }
 
 /// Get the deploy key for a node from a specific config file
@@ -155,6 +204,83 @@ mod tests {
             get_deploy_key_from(&config_file, node).unwrap(),
             Some(key.to_string())
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_save_deploy_key_creates_private_file() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let config_file = temp_dir.path().join(".graph-cli.json");
+
+        save_deploy_key_to(&config_file, "https://example.com/", "new-key").unwrap();
+
+        assert_eq!(
+            fs::metadata(&config_file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_save_deploy_key_restricts_existing_file_permissions() {
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let config_file = temp_dir.path().join(".graph-cli.json");
+        let existing_node = "https://existing.example.com/";
+        let new_node = "https://new.example.com/";
+
+        fs::write(
+            &config_file,
+            serde_json::json!({ existing_node: "existing-key" }).to_string(),
+        )
+        .unwrap();
+        fs::set_permissions(&config_file, Permissions::from_mode(0o666)).unwrap();
+        assert_eq!(
+            fs::metadata(&config_file).unwrap().permissions().mode() & 0o777,
+            0o666
+        );
+
+        save_deploy_key_to(&config_file, new_node, "new-key").unwrap();
+
+        assert_eq!(
+            fs::metadata(&config_file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            get_deploy_key_from(&config_file, existing_node).unwrap(),
+            Some("existing-key".to_string())
+        );
+        assert_eq!(
+            get_deploy_key_from(&config_file, new_node).unwrap(),
+            Some("new-key".to_string())
+        );
+    }
+
+    #[test]
+    fn test_resolve_access_token_propagates_config_error() {
+        let result = resolve_access_token_with_loader(None, "https://example.com", |_| {
+            Err(anyhow::anyhow!("config unavailable"))
+        });
+
+        assert_eq!(result.unwrap_err().to_string(), "config unavailable");
+    }
+
+    #[test]
+    fn test_resolve_access_token_preserves_missing_key() {
+        let result =
+            resolve_access_token_with_loader(None, "https://example.com", |_| Ok(None)).unwrap();
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_resolve_access_token_prefers_explicit_token() {
+        let result =
+            resolve_access_token_with_loader(Some("explicit-token"), "https://example.com", |_| {
+                panic!("stored key lookup should not run")
+            })
+            .unwrap();
+
+        assert_eq!(result.as_deref(), Some("explicit-token"));
     }
 
     #[test]
