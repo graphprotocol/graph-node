@@ -13,7 +13,7 @@ use graph::abi::{
 use regex::Regex;
 
 use super::typescript::{self as ts, Class, ClassMember, Method, ModuleImports, Param as TsParam};
-use crate::abi::{indexed_input_type, resolve_event_param_type};
+use crate::abi::{IntWidth, classify_int_width, indexed_input_type, resolve_event_param_type};
 use crate::shared::{capitalize, handle_reserved_word};
 
 /// Resolve a `Param`'s type to `DynSolType`.
@@ -941,22 +941,13 @@ impl AbiCodeGenerator {
 
     /// Disambiguate events with duplicate names.
     fn disambiguate_events(&self) -> Vec<(&Event, String)> {
-        let mut result = Vec::new();
-        let mut collision_counter: HashMap<String, u32> = HashMap::new();
-
-        for event in self.contract.events() {
-            let name = handle_reserved_word(&event.name);
-            let counter = collision_counter.entry(name.clone()).or_insert(0);
-            let alias = if *counter == 0 {
-                name.clone()
-            } else {
-                format!("{}{}", name, counter)
-            };
-            *counter += 1;
-            result.push((event, alias));
-        }
-
-        result
+        let events: Vec<&Event> = self.contract.events().collect();
+        let names: Vec<String> = events
+            .iter()
+            .map(|event| handle_reserved_word(&event.name))
+            .collect();
+        let aliases = crate::shared::disambiguate_names(&names);
+        events.into_iter().zip(aliases).collect()
     }
 
     /// Disambiguate functions.
@@ -1121,31 +1112,44 @@ fn asc_type_for_ethereum(param_type: &DynSolType) -> String {
         DynSolType::Bool => "boolean".to_string(),
         DynSolType::Bytes => "Bytes".to_string(),
         DynSolType::FixedBytes(_) => "Bytes".to_string(),
-        DynSolType::Int(bits) => {
-            if *bits <= 32 {
-                "i32".to_string()
-            } else {
-                "BigInt".to_string()
-            }
-        }
-        DynSolType::Uint(bits) => {
-            if *bits <= 24 {
-                "i32".to_string()
-            } else {
-                "BigInt".to_string()
-            }
-        }
+        DynSolType::Int(bits) => match classify_int_width(true, *bits as u32) {
+            IntWidth::I32 => "i32".to_string(),
+            IntWidth::I64 => "i64".to_string(),
+            IntWidth::Big => "BigInt".to_string(),
+        },
+        DynSolType::Uint(bits) => match classify_int_width(false, *bits as u32) {
+            IntWidth::I32 => "i32".to_string(),
+            IntWidth::I64 => "i64".to_string(),
+            IntWidth::Big => "BigInt".to_string(),
+        },
         DynSolType::String => "string".to_string(),
-        DynSolType::Array(inner) => {
-            let inner_type = asc_type_for_ethereum(inner);
-            format!("Array<{}>", inner_type)
-        }
-        DynSolType::FixedArray(inner, _) => {
-            let inner_type = asc_type_for_ethereum(inner);
-            format!("Array<{}>", inner_type)
+        DynSolType::Array(inner) | DynSolType::FixedArray(inner, _) => {
+            format!("Array<{}>", asc_array_element_type(inner))
         }
         DynSolType::Tuple(_) => "ethereum.Tuple".to_string(),
         _ => "ethereum.Tuple".to_string(), // Function and other future variants
+    }
+}
+
+/// The AssemblyScript element type inside an array or matrix. The `Int8` (i64)
+/// band collapses to `BigInt` here — `ethereum.Value` has no i64 array accessor,
+/// so array/matrix getters decode via `toBigIntArray()`/`toBigIntMatrix()`. This
+/// keeps the declared type in step with those conversion sites and the
+/// `[BigInt!]` schema type; only the i32 band keeps a narrow element.
+fn asc_array_element_type(inner: &DynSolType) -> String {
+    match inner {
+        DynSolType::Int(bits) => match classify_int_width(true, *bits as u32) {
+            IntWidth::I32 => "i32".to_string(),
+            _ => "BigInt".to_string(),
+        },
+        DynSolType::Uint(bits) => match classify_int_width(false, *bits as u32) {
+            IntWidth::I32 => "i32".to_string(),
+            _ => "BigInt".to_string(),
+        },
+        DynSolType::Array(next) | DynSolType::FixedArray(next, _) => {
+            format!("Array<{}>", asc_array_element_type(next))
+        }
+        _ => asc_type_for_ethereum(inner),
     }
 }
 
@@ -1155,20 +1159,17 @@ fn ethereum_to_asc(code: &str, param_type: &DynSolType, tuple_type: Option<&str>
         DynSolType::Address => format!("{}.toAddress()", code),
         DynSolType::Bool => format!("{}.toBoolean()", code),
         DynSolType::Bytes | DynSolType::FixedBytes(_) => format!("{}.toBytes()", code),
-        DynSolType::Int(bits) => {
-            if *bits <= 32 {
-                format!("{}.toI32()", code)
-            } else {
-                format!("{}.toBigInt()", code)
-            }
-        }
-        DynSolType::Uint(bits) => {
-            if *bits <= 24 {
-                format!("{}.toI32()", code)
-            } else {
-                format!("{}.toBigInt()", code)
-            }
-        }
+        DynSolType::Int(bits) => match classify_int_width(true, *bits as u32) {
+            IntWidth::I32 => format!("{}.toI32()", code),
+            // `ethereum.Value` has no i64 accessor, so reach i64 via BigInt.
+            IntWidth::I64 => format!("{}.toBigInt().toI64()", code),
+            IntWidth::Big => format!("{}.toBigInt()", code),
+        },
+        DynSolType::Uint(bits) => match classify_int_width(false, *bits as u32) {
+            IntWidth::I32 => format!("{}.toI32()", code),
+            IntWidth::I64 => format!("{}.toBigInt().toI64()", code),
+            IntWidth::Big => format!("{}.toBigInt()", code),
+        },
         DynSolType::String => format!("{}.toString()", code),
         DynSolType::Array(inner) | DynSolType::FixedArray(inner, _) => match inner.as_ref() {
             DynSolType::Address => format!("{}.toAddressArray()", code),
@@ -1176,20 +1177,16 @@ fn ethereum_to_asc(code: &str, param_type: &DynSolType, tuple_type: Option<&str>
             DynSolType::Bytes | DynSolType::FixedBytes(_) => {
                 format!("{}.toBytesArray()", code)
             }
-            DynSolType::Int(bits) => {
-                if *bits <= 32 {
-                    format!("{}.toI32Array()", code)
-                } else {
-                    format!("{}.toBigIntArray()", code)
-                }
-            }
-            DynSolType::Uint(bits) => {
-                if *bits <= 24 {
-                    format!("{}.toI32Array()", code)
-                } else {
-                    format!("{}.toBigIntArray()", code)
-                }
-            }
+            // No i64 array accessor on `ethereum.Value`, so mid-size int arrays
+            // stay BigInt, matching the `[BigInt!]` schema type.
+            DynSolType::Int(bits) => match classify_int_width(true, *bits as u32) {
+                IntWidth::I32 => format!("{}.toI32Array()", code),
+                _ => format!("{}.toBigIntArray()", code),
+            },
+            DynSolType::Uint(bits) => match classify_int_width(false, *bits as u32) {
+                IntWidth::I32 => format!("{}.toI32Array()", code),
+                _ => format!("{}.toBigIntArray()", code),
+            },
             DynSolType::String => format!("{}.toStringArray()", code),
             DynSolType::Tuple(_) => {
                 if let Some(tuple_name) = tuple_type {
@@ -1214,20 +1211,14 @@ fn ethereum_to_asc_matrix(code: &str, inner_type: &DynSolType, tuple_type: Optio
         DynSolType::Address => format!("{}.toAddressMatrix()", code),
         DynSolType::Bool => format!("{}.toBooleanMatrix()", code),
         DynSolType::Bytes | DynSolType::FixedBytes(_) => format!("{}.toBytesMatrix()", code),
-        DynSolType::Int(bits) => {
-            if *bits <= 32 {
-                format!("{}.toI32Matrix()", code)
-            } else {
-                format!("{}.toBigIntMatrix()", code)
-            }
-        }
-        DynSolType::Uint(bits) => {
-            if *bits <= 24 {
-                format!("{}.toI32Matrix()", code)
-            } else {
-                format!("{}.toBigIntMatrix()", code)
-            }
-        }
+        DynSolType::Int(bits) => match classify_int_width(true, *bits as u32) {
+            IntWidth::I32 => format!("{}.toI32Matrix()", code),
+            _ => format!("{}.toBigIntMatrix()", code),
+        },
+        DynSolType::Uint(bits) => match classify_int_width(false, *bits as u32) {
+            IntWidth::I32 => format!("{}.toI32Matrix()", code),
+            _ => format!("{}.toBigIntMatrix()", code),
+        },
         DynSolType::String => format!("{}.toStringMatrix()", code),
         DynSolType::Tuple(_) => {
             if let Some(tuple_name) = tuple_type {
@@ -1247,23 +1238,22 @@ fn ethereum_from_asc(code: &str, param_type: &DynSolType) -> String {
         DynSolType::Bool => format!("ethereum.Value.fromBoolean({})", code),
         DynSolType::Bytes => format!("ethereum.Value.fromBytes({})", code),
         DynSolType::FixedBytes(_) => format!("ethereum.Value.fromFixedBytes({})", code),
-        DynSolType::Int(bits) => {
-            if *bits <= 32 {
-                format!("ethereum.Value.fromI32({})", code)
-            } else {
-                format!("ethereum.Value.fromSignedBigInt({})", code)
-            }
-        }
-        DynSolType::Uint(bits) => {
-            if *bits <= 24 {
-                format!(
-                    "ethereum.Value.fromUnsignedBigInt(BigInt.fromI32({}))",
-                    code
-                )
-            } else {
-                format!("ethereum.Value.fromUnsignedBigInt({})", code)
-            }
-        }
+        DynSolType::Int(bits) => match classify_int_width(true, *bits as u32) {
+            IntWidth::I32 => format!("ethereum.Value.fromI32({})", code),
+            IntWidth::I64 => format!("ethereum.Value.fromSignedBigInt(BigInt.fromI64({}))", code),
+            IntWidth::Big => format!("ethereum.Value.fromSignedBigInt({})", code),
+        },
+        DynSolType::Uint(bits) => match classify_int_width(false, *bits as u32) {
+            IntWidth::I32 => format!(
+                "ethereum.Value.fromUnsignedBigInt(BigInt.fromI32({}))",
+                code
+            ),
+            IntWidth::I64 => format!(
+                "ethereum.Value.fromUnsignedBigInt(BigInt.fromI64({}))",
+                code
+            ),
+            IntWidth::Big => format!("ethereum.Value.fromUnsignedBigInt({})", code),
+        },
         DynSolType::String => format!("ethereum.Value.fromString({})", code),
         DynSolType::Array(inner) | DynSolType::FixedArray(inner, _) => {
             ethereum_from_asc_array(code, inner.as_ref())
@@ -1280,20 +1270,14 @@ fn ethereum_from_asc_array(code: &str, inner_type: &DynSolType) -> String {
         DynSolType::Bool => format!("ethereum.Value.fromBooleanArray({})", code),
         DynSolType::Bytes => format!("ethereum.Value.fromBytesArray({})", code),
         DynSolType::FixedBytes(_) => format!("ethereum.Value.fromFixedBytesArray({})", code),
-        DynSolType::Int(bits) => {
-            if *bits <= 32 {
-                format!("ethereum.Value.fromI32Array({})", code)
-            } else {
-                format!("ethereum.Value.fromSignedBigIntArray({})", code)
-            }
-        }
-        DynSolType::Uint(bits) => {
-            if *bits <= 24 {
-                format!("ethereum.Value.fromI32Array({})", code)
-            } else {
-                format!("ethereum.Value.fromUnsignedBigIntArray({})", code)
-            }
-        }
+        DynSolType::Int(bits) => match classify_int_width(true, *bits as u32) {
+            IntWidth::I32 => format!("ethereum.Value.fromI32Array({})", code),
+            _ => format!("ethereum.Value.fromSignedBigIntArray({})", code),
+        },
+        DynSolType::Uint(bits) => match classify_int_width(false, *bits as u32) {
+            IntWidth::I32 => format!("ethereum.Value.fromI32Array({})", code),
+            _ => format!("ethereum.Value.fromUnsignedBigIntArray({})", code),
+        },
         DynSolType::String => format!("ethereum.Value.fromStringArray({})", code),
         DynSolType::Tuple(_) => format!("ethereum.Value.fromTupleArray({})", code),
         DynSolType::Array(inner2) | DynSolType::FixedArray(inner2, _) => {
@@ -1310,20 +1294,14 @@ fn ethereum_from_asc_matrix(code: &str, inner_type: &DynSolType) -> String {
         DynSolType::Bool => format!("ethereum.Value.fromBooleanMatrix({})", code),
         DynSolType::Bytes => format!("ethereum.Value.fromBytesMatrix({})", code),
         DynSolType::FixedBytes(_) => format!("ethereum.Value.fromFixedBytesMatrix({})", code),
-        DynSolType::Int(bits) => {
-            if *bits <= 32 {
-                format!("ethereum.Value.fromI32Matrix({})", code)
-            } else {
-                format!("ethereum.Value.fromSignedBigIntMatrix({})", code)
-            }
-        }
-        DynSolType::Uint(bits) => {
-            if *bits <= 24 {
-                format!("ethereum.Value.fromI32Matrix({})", code)
-            } else {
-                format!("ethereum.Value.fromUnsignedBigIntMatrix({})", code)
-            }
-        }
+        DynSolType::Int(bits) => match classify_int_width(true, *bits as u32) {
+            IntWidth::I32 => format!("ethereum.Value.fromI32Matrix({})", code),
+            _ => format!("ethereum.Value.fromSignedBigIntMatrix({})", code),
+        },
+        DynSolType::Uint(bits) => match classify_int_width(false, *bits as u32) {
+            IntWidth::I32 => format!("ethereum.Value.fromI32Matrix({})", code),
+            _ => format!("ethereum.Value.fromUnsignedBigIntMatrix({})", code),
+        },
         DynSolType::String => format!("ethereum.Value.fromStringMatrix({})", code),
         DynSolType::Tuple(_) => format!("ethereum.Value.fromTupleMatrix({})", code),
         _ => format!("ethereum.Value.fromStringMatrix({})", code), // fallback
@@ -1423,8 +1401,62 @@ mod tests {
         assert_eq!(asc_type_for_ethereum(&DynSolType::Uint(256)), "BigInt");
         assert_eq!(asc_type_for_ethereum(&DynSolType::Uint(8)), "i32");
         assert_eq!(asc_type_for_ethereum(&DynSolType::Int(32)), "i32");
+        // Mid-size ints fit i64.
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Int(40)), "i64");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Int(64)), "i64");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Uint(32)), "i64");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Uint(56)), "i64");
+        // Too wide for i64.
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Int(72)), "BigInt");
+        assert_eq!(asc_type_for_ethereum(&DynSolType::Uint(64)), "BigInt");
         assert_eq!(asc_type_for_ethereum(&DynSolType::String), "string");
         assert_eq!(asc_type_for_ethereum(&DynSolType::Bytes), "Bytes");
+    }
+
+    #[test]
+    fn test_int8_band_getters_and_setters() {
+        // `ethereum.Value` has no i64 accessor, so the scalar getter reaches i64
+        // via BigInt, and the setter wraps an i64 back through BigInt.
+        assert_eq!(
+            ethereum_to_asc("x", &DynSolType::Int(40), None),
+            "x.toBigInt().toI64()"
+        );
+        assert_eq!(
+            ethereum_to_asc("x", &DynSolType::Uint(32), None),
+            "x.toBigInt().toI64()"
+        );
+        assert_eq!(
+            ethereum_from_asc("x", &DynSolType::Int(40)),
+            "ethereum.Value.fromSignedBigInt(BigInt.fromI64(x))"
+        );
+        assert_eq!(
+            ethereum_from_asc("x", &DynSolType::Uint(32)),
+            "ethereum.Value.fromUnsignedBigInt(BigInt.fromI64(x))"
+        );
+        // Arrays of the mid-size band collapse to BigInt (no i64 array accessor),
+        // matching the `[BigInt!]` schema type. The declared type must collapse
+        // too, or it would not match the `toBigIntArray()` body.
+        let int40_array = DynSolType::Array(Box::new(DynSolType::Int(40)));
+        assert_eq!(asc_type_for_ethereum(&int40_array), "Array<BigInt>");
+        assert_eq!(
+            ethereum_to_asc("x", &int40_array, None),
+            "x.toBigIntArray()"
+        );
+        assert_eq!(
+            ethereum_from_asc("x", &int40_array),
+            "ethereum.Value.fromSignedBigIntArray(x)"
+        );
+        // uint32 is a common type that now maps to the i64 band as a scalar; its
+        // array must not become `Array<i64>`.
+        let uint32_array = DynSolType::Array(Box::new(DynSolType::Uint(32)));
+        assert_eq!(asc_type_for_ethereum(&uint32_array), "Array<BigInt>");
+        // Matrices collapse the same way.
+        let int40_matrix = DynSolType::Array(Box::new(int40_array.clone()));
+        assert_eq!(asc_type_for_ethereum(&int40_matrix), "Array<Array<BigInt>>");
+        assert_eq!(
+            ethereum_to_asc("x", &int40_matrix, None),
+            "x.toBigIntMatrix()"
+        );
     }
 
     #[test]
@@ -1455,6 +1487,45 @@ mod tests {
             indexed_input_type(&DynSolType::Uint(256)),
             DynSolType::Uint(256)
         );
+    }
+
+    /// The scaffold (entity/handler names) and the ABI codegen (class names) must
+    /// assign the same event aliases — including escaping reserved words — or the
+    /// generated mapping imports a class under a name the bindings never export.
+    #[test]
+    fn test_event_aliases_agree_with_scaffold() {
+        // `await` is an AssemblyScript reserved word but a valid Solidity
+        // identifier, so both sides must escape it to `await_`.
+        let abi_json = r#"[
+            {"type":"event","name":"await","inputs":[],"anonymous":false},
+            {"type":"event","name":"await","inputs":[{"name":"x","type":"uint256","indexed":false}],"anonymous":false},
+            {"type":"event","name":"Transfer","inputs":[],"anonymous":false}
+        ]"#;
+        let generator = AbiCodeGenerator::new(parse_abi(abi_json), "Token");
+        let mut codegen: Vec<String> = generator
+            .disambiguate_events()
+            .into_iter()
+            .map(|(_, alias)| alias)
+            .collect();
+
+        use crate::scaffold::manifest::{EventInfo, disambiguate_events};
+        let ev = |name: &str| EventInfo {
+            name: name.to_string(),
+            signature: format!("{name}()"),
+            inputs: vec![],
+        };
+        let mut scaffold: Vec<String> =
+            disambiguate_events(vec![ev("await"), ev("await"), ev("Transfer")])
+                .into_iter()
+                .map(|r| r.alias)
+                .collect();
+
+        // Compare as sets: alloy groups events by name, so the two may emit the
+        // aliases in a different order, but every event must get the same alias.
+        codegen.sort();
+        scaffold.sort();
+        assert_eq!(codegen, scaffold);
+        assert_eq!(codegen, vec!["Transfer", "await_", "await_1"]);
     }
 
     /// Test that overloaded events (same name, different inputs) are disambiguated.
