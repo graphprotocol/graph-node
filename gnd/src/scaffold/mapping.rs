@@ -201,16 +201,21 @@ fn generate_single_handler(resolved: &ResolvedEvent) -> String {
     let alias = &resolved.alias;
     let entity_name = &resolved.entity_name;
 
-    // Generate field assignments from event parameters. The accessor mirrors the
-    // generated binding getter (escaped reserved words, param<index> for unnamed).
+    // Accessors mirror the generated binding getters (escaped reserved words,
+    // param<index> for unnamed).
     let mut field_assignments = String::new();
-    let accessors = super::event_param_accessors(&resolved.event.inputs);
-    for (input, accessor) in resolved.event.inputs.iter().zip(&accessors) {
-        let field_name = sanitize_field_name(&input.name);
-        field_assignments.push_str(&format!(
-            "  entity.{} = event.params.{}\n",
-            field_name, accessor
-        ));
+    for leaf in super::flatten_event_inputs(&resolved.event.inputs) {
+        if needs_bytes_array_cast(&leaf.solidity_type) {
+            field_assignments.push_str(&format!(
+                "  entity.{} = changetype<Bytes[]>(event.params.{})\n",
+                leaf.field, leaf.accessor
+            ));
+        } else {
+            field_assignments.push_str(&format!(
+                "  entity.{} = event.params.{}\n",
+                leaf.field, leaf.accessor
+            ));
+        }
     }
 
     format!(
@@ -227,6 +232,18 @@ fn generate_single_handler(resolved: &ResolvedEvent) -> String {
 }}
 "#
     )
+}
+
+/// Whether a leaf is an `address[]`, whose binding type `Array<Address>` needs a
+/// `changetype` to fit a `Bytes[]` entity field.
+///
+/// Only `address` qualifies: `Address extends Bytes`, so the cast is an upcast.
+/// `ethereum.Tuple` extends `Array<Value>` and is not a `Bytes`, so casting a
+/// `tuple[]` would be an unchecked reinterpret that compiles and then writes
+/// heap pointers into the entity. It has no `Bytes[]` form, so it gets no cast
+/// and fails to compile instead.
+fn needs_bytes_array_cast(solidity_type: &str) -> bool {
+    solidity_type == "address[]"
 }
 
 /// Extract callable functions from ABI for documentation comments.
@@ -434,5 +451,157 @@ mod tests {
             "unnamed param accessor should be param<index>, got:\n{}",
             mapping
         );
+    }
+
+    #[test]
+    fn test_generate_mapping_tuple_and_array() {
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Deposit",
+                "inputs": [
+                    {"name": "data", "type": "tuple", "components": [
+                        {"name": "account", "type": "address"}
+                    ]},
+                    {"name": "owners", "type": "address[]"}
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            contract_name: "Vault".to_string(),
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+
+        let mapping = generate_mapping(&options);
+        // Tuple components are unrolled into nested accessors.
+        assert!(
+            mapping.contains("entity.data_account = event.params.data.account"),
+            "{}",
+            mapping
+        );
+        // Arrays of address are changetype'd to Bytes[].
+        assert!(
+            mapping.contains("entity.owners = changetype<Bytes[]>(event.params.owners)"),
+            "{}",
+            mapping
+        );
+    }
+
+    #[test]
+    fn test_generate_mapping_tuple_array_is_not_cast_to_bytes() {
+        // Casting Array<Tuple> to Bytes[] is an unchecked reinterpret: it
+        // compiles and writes heap pointers into the entity.
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Filled",
+                "inputs": [
+                    {"name": "fills", "type": "tuple[]", "components": [
+                        {"name": "account", "type": "address"},
+                        {"name": "amount", "type": "uint256"}
+                    ]}
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            contract_name: "Vault".to_string(),
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+
+        let mapping = generate_mapping(&options);
+        assert!(
+            !mapping.contains("changetype"),
+            "tuple[] must never be changetype'd to Bytes[], got:\n{}",
+            mapping
+        );
+    }
+
+    #[test]
+    fn test_generate_mapping_indexed_reference_params_are_hashes() {
+        // Indexed reference types are keccak'd into a topic, so the binding
+        // getter yields Bytes: there is no tuple to unroll and no array to cast.
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Deposit",
+                "inputs": [
+                    {"name": "data", "type": "tuple", "indexed": true, "components": [
+                        {"name": "account", "type": "address"}
+                    ]},
+                    {"name": "owners", "type": "address[]", "indexed": true},
+                    {"name": "amount", "type": "uint256", "indexed": true}
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            contract_name: "Vault".to_string(),
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+
+        let mapping = generate_mapping(&options);
+
+        // The tuple is a hash: read it whole, never `event.params.data.account`
+        // (which does not exist on Bytes).
+        assert!(
+            mapping.contains("entity.data = event.params.data"),
+            "{}",
+            mapping
+        );
+        assert!(!mapping.contains("data.account"), "{}", mapping);
+
+        // The array is a hash too. changetype is an unchecked reinterpret, so
+        // casting a hash to Bytes[] would compile and yield garbage at runtime.
+        assert!(
+            mapping.contains("entity.owners = event.params.owners"),
+            "{}",
+            mapping
+        );
+        assert!(!mapping.contains("changetype"), "{}", mapping);
+
+        // An indexed value type still fits in a topic and is unaffected.
+        assert!(
+            mapping.contains("entity.amount = event.params.amount"),
+            "{}",
+            mapping
+        );
+    }
+
+    #[test]
+    fn test_generate_schema_indexed_reference_params_are_bytes() {
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Deposit",
+                "inputs": [
+                    {"name": "data", "type": "tuple", "indexed": true, "components": [
+                        {"name": "account", "type": "address"},
+                        {"name": "amount", "type": "uint256"}
+                    ]},
+                    {"name": "owners", "type": "address[]", "indexed": true}
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+
+        let schema = crate::scaffold::generate_schema(&options);
+        // Only the hash exists on-chain, so each is a single Bytes field.
+        assert!(schema.contains("data: Bytes!"), "{}", schema);
+        assert!(schema.contains("owners: Bytes!"), "{}", schema);
+        // The components are not in the log; they must not become fields.
+        assert!(!schema.contains("data_account"), "{}", schema);
     }
 }
