@@ -158,10 +158,11 @@ jobs:
         run: ls -R artifacts
 
       - name: Upload Assets to Release
+        env:
+          VERSION: ${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}"
-
-          gh release upload $VERSION --clobber --repo $GITHUB_REPOSITORY \
+          gh release upload "$VERSION" --clobber --repo "$GITHUB_REPOSITORY" \
             artifacts/gnd-linux-x86_64/gnd-linux-x86_64.gz \
             artifacts/gnd-linux-aarch64/gnd-linux-aarch64.gz \
             artifacts/gnd-macos-x86_64/gnd-macos-x86_64.gz \
@@ -215,16 +216,20 @@ jobs:
       - name: Download gnd binary
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}
+          MATRIX_ASSET: ${{ matrix.asset }}
         run: |
-          gh release download "${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}" \
+          gh release download "$VERSION" \
             --repo "${{ github.repository }}" \
-            --pattern "${{ matrix.asset }}" \
+            --pattern "$MATRIX_ASSET" \
             --output ./binary-archive
 
       - name: Extract binary
+        env:
+          MATRIX_EXTRACT: ${{ matrix.extract }}
         run: |
           mkdir -p pkg/bin
-          if [ "${{ matrix.extract }}" = "gunzip" ]; then
+          if [ "$MATRIX_EXTRACT" = "gunzip" ]; then
             gunzip -c ./binary-archive > pkg/bin/gnd
             chmod +x pkg/bin/gnd
           else
@@ -235,8 +240,9 @@ jobs:
       - name: Determine version and npm tag
         id: version
         shell: bash
+        env:
+          VERSION: ${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}
         run: |
-          VERSION="${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}"
           VERSION="${VERSION#v}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           # Prerelease versions (e.g. 0.42.2-dev.1) need an explicit --tag
@@ -251,8 +257,13 @@ jobs:
 
       - name: Create package.json
         shell: bash
+        env:
+          MATRIX_OS_FIELD: ${{ matrix.os_field }}
+          MATRIX_PLATFORM: ${{ matrix.platform }}
+          MATRIX_CPU_FIELD: ${{ matrix.cpu_field }}
+          PKG_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          if [ "${{ matrix.os_field }}" = "win32" ]; then
+          if [ "${MATRIX_OS_FIELD}" = "win32" ]; then
             BIN_PATH="./bin/gnd.exe"
           else
             BIN_PATH="./bin/gnd"
@@ -260,11 +271,11 @@ jobs:
 
           cat > pkg/package.json << EOF
           {
-            "name": "@graphprotocol/gnd-${{ matrix.platform }}",
-            "version": "${{ steps.version.outputs.version }}",
-            "description": "gnd binary for ${{ matrix.platform }}",
-            "os": ["${{ matrix.os_field }}"],
-            "cpu": ["${{ matrix.cpu_field }}"],
+            "name": "@graphprotocol/gnd-${MATRIX_PLATFORM}",
+            "version": "${PKG_VERSION}",
+            "description": "gnd binary for ${MATRIX_PLATFORM}",
+            "os": ["${MATRIX_OS_FIELD}"],
+            "cpu": ["${MATRIX_CPU_FIELD}"],
             "bin": {
               "gnd": "${BIN_PATH}"
             },
@@ -281,7 +292,10 @@ jobs:
           EOF
 
       - name: Publish
-        run: npm publish --provenance --access public --tag ${{ steps.version.outputs.tag }} ${{ inputs.dry_run && '--dry-run' || '' }}
+        env:
+          DRY_RUN_FLAG: ${{ inputs.dry_run && '--dry-run' || '' }}
+          NPM_TAG: ${{ steps.version.outputs.tag }}
+        run: npm publish --provenance --access public --tag "$NPM_TAG" $DRY_RUN_FLAG
         working-directory: pkg
 
   publish-npm-wrapper:
@@ -302,8 +316,9 @@ jobs:
       - name: Determine version and npm tag
         id: version
         shell: bash
+        env:
+          VERSION: ${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}
         run: |
-          VERSION="${{ inputs.release_tag != '' && inputs.release_tag || github.ref_name }}"
           VERSION="${VERSION#v}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           if [[ "$VERSION" == *-* ]]; then
@@ -351,5 +366,8 @@ jobs:
           EOF
 
       - name: Publish
-        run: npm publish --provenance --access public --tag ${{ steps.version.outputs.tag }} ${{ inputs.dry_run && '--dry-run' || '' }}
+        env:
+          DRY_RUN_FLAG: ${{ inputs.dry_run && '--dry-run' || '' }}
+          NPM_TAG: ${{ steps.version.outputs.tag }}
+        run: npm publish --provenance --access public --tag "$NPM_TAG" $DRY_RUN_FLAG
         working-directory: pkg
