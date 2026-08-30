@@ -4,7 +4,7 @@
 # by running something like the following
 #   docker build --target STAGE -f docker/Dockerfile .
 
-FROM golang:bookworm AS envsubst
+FROM golang:bookworm@sha256:1ecb7edf62a0408027bd5729dfd6b1b8766e578e8df93995b225dfd0944eb651 AS envsubst
 
 # v1.2.0
 ARG ENVSUBST_COMMIT_SHA=16035fe3571ad42c7796bf554f978bb2df64231b
@@ -13,7 +13,7 @@ ARG ENVSUBST_COMMIT_SHA=16035fe3571ad42c7796bf554f978bb2df64231b
 RUN go install github.com/a8m/envsubst/cmd/envsubst@$ENVSUBST_COMMIT_SHA \
     && strip -g /go/bin/envsubst
 
-FROM rust:bookworm AS graph-node-build
+FROM rust:bookworm@sha256:77fac8b98f9f46062bb680b6d25d5bcaabfc400143952ebc572e924bcbedc3fa AS graph-node-build
 
 ARG COMMIT_SHA=unknown
 ARG REPO_NAME=unknown
@@ -42,7 +42,7 @@ RUN echo "REPO_NAME='$REPO_NAME'" > /etc/image-info \
     && echo "CARGO_DEV_BUILD='$CARGO_DEV_BUILD'" >> /etc/image-info
 
 # The graph-node runtime image with only the executable
-FROM debian:bookworm-20241111-slim AS graph-node
+FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818 AS graph-node
 ENV RUST_LOG=""
 ENV GRAPH_LOG=""
 ENV EARLY_LOG_CHUNK_SIZE=""
@@ -87,7 +87,8 @@ EXPOSE 8020
 EXPOSE 8030
 
 RUN apt-get update \
-    && apt-get install -y libpq-dev ca-certificates netcat-openbsd
+    && apt-get install -y --no-install-recommends libpq5 ca-certificates netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
 
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-build /usr/local/bin/graph-node /usr/local/bin/graphman /usr/local/bin/
