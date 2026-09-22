@@ -151,6 +151,50 @@ impl std::ops::Deref for ProviderLogger {
     }
 }
 
+/// -32000 is geth's catch-all, so this is broader than a cap error, as it was
+/// before the alloy migration: a missed cap error loops the block stream
+/// forever, a spurious match only shrinks the range for the rest of the batch.
+const TOO_MANY_LOGS_CODES: &[i64] = &[
+    -32005, // EIP-1474 "limit exceeded": Infura, geth/erigon/reth, Besu
+    -32000, // geth catch-all; Alchemy size and timeout errors
+];
+
+/// For providers that report the same condition under a non-standard code.
+const TOO_MANY_LOGS_MESSAGES: &[&str] = &[
+    "query returned more than", // geth / erigon, behind a code-rewriting proxy
+    "Try with this block range", // zkSync Era
+    "block range too large",    // Monad
+];
+
+/// Whether an `eth_getLogs` request was too heavy, and so should be retried
+/// over a smaller block range rather than as-is. Matches structurally, like
+/// `interpret_eth_call_error` does for `eth_call`; the two callers see this
+/// error rendered differently, via `Debug` and via `Display`.
+fn is_too_many_logs_err(err: &RpcError<TransportErrorKind>) -> bool {
+    match err {
+        RpcError::ErrorResp(payload) => {
+            TOO_MANY_LOGS_CODES.contains(&payload.code)
+                || TOO_MANY_LOGS_MESSAGES
+                    .iter()
+                    .any(|m| payload.message.contains(m))
+        }
+        // Alchemy sheds load with a plain HTTP 503, not a JSON-RPC error.
+        RpcError::Transport(TransportErrorKind::HttpError(http_err)) => {
+            http_err.is_temporarily_unavailable()
+        }
+        _ => false,
+    }
+}
+
+/// [`is_too_many_logs_err`] for the wrapped error `logs_with_sigs` returns. A
+/// request that ran out of time says nothing about the range size.
+fn is_too_many_logs_timeout(err: &TimeoutError<RpcError<TransportErrorKind>>) -> bool {
+    match err {
+        TimeoutError::Inner(rpc_err) => is_too_many_logs_err(rpc_err),
+        TimeoutError::Elapsed => false,
+    }
+}
+
 impl EthereumAdapter {
     pub fn is_call_only(&self) -> bool {
         self.call_only
@@ -395,7 +439,6 @@ impl EthereumAdapter {
         from: BlockNumber,
         to: BlockNumber,
         filter: Arc<EthGetLogsFilter>,
-        too_many_logs_fingerprints: &'static [&'static str],
     ) -> Result<
         Vec<alloy::rpc::types::Log>,
         TimeoutError<RpcError<alloy::transports::TransportErrorKind>>,
@@ -407,11 +450,11 @@ impl EthereumAdapter {
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
             .when(
-                move |res: &Result<_, RpcError<alloy::transports::TransportErrorKind>>| match res {
+                |res: &Result<_, RpcError<alloy::transports::TransportErrorKind>>| match res {
                     Ok(_) => false,
-                    Err(e) => !too_many_logs_fingerprints
-                        .iter()
-                        .any(|f| e.to_string().contains(f)),
+                    // A too-heavy request will fail the same way however many
+                    // times it is retried; `log_stream` shrinks the range instead.
+                    Err(e) => !is_too_many_logs_err(e),
                 },
             )
             .limit(self.settings.request_retries)
@@ -507,15 +550,6 @@ impl EthereumAdapter {
         to: BlockNumber,
         filter: EthGetLogsFilter,
     ) -> DynTryFuture<'static, Vec<alloy::rpc::types::Log>, Error> {
-        // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
-        const TOO_MANY_LOGS_FINGERPRINTS: &[&str] = &[
-            "ServerError(-32005)",       // Infura
-            "503 Service Unavailable",   // Alchemy
-            "ServerError(-32000)",       // Alchemy
-            "Try with this block range", // zKSync era
-            "block range too large",     // Monad
-        ];
-
         if from > to {
             panic!(
                 "cannot produce a log stream on a backwards block range (from={}, to={})",
@@ -559,21 +593,14 @@ impl EthereumAdapter {
                         start,
                         end,
                         filter.cheap_clone(),
-                        TOO_MANY_LOGS_FINGERPRINTS,
                     )
                     .await;
 
                 match res {
                     Err(e) => {
-                        let string_err = e.to_string();
-
                         // If the step is already 0, the request is too heavy even for a single
                         // block. We hope this never happens, but if it does, make sure to error.
-                        if TOO_MANY_LOGS_FINGERPRINTS
-                            .iter()
-                            .any(|f| string_err.contains(f))
-                            && step > 0
-                        {
+                        if is_too_many_logs_timeout(&e) && step > 0 {
                             // The range size for a request is `step + 1`. So it's ok if the step
                             // goes down to 0, in that case we'll request one block at a time.
                             let new_step = step / 10;
@@ -581,6 +608,7 @@ impl EthereumAdapter {
                                                "new_size" => new_step + 1);
                             Ok(Some((vec![], (start, new_step))))
                         } else {
+                            let string_err = e.to_string();
                             warn!(logger, "Unexpected RPC error"; "error" => &string_err);
                             Err(anyhow!("{}", string_err))
                         }
@@ -2694,18 +2722,130 @@ mod tests {
 
     use super::{
         EthereumBlock, EthereumBlockFilter, EthereumBlockWithCalls,
-        block_trigger_types_from_intervals, check_block_receipt_support, parse_block_triggers,
+        block_trigger_types_from_intervals, check_block_receipt_support, is_too_many_logs_err,
+        is_too_many_logs_timeout, parse_block_triggers,
     };
     use graph::blockchain::BlockPtr;
     use graph::components::ethereum::AnyNetworkBare;
+    use graph::prelude::TimeoutError;
     use graph::prelude::alloy::primitives::{Address, B256, Bytes};
     use graph::prelude::alloy::providers::ProviderBuilder;
     use graph::prelude::alloy::providers::mock::Asserter;
+    use graph::prelude::alloy::rpc::json_rpc::ErrorPayload;
+    use graph::prelude::alloy::transports::{HttpError, RpcError, TransportErrorKind};
     use graph::prelude::{EthereumCall, LightEthereumBlock, create_minimal_block_for_test};
     use jsonrpc_core::serde_json::{self, Value};
     use std::collections::HashSet;
     use std::iter::FromIterator;
     use std::sync::Arc;
+
+    fn error_resp(code: i64, message: &'static str) -> RpcError<TransportErrorKind> {
+        RpcError::ErrorResp(ErrorPayload {
+            code,
+            message: message.into(),
+            data: None,
+        })
+    }
+
+    fn http_err(status: u16) -> RpcError<TransportErrorKind> {
+        RpcError::Transport(TransportErrorKind::HttpError(HttpError {
+            status,
+            body: String::new(),
+        }))
+    }
+
+    #[test]
+    fn too_many_logs_matches_range_and_result_caps() {
+        // Besu, `--rpc-max-logs-range`.
+        assert!(is_too_many_logs_err(&error_resp(
+            -32005,
+            "Requested range exceeds maximum RPC range limit"
+        )));
+        // Infura, and the geth/erigon/reth result cap.
+        assert!(is_too_many_logs_err(&error_resp(
+            -32005,
+            "query returned more than 10000 results"
+        )));
+        // Alchemy, `eth_getLogs` timeout.
+        assert!(is_too_many_logs_err(&error_resp(
+            -32000,
+            "Log response size exceeded. this block range should work: [0x1, 0x2]"
+        )));
+        // Alchemy shedding load.
+        assert!(is_too_many_logs_err(&http_err(503)));
+    }
+
+    #[test]
+    fn too_many_logs_matches_nonstandard_codes_by_message() {
+        // zkSync Era.
+        assert!(is_too_many_logs_err(&error_resp(
+            -32602,
+            "Query returned more than 10000 results. Try with this block range [0x1, 0x2]."
+        )));
+        // Monad.
+        assert!(is_too_many_logs_err(&error_resp(
+            -32602,
+            "block range too large"
+        )));
+        // A proxy that rewrites geth's code but keeps its message.
+        assert!(is_too_many_logs_err(&error_resp(
+            -32602,
+            "query returned more than 10000 results"
+        )));
+    }
+
+    /// Deliberately broader than a cap error; see `TOO_MANY_LOGS_CODES`.
+    #[test]
+    fn too_many_logs_matches_all_of_geths_catch_all_code() {
+        assert!(is_too_many_logs_err(&error_resp(
+            -32000,
+            "header not found"
+        )));
+    }
+
+    #[test]
+    fn too_many_logs_ignores_unrelated_errors() {
+        // Shrinking would not help, so these must surface as errors.
+        assert!(!is_too_many_logs_err(&error_resp(
+            -32602,
+            "invalid argument 0: json: cannot unmarshal"
+        )));
+        assert!(!is_too_many_logs_err(&error_resp(
+            -32601,
+            "the method eth_getLogs does not exist"
+        )));
+        assert!(!is_too_many_logs_err(&error_resp(-32603, "Internal error")));
+        assert!(!is_too_many_logs_err(&http_err(429)));
+        assert!(!is_too_many_logs_err(&RpcError::NullResp));
+    }
+
+    #[test]
+    fn too_many_logs_timeout_ignores_elapsed() {
+        assert!(is_too_many_logs_timeout(&TimeoutError::Inner(error_resp(
+            -32005,
+            "Requested range exceeds maximum RPC range limit"
+        ))));
+        assert!(!is_too_many_logs_timeout(&TimeoutError::Elapsed));
+    }
+
+    /// Regression guard: neither alloy rendering contains rust-web3's
+    /// `ServerError(-32005)`, and the two differ from each other.
+    #[test]
+    fn alloy_error_renderings_do_not_contain_web3_fingerprints() {
+        let err = error_resp(-32005, "Requested range exceeds maximum RPC range limit");
+        // What the `logs_with_sigs` retry predicate saw.
+        assert!(!err.to_string().contains("ServerError(-32005)"));
+        // What `log_stream` saw, via `TimeoutError`'s `Debug`.
+        let wrapped = TimeoutError::Inner(err);
+        assert!(!wrapped.to_string().contains("ServerError(-32005)"));
+
+        // Likewise, alloy renders a 503 by status and body, not reason phrase.
+        assert!(
+            !http_err(503)
+                .to_string()
+                .contains("503 Service Unavailable")
+        );
+    }
 
     #[test]
     fn parse_block_triggers_every_block() {
