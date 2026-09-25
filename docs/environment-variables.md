@@ -318,52 +318,26 @@ those.
 
 ## Log Store Configuration
 
-`graph-node` supports storing and querying subgraph logs through multiple backends: Elasticsearch, Loki, local files, or disabled.
+`graph-node` supports storing and querying subgraph logs through multiple backends
+(File, Elasticsearch, Loki, or disabled). **Log store settings are not controlled
+by environment variables.**
 
-**For complete log store documentation**, including detailed configuration, querying examples, and choosing the right backend, see the **[Log Store Guide](log-store.md)**.
+Configure them under a `[log_store]` section in the TOML config file passed with
+`--config` (or `GRAPH_NODE_CONFIG`). Example for local file-based logs:
 
-### Quick Reference
-
-**Backend selection:**
-- `GRAPH_LOG_STORE_BACKEND`: `disabled` (default), `elasticsearch`, `loki`, or `file`
-
-**Elasticsearch:**
-- `GRAPH_LOG_STORE_ELASTICSEARCH_URL`: Elasticsearch endpoint URL (required)
-- `GRAPH_LOG_STORE_ELASTICSEARCH_USER`: Username (optional)
-- `GRAPH_LOG_STORE_ELASTICSEARCH_PASSWORD`: Password (optional)
-- `GRAPH_LOG_STORE_ELASTICSEARCH_INDEX`: Index name (default: `subgraph`)
-
-**Loki:**
-- `GRAPH_LOG_STORE_LOKI_URL`: Loki endpoint URL (required)
-- `GRAPH_LOG_STORE_LOKI_TENANT_ID`: Tenant ID (optional)
-
-**File-based:**
-- `GRAPH_LOG_STORE_FILE_DIR`: Log directory (required)
-- `GRAPH_LOG_STORE_FILE_MAX_SIZE`: Max file size in bytes (default: 104857600 = 100MB)
-- `GRAPH_LOG_STORE_FILE_RETENTION_DAYS`: Retention period (default: 30)
-
-**Deprecated variables** (will be removed in future versions):
-- `GRAPH_ELASTICSEARCH_URL` → use `GRAPH_LOG_STORE_ELASTICSEARCH_URL`
-- `GRAPH_ELASTICSEARCH_USER` → use `GRAPH_LOG_STORE_ELASTICSEARCH_USER`
-- `GRAPH_ELASTICSEARCH_PASSWORD` → use `GRAPH_LOG_STORE_ELASTICSEARCH_PASSWORD`
-- `GRAPH_ELASTIC_SEARCH_INDEX` → use `GRAPH_LOG_STORE_ELASTICSEARCH_INDEX`
-
-### Example: File-based Logs for Local Development
-
-```bash
-mkdir -p ./graph-logs
-export GRAPH_LOG_STORE_BACKEND=file
-export GRAPH_LOG_STORE_FILE_DIR=./graph-logs
-
-graph-node \
-  --postgres-url postgresql://graph:pass@localhost/graph-node \
-  --ethereum-rpc mainnet:https://... \
-  --ipfs 127.0.0.1:5001
+```toml
+[log_store]
+backend = "file"
+directory = "./graph-logs"
+# retention_hours = 72   # optional; 0 keeps forever
 ```
 
-See the **[Log Store Guide](log-store.md)** for:
-- Detailed configuration for all backends
-- How log stores work internally
-- GraphQL query examples
-- Choosing the right backend for your use case
-- Best practices and troubleshooting
+Omit `[log_store]` (or set `backend = "disabled"`) to keep the default: logs still
+go to stdout/stderr, but are not stored for `_logs` GraphQL queries.
+
+The old `--elasticsearch-*` CLI flags and `ELASTICSEARCH_*` /
+`GRAPH_ELASTICSEARCH_*` environment variables were removed in favor of
+`[log_store]` ([#6278](https://github.com/graphprotocol/graph-node/pull/6278)).
+
+**For complete documentation** (backends, GraphQL examples, migration notes), see
+the **[Log Store Guide](log-store.md)**.

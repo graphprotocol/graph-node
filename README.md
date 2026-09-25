@@ -29,11 +29,11 @@ This is usually only needed for developers who want to contribute to `graph-node
 
 To build and run this project, you need to have the following installed on your system:
 
-- Rust (latest stable): Follow [How to install
-  Rust](https://rust-lang.org/tools/install/). Run `rustup install
-stable` in _this directory_ to make sure all required components are
-  installed. The `graph-node` code assumes that the latest available
-  `stable` compiler is used.
+- Rust **1.94.0** (pinned in [`rust-toolchain.toml`](./rust-toolchain.toml)):
+  Follow [How to install Rust](https://rust-lang.org/tools/install/).
+  From this directory, `rustup show` / `cargo` will pick up the pinned
+  toolchain automatically. Do not use a newer `stable` until the pin is
+  lifted — see the comment in `rust-toolchain.toml`.
 - PostgreSQL: [PostgreSQL Downloads](https://www.postgresql.org/download/) lists
   downloads for almost all operating systems.
   - For OSX: We highly recommend [Postgres.app](https://postgresapp.com/).
@@ -125,15 +125,22 @@ indexing and querying needs to be split across [multiple databases](./docs/confi
 - **Disabled**: No log storage (default)
 
 **Quick example (file-based logs for local development):**
+
+Add a `[log_store]` section to your TOML config (passed with `--config`;
+there are no `--log-store-*` CLI flags or `GRAPH_LOG_STORE_*` env vars):
+
+```toml
+[log_store]
+backend = "file"
+directory = "./graph-logs"
+# retention_hours = 72   # optional; 0 keeps forever
+```
+
 ```bash
 mkdir -p ./graph-logs
 
 cargo run -p graph-node --release -- \
-  --postgres-url $POSTGRES_URL \
-  --ethereum-rpc mainnet:archive:https://... \
-  --ipfs 127.0.0.1:5001 \
-  --log-store-backend file \
-  --log-store-file-dir ./graph-logs
+  --config ./graph-node.toml
 ```
 
 Logs are queried via GraphQL at `http://localhost:8000/graphql`:
