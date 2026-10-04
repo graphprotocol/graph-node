@@ -422,6 +422,12 @@ fn get_derived_pending_removal_and_creation() {
     );
 }
 
+/// A queued write that moves `x` to another parent must exclude `x`
+#[test]
+fn get_derived_pending_parent_change() {
+    derived_with_pending(vec![set_child("x", "p1", 5)], &["w"]);
+}
+
 #[test]
 fn restart() {
     run_test(|store, writable, _, deployment| async move {
