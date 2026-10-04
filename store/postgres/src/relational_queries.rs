@@ -2241,7 +2241,9 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
             // For truly gigantic `excluded_keys` lists, this will be slow, and
             // we should rewrite this query to use a CTE or a temp table to hold
             // the excluded keys.
-            out.push_sql(" != any(");
+            // `id <> all(..)` excludes every listed key; `id != any(..)`
+            // would hold for any row once two or more keys are listed
+            out.push_sql(" <> all(");
             self.excluded_keys.push_bind_param(&mut out)?;
             out.push_sql(") and ");
         }
