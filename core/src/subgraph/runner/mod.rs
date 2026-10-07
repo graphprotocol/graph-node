@@ -417,14 +417,13 @@ where
     ) -> Result<RunnerState<C>, SubgraphRunnerError> {
         debug!(self.logger, "Starting or restarting subgraph"; "reason" => ?reason);
 
-        // If restarting due to store error, try to restart the store
-        if matches!(reason, RestartReason::StoreError) {
-            let store = self.inputs.store.cheap_clone();
-            if let Some(store) = store.restart().await? {
-                let last_good_block = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
-                self.revert_state_to(last_good_block);
-                self.inputs = Arc::new(self.inputs.with_store(store));
-            }
+        // Whatever the reason: this is the only place a poisoned writer is replaced, and
+        // the retry after a non-deterministic error arrives as DynamicDataSourceCreated.
+        let store = self.inputs.store.cheap_clone();
+        if let Some(store) = store.restart().await? {
+            let last_good_block = store.block_ptr().map(|ptr| ptr.number).unwrap_or(0);
+            self.revert_state_to(last_good_block);
+            self.inputs = Arc::new(self.inputs.with_store(store));
         }
 
         let block_stream = self.start_block_stream().await?;
@@ -461,6 +460,22 @@ where
         Ok(self)
     }
 
+    /// Starting the block stream can fail while the store or chain is briefly unreachable.
+    /// Nothing restarts a runner that returns, so back off and try again instead.
+    async fn retry_after(&mut self, err: Error, next: RunnerState<C>) -> RunnerState<C> {
+        if self.is_canceled() {
+            return self.cancel().unwrap_or(RunnerState::Stopped {
+                reason: StopReason::Canceled,
+            });
+        }
+        self.metrics.subgraph.deployment_status.failed();
+        error!(self.logger, "Subgraph failed to start, retrying: {:#}", err;
+            "attempt" => self.state.backoff.attempt,
+            "retry_delay_s" => self.state.backoff.delay().as_secs());
+        self.state.backoff.sleep_async().await;
+        next
+    }
+
     pub async fn run(self) -> Result<(), SubgraphRunnerError> {
         self.run_inner(false).await.map(|_| ())
     }
@@ -492,7 +507,12 @@ where
 
         loop {
             self.runner_state = match std::mem::take(&mut self.runner_state) {
-                RunnerState::Initializing => self.initialize().await?,
+                RunnerState::Initializing => match self.initialize().await {
+                    Err(SubgraphRunnerError::Unknown(e)) => {
+                        self.retry_after(e, RunnerState::Initializing).await
+                    }
+                    res => res?,
+                },
 
                 RunnerState::Restarting { reason } => {
                     if break_on_restart && has_processed_blocks {
@@ -502,7 +522,13 @@ where
                             reason: StopReason::Canceled,
                         }
                     } else {
-                        self.restart(reason).await?
+                        match self.restart(reason).await {
+                            Err(SubgraphRunnerError::Unknown(e)) => {
+                                self.retry_after(e, RunnerState::Restarting { reason })
+                                    .await
+                            }
+                            res => res?,
+                        }
                     }
                 }
 
@@ -1313,11 +1339,19 @@ where
                 if self.state.should_try_unfail_non_deterministic {
                     // If the deployment head advanced, we can unfail
                     // the non-deterministic error (if there's any).
-                    let outcome = self
+                    let outcome = match self
                         .inputs
                         .store
                         .unfail_non_deterministic_error(&block_ptr)
-                        .await?;
+                        .await
+                    {
+                        Ok(outcome) => outcome,
+                        Err(e) => {
+                            warn!(self.logger, "Failed to unfail subgraph, will try again on the next block";
+                                "error" => format!("{:#}", e));
+                            UnfailOutcome::BehindErrorBlock
+                        }
+                    };
 
                     // Stop trying unless we're still behind the error block.
                     if outcome != UnfailOutcome::BehindErrorBlock {
@@ -1399,7 +1433,15 @@ where
                     let message = format!("{:#}", e).replace('\n', "\t");
                     let err = anyhow!("{}, code: {}", message, LogCode::SubgraphSyncingFailure);
 
-                    self.fail_subgraph(message, Some(block_ptr), true).await?;
+                    if let Err(e) = self.fail_subgraph(message, Some(block_ptr), true).await {
+                        // Unrecorded, the deployment would stay healthy and stopped. The
+                        // retry reaches the same error and records it then.
+                        error!(self.logger, "Failed to record deterministic error, retrying: {:#}", e;
+                            "attempt" => self.state.backoff.attempt,
+                            "retry_delay_s" => self.state.backoff.delay().as_secs());
+                        self.state.backoff.sleep_async().await;
+                        return Ok(Action::Restart);
+                    }
 
                     Err(err)
                 }
@@ -1426,8 +1468,15 @@ where
                     //
                     // If we don't do this check we would keep adding the same error to the
                     // database.
-                    if !self.inputs.store.health().await?.is_failed() {
-                        self.fail_subgraph(message, Some(block_ptr), false).await?;
+                    //
+                    // An error here usually shares the cause of the one being handled, and
+                    // must not end the runner: the retry will record it.
+                    let failed = self.inputs.store.health().await.map(|h| h.is_failed());
+                    if !matches!(failed, Ok(true))
+                        && let Err(e) = self.fail_subgraph(message, Some(block_ptr), false).await
+                    {
+                        warn!(self.logger, "Failed to record non-deterministic error";
+                            "error" => format!("{:#}", e));
                     }
 
                     // Sleep before restarting.
