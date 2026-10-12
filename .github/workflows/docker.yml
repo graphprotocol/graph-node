@@ -1,0 +1,130 @@
+name: Docker images
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      tag_name:
+        type: string
+        default: ""
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    name: Build and push images
+    # The Dockerfile compiles graph-node in release mode, which needs the
+    # cores and disk of a large runner.
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          ref: ${{ inputs.tag_name }}
+
+      # A release is told apart by tag_name, not the event: called from
+      # release.yml, the event is the caller's push to master. Same tags as the
+      # Cloud Build setup: the short SHA always, plus the release tag and
+      # `latest` for a release, or `nightly` for a master build. Docker Hub
+      # gets the same tags, and is skipped when its secrets are absent (forks).
+      - name: Compute build args and tags
+        id: meta
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          registries=(ghcr.io/graphprotocol)
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            registries+=(docker.io/graphprotocol)
+            echo "dockerhub=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=Docker Hub::Docker Hub push skipped, DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not set"
+            echo "dockerhub=false" >> "$GITHUB_OUTPUT"
+          fi
+          tags=("$(git rev-parse --short=7 HEAD)")
+          branch=""
+          if [ -n "$TAG_NAME" ]; then
+            tags+=("$TAG_NAME" latest)
+          else
+            branch="$GITHUB_REF_NAME"
+            [ "$GITHUB_REF" = refs/heads/master ] && tags+=(nightly)
+          fi
+          {
+            echo "sha=$(git rev-parse HEAD)"
+            echo "branch=$branch"
+            for image in graph-node graph-node-debug; do
+              echo "${image}<<EOF"
+              for registry in "${registries[@]}"; do
+                printf "${registry}/${image}:%s\n" "${tags[@]}"
+              done
+              echo EOF
+            done
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: steps.meta.outputs.dockerhub == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Both images are built by one builder, so the graph-node-debug build
+      # reuses the graph-node-build stage from its cache.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      # context is set because the action's default is a git context of
+      # github.sha, which is not the checked-out release tag. linux/amd64 only,
+      # as Cloud Build built.
+      - name: Build and push graph-node
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: graph-node
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.graph-node }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          build-args: |
+            COMMIT_SHA=${{ steps.meta.outputs.sha }}
+            REPO_NAME=${{ github.event.repository.name }}
+            BRANCH_NAME=${{ steps.meta.outputs.branch }}
+            TAG_NAME=${{ inputs.tag_name }}
+
+      - name: Build and push graph-node-debug
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: graph-node-debug
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.graph-node-debug }}
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          build-args: |
+            COMMIT_SHA=${{ steps.meta.outputs.sha }}
+            REPO_NAME=${{ github.event.repository.name }}
+            BRANCH_NAME=${{ steps.meta.outputs.branch }}
+            TAG_NAME=${{ inputs.tag_name }}
