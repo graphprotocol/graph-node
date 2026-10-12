@@ -487,7 +487,8 @@ fn create_block_with_triggers(
             parent_hash,
             timestamp,
             ..Default::default()
-        }),
+        })
+        .into(),
         total_difficulty: None,
         size: None,
     })
