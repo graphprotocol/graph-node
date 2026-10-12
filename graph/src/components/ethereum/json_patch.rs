@@ -5,9 +5,15 @@
 //! deserialization. These utilities patch the JSON to add `type: "0x0"` (legacy
 //! transaction) where missing.
 //!
-//! Also used by `PatchingHttp` for chains that don't support EIP-2718 typed transactions.
+//! Also used by `PatchingHttp` for chains that don't support EIP-2718 typed transactions,
+//! and for Celo blocks that are missing the `sha3Uncles` header field.
 
 use serde_json::Value;
+
+/// The value graph-node's rust-web3 fork used for a missing `sha3Uncles`.
+/// Kept as-is so that `ethereum.Block.unclesHash` stays the same for
+/// subgraphs indexed before and after the alloy migration.
+const ZERO_UNCLES_HASH: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 pub fn patch_type_field(obj: &mut Value) -> bool {
     if let Value::Object(map) = obj
@@ -28,6 +34,26 @@ pub fn patch_block_transactions(block: &mut Value) -> bool {
         patched |= patch_type_field(tx);
     }
     patched
+}
+
+/// Adds a zero `sha3Uncles` to a block that doesn't have one.
+///
+/// Celo blocks before the Gingerbread hard fork (block 21616000 on mainnet)
+/// have no uncles hash in their header, so RPC nodes omit the field. Alloy
+/// requires it. Only objects that look like a block (they have `parentHash`)
+/// are patched.
+pub fn patch_missing_uncles_hash(block: &mut Value) -> bool {
+    if let Value::Object(map) = block
+        && map.contains_key("parentHash")
+        && !map.contains_key("sha3Uncles")
+    {
+        map.insert(
+            "sha3Uncles".to_string(),
+            Value::String(ZERO_UNCLES_HASH.to_string()),
+        );
+        return true;
+    }
+    false
 }
 
 pub fn patch_receipts(result: &mut Value) -> bool {
@@ -119,5 +145,30 @@ mod tests {
     fn patch_receipts_handles_null() {
         let mut val = Value::Null;
         assert!(!patch_receipts(&mut val));
+    }
+
+    #[test]
+    fn patch_missing_uncles_hash_adds_zero_hash() {
+        let mut block = json!({"hash": "0x123", "parentHash": "0x456"});
+        assert!(patch_missing_uncles_hash(&mut block));
+        assert_eq!(block["sha3Uncles"], ZERO_UNCLES_HASH);
+    }
+
+    #[test]
+    fn patch_missing_uncles_hash_preserves_existing() {
+        let uncles = "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347";
+        let mut block = json!({"hash": "0x123", "parentHash": "0x456", "sha3Uncles": uncles});
+        assert!(!patch_missing_uncles_hash(&mut block));
+        assert_eq!(block["sha3Uncles"], uncles);
+    }
+
+    #[test]
+    fn patch_missing_uncles_hash_ignores_non_blocks() {
+        let mut receipt = json!({"status": "0x1"});
+        assert!(!patch_missing_uncles_hash(&mut receipt));
+        assert!(receipt.get("sha3Uncles").is_none());
+
+        let mut val = Value::Null;
+        assert!(!patch_missing_uncles_hash(&mut val));
     }
 }

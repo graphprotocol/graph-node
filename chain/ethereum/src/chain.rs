@@ -67,7 +67,7 @@ use graph::blockchain::block_stream::{
     TriggersAdapterWrapper,
 };
 /// Celo Mainnet: 42220, Testnet Alfajores: 44787, Testnet Baklava: 62320
-const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
+pub(crate) const CELO_CHAIN_IDS: [u64; 3] = [42220, 44787, 62320];
 
 /// Resolved per-chain settings. Populated at chain initialisation from the config file (with
 /// ENV_VAR fallbacks) and stored on [`Chain`] and [`crate::EthereumAdapter`].
