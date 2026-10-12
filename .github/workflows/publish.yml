@@ -1,0 +1,178 @@
+name: Publish
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        required: true
+        type: string
+      dry_run:
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag to publish (e.g. v0.46.0); with dry_run, any ref"
+        required: true
+        type: string
+      dry_run:
+        description: "Build and upload workflow artifacts only; leave the release untouched"
+        type: boolean
+        default: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.asset_suffix }}
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        # run_check marks the entries whose target is the runner's own architecture.
+        include:
+          - target: x86_64-unknown-linux-gnu
+            asset_suffix: linux-x86_64
+            run_check: true
+            file_type: "^ELF 64-bit LSB .*x86-64"
+          - target: aarch64-unknown-linux-gnu
+            asset_suffix: linux-aarch64
+            run_check: false
+            file_type: "^ELF 64-bit LSB .*ARM aarch64"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        with:
+          ref: ${{ inputs.tag_name }}
+
+      # rustflags is cleared because the action otherwise sets RUSTFLAGS to
+      # "-D warnings", which would let a new warning fail a release build.
+      - name: Setup rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@fb51252c7ba57d633bc668f941da052e410add48 # v1
+        with:
+          target: ${{ matrix.target }}
+          cache: false
+          rustflags: ""
+
+      # perl and make build the vendored OpenSSL; libprotobuf-dev carries the
+      # well-known protos the firehose build script imports.
+      - name: Install system packages
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            file make perl pkg-config protobuf-compiler libprotobuf-dev
+          if [ "${{ matrix.target }}" = aarch64-unknown-linux-gnu ]; then
+            sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+            echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+          fi
+
+      # gnd is built alongside only for its pq-sys `bundled` feature, which
+      # links libpq statically into graph-node too, so the binary needs no
+      # libpq on the host. gnd itself is released by gnd-binary-build.yml.
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} --bin graph-node --bin gnd
+
+      # A cross-built binary cannot run here, so its architecture is asserted instead.
+      - name: Stage binary
+        env:
+          FILE_TYPE: ${{ matrix.file_type }}
+          RUN_CHECK: ${{ matrix.run_check }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          binary="release/graph-node-${{ matrix.asset_suffix }}"
+          cp "target/${{ matrix.target }}/release/graph-node" "$binary"
+          chmod +x "$binary"
+          kind=$(file -b "$binary")
+          echo "$kind"
+          grep -qE "$FILE_TYPE" <<<"$kind" || { echo "unexpected binary type: $kind" >&2; exit 1; }
+          if [ "$RUN_CHECK" = true ]; then
+            "$binary" --help > /dev/null
+          fi
+          gzip "$binary"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: binaries-${{ matrix.asset_suffix }}
+          path: release/*.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    concurrency:
+      group: publish
+    steps:
+      - name: Resolve tag
+        id: v
+        env:
+          TAG: ${{ inputs.tag_name }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" != true ]; then
+            [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "tag_name must be vX.Y.Z, got: $TAG" >&2; exit 1; }
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Download binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          path: dist
+          pattern: binaries-*
+          merge-multiple: true
+
+      # graph-node for both Linux targets.
+      - name: Checksum binaries
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          archives=(*.gz)
+          [ "${#archives[@]}" -eq 2 ] || { echo "expected 2 archives, found ${#archives[@]}" >&2; exit 1; }
+          sha256sum -- "${archives[@]}" > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Upload release bundle
+        if: inputs.dry_run
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-bundle
+          path: dist/*
+
+      - name: Attach to release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ steps.v.outputs.tag }}" --repo "$GITHUB_REPOSITORY" --clobber \
+            dist/*.gz dist/SHA256SUMS
+
+      - name: Summary
+        env:
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: |
+          set -euo pipefail
+          {
+            if [ "$DRY_RUN" = true ]; then
+              echo "### Dry run for ${{ steps.v.outputs.tag }}: release left untouched"
+            else
+              echo "### graph-node ${{ steps.v.outputs.tag }}"
+              echo "https://github.com/${GITHUB_REPOSITORY}/releases/tag/${{ steps.v.outputs.tag }}"
+            fi
+            echo '```'
+            cat dist/SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
