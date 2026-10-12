@@ -1,0 +1,56 @@
+name: CI image
+
+# Builds an image graph-node's CI jobs can run in, from
+# .github/ci-image/Dockerfile (rust's slim image plus the packages the jobs
+# need), for amd64 and arm64, and pushes it to ghcr.io as
+# <RUST_VERSION>-<REVISION>, the tag a CI job pins as its container image.
+# Each push to master that touches the image rebuilds that tag, so a
+# Dockerfile change that must not replace a pinned image bumps REVISION.
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/ci-image/**"
+      - ".github/workflows/ci-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/graphprotocol/graph-node-ci
+  # Must match the channel in rust-toolchain.toml.
+  RUST_VERSION: "1.94.0"
+  REVISION: "1"
+
+jobs:
+  build:
+    name: Build CI image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+
+      - name: Set up buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .github/ci-image
+          platforms: linux/amd64,linux/arm64
+          build-args: RUST_VERSION=${{ env.RUST_VERSION }}
+          tags: ${{ env.IMAGE }}:${{ env.RUST_VERSION }}-${{ env.REVISION }}
+          push: true
