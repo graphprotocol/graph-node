@@ -50,12 +50,18 @@ detailed instructions about how to run the sharded integrations tests.
 
 ## Commit messages and pull requests
 
-We use the following format for commit messages:
-`{crate-name}: {Brief description of changes}`, for example: `store: Support 'Or' filters`.
+We use [Conventional Commits](https://www.conventionalcommits.org) with
+the crate as scope: `{type}({crate-name}): {Brief description of changes}`,
+for example: `feat(store): Support 'Or' filters`. The types are `feat`,
+`fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore` and
+`revert`; mark breaking changes with `!` (`feat(store)!: ...`).
 
-If multiple crates are being changed list them all like this: `core,
-graphql: Add event source to store` If all (or most) crates are affected
-by the commit, start the message with `all: `.
+If multiple crates are being changed list them all like this:
+`feat(core,graphql): Add event source to store`. If all (or most) crates
+are affected by the commit, use the scope `all`.
+
+release-please derives versions and the changelog from the commits on
+master, so every commit that lands there must follow this format.
 
 The body of the message can be terse, with just enough information to
 explain what the commit does overall. In a lot of cases, more extensive
