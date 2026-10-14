@@ -1,8 +1,5 @@
 use alloy::{
-    network::{
-        AnyHeader, AnyReceiptEnvelope, AnyRpcHeader, AnyTxEnvelope, ReceiptResponse,
-        TransactionResponse,
-    },
+    network::{AnyReceiptEnvelope, AnyTxEnvelope, ReceiptResponse, TransactionResponse},
     primitives::{Address, B256, Bytes, U256},
     rpc::types::{
         Block, Header, Log, Transaction, TransactionReceipt,
@@ -17,10 +14,11 @@ use crate::{
     prelude::BlockNumber,
 };
 
+use super::header::LenientHeader;
 use super::json_patch;
 
 pub type AnyTransaction = Transaction<AnyTxEnvelope>;
-pub type AnyBlock = Block<AnyTransaction, Header<AnyHeader>>;
+pub type AnyBlock = Block<AnyTransaction, Header<LenientHeader>>;
 /// Like alloy's `AnyTransactionReceipt` but without the `WithOtherFields` wrapper,
 /// avoiding `#[serde(flatten)]` overhead during deserialization.
 pub type AnyTransactionReceiptBare = TransactionReceipt<AnyReceiptEnvelope<Log>>;
@@ -34,7 +32,7 @@ impl Default for LightEthereumBlock {
         use alloy::rpc::types::BlockTransactions;
 
         Self(Block {
-            header: AnyRpcHeader::default(),
+            header: Default::default(),
             transactions: BlockTransactions::Full(vec![]),
             uncles: vec![],
             withdrawals: None,
