@@ -40,6 +40,7 @@ use graph::prelude::{
         },
         transports::{RpcError, TransportErrorKind},
     },
+    serde_json,
     tokio::try_join,
 };
 use graph::slog::o;
@@ -165,9 +166,11 @@ const TOO_MANY_LOGS_MESSAGES: &[&str] = &[
     "log response size exceeded",                      // Alchemy
     "try with this block range",                       // zkSync Era
     "block range too large",                           // Monad
+    "block range is too large",                        // Ankr
     "response too large",                              // geth
     "eth_getlogs and eth_newfilter are limited to",    // QuickNode
     "block-range limit exceeded",                      // Dwellir
+    "block range exceeds the limit",                   // GetBlock
 ];
 
 /// Whether an `eth_getLogs` request failed because it exceeded the provider's
@@ -177,6 +180,18 @@ const TOO_MANY_LOGS_MESSAGES: &[&str] = &[
 fn is_too_many_logs_err(err: &RpcError<TransportErrorKind>) -> bool {
     match err {
         RpcError::ErrorResp(payload) => is_too_many_logs_message(&payload.message),
+        // Some providers send a cap as an HTTP error with the reason in the
+        // body, e.g. Ankr (413) and GetBlock (403). Only the message is
+        // consulted: a code in an error body is as likely a rate limit.
+        RpcError::Transport(TransportErrorKind::HttpError(http_err)) => {
+            matches!(http_err.status, 400 | 403 | 413 | 503)
+                && error_message_in_body(&http_err.body)
+                    .is_some_and(|m| is_too_many_logs_message(&m))
+        }
+        // A 200 with an error object alloy could not parse, e.g. missing `id`.
+        RpcError::DeserError { text, .. } => {
+            error_message_in_body(text).is_some_and(|m| is_too_many_logs_message(&m))
+        }
         _ => false,
     }
 }
@@ -184,6 +199,21 @@ fn is_too_many_logs_err(err: &RpcError<TransportErrorKind>) -> bool {
 fn is_too_many_logs_message(message: &str) -> bool {
     let message = message.to_lowercase();
     TOO_MANY_LOGS_MESSAGES.iter().any(|m| message.contains(m))
+}
+
+/// Extracts the error message from a raw response body: a bare JSON-RPC error
+/// object, `{"error": {"message": ..}}`, or `{"error": ".."}`.
+fn error_message_in_body(body: &str) -> Option<String> {
+    let body: serde_json::Value = serde_json::from_str(body).ok()?;
+    let error = if body.get("code").is_some() {
+        &body
+    } else {
+        body.get("error")?
+    };
+    error
+        .as_str()
+        .or_else(|| error.get("message")?.as_str())
+        .map(str::to_owned)
 }
 
 impl EthereumAdapter {
@@ -2738,6 +2768,13 @@ mod tests {
         })
     }
 
+    fn deser_err(text: &str) -> RpcError<TransportErrorKind> {
+        RpcError::DeserError {
+            err: serde_json::from_str::<()>("").unwrap_err(),
+            text: text.to_string(),
+        }
+    }
+
     fn http_err(status: u16, body: &str) -> RpcError<TransportErrorKind> {
         RpcError::Transport(TransportErrorKind::HttpError(HttpError {
             status,
@@ -2842,10 +2879,77 @@ mod tests {
             http_err(429, ""),
             http_err(500, ""),
             http_err(503, ""),
+            http_err(
+                503,
+                r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32055,"message":"No nodes available"}}"#,
+            ),
             RpcError::NullResp,
         ];
         for err in unrelated {
             assert!(!is_too_many_logs_err(&err), "{err:?}");
+        }
+    }
+
+    /// A cap in an HTTP error body, or in a 200 body alloy could not parse.
+    #[test]
+    fn too_many_logs_caps_buried_in_bodies_are_recognised() {
+        let full =
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"block range too large"}}"#;
+        let bare = r#"{"code":-32005,"message":"query returned more than 10000 results"}"#;
+        // Ankr.
+        let ankr = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32062,"message":"Block range is too large","data":{"trace_id":"4b1f"}}}"#;
+        assert!(is_too_many_logs_err(&http_err(400, full)));
+        assert!(is_too_many_logs_err(&http_err(413, ankr)));
+        assert!(is_too_many_logs_err(&http_err(503, full)));
+        assert!(is_too_many_logs_err(&deser_err(full)));
+        assert!(is_too_many_logs_err(&deser_err(bare)));
+        // GetBlock; its docs give two spellings of the message.
+        for body in [
+            r#"{"error":"Requested block range exceeds the limits (1500 blocks)"}"#,
+            r#"{"error":"Request block range exceeds the limit(1500 blocks)"}"#,
+        ] {
+            assert!(is_too_many_logs_err(&http_err(403, body)), "{body}");
+        }
+
+        // Bodies that are not a cap, or not a JSON-RPC error at all.
+        assert!(!is_too_many_logs_err(&http_err(
+            400,
+            r#"{"error":{"code":-32602,"message":"invalid block range params"}}"#
+        )));
+        assert!(!is_too_many_logs_err(&http_err(
+            400,
+            "<html>Bad Request</html>"
+        )));
+        assert!(!is_too_many_logs_err(&deser_err("not json")));
+    }
+
+    /// Infura rate-limits with a 429 and -32005, the code of its result cap.
+    #[test]
+    fn too_many_logs_bodies_never_match_by_code() {
+        let rate_limited = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32005,"message":"project ID request rate exceeded","data":{"backoff_seconds":30}}}"#;
+        let backend =
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"header not found"}}"#;
+        for status in [400, 403, 413, 429, 500, 502, 503] {
+            assert!(
+                !is_too_many_logs_err(&http_err(status, rate_limited)),
+                "{status}"
+            );
+            assert!(
+                !is_too_many_logs_err(&http_err(status, backend)),
+                "{status}"
+            );
+        }
+        assert!(!is_too_many_logs_err(&deser_err(rate_limited)));
+        assert!(!is_too_many_logs_err(&deser_err(backend)));
+    }
+
+    /// Bodies are not read on statuses that are never caps.
+    #[test]
+    fn too_many_logs_bodies_are_only_read_on_cap_statuses() {
+        let cap =
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"block range too large"}}"#;
+        for status in [401, 429, 500, 502, 504] {
+            assert!(!is_too_many_logs_err(&http_err(status, cap)), "{status}");
         }
     }
 
