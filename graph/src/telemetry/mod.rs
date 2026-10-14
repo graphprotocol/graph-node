@@ -405,56 +405,13 @@ pub fn inject(ctx: &Context, headers: &mut http::HeaderMap) {
 
 #[cfg(test)]
 mod tests {
-    use std::process::Command;
-
     use http::{HeaderMap, HeaderValue};
 
-    use super::testing::install;
+    use super::testing::{CHILD_MARKER, in_subprocess, install};
     use super::*;
 
     const TRACEPARENT_SAMPLED: &str = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
     const TRACEPARENT_UNSAMPLED: &str = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
-
-    /// Marks a child process spawned by `in_subprocess`.
-    const CHILD_MARKER: &str = "GRAPH_TELEMETRY_TEST_CHILD";
-
-    /// Run `body` in a fresh process with every `OTEL_*` and `GRAPH_OTEL_*`
-    /// variable unset and `env` set. The tracer provider and the enabled
-    /// flag are process-global, so this is the only way to observe the
-    /// disabled state, or to install a real provider, without racing other
-    /// tests in this binary.
-    ///
-    /// The parent re-executes the test binary for the single test named
-    /// `test_name` with `CHILD_MARKER` set; the child sees the marker and
-    /// runs `body` instead of spawning again. The child never mutates its
-    /// environment, so `body` may start threads freely.
-    fn in_subprocess(test_name: &str, env: &[(&str, &str)], body: impl FnOnce()) {
-        if std::env::var_os(CHILD_MARKER).is_some() {
-            body();
-            return;
-        }
-
-        let exe = std::env::current_exe().unwrap();
-        let mut command = Command::new(exe);
-        command.args(["--exact", test_name, "--test-threads=1"]);
-        for (name, _) in std::env::vars() {
-            if name.starts_with("OTEL_") || name.starts_with("GRAPH_OTEL_") {
-                command.env_remove(name);
-            }
-        }
-        command.env(CHILD_MARKER, "1");
-        command.envs(env.iter().copied());
-
-        let output = command.output().unwrap();
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success(),
-            "{test_name} failed in subprocess\n--- stdout\n{stdout}\n--- stderr\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        // Make sure the subprocess actually ran the test.
-        assert!(stdout.contains("1 passed"), "{stdout}");
-    }
 
     #[test]
     fn env_defaults_to_off() {

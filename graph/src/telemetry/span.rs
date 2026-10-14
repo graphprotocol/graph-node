@@ -92,22 +92,22 @@ impl Span {
     }
 
     /// Start a new trace.
-    pub fn root(name: &'static str) -> Span {
-        Self::start(name, None, &[])
+    pub fn root(name: impl Into<Cow<'static, str>>) -> Span {
+        Self::start(name.into(), None, &[])
     }
 
     /// Start a new trace that points at other traces without being part
     /// of them, for work that was caused by several of them.
-    pub fn root_with_links(name: &'static str, links: &[Context]) -> Span {
-        Self::start(name, None, links)
+    pub fn root_with_links(name: impl Into<Cow<'static, str>>, links: &[Context]) -> Span {
+        Self::start(name.into(), None, links)
     }
 
     /// Start a span in the trace of `parent`.
-    pub fn child(name: &'static str, parent: &Context) -> Span {
-        Self::start(name, Some(parent), &[])
+    pub fn child(name: impl Into<Cow<'static, str>>, parent: &Context) -> Span {
+        Self::start(name.into(), Some(parent), &[])
     }
 
-    fn start(name: &'static str, parent: Option<&Context>, links: &[Context]) -> Span {
+    fn start(name: Cow<'static, str>, parent: Option<&Context>, links: &[Context]) -> Span {
         if !enabled() {
             return Span(None);
         }
