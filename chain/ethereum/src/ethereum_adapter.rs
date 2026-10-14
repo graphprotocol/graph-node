@@ -151,6 +151,41 @@ impl std::ops::Deref for ProviderLogger {
     }
 }
 
+/// Lowercased fragments of the messages providers return when an
+/// `eth_getLogs` request exceeds a block-range or result cap. Caps are matched
+/// by message because most providers report them under a generic code. Add an
+/// entry only with a captured response.
+const TOO_MANY_LOGS_MESSAGES: &[&str] = &[
+    "exceed maximum block range",                      // geth
+    "query exceeds max block range",                   // reth
+    "query exceeds max results",                       // reth
+    "requested range exceeds maximum rpc range limit", // Besu
+    "query returned more than",                        // Infura
+    "this block range should work",                    // Alchemy
+    "log response size exceeded",                      // Alchemy
+    "try with this block range",                       // zkSync Era
+    "block range too large",                           // Monad
+    "response too large",                              // geth
+    "eth_getlogs and eth_newfilter are limited to",    // QuickNode
+    "block-range limit exceeded",                      // Dwellir
+];
+
+/// Whether an `eth_getLogs` request failed because it exceeded the provider's
+/// cap. Such a request is not retried as-is; `log_stream` shrinks the range
+/// instead. Anything else is retried and then surfaced, and the polling block
+/// stream lowers its own range in response.
+fn is_too_many_logs_err(err: &RpcError<TransportErrorKind>) -> bool {
+    match err {
+        RpcError::ErrorResp(payload) => is_too_many_logs_message(&payload.message),
+        _ => false,
+    }
+}
+
+fn is_too_many_logs_message(message: &str) -> bool {
+    let message = message.to_lowercase();
+    TOO_MANY_LOGS_MESSAGES.iter().any(|m| message.contains(m))
+}
+
 impl EthereumAdapter {
     pub fn is_call_only(&self) -> bool {
         self.call_only
@@ -395,7 +430,6 @@ impl EthereumAdapter {
         from: BlockNumber,
         to: BlockNumber,
         filter: Arc<EthGetLogsFilter>,
-        too_many_logs_fingerprints: &'static [&'static str],
     ) -> Result<
         Vec<alloy::rpc::types::Log>,
         TimeoutError<RpcError<alloy::transports::TransportErrorKind>>,
@@ -407,11 +441,9 @@ impl EthereumAdapter {
         retry(retry_log_message, &logger)
             .redact_log_urls(true)
             .when(
-                move |res: &Result<_, RpcError<alloy::transports::TransportErrorKind>>| match res {
+                |res: &Result<_, RpcError<alloy::transports::TransportErrorKind>>| match res {
                     Ok(_) => false,
-                    Err(e) => !too_many_logs_fingerprints
-                        .iter()
-                        .any(|f| e.to_string().contains(f)),
+                    Err(e) => !is_too_many_logs_err(e),
                 },
             )
             .limit(self.settings.request_retries)
@@ -507,15 +539,6 @@ impl EthereumAdapter {
         to: BlockNumber,
         filter: EthGetLogsFilter,
     ) -> DynTryFuture<'static, Vec<alloy::rpc::types::Log>, Error> {
-        // Codes returned by Ethereum node providers if an eth_getLogs request is too heavy.
-        const TOO_MANY_LOGS_FINGERPRINTS: &[&str] = &[
-            "ServerError(-32005)",       // Infura
-            "503 Service Unavailable",   // Alchemy
-            "ServerError(-32000)",       // Alchemy
-            "Try with this block range", // zKSync era
-            "block range too large",     // Monad
-        ];
-
         if from > to {
             panic!(
                 "cannot produce a log stream on a backwards block range (from={}, to={})",
@@ -559,21 +582,17 @@ impl EthereumAdapter {
                         start,
                         end,
                         filter.cheap_clone(),
-                        TOO_MANY_LOGS_FINGERPRINTS,
                     )
                     .await;
 
                 match res {
                     Err(e) => {
-                        let string_err = e.to_string();
-
                         // If the step is already 0, the request is too heavy even for a single
                         // block. We hope this never happens, but if it does, make sure to error.
-                        if TOO_MANY_LOGS_FINGERPRINTS
-                            .iter()
-                            .any(|f| string_err.contains(f))
-                            && step > 0
-                        {
+                        // A client-side timeout (`Elapsed`) never shrinks the range.
+                        let too_many_logs =
+                            matches!(&e, TimeoutError::Inner(e) if is_too_many_logs_err(e));
+                        if too_many_logs && step > 0 {
                             // The range size for a request is `step + 1`. So it's ok if the step
                             // goes down to 0, in that case we'll request one block at a time.
                             let new_step = step / 10;
@@ -581,6 +600,7 @@ impl EthereumAdapter {
                                                "new_size" => new_step + 1);
                             Ok(Some((vec![], (start, new_step))))
                         } else {
+                            let string_err = e.to_string();
                             warn!(logger, "Unexpected RPC error"; "error" => &string_err);
                             Err(anyhow!("{}", string_err))
                         }
@@ -2693,19 +2713,141 @@ mod tests {
     use crate::trigger::{EthereumBlockTriggerType, EthereumTrigger};
 
     use super::{
-        EthereumBlock, EthereumBlockFilter, EthereumBlockWithCalls,
-        block_trigger_types_from_intervals, check_block_receipt_support, parse_block_triggers,
+        EthereumBlock, EthereumBlockFilter, EthereumBlockWithCalls, TOO_MANY_LOGS_MESSAGES,
+        block_trigger_types_from_intervals, check_block_receipt_support, is_too_many_logs_err,
+        parse_block_triggers,
     };
     use graph::blockchain::BlockPtr;
     use graph::components::ethereum::AnyNetworkBare;
     use graph::prelude::alloy::primitives::{Address, B256, Bytes};
     use graph::prelude::alloy::providers::ProviderBuilder;
     use graph::prelude::alloy::providers::mock::Asserter;
+    use graph::prelude::alloy::rpc::json_rpc::ErrorPayload;
+    use graph::prelude::alloy::transports::{HttpError, RpcError, TransportErrorKind};
+    use graph::prelude::serde_json::{self, Value};
     use graph::prelude::{EthereumCall, LightEthereumBlock, create_minimal_block_for_test};
-    use jsonrpc_core::serde_json::{self, Value};
     use std::collections::HashSet;
     use std::iter::FromIterator;
     use std::sync::Arc;
+
+    fn error_resp(code: i64, message: &str) -> RpcError<TransportErrorKind> {
+        RpcError::ErrorResp(ErrorPayload {
+            code,
+            message: message.to_string().into(),
+            data: None,
+        })
+    }
+
+    fn http_err(status: u16, body: &str) -> RpcError<TransportErrorKind> {
+        RpcError::Transport(TransportErrorKind::HttpError(HttpError {
+            status,
+            body: body.to_string(),
+        }))
+    }
+
+    /// Each fragment must match on its own, under a code that never matches.
+    #[test]
+    fn every_too_many_logs_message_is_load_bearing() {
+        for fragment in TOO_MANY_LOGS_MESSAGES {
+            assert_eq!(
+                fragment.to_lowercase(),
+                *fragment,
+                "fragment {fragment:?} has uppercase characters and can never match"
+            );
+            assert!(
+                is_too_many_logs_err(&error_resp(-32602, fragment)),
+                "fragment {fragment:?} did not match on its own"
+            );
+        }
+    }
+
+    /// Verbatim cap messages, under the code each provider uses.
+    #[test]
+    fn too_many_logs_caps_are_recognised_by_message() {
+        let caps = [
+            // geth, since ethereum/go-ethereum#34647.
+            (-32602, "exceed maximum block range 5"),
+            // reth, `EthFilterError::QueryExceedsMaxBlocks` / `QueryExceedsMaxResults`.
+            (-32602, "query exceeds max block range 100000"),
+            (
+                -32602,
+                "query exceeds max results 20000, retry with the range 100-200",
+            ),
+            // Besu, `--rpc-max-logs-range`.
+            (-32005, "Requested range exceeds maximum RPC range limit"),
+            // Infura.
+            (-32005, "query returned more than 10000 results"),
+            // Alchemy free tier.
+            (
+                -32600,
+                "Under the Free tier plan, you can make eth_getLogs requests with \
+                 up to a 10 block range. Based on your parameters, this block range \
+                 should work: [0x18eada4, 0x18eadad]. Upgrade to PAYG for expanded \
+                 block range.",
+            ),
+            // Alchemy paid tier.
+            (
+                -32000,
+                "Log response size exceeded. this block range should work: [0x1, 0x2]",
+            ),
+            // zkSync Era. Mixed case, so also covers the lowercasing.
+            (
+                -32602,
+                "Query returned more than 10000 results. Try with this block range [0x1, 0x2].",
+            ),
+            // Monad.
+            (-32602, "block range too large"),
+            // geth, `rpc/errors.go`.
+            (-32003, "response too large"),
+            // QuickNode.
+            (
+                -32602,
+                "eth_getLogs and eth_newFilter are limited to a 10,000 blocks range",
+            ),
+            // Dwellir.
+            (
+                -32005,
+                "Plan block-range limit exceeded, or a stricter native limit",
+            ),
+        ];
+        for (code, message) in caps {
+            assert!(
+                is_too_many_logs_err(&error_resp(code, message)),
+                "{message:?}"
+            );
+        }
+    }
+
+    /// Codes alone never match, including the ones the old fingerprints
+    /// matched on: providers use them for transient and unrelated failures too.
+    #[test]
+    fn too_many_logs_ignores_codes_without_a_cap_message() {
+        let unrelated = [
+            error_resp(-32000, "header not found"),
+            error_resp(-32002, "request timed out"),
+            error_resp(-32003, ""),
+            error_resp(-32005, "Filter address count exceeds limit"),
+            error_resp(-32602, "invalid block range params"),
+            error_resp(
+                -32602,
+                "block range extends beyond current head block: requested 500, head 100",
+            ),
+            error_resp(-32602, "Invalid params"),
+            error_resp(
+                -32600,
+                "Unsupported method: eth_notARealMethod on ETH_MAINNET",
+            ),
+            error_resp(-32601, "the method eth_getLogs does not exist"),
+            error_resp(-32603, "Internal error"),
+            http_err(429, ""),
+            http_err(500, ""),
+            http_err(503, ""),
+            RpcError::NullResp,
+        ];
+        for err in unrelated {
+            assert!(!is_too_many_logs_err(&err), "{err:?}");
+        }
+    }
 
     #[test]
     fn parse_block_triggers_every_block() {
