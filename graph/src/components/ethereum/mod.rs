@@ -1,7 +1,9 @@
+mod header;
 pub mod json_patch;
 mod network;
 mod types;
 
+pub use self::header::LenientHeader;
 pub use self::network::AnyNetworkBare;
 pub use self::types::{
     AnyBlock, AnyTransaction, AnyTransactionReceiptBare, CachedBlock, EthereumBlock,

@@ -1,9 +1,9 @@
 use alloy::consensus::BlobTransactionSidecarVariant;
 use alloy::eips::eip7702::SignedAuthorization;
 use alloy::network::{
-    AnyHeader, AnyReceiptEnvelope, AnyRpcTransaction, AnyTxEnvelope, AnyTxType,
-    AnyTypedTransaction, BuildResult, Network, NetworkTransactionBuilder, NetworkWallet,
-    TransactionBuilder, TransactionBuilder4844, TransactionBuilder7702, TransactionBuilderError,
+    AnyReceiptEnvelope, AnyRpcTransaction, AnyTxEnvelope, AnyTxType, AnyTypedTransaction,
+    BuildResult, Network, NetworkTransactionBuilder, NetworkWallet, TransactionBuilder,
+    TransactionBuilder4844, TransactionBuilder7702, TransactionBuilderError,
 };
 use alloy::primitives::{Address, Bytes, ChainId, TxKind, U256};
 use alloy::providers::fillers::{
@@ -17,6 +17,7 @@ use alloy::serde::WithOtherFields;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 
+use super::header::LenientHeader;
 use super::types::AnyTransaction;
 
 /// Like alloy's [`AnyNetwork`] but without [`WithOtherFields`] on response types.
@@ -95,13 +96,13 @@ impl Network for AnyNetworkBare {
     type TxEnvelope = AnyTxEnvelope;
     type UnsignedTx = AnyTypedTransaction;
     type ReceiptEnvelope = AnyReceiptEnvelope;
-    type Header = AnyHeader;
+    type Header = LenientHeader;
 
     type TransactionRequest = AnyTransactionRequest;
     type TransactionResponse = AnyTransaction;
     type ReceiptResponse = TransactionReceipt<AnyReceiptEnvelope<Log>>;
-    type HeaderResponse = Header<AnyHeader>;
-    type BlockResponse = Block<AnyTransaction, Header<AnyHeader>>;
+    type HeaderResponse = Header<LenientHeader>;
+    type BlockResponse = Block<AnyTransaction, Header<LenientHeader>>;
 }
 
 impl RecommendedFillers for AnyNetworkBare {

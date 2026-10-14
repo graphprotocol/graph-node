@@ -117,7 +117,7 @@ impl FakeBlock {
 
         let rpc_header = Header {
             hash: block_hash,
-            inner: graph::components::ethereum::AnyHeader::from(consensus_header),
+            inner: graph::components::ethereum::AnyHeader::from(consensus_header).into(),
             total_difficulty: None,
             size: None,
         };

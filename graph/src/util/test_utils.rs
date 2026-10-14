@@ -18,7 +18,7 @@ pub fn create_minimal_block_for_test(block_number: u64, block_hash: B256) -> Any
     // Create RPC header with the specific hash and wrap in AnyHeader
     let rpc_header = Header {
         hash: block_hash,
-        inner: AnyHeader::from(consensus_header),
+        inner: AnyHeader::from(consensus_header).into(),
         total_difficulty: None,
         size: None,
     };
