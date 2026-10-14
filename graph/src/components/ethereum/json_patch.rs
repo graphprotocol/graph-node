@@ -6,7 +6,8 @@
 //! transaction) where missing.
 //!
 //! Also used by `PatchingHttp` for chains that don't support EIP-2718 typed transactions,
-//! and for Celo blocks that are missing the `sha3Uncles` header field.
+//! and for blocks that are missing the `sha3Uncles` header field, such as Celo
+//! blocks before the Gingerbread hard fork.
 
 use serde_json::Value;
 

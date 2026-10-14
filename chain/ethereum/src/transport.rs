@@ -187,15 +187,14 @@ impl Patches {
 /// HTTP transport that patches responses that alloy can't deserialize:
 /// - When `no_eip2718` is set, adds a missing `type` field to receipts, for
 ///   chains that don't support EIP-2718 (typed transactions).
-/// - On Celo, adds a missing `sha3Uncles` field to blocks. Celo blocks before
-///   the Gingerbread hard fork don't have it. The chain ID is fetched with
-///   `eth_chainId` the first time a block is requested, and then cached.
+/// - Adds a missing `sha3Uncles` field to blocks, on every chain. Celo blocks
+///   before the Gingerbread hard fork don't have it. Responses that already
+///   contain the field are not parsed.
 #[derive(Clone)]
 pub struct PatchingHttp {
     client: reqwest::Client,
     url: Url,
     no_eip2718: bool,
-    is_celo: Arc<tokio::sync::OnceCell<bool>>,
 }
 
 impl PatchingHttp {
@@ -204,7 +203,6 @@ impl PatchingHttp {
             client,
             url,
             no_eip2718,
-            is_celo: Arc::new(tokio::sync::OnceCell::new()),
         }
     }
 
@@ -223,40 +221,11 @@ impl PatchingHttp {
         }
     }
 
-    fn parse_chain_id(response: &Value) -> Option<u64> {
-        let hex = response.get("result")?.as_str()?;
-        u64::from_str_radix(hex.strip_prefix("0x")?, 16).ok()
-    }
-
-    /// Returns whether the endpoint serves a Celo chain. If the chain ID
-    /// can't be fetched, returns `false` and tries again on the next call.
-    async fn is_celo(
-        client: &reqwest::Client,
-        url: &Url,
-        is_celo: &tokio::sync::OnceCell<bool>,
-    ) -> bool {
-        is_celo
-            .get_or_try_init(|| async {
-                let request = serde_json::json!({
-                    "jsonrpc": "2.0",
-                    "id": 0,
-                    "method": "eth_chainId",
-                    "params": [],
-                });
-                let resp = client
-                    .post(url.clone())
-                    .json(&request)
-                    .send()
-                    .await
-                    .map_err(|_| ())?;
-                let body = resp.bytes().await.map_err(|_| ())?;
-                let json: Value = serde_json::from_slice(&body).map_err(|_| ())?;
-                let chain_id = Self::parse_chain_id(&json).ok_or(())?;
-                Ok::<_, ()>(crate::chain::CELO_CHAIN_IDS.contains(&chain_id))
-            })
-            .await
-            .copied()
-            .unwrap_or(false)
+    /// Whether a response may contain a block without `sha3Uncles`. This
+    /// is a text search, so that block responses that have the field, which
+    /// is all of them on most chains, are not parsed twice.
+    fn may_lack_uncles_hash(body: &[u8]) -> bool {
+        !std::str::from_utf8(body).is_ok_and(|body| body.contains(r#""sha3Uncles""#))
     }
 
     fn patch_rpc_response(response: &mut Value, patches: Patches) -> bool {
@@ -308,17 +277,11 @@ impl Service<RequestPacket> for PatchingHttp {
     fn call(&mut self, request: RequestPacket) -> Self::Future {
         let client = self.client.clone();
         let url = self.url.clone();
-        let is_celo = self.is_celo.clone();
 
         let receipts = self.no_eip2718 && Self::request_has(&request, Self::is_receipt_method);
         let blocks = Self::request_has(&request, Self::is_block_method);
 
         Box::pin(async move {
-            let patches = Patches {
-                receipts,
-                uncles_hash: blocks && Self::is_celo(&client, &url, &is_celo).await,
-            };
-
             let resp = client
                 .post(url)
                 .json(&request)
@@ -337,6 +300,14 @@ impl Service<RequestPacket> for PatchingHttp {
                 ));
             }
 
+            let patches = Patches {
+                receipts,
+                // In a batch, one block having the field says nothing about
+                // the others, so a batch is always parsed.
+                uncles_hash: blocks
+                    && (matches!(request, RequestPacket::Batch(_))
+                        || Self::may_lack_uncles_hash(&body)),
+            };
             if patches.any()
                 && let Some(patched) = Self::patch_response(&body, patches)
             {
@@ -415,13 +386,12 @@ mod tests {
     }
 
     #[test]
-    fn parse_chain_id() {
-        let celo: Value = serde_json::from_str(&rpc_response(1, r#""0xa4ec""#)).unwrap();
-        assert_eq!(PatchingHttp::parse_chain_id(&celo), Some(42220));
+    fn may_lack_uncles_hash() {
+        let missing = rpc_response(1, CELO_PRE_GINGERBREAD_BLOCK);
+        assert!(PatchingHttp::may_lack_uncles_hash(missing.as_bytes()));
 
-        let error: Value =
-            serde_json::from_str(r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32601}}"#).unwrap();
-        assert_eq!(PatchingHttp::parse_chain_id(&error), None);
+        let present = rpc_response(1, r#"{"parentHash":"0x1","sha3Uncles":"0x2"}"#);
+        assert!(!PatchingHttp::may_lack_uncles_hash(present.as_bytes()));
     }
 
     #[test]
