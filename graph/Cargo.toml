@@ -41,6 +41,7 @@ lazy_static = { workspace = true }
 opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 opentelemetry-http = { workspace = true }
+opentelemetry-otlp = { workspace = true }
 num-bigint = { version = "=0.2.6", features = ["serde"] }
 num-integer = { version = "=0.1.46" }
 num-traits = "=0.2.19"

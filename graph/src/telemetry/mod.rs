@@ -11,9 +11,9 @@
 //! handlers are still traced. Which groups are on is decided once at
 //! startup; see [`SpanGroups`].
 //!
-//! Nothing here installs a tracer provider. That is done by the node at
-//! startup, and by [`testing::install`] in tests. Until one of them runs,
-//! [`enabled`] is `false` and every [`Span`] is a no-op.
+//! The node installs a tracer provider at startup with [`init`], and tests
+//! do so with [`testing::install`]. Until one of them runs, [`enabled`] is
+//! `false` and every [`Span`] is a no-op.
 
 mod span;
 pub mod testing;
@@ -22,9 +22,16 @@ use std::fmt;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
-use opentelemetry::global;
+use anyhow::Context as _;
 use opentelemetry::trace::{SpanContext, TraceContextExt};
+use opentelemetry::{Key, KeyValue, global};
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
+use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::propagation::TraceContextPropagator;
+use opentelemetry_sdk::trace::SdkTracerProvider;
+use slog::{Logger, info};
+
+use crate::env::EnvVars;
 
 pub use span::{AttrValue, Span};
 
@@ -52,6 +59,145 @@ pub fn group_enabled(group: SpanGroup) -> bool {
 fn set_enabled(groups: SpanGroups) {
     GROUPS.store(groups.0, Ordering::Relaxed);
     ENABLED.store(true, Ordering::Release);
+}
+
+/// What [`init`] needs to know, taken from the environment.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Config {
+    /// `GRAPH_OTEL_TRACING`
+    pub enabled: bool,
+    /// `GRAPH_OTEL_SPANS`
+    pub groups: SpanGroups,
+}
+
+impl From<&EnvVars> for Config {
+    fn from(env: &EnvVars) -> Self {
+        Config {
+            enabled: env.otel_tracing,
+            groups: env.otel_spans,
+        }
+    }
+}
+
+/// Keeps the tracer provider alive. Dropping it flushes buffered spans and
+/// shuts the exporter down, so it must live until the process is about to
+/// exit.
+#[must_use = "dropping the guard shuts tracing down"]
+pub struct Guard {
+    provider: Option<SdkTracerProvider>,
+}
+
+impl Guard {
+    /// `true` if this guard owns a live tracer provider.
+    pub fn is_enabled(&self) -> bool {
+        self.provider.is_some()
+    }
+
+    /// Export the buffered spans and shut the exporter down. This blocks
+    /// until the export finished or timed out, so call it from a blocking
+    /// context. Dropping the guard does the same but discards the result.
+    pub fn shutdown(mut self) -> Result<(), anyhow::Error> {
+        match self.provider.take() {
+            Some(provider) => provider
+                .shutdown()
+                .context("failed to flush spans during shutdown"),
+            None => Ok(()),
+        }
+    }
+}
+
+impl Drop for Guard {
+    fn drop(&mut self) {
+        if let Some(provider) = self.provider.take() {
+            // Shutdown drains the batch processor. An error here means
+            // spans were lost on the way out, and there is nobody left to
+            // tell.
+            let _ = provider.shutdown();
+        }
+    }
+}
+
+/// Install the OTLP exporter as the process-wide tracer provider if
+/// `config.enabled` is set, and return a guard that keeps it alive. With
+/// tracing off, nothing is installed and the guard does nothing.
+///
+/// The exporter speaks OTLP over `http/protobuf` and is configured through
+/// the standard `OTEL_EXPORTER_OTLP_*` environment variables, with
+/// `http://localhost:4318` as the default endpoint. The sampler is
+/// configured through `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG`.
+/// The service name comes from `OTEL_SERVICE_NAME` and defaults to
+/// `graph-node`.
+///
+/// Must be called at most once per process.
+pub fn init(config: &Config, logger: &Logger) -> Result<Guard, anyhow::Error> {
+    if !config.enabled {
+        return Ok(Guard { provider: None });
+    }
+    if enabled() {
+        anyhow::bail!("OpenTelemetry tracing was already initialized");
+    }
+
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_http()
+        .build()
+        .context("failed to build the OTLP span exporter")?;
+
+    let var = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+    let service_name = service_name(&Resource::builder().build(), var("OTEL_SERVICE_NAME"));
+    let resource = Resource::builder()
+        .with_service_name(service_name.clone())
+        .with_attribute(KeyValue::new("service.version", env!("CARGO_PKG_VERSION")))
+        .build();
+
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(resource)
+        .build();
+    global::set_tracer_provider(provider.clone());
+    global::set_text_map_propagator(TraceContextPropagator::new());
+    set_enabled(config.groups);
+
+    info!(logger, "OpenTelemetry tracing enabled";
+          "endpoint" => otlp_traces_endpoint(
+              var("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"),
+              var("OTEL_EXPORTER_OTLP_ENDPOINT")),
+          "service_name" => service_name,
+          "spans" => config.groups.to_string());
+
+    Ok(Guard {
+        provider: Some(provider),
+    })
+}
+
+/// The `service.name` to report, in the order the OpenTelemetry
+/// specification gives: `OTEL_SERVICE_NAME`, then whatever the SDK
+/// detected from `OTEL_RESOURCE_ATTRIBUTES`, then `graph-node`. The SDK's
+/// own `unknown_service` fallback is never used, and its detectors do not
+/// give `OTEL_SERVICE_NAME` priority on their own.
+fn service_name(detected: &Resource, otel_service_name: Option<String>) -> String {
+    otel_service_name
+        .or_else(|| {
+            detected
+                .get(&Key::from_static_str("service.name"))
+                .map(|value| value.to_string())
+                .filter(|name| {
+                    !name.is_empty()
+                        && name != "unknown_service"
+                        && !name.starts_with("unknown_service:")
+                })
+        })
+        .unwrap_or_else(|| "graph-node".to_string())
+}
+
+/// The endpoint the exporter will send traces to, for the startup log
+/// line. Mirrors the lookup the OTLP crate does internally, given the
+/// values of `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and
+/// `OTEL_EXPORTER_OTLP_ENDPOINT`.
+fn otlp_traces_endpoint(traces_endpoint: Option<String>, endpoint: Option<String>) -> String {
+    traces_endpoint.unwrap_or_else(|| {
+        let base = endpoint.unwrap_or_else(|| "http://localhost:4318".to_string());
+        format!("{}/v1/traces", base.trim_end_matches('/'))
+    })
 }
 
 /// A family of spans that can be turned on and off together.
@@ -272,28 +418,34 @@ mod tests {
     /// Marks a child process spawned by `in_subprocess`.
     const CHILD_MARKER: &str = "GRAPH_TELEMETRY_TEST_CHILD";
 
-    /// Run `body` in a fresh process with the telemetry environment
-    /// variables unset. The tracer provider and the enabled flag are
-    /// process-global, so this is the only way to observe the disabled
-    /// state without racing other tests in this binary.
+    /// Run `body` in a fresh process with every `OTEL_*` and `GRAPH_OTEL_*`
+    /// variable unset and `env` set. The tracer provider and the enabled
+    /// flag are process-global, so this is the only way to observe the
+    /// disabled state, or to install a real provider, without racing other
+    /// tests in this binary.
     ///
     /// The parent re-executes the test binary for the single test named
     /// `test_name` with `CHILD_MARKER` set; the child sees the marker and
-    /// runs `body` instead of spawning again.
-    fn in_subprocess(test_name: &str, body: impl FnOnce()) {
+    /// runs `body` instead of spawning again. The child never mutates its
+    /// environment, so `body` may start threads freely.
+    fn in_subprocess(test_name: &str, env: &[(&str, &str)], body: impl FnOnce()) {
         if std::env::var_os(CHILD_MARKER).is_some() {
             body();
             return;
         }
 
         let exe = std::env::current_exe().unwrap();
-        let output = Command::new(exe)
-            .args(["--exact", test_name, "--test-threads=1"])
-            .env(CHILD_MARKER, "1")
-            .env_remove("GRAPH_OTEL_TRACING")
-            .env_remove("GRAPH_OTEL_SPANS")
-            .output()
-            .unwrap();
+        let mut command = Command::new(exe);
+        command.args(["--exact", test_name, "--test-threads=1"]);
+        for (name, _) in std::env::vars() {
+            if name.starts_with("OTEL_") || name.starts_with("GRAPH_OTEL_") {
+                command.env_remove(name);
+            }
+        }
+        command.env(CHILD_MARKER, "1");
+        command.envs(env.iter().copied());
+
+        let output = command.output().unwrap();
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
             output.status.success(),
@@ -306,7 +458,7 @@ mod tests {
 
     #[test]
     fn env_defaults_to_off() {
-        in_subprocess("telemetry::tests::env_defaults_to_off", || {
+        in_subprocess("telemetry::tests::env_defaults_to_off", &[], || {
             let env = crate::env::EnvVars::from_env().unwrap();
             assert!(!env.otel_tracing);
             assert_eq!(env.otel_spans, SpanGroups::default());
@@ -315,7 +467,7 @@ mod tests {
 
     #[test]
     fn disabled_is_noop() {
-        in_subprocess("telemetry::tests::disabled_is_noop", || {
+        in_subprocess("telemetry::tests::disabled_is_noop", &[], || {
             assert!(!enabled());
             assert!(!group_enabled(SpanGroup::Block));
 
@@ -329,6 +481,180 @@ mod tests {
             headers.insert("traceparent", HeaderValue::from_static(TRACEPARENT_SAMPLED));
             assert!(extract(&headers).is_none());
         });
+    }
+
+    #[test]
+    fn config_from_env_defaults_to_off() {
+        in_subprocess(
+            "telemetry::tests::config_from_env_defaults_to_off",
+            &[],
+            || {
+                let env = crate::env::EnvVars::from_env().unwrap();
+                assert_eq!(Config::from(&env), Config::default());
+                assert!(!Config::default().enabled);
+            },
+        );
+    }
+
+    #[test]
+    fn init_disabled_installs_nothing() {
+        let was_enabled = enabled();
+        let guard = init(&Config::default(), &crate::log::discard()).unwrap();
+        assert!(!guard.is_enabled());
+        assert_eq!(enabled(), was_enabled);
+        guard.shutdown().unwrap();
+        assert_eq!(enabled(), was_enabled);
+    }
+
+    #[test]
+    fn otlp_endpoint_is_derived_like_the_sdk() {
+        let some = |s: &str| Some(s.to_string());
+        assert_eq!(
+            otlp_traces_endpoint(None, None),
+            "http://localhost:4318/v1/traces"
+        );
+        assert_eq!(
+            otlp_traces_endpoint(None, some("http://agent:4318/")),
+            "http://agent:4318/v1/traces"
+        );
+        assert_eq!(
+            otlp_traces_endpoint(some("http://x:1/t"), some("http://agent:4318")),
+            "http://x:1/t"
+        );
+    }
+
+    #[test]
+    fn service_name_precedence() {
+        let detected = |name: &str| {
+            Resource::builder_empty()
+                .with_service_name(name.to_string())
+                .build()
+        };
+        let none = Resource::builder_empty().build();
+        let some = |s: &str| Some(s.to_string());
+
+        assert_eq!(service_name(&none, None), "graph-node");
+        assert_eq!(service_name(&detected(""), None), "graph-node");
+        assert_eq!(
+            service_name(&detected("unknown_service"), None),
+            "graph-node"
+        );
+        assert_eq!(
+            service_name(&detected("unknown_service:graph"), None),
+            "graph-node"
+        );
+        assert_eq!(
+            service_name(&detected("unknown_service-indexer"), None),
+            "unknown_service-indexer"
+        );
+        assert_eq!(
+            service_name(&detected("from-attributes"), None),
+            "from-attributes"
+        );
+        assert_eq!(service_name(&none, some("indexer-7")), "indexer-7");
+        assert_eq!(
+            service_name(&detected("from-attributes"), some("indexer-7")),
+            "indexer-7"
+        );
+    }
+
+    /// Starts a mock collector in the parent process, then runs `init`
+    /// against it in a subprocess. `expected_service_name` must show up in
+    /// the exported protobuf body.
+    fn export_to_mock_collector(
+        test_name: &str,
+        env: &[(&str, &str)],
+        expected_service_name: &str,
+    ) {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        if std::env::var_os(CHILD_MARKER).is_some() {
+            let config = Config {
+                enabled: true,
+                groups: SpanGroups::default(),
+            };
+            let guard = init(&config, &crate::log::discard()).unwrap();
+            assert!(guard.is_enabled());
+            assert!(enabled());
+            assert!(group_enabled(SpanGroup::Block));
+            assert!(!group_enabled(SpanGroup::HostFn));
+
+            let mut span = Span::root("exported");
+            span.set_attr("test", test_name.to_string());
+            span.end();
+
+            // Shutting down flushes the batch processor.
+            guard.shutdown().unwrap();
+            return;
+        }
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let server = rt.block_on(async {
+            let server = MockServer::start().await;
+            Mock::given(method("POST"))
+                .and(path("/v1/traces"))
+                .and(header("content-type", "application/x-protobuf"))
+                .respond_with(ResponseTemplate::new(200))
+                .expect(1..)
+                .mount(&server)
+                .await;
+            server
+        });
+
+        let uri = server.uri();
+        let mut child_env = vec![("OTEL_EXPORTER_OTLP_ENDPOINT", uri.as_str())];
+        child_env.extend_from_slice(env);
+        in_subprocess(test_name, &child_env, || unreachable!());
+
+        let requests = rt.block_on(async { server.received_requests().await.unwrap() });
+        assert!(
+            !requests.is_empty(),
+            "no export request reached the collector"
+        );
+        // The resource name and the span name travel as plain strings
+        // inside the protobuf body.
+        let body = requests
+            .iter()
+            .flat_map(|req| req.body.iter().copied())
+            .collect::<Vec<u8>>();
+        let body = String::from_utf8_lossy(&body);
+        assert!(
+            body.contains(expected_service_name),
+            "service.name `{expected_service_name}` missing from export"
+        );
+        assert!(body.contains("exported"), "span name missing from export");
+        rt.block_on(async { drop(server) });
+    }
+
+    #[test]
+    fn init_exports_over_otlp_http() {
+        export_to_mock_collector(
+            "telemetry::tests::init_exports_over_otlp_http",
+            &[],
+            "graph-node",
+        );
+    }
+
+    #[test]
+    fn init_honours_otel_service_name() {
+        export_to_mock_collector(
+            "telemetry::tests::init_honours_otel_service_name",
+            &[
+                ("OTEL_SERVICE_NAME", "indexer-7"),
+                ("OTEL_RESOURCE_ATTRIBUTES", "service.name=from-attributes"),
+            ],
+            "indexer-7",
+        );
+    }
+
+    #[test]
+    fn init_honours_resource_attributes_service_name() {
+        export_to_mock_collector(
+            "telemetry::tests::init_honours_resource_attributes_service_name",
+            &[("OTEL_RESOURCE_ATTRIBUTES", "service.name=from-attributes")],
+            "from-attributes",
+        );
     }
 
     #[test]

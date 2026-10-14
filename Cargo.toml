@@ -84,6 +84,7 @@ lazy_static = "1.5.0"
 opentelemetry = { version = "0.33.1", default-features = false, features = ["trace"] }
 opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace"] }
 opentelemetry-http = { version = "0.33.1", default-features = false }
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace"] }
 prost = "0.14"
 prost-types = "0.14"
 redis = { version = "1.2.2", features = [
