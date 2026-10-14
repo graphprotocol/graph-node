@@ -155,7 +155,8 @@ impl std::ops::Deref for ProviderLogger {
 /// Lowercased fragments of the messages providers return when an
 /// `eth_getLogs` request exceeds a block-range or result cap. Caps are matched
 /// by message because most providers report them under a generic code. Add an
-/// entry only with a captured response.
+/// entry only with a captured response; operators can add their own through
+/// `GRAPH_RPC_ETH_GET_LOGS_ERRORS`.
 const TOO_MANY_LOGS_MESSAGES: &[&str] = &[
     "exceed maximum block range",                      // geth
     "query exceeds max block range",                   // reth
@@ -198,7 +199,11 @@ fn is_too_many_logs_err(err: &RpcError<TransportErrorKind>) -> bool {
 
 fn is_too_many_logs_message(message: &str) -> bool {
     let message = message.to_lowercase();
-    TOO_MANY_LOGS_MESSAGES.iter().any(|m| message.contains(m))
+    TOO_MANY_LOGS_MESSAGES
+        .iter()
+        .copied()
+        .chain(ENV_VARS.rpc_eth_get_logs_errors.iter().map(String::as_str))
+        .any(|m| message.contains(m))
 }
 
 /// Extracts the error message from a raw response body: a bare JSON-RPC error
