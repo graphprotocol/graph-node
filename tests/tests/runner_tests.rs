@@ -861,7 +861,8 @@ async fn block_spans() {
     let spans = install_with(
         SpanGroups::NONE
             .with(SpanGroup::Block)
-            .with(SpanGroup::Handler),
+            .with(SpanGroup::Handler)
+            .with(SpanGroup::HostFn),
     );
 
     let RunnerTestRecipe { stores, test_info } =
@@ -941,11 +942,35 @@ async fn block_spans() {
         .iter()
         .find(|span| span.name == "process_triggers")
         .unwrap();
-    let handlers = spans.children_of(triggers);
-    assert!(
-        handlers.iter().any(|span| span.name == "run_handler"),
-        "no run_handler span under process_triggers of block 4"
-    );
+    let handlers: Vec<_> = spans
+        .children_of(triggers)
+        .into_iter()
+        .filter(|span| span.name == "run_handler")
+        .collect();
+    assert!(!handlers.is_empty(), "no handler ran for block 4");
+    for handler in &handlers {
+        assert_eq!(handler.attr("handler"), Some("handleBlockPolling"));
+        assert_eq!(handler.attr("trigger"), Some("onchain"));
+        // A block handler has no transaction.
+        assert_eq!(handler.attr("tx_hash"), None);
+
+        // The handler saves one entity; the host function span names its
+        // type.
+        let store_sets: Vec<_> = spans
+            .children_of(handler)
+            .into_iter()
+            .filter(|span| span.name == "host_export_store_set")
+            .collect();
+        assert_eq!(
+            store_sets.len(),
+            1,
+            "expected one store.set per handler run"
+        );
+        assert_eq!(
+            store_sets[0].attr("entity_type"),
+            Some("BlockFromPollingHandler")
+        );
+    }
 }
 
 #[graph::test]

@@ -83,7 +83,7 @@ impl StopwatchMetrics {
         };
 
         // Start a base section so that all time is accounted for.
-        inner.start_section("unknown".to_owned(), SpanStart::Child, []);
+        inner.start_section("unknown".to_owned(), SpanStart::Child, Vec::new);
 
         StopwatchMetrics {
             disabled: Arc::new(AtomicBool::new(false)),
@@ -92,39 +92,45 @@ impl StopwatchMetrics {
     }
 
     pub fn start_section(&self, id: &str) -> Section {
-        self.start_section_with(id, [])
+        self.start_section_with(id, Vec::new)
     }
 
-    /// Like [`Self::start_section`], with `attrs` set on the section's span
-    /// if it gets one.
-    pub fn start_section_with(
-        &self,
-        id: &str,
-        attrs: impl IntoIterator<Item = (&'static str, AttrValue)>,
-    ) -> Section {
+    /// Like [`Self::start_section`], with the attributes `attrs` returns
+    /// set on the section's span. `attrs` is only called if the section
+    /// gets a span that is recorded, so building them costs nothing
+    /// otherwise. It runs while the stopwatch is locked and must not call
+    /// back into it.
+    pub fn start_section_with<I>(&self, id: &str, attrs: impl FnOnce() -> I) -> Section
+    where
+        I: IntoIterator<Item = (&'static str, AttrValue)>,
+    {
         self.start(id, SpanStart::Child, attrs)
     }
 
     /// Start a section whose span, if `group` is enabled, is the root of a
     /// new trace rather than a child of the enclosing section's span.
     /// `links` point the new trace at other traces, for work that was
-    /// caused by several of them.
-    pub fn start_root_section(
+    /// caused by several of them. `attrs` is only called if the root is
+    /// recorded, and runs while the stopwatch is locked, so it must not
+    /// call back into it. The root also carries the stopwatch's `shard`
+    /// and `stage`.
+    pub fn start_root_section<I>(
         &self,
         id: &str,
         group: SpanGroup,
-        attrs: impl IntoIterator<Item = (&'static str, AttrValue)>,
+        attrs: impl FnOnce() -> I,
         links: &[Context],
-    ) -> Section {
+    ) -> Section
+    where
+        I: IntoIterator<Item = (&'static str, AttrValue)>,
+    {
         self.start(id, SpanStart::Root { group, links }, attrs)
     }
 
-    fn start(
-        &self,
-        id: &str,
-        span: SpanStart<'_>,
-        attrs: impl IntoIterator<Item = (&'static str, AttrValue)>,
-    ) -> Section {
+    fn start<I>(&self, id: &str, span: SpanStart<'_>, attrs: impl FnOnce() -> I) -> Section
+    where
+        I: IntoIterator<Item = (&'static str, AttrValue)>,
+    {
         let id = id.to_owned();
         if !self.disabled.load(Ordering::SeqCst) {
             let mut inner = self.inner.lock().unwrap();
@@ -146,8 +152,19 @@ impl StopwatchMetrics {
     /// that are only known after the section started. Does nothing if the
     /// current section has no span.
     pub fn set_attr(&self, key: &'static str, value: impl Into<AttrValue>) {
+        self.set_attrs_with(|| [(key, value.into())])
+    }
+
+    /// Set the attributes `attrs` returns on the span of the current
+    /// section. `attrs` is only called if the current section has a span,
+    /// so building them costs nothing otherwise. It runs while the
+    /// stopwatch is locked and must not call back into it.
+    pub fn set_attrs_with<I>(&self, attrs: impl FnOnce() -> I)
+    where
+        I: IntoIterator<Item = (&'static str, AttrValue)>,
+    {
         if telemetry::enabled() && !self.disabled.load(Ordering::SeqCst) {
-            self.inner.lock().unwrap().set_attr(key, value.into())
+            self.inner.lock().unwrap().set_attrs_with(attrs)
         }
     }
 
@@ -275,12 +292,10 @@ impl StopwatchInner {
         self.timer = Instant::now();
     }
 
-    fn start_section(
-        &mut self,
-        id: String,
-        span: SpanStart<'_>,
-        attrs: impl IntoIterator<Item = (&'static str, AttrValue)>,
-    ) {
+    fn start_section<I>(&mut self, id: String, span: SpanStart<'_>, attrs: impl FnOnce() -> I)
+    where
+        I: IntoIterator<Item = (&'static str, AttrValue)>,
+    {
         #[cfg(debug_assertions)]
         self.record_section_relation(&id);
         self.record_and_reset();
@@ -289,12 +304,10 @@ impl StopwatchInner {
         self.spans.push(span);
     }
 
-    fn start_span(
-        &self,
-        id: &str,
-        span: SpanStart<'_>,
-        attrs: impl IntoIterator<Item = (&'static str, AttrValue)>,
-    ) -> SectionSpan {
+    fn start_span<I>(&self, id: &str, span: SpanStart<'_>, attrs: impl FnOnce() -> I) -> SectionSpan
+    where
+        I: IntoIterator<Item = (&'static str, AttrValue)>,
+    {
         if !telemetry::enabled() {
             return SectionSpan::None;
         }
@@ -304,11 +317,15 @@ impl StopwatchInner {
                 if !telemetry::group_enabled(group) {
                     return SectionSpan::Boundary;
                 }
-                let span = Span::root_with_links(id.to_owned(), links);
+                let mut span = Span::root_with_links(id.to_owned(), links);
                 // An unsampled root is a no-op span; its subtree is skipped.
                 if !span.is_recording() {
                     return SectionSpan::Boundary;
                 }
+                span.set_attrs([
+                    ("shard", self.shard.clone().into()),
+                    ("stage", self.stage.clone().into()),
+                ]);
                 span
             }
             SpanStart::Child => {
@@ -328,7 +345,7 @@ impl StopwatchInner {
             }
         };
 
-        span.set_attrs(attrs);
+        span.set_attrs(attrs());
         SectionSpan::Span(span)
     }
 
@@ -345,9 +362,12 @@ impl StopwatchInner {
         None
     }
 
-    fn set_attr(&mut self, key: &'static str, value: AttrValue) {
+    fn set_attrs_with<I>(&mut self, attrs: impl FnOnce() -> I)
+    where
+        I: IntoIterator<Item = (&'static str, AttrValue)>,
+    {
         if let Some(SectionSpan::Span(span)) = self.spans.last_mut() {
-            span.set_attr(key, value);
+            span.set_attrs(attrs());
         }
     }
 
@@ -485,21 +505,32 @@ mod tests {
         let outside = stopwatch.start_section("scan_blocks");
         assert!(stopwatch.current_context().is_none());
         stopwatch.set_error_with(|| panic!("message built for a section without a span"));
+        stopwatch.set_attrs_with(|| -> [(&'static str, AttrValue); 0] {
+            panic!("attributes built for a section without a span")
+        });
+        let unspanned =
+            stopwatch.start_section_with("no_span", || -> [(&'static str, AttrValue); 0] {
+                panic!("attributes built for a section without a span")
+            });
+        unspanned.end();
         outside.end();
 
         let root = stopwatch.start_root_section(
             "process_block",
             SpanGroup::Block,
-            [
-                test_attr("sections_become_nested_spans"),
-                ("block_number", 7.into()),
-            ],
+            || {
+                [
+                    test_attr("sections_become_nested_spans"),
+                    ("block_number", 7.into()),
+                ]
+            },
             &[],
         );
         let root_ctx = stopwatch.current_context().expect("root has a context");
 
         let triggers = stopwatch.start_section("process_triggers");
-        let handler = stopwatch.start_section_with("run_handler", [("handler", "handleX".into())]);
+        let handler =
+            stopwatch.start_section_with("run_handler", || [("handler", "handleX".into())]);
         stopwatch.set_attr("tx_hash", "0xabc");
         stopwatch.set_error("handler failed");
         let host_fn = stopwatch.start_section("host_export_store_set");
@@ -518,6 +549,8 @@ mod tests {
         assert_eq!(root.parent_span_id, None);
         assert_eq!(root.trace_id, root_ctx.trace_id());
         assert_eq!(root.attr("block_number"), Some("7"));
+        assert_eq!(root.attr("shard"), Some("shard"));
+        assert_eq!(root.attr("stage"), Some("test"));
 
         // Five spans in the trace, none for `scan_blocks` or `unknown`.
         let trace = handle.trace(&root.trace_id);
@@ -545,7 +578,7 @@ mod tests {
             let block = stopwatch.start_root_section(
                 "process_block",
                 SpanGroup::Block,
-                [test_attr("root_sections_can_link_to_other_traces")],
+                || [test_attr("root_sections_can_link_to_other_traces")],
                 &[],
             );
             linked_to.push(stopwatch.current_context().unwrap());
@@ -555,7 +588,7 @@ mod tests {
         let write = stopwatch.start_root_section(
             "write_batch",
             SpanGroup::Store,
-            [test_attr("root_sections_can_link_to_other_traces")],
+            || [test_attr("root_sections_can_link_to_other_traces")],
             &linked_to,
         );
         let write_ctx = stopwatch.current_context().unwrap();
@@ -581,7 +614,7 @@ mod tests {
         install();
         let stopwatch = stopwatch();
 
-        let root = stopwatch.start_root_section("process_block", SpanGroup::Block, [], &[]);
+        let root = stopwatch.start_root_section("process_block", SpanGroup::Block, || [], &[]);
         let child = stopwatch.start_section("a");
         stopwatch
             .inner
@@ -613,10 +646,10 @@ mod tests {
         let root = stopwatch.start_root_section(
             "process_block",
             SpanGroup::Block,
-            [test_attr("disable_ends_live_spans")],
+            || [test_attr("disable_ends_live_spans")],
             &[],
         );
-        let child = stopwatch.start_section_with("a", [test_attr("disable_ends_live_spans")]);
+        let child = stopwatch.start_section_with("a", || [test_attr("disable_ends_live_spans")]);
         stopwatch.disable();
 
         let spans = handle.spans_with_attr("test", "disable_ends_live_spans");
@@ -636,7 +669,8 @@ mod tests {
 
         // Nothing happens after `disable`.
         assert!(stopwatch.current_context().is_none());
-        let after = stopwatch.start_section_with("after", [test_attr("disable_ends_live_spans")]);
+        let after =
+            stopwatch.start_section_with("after", || [test_attr("disable_ends_live_spans")]);
         after.end();
         child.end();
         root.end();
@@ -661,7 +695,7 @@ mod tests {
                 let root = stopwatch.start_root_section(
                     "process_block",
                     SpanGroup::Block,
-                    [test_attr("groups_gate_their_sections")],
+                    || [test_attr("groups_gate_their_sections")],
                     &[],
                 );
                 let handler = stopwatch.start_section("run_handler");
@@ -690,21 +724,20 @@ mod tests {
                 let outer = stopwatch.start_root_section(
                     "process_block",
                     SpanGroup::Block,
-                    [test_attr("groups_gate_their_sections_boundary")],
+                    || [test_attr("groups_gate_their_sections_boundary")],
                     &[],
                 );
                 let outer_ctx = stopwatch.current_context().unwrap();
                 let root = stopwatch.start_root_section(
                     "host_export_root",
                     SpanGroup::HostFn,
-                    [test_attr("groups_gate_their_sections_boundary")],
+                    || [test_attr("groups_gate_their_sections_boundary")],
                     &[],
                 );
                 assert!(stopwatch.current_context().is_none());
-                let child = stopwatch.start_section_with(
-                    "child",
-                    [test_attr("groups_gate_their_sections_boundary")],
-                );
+                let child = stopwatch.start_section_with("child", || {
+                    [test_attr("groups_gate_their_sections_boundary")]
+                });
                 assert!(stopwatch.current_context().is_none());
                 child.end();
                 root.end();
@@ -737,11 +770,11 @@ mod tests {
                 let root = stopwatch.start_root_section(
                     "process_block",
                     SpanGroup::Block,
-                    [("block_number", 1.into())],
+                    || [("block_number", 1.into())],
                     &[],
                 );
                 assert!(stopwatch.current_context().is_none());
-                let child = stopwatch.start_section_with("a", [("k", "v".into())]);
+                let child = stopwatch.start_section_with("a", || [("k", "v".into())]);
                 stopwatch.set_attr("k2", "v2");
                 {
                     let inner = stopwatch.inner.lock().unwrap();
