@@ -14,8 +14,16 @@ pub struct EnvVars {
     /// Additional deterministic errors that have not yet been hardcoded.
     ///
     /// Set by the environment variable `GRAPH_RPC_ETH_CALL_ERRORS`, separated
-    /// by `;`.
+    /// by `;`. Matched case-insensitively as substrings of the error message.
     pub rpc_eth_call_errors: Vec<String>,
+    /// Additional `eth_getLogs` error messages that mean the request exceeded
+    /// the provider's block-range or result cap, so the range should shrink
+    /// rather than the request be retried. Matched case-insensitively as
+    /// substrings of the error message.
+    ///
+    /// Set by the environment variable `GRAPH_RPC_ETH_GET_LOGS_ERRORS`,
+    /// separated by `;`.
+    pub rpc_eth_get_logs_errors: Vec<String>,
     /// Set by the environment variable `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`. The
     /// default value is 2000.
     pub get_logs_max_contracts: usize,
@@ -110,16 +118,23 @@ impl EnvVars {
     }
 }
 
+/// Splits a `;`-separated list of error message fragments, trimmed and
+/// lowercased so they can be matched against a lowercased message.
+fn split_error_messages(value: &str) -> Vec<String> {
+    value
+        .split(';')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
 impl From<Inner> for EnvVars {
     fn from(x: Inner) -> Self {
         Self {
             get_logs_max_contracts: x.get_logs_max_contracts,
-            rpc_eth_call_errors: x
-                .rpc_eth_call_errors
-                .split(';')
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect(),
+            rpc_eth_call_errors: split_error_messages(&x.rpc_eth_call_errors),
+            rpc_eth_get_logs_errors: split_error_messages(&x.rpc_eth_get_logs_errors),
             trace_stream_step_size: x.trace_stream_step_size,
             max_event_only_range: x.max_event_only_range,
             block_batch_size: x.block_batch_size,
@@ -160,6 +175,8 @@ impl Default for EnvVars {
 struct Inner {
     #[envconfig(from = "GRAPH_RPC_ETH_CALL_ERRORS", default = "")]
     rpc_eth_call_errors: String,
+    #[envconfig(from = "GRAPH_RPC_ETH_GET_LOGS_ERRORS", default = "")]
+    rpc_eth_get_logs_errors: String,
     #[envconfig(from = "GRAPH_ETH_GET_LOGS_MAX_CONTRACTS", default = "2000")]
     get_logs_max_contracts: usize,
 
