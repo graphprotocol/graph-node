@@ -111,9 +111,10 @@ process_block {subgraph_id, block_number, block_hash, network, shard, stage=proc
 ├── process_triggers
 │   ├── match_and_decode                       (one per trigger, handler)
 │   └── run_handler {handler, trigger, tx_hash?, log_index?}       (handler)
-│       ├── host_export_ethereum_call {contract, function, address}   (host_fn)
-│       ├── host_export_store_set {entity_type}                       (host_fn)
-│       └── host_export_store_get, host_export_ipfs_cat, ...          (host_fn)
+│       ├── host_export_ethereum_call {host_function, contract, function, address}  (host_fn)
+│       ├── host_export_store_set {host_function, entity_type}                      (host_fn)
+│       ├── host_export_store_get, host_export_ipfs_cat, ... {host_function}        (host_fn)
+│       └── host_export_other {host_function}                                       (host_fn)
 ├── as_modifications
 ├── transact_block {entity_count}
 └── update_proof_of_indexing
@@ -134,9 +135,12 @@ graphql_query {subgraph, api_version, query_id?, deployment?, error_count?}
 
 The span names are the section names of the existing stopwatch metrics, so
 a `deployment_sync_secs{section="run_handler"}` time series and a
-`run_handler` span measure the same thing. Host function spans are named
-`host_export_` followed by the import name with dots replaced by
-underscores.
+`run_handler` span measure the same thing. Store, IPFS and chain host
+functions have a section of their own, named `host_export_` followed by the
+import name with dots replaced by underscores. Every other host function,
+from `bigInt.plus` to `dataSource.create`, shares the `host_export_other`
+section. All of them carry the import name in `host_function`, so the
+spans of one function can be found or dropped in the collector.
 
 Attributes worth knowing:
 

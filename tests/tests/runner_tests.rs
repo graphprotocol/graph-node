@@ -970,6 +970,26 @@ async fn block_spans() {
             store_sets[0].attr("entity_type"),
             Some("BlockFromPollingHandler")
         );
+        assert_eq!(store_sets[0].attr("host_function"), Some("store.set"));
+
+        // Every other host function call is a `host_export_other` span
+        // that names the import it was made for: the handler logs once
+        // and converts the block number to a string twice.
+        let mut others: Vec<_> = spans
+            .children_of(handler)
+            .into_iter()
+            .filter(|span| span.name == "host_export_other")
+            .map(|span| span.attr("host_function").unwrap_or("").to_owned())
+            .collect();
+        others.sort();
+        assert_eq!(
+            others,
+            [
+                "log.log",
+                "typeConversion.bigIntToString",
+                "typeConversion.bigIntToString"
+            ]
+        );
     }
 }
 
