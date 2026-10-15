@@ -185,9 +185,7 @@ fn is_too_many_logs_err(err: &RpcError<TransportErrorKind>) -> bool {
         // body, e.g. Ankr (413) and GetBlock (403). Only the message is
         // consulted: a code in an error body is as likely a rate limit.
         RpcError::Transport(TransportErrorKind::HttpError(http_err)) => {
-            matches!(http_err.status, 400 | 403 | 413 | 503)
-                && error_message_in_body(&http_err.body)
-                    .is_some_and(|m| is_too_many_logs_message(&m))
+            error_message_in_body(&http_err.body).is_some_and(|m| is_too_many_logs_message(&m))
         }
         // A 200 with an error object alloy could not parse, e.g. missing `id`.
         RpcError::DeserError { text, .. } => {
@@ -2948,13 +2946,14 @@ mod tests {
         assert!(!is_too_many_logs_err(&deser_err(backend)));
     }
 
-    /// Bodies are not read on statuses that are never caps.
+    /// The message is the source of truth; the status does not gate it, so
+    /// an operator-supplied message works whatever status its provider uses.
     #[test]
-    fn too_many_logs_bodies_are_only_read_on_cap_statuses() {
+    fn too_many_logs_bodies_are_read_on_any_status() {
         let cap =
             r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32602,"message":"block range too large"}}"#;
-        for status in [401, 429, 500, 502, 504] {
-            assert!(!is_too_many_logs_err(&http_err(status, cap)), "{status}");
+        for status in [400, 401, 403, 413, 422, 429, 500, 502, 503, 504] {
+            assert!(is_too_many_logs_err(&http_err(status, cap)), "{status}");
         }
     }
 
