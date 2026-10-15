@@ -77,6 +77,7 @@ impl StopwatchMetrics {
             logger,
             stage,
             shard,
+            recording: true,
             section_stack: Vec::new(),
             spans: Vec::new(),
             timer: Instant::now(),
@@ -134,8 +135,8 @@ impl StopwatchMetrics {
         let id = id.to_owned();
         if !self.disabled.load(Ordering::SeqCst) {
             let mut inner = self.inner.lock().unwrap();
-            // `disable` ends all spans under the lock; a section that lost
-            // the race to it must not start a new one.
+            // `stop_recording` sets `disabled` under the lock; a section
+            // that lost the race to it must not start.
             if !self.disabled.load(Ordering::SeqCst) {
                 inner.start_section(id.clone(), span, attrs)
             }
@@ -194,11 +195,21 @@ impl StopwatchMetrics {
         }
     }
 
-    /// Turns `start_section` and `end_section` into no-ops, no more metrics will be updated.
-    /// Any live spans are ended.
-    pub fn disable(&self) {
-        self.disabled.store(true, Ordering::SeqCst);
-        self.inner.lock().unwrap().end_spans();
+    /// Stop recording time into the `deployment_sync_secs` counter, which
+    /// measures the time to sync a deployment; called once the deployment
+    /// is synced. With tracing off, the stopwatch does nothing from here
+    /// on. With tracing on, sections keep producing spans for the blocks
+    /// processed after sync, and only the counter stops.
+    pub fn stop_recording(&self) {
+        let mut inner = self.inner.lock().unwrap();
+        if telemetry::enabled() {
+            inner.recording = false;
+        } else {
+            // Under the lock, so that a `start_section` that already
+            // passed its check of `disabled` cannot push a section that
+            // `end_section` would then ignore.
+            self.disabled.store(true, Ordering::SeqCst);
+        }
     }
 
     fn end_section(&self, id: String) {
@@ -257,6 +268,10 @@ struct StopwatchInner {
     // Counter for the total time the subgraph spent syncing in various sections.
     counter: CounterVec,
 
+    // Whether time is still recorded into `counter`. False once the
+    // deployment is synced.
+    recording: bool,
+
     // The top section (last item) is the one that's currently executing.
     section_stack: Vec<String>,
 
@@ -275,6 +290,9 @@ struct StopwatchInner {
 
 impl StopwatchInner {
     fn record_and_reset(&mut self) {
+        if !self.recording {
+            return;
+        }
         if let Some(section) = self.section_stack.last() {
             // Register the current timer.
             let elapsed = self.timer.elapsed().as_secs_f64();
@@ -392,16 +410,6 @@ impl StopwatchInner {
                                                         "received" => id),
             None => error!(self.logger, "`end_section` with no current section";
                                         "received" => id),
-        }
-    }
-
-    /// End every live span, innermost first. The section stack and the
-    /// span vector keep their length so they stay in lockstep.
-    fn end_spans(&mut self) {
-        for slot in self.spans.iter_mut().rev() {
-            if let SectionSpan::Span(span) = std::mem::replace(slot, SectionSpan::None) {
-                span.end();
-            }
         }
     }
 
@@ -639,46 +647,67 @@ mod tests {
     }
 
     #[test]
-    fn disable_ends_live_spans() {
+    fn stop_recording_keeps_spans() {
         let handle = install();
         let stopwatch = stopwatch();
+        let counter = |section: &str| {
+            stopwatch
+                .inner
+                .lock()
+                .unwrap()
+                .counter
+                .get_metric_with_label_values(&[section, "test", "shard"])
+                .unwrap()
+                .get()
+        };
 
         let root = stopwatch.start_root_section(
             "process_block",
             SpanGroup::Block,
-            || [test_attr("disable_ends_live_spans")],
+            || [test_attr("stop_recording_keeps_spans")],
             &[],
         );
-        let child = stopwatch.start_section_with("a", || [test_attr("disable_ends_live_spans")]);
-        stopwatch.disable();
+        let before = stopwatch.start_section("before");
+        std::thread::sleep(Duration::from_millis(1));
+        before.end();
+        assert!(counter("before") > 0.0);
 
-        let spans = handle.spans_with_attr("test", "disable_ends_live_spans");
-        assert_eq!(names(&spans), ["a", "process_block"]);
+        stopwatch.stop_recording();
+        let block_secs = counter("process_block");
 
-        // The stack and the spans stay in lockstep.
-        {
-            let inner = stopwatch.inner.lock().unwrap();
-            assert_eq!(inner.section_stack.len(), inner.spans.len());
-            assert!(
-                inner
-                    .spans
-                    .iter()
-                    .all(|span| matches!(span, SectionSpan::None))
-            );
-        }
-
-        // Nothing happens after `disable`.
-        assert!(stopwatch.current_context().is_none());
+        // The counter no longer moves; sections and their spans go on.
         let after =
-            stopwatch.start_section_with("after", || [test_attr("disable_ends_live_spans")]);
+            stopwatch.start_section_with("after", || [test_attr("stop_recording_keeps_spans")]);
+        std::thread::sleep(Duration::from_millis(1));
+        assert!(stopwatch.current_context().is_some());
         after.end();
-        child.end();
         root.end();
+        assert_eq!(counter("after"), 0.0);
+        assert_eq!(counter("process_block"), block_secs);
+
+        let spans = handle.spans_with_attr("test", "stop_recording_keeps_spans");
+        assert_eq!(names(&spans), ["after", "process_block"]);
         assert_eq!(
-            handle
-                .spans_with_attr("test", "disable_ends_live_spans")
-                .len(),
-            2
+            spans[0].parent_span_id.as_deref(),
+            Some(spans[1].span_id.as_str())
+        );
+        assert_eq!(stopwatch.inner.lock().unwrap().section_stack, ["unknown"]);
+    }
+
+    #[test]
+    fn stop_recording_without_tracing_disables_sections() {
+        in_subprocess(
+            "components::metrics::stopwatch::tests::stop_recording_without_tracing_disables_sections",
+            &[],
+            || {
+                assert!(!telemetry::enabled());
+                let stopwatch = stopwatch();
+                stopwatch.stop_recording();
+                let section = stopwatch.start_section("a");
+                assert_eq!(stopwatch.inner.lock().unwrap().section_stack, ["unknown"]);
+                section.end();
+                assert_eq!(stopwatch.inner.lock().unwrap().section_stack, ["unknown"]);
+            },
         );
     }
 

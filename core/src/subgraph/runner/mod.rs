@@ -1514,7 +1514,7 @@ where
             close_to_chain_head(block_ptr, &self.state.cached_head_ptr, CAUGHT_UP_DISTANCE);
         if is_caught_up {
             // Stop recording time-to-sync metrics.
-            self.metrics.stream.stopwatch.disable();
+            self.metrics.stream.stopwatch.stop_recording();
         }
         Ok(is_caught_up)
     }

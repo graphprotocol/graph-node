@@ -1453,7 +1453,7 @@ impl Queue {
 
     fn deployment_synced(&self) {
         self.stop_batching();
-        self.stopwatch.disable()
+        self.stopwatch.stop_recording()
     }
 
     fn batch_writes(&self) -> bool {

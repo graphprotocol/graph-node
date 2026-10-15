@@ -233,7 +233,13 @@ lost.
 ## Overhead
 
 With tracing off, each instrumented section does one atomic load at its
-start and one at its end more than before, and nothing else.
+start and one at its end more than before, and nothing else. Once a
+deployment is synced, graph-node stops timing its sections, as it always
+has, since the `deployment_sync_secs` counter measures the time to sync.
+
+With tracing on, the sections of a synced deployment keep running so that
+the blocks processed after sync are traced; only the counter stops. Each
+section then costs a mutex and a small allocation on top of its span.
 
 With tracing on, every sampled span allocates its attributes and is handed
 to the batch processor. The `block`, `store` and `graphql` groups add a few
