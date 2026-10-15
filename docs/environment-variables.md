@@ -163,7 +163,8 @@ those.
 ## OpenTelemetry tracing
 
 Tracing is off by default and adds one atomic load per instrumented
-section when off.
+section when off. [tracing.md](./tracing.md) describes what is traced and
+how to set up a collector.
 
 - `GRAPH_OTEL_TRACING`: set to `true` to export spans over OTLP. Defaults to
   `false`.
