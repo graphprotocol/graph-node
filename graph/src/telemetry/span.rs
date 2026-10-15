@@ -9,6 +9,10 @@ use super::{Context, enabled};
 /// The instrumentation scope under which all graph-node spans are reported.
 const TRACER_NAME: &str = "graph-node";
 
+/// Error messages on spans are cut to this many bytes. Subgraph errors can
+/// carry a WASM backtrace, which has no place in a span status.
+pub const MAX_ERROR_MESSAGE_LEN: usize = 4096;
+
 /// A span attribute value. Mirrors the subset of OpenTelemetry value types
 /// that graph-node uses.
 #[derive(Clone, Debug, PartialEq)]
@@ -159,10 +163,15 @@ impl Span {
         }
     }
 
-    /// Mark the span as failed. The message shows up as the span status.
+    /// Mark the span as failed. The message shows up as the span status,
+    /// cut to [`MAX_ERROR_MESSAGE_LEN`] bytes.
     pub fn set_error(&mut self, message: &str) {
         if let Some(span) = self.0.as_mut() {
-            span.set_status(Status::error(message.to_owned()));
+            let mut end = message.len().min(MAX_ERROR_MESSAGE_LEN);
+            while !message.is_char_boundary(end) {
+                end -= 1;
+            }
+            span.set_status(Status::error(message[..end].to_owned()));
         }
     }
 

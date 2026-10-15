@@ -151,6 +151,21 @@ impl StopwatchMetrics {
         }
     }
 
+    /// Mark the span of the current section as failed. Does nothing if the
+    /// current section has no span.
+    pub fn set_error(&self, message: &str) {
+        self.set_error_with(|| message.to_owned())
+    }
+
+    /// Like [`Self::set_error`], but the message is only built if the
+    /// current section has a span. Use it when formatting the message is
+    /// not free.
+    pub fn set_error_with(&self, message: impl FnOnce() -> String) {
+        if telemetry::enabled() && !self.disabled.load(Ordering::SeqCst) {
+            self.inner.lock().unwrap().set_error_with(message)
+        }
+    }
+
     /// The context of the span that a section started now would be
     /// parented to, if any. Used to link work that happens elsewhere, like
     /// a queued write, back to the current trace.
@@ -336,6 +351,12 @@ impl StopwatchInner {
         }
     }
 
+    fn set_error_with(&mut self, message: impl FnOnce() -> String) {
+        if let Some(SectionSpan::Span(span)) = self.spans.last_mut() {
+            span.set_error(&message());
+        }
+    }
+
     fn end_section(&mut self, id: String) {
         // Validate that the expected section is running.
         match self.section_stack.last() {
@@ -459,9 +480,11 @@ mod tests {
         let handle = install();
         let stopwatch = stopwatch();
 
-        // Sections outside a root have no span.
+        // Sections outside a root have no span, and no error message is
+        // built for them.
         let outside = stopwatch.start_section("scan_blocks");
         assert!(stopwatch.current_context().is_none());
+        stopwatch.set_error_with(|| panic!("message built for a section without a span"));
         outside.end();
 
         let root = stopwatch.start_root_section(
@@ -478,6 +501,7 @@ mod tests {
         let triggers = stopwatch.start_section("process_triggers");
         let handler = stopwatch.start_section_with("run_handler", [("handler", "handleX".into())]);
         stopwatch.set_attr("tx_hash", "0xabc");
+        stopwatch.set_error("handler failed");
         let host_fn = stopwatch.start_section("host_export_store_set");
         host_fn.end();
         handler.end();
@@ -505,6 +529,8 @@ mod tests {
         assert_eq!(names(&handlers), ["run_handler"]);
         assert_eq!(handlers[0].attr("handler"), Some("handleX"));
         assert_eq!(handlers[0].attr("tx_hash"), Some("0xabc"));
+        assert!(handlers[0].is_error);
+        assert!(!root.is_error);
         let host_fns = handle.children_of(&handlers[0]);
         assert_eq!(names(&host_fns), ["host_export_store_set"]);
     }

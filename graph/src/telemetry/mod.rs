@@ -33,7 +33,7 @@ use slog::{Logger, info};
 
 use crate::env::EnvVars;
 
-pub use span::{AttrValue, Span};
+pub use span::{AttrValue, MAX_ERROR_MESSAGE_LEN, Span};
 
 /// Whether a tracer provider has been installed. Checked before any span
 /// work so that the disabled path costs one atomic load.
@@ -407,7 +407,7 @@ pub fn inject(ctx: &Context, headers: &mut http::HeaderMap) {
 mod tests {
     use http::{HeaderMap, HeaderValue};
 
-    use super::testing::{CHILD_MARKER, in_subprocess, install};
+    use super::testing::{in_child_process, in_subprocess, install};
     use super::*;
 
     const TRACEPARENT_SAMPLED: &str = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
@@ -526,7 +526,7 @@ mod tests {
         use wiremock::matchers::{header, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
-        if std::env::var_os(CHILD_MARKER).is_some() {
+        if in_child_process() {
             let config = Config {
                 enabled: true,
                 groups: SpanGroups::default(),
@@ -662,6 +662,25 @@ mod tests {
         assert_eq!(children[0].name, "child");
         assert_eq!(children[0].trace_id, root.trace_id);
         assert!(children[0].is_error);
+    }
+
+    #[test]
+    fn error_message_is_bounded() {
+        let handle = install();
+        let mut span = Span::root("failed");
+        span.set_attr("test", "error_message_is_bounded");
+        // Multi-byte characters, so that truncation must respect char
+        // boundaries to produce valid UTF-8.
+        span.set_error(&"ü".repeat(MAX_ERROR_MESSAGE_LEN));
+        span.end();
+
+        let spans = handle.spans_with_attr("test", "error_message_is_bounded");
+        assert_eq!(spans.len(), 1);
+        assert!(spans[0].is_error);
+        let message = spans[0].error_message.as_ref().unwrap();
+        assert!(message.len() <= MAX_ERROR_MESSAGE_LEN);
+        assert!(message.len() > MAX_ERROR_MESSAGE_LEN - 2);
+        assert!(message.chars().all(|c| c == 'ü'));
     }
 
     #[test]

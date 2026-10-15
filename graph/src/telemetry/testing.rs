@@ -31,6 +31,8 @@ pub struct ExportedSpan {
     /// `(trace_id, span_id)` of each linked span.
     pub links: Vec<(String, String)>,
     pub is_error: bool,
+    /// The status description when `is_error`.
+    pub error_message: Option<String>,
 }
 
 impl ExportedSpan {
@@ -74,6 +76,10 @@ impl From<&SpanData> for ExportedSpan {
                 })
                 .collect(),
             is_error: matches!(data.status, Status::Error { .. }),
+            error_message: match &data.status {
+                Status::Error { description } => Some(description.to_string()),
+                _ => None,
+            },
         }
     }
 }
@@ -155,8 +161,13 @@ pub fn install_with(groups: SpanGroups) -> &'static Handle {
     })
 }
 
-/// Marks a child process spawned by [`in_subprocess`].
+/// Marks a child process spawned by [`run_in_subprocess`].
 pub(super) const CHILD_MARKER: &str = "GRAPH_TELEMETRY_TEST_CHILD";
+
+/// `true` inside a process started by [`run_in_subprocess`].
+pub fn in_child_process() -> bool {
+    std::env::var_os(CHILD_MARKER).is_some()
+}
 
 /// Run `body` in a fresh process with every `OTEL_*` and `GRAPH_OTEL_*`
 /// variable unset and `env` set. The tracer provider and the enabled flag
@@ -168,12 +179,21 @@ pub(super) const CHILD_MARKER: &str = "GRAPH_TELEMETRY_TEST_CHILD";
 /// `test_name` with a marker variable set; the child sees the marker and
 /// runs `body` instead of spawning again. The child never mutates its
 /// environment, so `body` may start threads freely.
+///
+/// An `async` test cannot pass its body as a closure; it checks
+/// [`in_child_process`] itself and calls [`run_in_subprocess`] when it is
+/// the parent.
 pub fn in_subprocess(test_name: &str, env: &[(&str, &str)], body: impl FnOnce()) {
-    if std::env::var_os(CHILD_MARKER).is_some() {
+    if in_child_process() {
         body();
-        return;
+    } else {
+        run_in_subprocess(test_name, env);
     }
+}
 
+/// The parent half of [`in_subprocess`]: re-execute this test binary for
+/// `test_name` and assert that it passed.
+pub fn run_in_subprocess(test_name: &str, env: &[(&str, &str)]) {
     let exe = std::env::current_exe().unwrap();
     let mut command = Command::new(exe);
     command.args(["--exact", test_name, "--test-threads=1"]);
