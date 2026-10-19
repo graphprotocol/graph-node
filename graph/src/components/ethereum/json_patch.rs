@@ -6,8 +6,36 @@
 //! transaction) where missing.
 //!
 //! Also used by `PatchingHttp` for chains that don't support EIP-2718 typed transactions.
+//!
+//! Celo blocks from before the Gingerbread hard fork have no uncles hash in
+//! their header, so RPC nodes omit `sha3Uncles` entirely and alloy rejects the
+//! block with a missing-field error. Where the field is absent, patch in the
+//! canonical empty-uncles hash (keccak256 of the RLP of an empty list), which
+//! is what those blocks' headers commit to.
 
 use serde_json::Value;
+
+/// keccak256(rlp([])) — the uncles hash of a block with no uncles.
+const EMPTY_UNCLES_HASH: &str =
+    "0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347";
+
+/// Methods whose result is a block, or a map carrying block-like fields.
+pub fn is_block_method(method: &str) -> bool {
+    method == "eth_getBlockByHash"
+        || method == "eth_getBlockByNumber"
+        || method.starts_with("eth_getBlockByNumberAndRange")
+}
+
+pub fn patch_uncles_hash(block: &mut serde_json::Map<String, Value>) -> bool {
+    if !block.contains_key("sha3Uncles") {
+        block.insert(
+            "sha3Uncles".to_string(),
+            Value::String(EMPTY_UNCLES_HASH.to_string()),
+        );
+        return true;
+    }
+    false
+}
 
 pub fn patch_type_field(obj: &mut Value) -> bool {
     if let Value::Object(map) = obj
