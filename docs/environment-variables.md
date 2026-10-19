@@ -60,6 +60,13 @@ those.
   is not set, the default value will be `0`.
 - `GRAPH_ETH_GET_LOGS_MAX_CONTRACTS`: Maximum number of contracts to query in a single `eth_getLogs` request.
   Defaults to 2000.
+- `GRAPH_RPC_ETH_GET_LOGS_ERRORS`: Additional `eth_getLogs` error messages that mean the
+  request exceeded the provider's block-range or result cap, so graph-node shrinks the
+  block range instead of retrying. A `;`-separated list of substrings, matched
+  case-insensitively against the error message, for providers not already recognised.
+- `GRAPH_RPC_ETH_CALL_ERRORS`: Additional `eth_call` error messages to treat as a
+  deterministic revert rather than a transient failure. A `;`-separated list of substrings,
+  matched case-insensitively against the error message.
 
 ## Firehose configuration
 
