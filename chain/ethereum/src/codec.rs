@@ -9,7 +9,7 @@ use graph::{
         self, Block as BlockchainBlock, BlockPtr, BlockTime, ChainStoreBlock, ChainStoreData,
     },
     components::ethereum::{
-        AnyBlock, AnyHeader, AnyRpcHeader, AnyTransactionReceiptBare, AnyTxEnvelope,
+        AnyBlock, AnyHeader, AnyTransactionReceiptBare, AnyTxEnvelope, LenientHeader,
     },
     prelude::{
         BlockNumber, Error, EthereumBlock, EthereumBlockWithCalls, EthereumCall,
@@ -564,7 +564,7 @@ impl TryInto<AnyBlock> for &Block {
 
         use alloy::rpc::types::Block;
 
-        let any_header: AnyRpcHeader = rpc_header.map(AnyHeader::from);
+        let any_header = rpc_header.map(|h| LenientHeader::from(AnyHeader::from(h)));
 
         Ok(Block {
             header: any_header,
