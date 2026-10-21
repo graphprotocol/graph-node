@@ -21,6 +21,7 @@ use graph::prelude::{
 };
 use graph::schema::{EntityKey, EntityType, InputSchema};
 use graph::slog::{debug, info, warn};
+use graph::telemetry::{self, SpanGroup};
 use graph::util::bounded_queue::BoundedQueue;
 use graph::{
     cheap_clone::CheapClone,
@@ -817,10 +818,31 @@ impl Request {
                     // will poison and shut down the queue
                     return Err(err.clone());
                 }
+                // Writing a batch is its own trace, linked to the traces
+                // of the blocks whose changes it contains. Nesting it under
+                // one of them would be wrong, since a batch may hold several
+                // blocks and is written after they were processed.
+                let _section = stopwatch.start_root_section(
+                    "write_batch",
+                    SpanGroup::Store,
+                    || {
+                        [
+                            ("subgraph_id", store.site.deployment.to_string().into()),
+                            ("first_block", batch.first_block.into()),
+                            ("last_block", batch.block_ptr.number.into()),
+                            ("entity_count", batch.entity_count().into()),
+                            ("dropped_links", batch.dropped_trace_contexts.into()),
+                        ]
+                    },
+                    &batch.trace_contexts,
+                );
                 let res = store
                     .transact_block_operations(&batch, stopwatch)
                     .await
                     .map(|()| ExecResult::Continue);
+                if let Err(err) = &res {
+                    stopwatch.set_error_with(|| err.to_string());
+                }
                 info!(store.logger, "Committed write batch";
                         "block_number" => batch.block_ptr.number,
                         "block_count" => batch.block_ptr.number - batch.first_block + 1,
@@ -1130,9 +1152,16 @@ impl Queue {
     /// enough
     async fn push_write(
         &self,
-        batch: Batch,
+        mut batch: Batch,
         stopwatch: &StopwatchMetrics,
     ) -> Result<(), StoreError> {
+        // Remember the block's trace so the write can link back to it.
+        if telemetry::group_enabled(SpanGroup::Store)
+            && let Some(ctx) = stopwatch.current_context()
+        {
+            batch.push_trace_contexts([ctx]);
+        }
+
         let batch = if ENV_VARS.store.write_batch_size == 0
             || ENV_VARS.store.write_batch_duration.is_zero()
             || !self.batch_writes()
@@ -1424,7 +1453,7 @@ impl Queue {
 
     fn deployment_synced(&self) {
         self.stop_batching();
-        self.stopwatch.disable()
+        self.stopwatch.stop_recording()
     }
 
     fn batch_writes(&self) -> bool {

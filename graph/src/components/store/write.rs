@@ -6,6 +6,8 @@ use std::{
 
 use slog::Logger;
 
+use crate::telemetry::Context;
+
 use crate::{
     blockchain::{BlockPtr, BlockTime, block_stream::FirehoseCursor},
     cheap_clone::CheapClone,
@@ -783,9 +785,21 @@ pub struct Batch {
     /// the writer holds a lock, conflicts with appending to the batch and
     /// causes batches to be finished prematurely.
     indirect_weight: usize,
+    /// The traces of the blocks whose changes this batch contains, so that
+    /// the span for writing the batch can link back to them. Empty when
+    /// tracing is off. Capped at [`Batch::MAX_TRACE_CONTEXTS`]; the rest
+    /// are counted in `dropped_trace_contexts`.
+    pub trace_contexts: Vec<Context>,
+    /// How many block traces did not fit into `trace_contexts`.
+    pub dropped_trace_contexts: usize,
 }
 
 impl Batch {
+    /// How many block traces a batch links to at most. A batch rarely
+    /// spans more blocks than this, and a span with hundreds of links is
+    /// not useful.
+    pub const MAX_TRACE_CONTEXTS: usize = 32;
+
     pub fn new(
         block_ptr: BlockPtr,
         block_time: BlockTime,
@@ -831,6 +845,8 @@ impl Batch {
             error: None,
             is_non_fatal_errors_active,
             indirect_weight: 0,
+            trace_contexts: Vec::new(),
+            dropped_trace_contexts: 0,
         };
         batch.weigh();
         Ok(batch)
@@ -853,7 +869,21 @@ impl Batch {
         self.deterministic_errors
             .append(&mut batch.deterministic_errors);
         self.offchain_to_remove.append(batch.offchain_to_remove);
+        self.dropped_trace_contexts += batch.dropped_trace_contexts;
+        self.push_trace_contexts(batch.trace_contexts);
         Ok(())
+    }
+
+    /// Remember the traces of the blocks in this batch, up to
+    /// [`Self::MAX_TRACE_CONTEXTS`], and count the ones that do not fit.
+    pub fn push_trace_contexts(&mut self, contexts: impl IntoIterator<Item = Context>) {
+        for ctx in contexts {
+            if self.trace_contexts.len() < Self::MAX_TRACE_CONTEXTS {
+                self.trace_contexts.push(ctx);
+            } else {
+                self.dropped_trace_contexts += 1;
+            }
+        }
     }
 
     /// Append `batch` to `self` so that writing `self` afterwards has the
@@ -1382,5 +1412,52 @@ mod test {
         let res = group.push(make_insert(&SKIP_DUP_THING_TYPE, "one", 1), 1);
         assert!(res.is_ok());
         assert_eq!(group.row_count(), 2);
+    }
+}
+
+#[cfg(test)]
+mod trace_context_tests {
+    use super::Batch;
+    use crate::blockchain::block_stream::FirehoseCursor;
+    use crate::blockchain::{BlockPtr, BlockTime};
+    use crate::prelude::alloy::primitives::B256;
+    use crate::telemetry::Span;
+    use crate::telemetry::testing::install;
+
+    fn batch(block: u8) -> Batch {
+        let block_ptr = BlockPtr::from((B256::from([block; 32]), block as i32));
+        let block_time = BlockTime::for_test(&block_ptr);
+        Batch::new(
+            block_ptr,
+            block_time,
+            FirehoseCursor::None,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            false,
+            crate::log::discard(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn trace_contexts_are_capped_and_counted() {
+        install();
+        let mut first = batch(1);
+        let contexts: Vec<_> = (0..Batch::MAX_TRACE_CONTEXTS + 5)
+            .map(|_| Span::root("block").context().unwrap())
+            .collect();
+        first.push_trace_contexts(contexts);
+        assert_eq!(first.trace_contexts.len(), Batch::MAX_TRACE_CONTEXTS);
+        assert_eq!(first.dropped_trace_contexts, 5);
+
+        // Appending carries the count over and keeps capping.
+        let mut second = batch(2);
+        second.push_trace_contexts([Span::root("block").context().unwrap()]);
+        second.dropped_trace_contexts = 2;
+        first.append(second).unwrap();
+        assert_eq!(first.trace_contexts.len(), Batch::MAX_TRACE_CONTEXTS);
+        assert_eq!(first.dropped_trace_contexts, 8);
     }
 }

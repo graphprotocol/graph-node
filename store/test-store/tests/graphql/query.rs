@@ -743,6 +743,62 @@ where
     })
 }
 
+/// The store starts its query spans under the context attached to the
+/// thread it runs on, and query execution attaches the request's context
+/// on the blocking thread that runs the query. Guards that hop.
+#[test]
+fn query_spans_join_the_request_trace() {
+    use graph::telemetry::testing::install_with;
+    use graph::telemetry::{Span, SpanGroup, SpanGroups};
+
+    let spans = install_with(SpanGroups::NONE.with(SpanGroup::Store));
+
+    run_test_sequentially(move |store| async move {
+        let deployment = setup_readonly(store.as_ref()).await;
+
+        // What the HTTP server does for a traced request. The query is
+        // not one other tests run, so the result is not cached.
+        let root = Span::root("graphql_query");
+        let ctx = root.context().expect("the exporter is installed");
+        let query = q::parse_query("{ musicians(first: 3, orderBy: name) { id name } }")
+            .unwrap()
+            .into_static();
+        let query = Query::new(query, None, false).with_trace_context(Some(ctx.clone()));
+        let runner = Arc::new(GraphQlRunner::new(
+            &LOGGER,
+            STORE.clone(),
+            LOAD_MANAGER.clone(),
+            METRICS_REGISTRY.clone(),
+            Arc::new(graph::components::log_store::NoOpLogStore),
+        ));
+        let target = QueryTarget::Deployment(deployment.hash.clone(), Default::default());
+        let result = runner
+            .run_query_with_complexity(query, target, None, None, None, None)
+            .await;
+        assert!(!result.has_errors(), "{:?}", result.errors());
+        root.end();
+
+        let trace = spans.trace(&ctx.trace_id());
+        let root = trace
+            .iter()
+            .find(|span| span.name == "graphql_query")
+            .expect("the root span was exported");
+        let queries: Vec<_> = trace
+            .iter()
+            .filter(|span| span.name == "db_query")
+            .collect();
+        assert!(!queries.is_empty(), "no db_query span in {trace:?}");
+        for query in queries {
+            assert_eq!(query.parent_span_id.as_deref(), Some(root.span_id.as_str()));
+            assert_eq!(
+                query.attr("subgraph_id"),
+                Some(deployment.hash.to_string().as_str())
+            );
+            assert!(query.attr("entity_count").is_some());
+        }
+    });
+}
+
 #[test]
 fn can_query_one_to_one_relationship() {
     const QUERY: &str = "

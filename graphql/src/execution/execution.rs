@@ -21,6 +21,7 @@ use graph::data::query::CacheStatus;
 use graph::env::CachedSubgraphIds;
 use graph::prelude::*;
 use graph::schema::ast as sast;
+use graph::telemetry;
 use graph::util::{lfu_cache::LfuCache, stable_hash_glue::impl_stable_hash};
 
 use super::QueryHash;
@@ -490,6 +491,18 @@ pub(crate) async fn execute_root_selection_set<R: Resolver>(
         let query_text = execute_ctx.query.query_text.cheap_clone();
         let variables_text = execute_ctx.query.variables_text.cheap_clone();
         match graph::spawn_blocking_allow_panic(move || {
+            // Make the request's trace visible to the store, which starts
+            // its query spans under the thread-local context. This is
+            // sound only because the future below is driven to completion
+            // on this thread; a `tokio::spawn` inside it would run on a
+            // thread without the context and its spans would not be
+            // parented. The test `query_spans_join_the_request_trace` in
+            // the store tests fails if that happens.
+            let _trace_guard = execute_ctx
+                .query
+                .trace_context
+                .clone()
+                .map(telemetry::Context::attach);
             let mut query_res = QueryResult::from(
                 graph::block_on(execute_root_selection_set_uncached(
                     &execute_ctx,
