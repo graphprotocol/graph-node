@@ -46,7 +46,7 @@ where
 {
     // Do initial run
     if let Err(e) = on_change().await {
-        eprintln!("Error during initial run: {}", e);
+        eprintln!("Error during initial run: {:#}", e);
     }
 
     println!("\n{}", initial_msg);
@@ -101,7 +101,7 @@ where
                     println!("\nFile change detected: {}\n", changed);
 
                     if let Err(e) = on_change().await {
-                        eprintln!("Error during rebuild: {}", e);
+                        eprintln!("Error during rebuild: {:#}", e);
                     }
                 }
             }
