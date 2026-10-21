@@ -378,27 +378,28 @@ impl Ord for EthereumTrigger {
             // Calls are ordered by their tx indexes
             (Self::Call(a), Self::Call(b)) => a.transaction_index.cmp(&b.transaction_index),
 
-            // Events are ordered by their log index
-            (Self::Log(a), Self::Log(b)) => a.log_index().cmp(&b.log_index()),
+            // Events are ordered by their tx index first, and by their log index within a
+            // transaction. Comparing by tx index first (instead of log index alone) keeps this
+            // consistent with the Call/Log orderings below, which also key on tx index first;
+            // log index is not guaranteed to increase in lockstep with tx index for every
+            // trigger source, and a mismatch between the two would make the overall ordering
+            // non-transitive.
+            (Self::Log(a), Self::Log(b)) => a
+                .transaction_index()
+                .cmp(&b.transaction_index())
+                .then_with(|| a.log_index().cmp(&b.log_index())),
 
-            // Calls vs. events are logged by their tx index;
-            // if they are from the same transaction, events come first
-            (Self::Call(a), Self::Log(b))
-                if a.transaction_index == b.transaction_index().unwrap() =>
-            {
-                Ordering::Greater
-            }
-            (Self::Log(a), Self::Call(b))
-                if a.transaction_index().unwrap() == b.transaction_index =>
-            {
-                Ordering::Less
-            }
-            (Self::Call(a), Self::Log(b)) => {
-                a.transaction_index.cmp(&b.transaction_index().unwrap())
-            }
-            (Self::Log(a), Self::Call(b)) => {
-                a.transaction_index().unwrap().cmp(&b.transaction_index)
-            }
+            // Calls vs. events are ordered by their tx index; if they are from the same
+            // transaction, events come first.
+            (Self::Call(a), Self::Log(b)) => a
+                .transaction_index
+                .cmp(&b.transaction_index().unwrap())
+                .then(Ordering::Greater),
+            (Self::Log(a), Self::Call(b)) => a
+                .transaction_index()
+                .unwrap()
+                .cmp(&b.transaction_index)
+                .then(Ordering::Less),
         }
     }
 }
