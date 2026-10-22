@@ -121,7 +121,19 @@ impl MockTransport {
         })
     }
 
-    /// Extract `(address, block_hash)` from `[address, {"blockHash": hash}]` params.
+    /// Extract the block hash from a block param. Alloy serializes
+    /// `BlockId::Hash` as a bare `hash` unless `requireCanonical` is set, in
+    /// which case it uses the EIP-1898 `{"blockHash": hash}` object.
+    fn parse_block_hash(param: Option<&serde_json::Value>) -> Result<B256, String> {
+        let block_hash_str = param
+            .and_then(|v| v.as_str().or_else(|| v.get("blockHash")?.as_str()))
+            .ok_or("Missing blockHash in params")?;
+        block_hash_str
+            .parse()
+            .map_err(|e| format!("Invalid blockHash '{}': {}", block_hash_str, e))
+    }
+
+    /// Extract `(address, block_hash)` from `[address, block]` params.
     fn parse_address_and_block_hash(params: &serde_json::Value) -> Result<(Address, B256), String> {
         let arr = params.as_array().ok_or("Expected array params")?;
 
@@ -133,14 +145,7 @@ impl MockTransport {
             .parse()
             .map_err(|e| format!("Invalid address '{}': {}", address_str, e))?;
 
-        let block_hash_str = arr
-            .get(1)
-            .and_then(|v| v.get("blockHash"))
-            .and_then(|v| v.as_str())
-            .ok_or("Missing blockHash in params")?;
-        let block_hash: B256 = block_hash_str
-            .parse()
-            .map_err(|e| format!("Invalid blockHash '{}': {}", block_hash_str, e))?;
+        let block_hash = Self::parse_block_hash(arr.get(1))?;
 
         Ok((address, block_hash))
     }
@@ -213,14 +218,8 @@ impl MockTransport {
                 TransportErrorKind::custom_str(&format!("eth_call: invalid 'input' hex: {}", e))
             })?;
 
-        let block_hash_str = arr
-            .get(1)
-            .and_then(|v| v.get("blockHash"))
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| TransportErrorKind::custom_str("eth_call: missing blockHash"))?;
-        let block_hash: B256 = block_hash_str.parse().map_err(|e| {
-            TransportErrorKind::custom_str(&format!("eth_call: invalid blockHash: {}", e))
-        })?;
+        let block_hash = Self::parse_block_hash(arr.get(1))
+            .map_err(|e| TransportErrorKind::custom_str(&format!("eth_call: {}", e)))?;
 
         match self.inner.eth_calls.get(&(address, input, block_hash)) {
             Some(EthCallResult::Success(data)) => {
