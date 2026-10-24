@@ -2090,7 +2090,18 @@ impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
             } else {
                 out.push_sql("0 as causality_region, ");
             }
-            out.push_sql("e.id\n");
+            let pk_column = table.primary_key();
+
+            // Cast id to bytea so that every branch of the UNION has the same
+            // column type; the id can be text, bytea, or numeric depending on the
+            // entity type, and `UNION ALL` requires a common type per column.
+            match pk_column.column_type {
+                ColumnType::String => out.push_sql("e.id::bytea"),
+                ColumnType::Bytes => out.push_sql("e.id"),
+                ColumnType::Int8 => out.push_sql("e.id::text::bytea"),
+                _ => out.push_sql("e.id::bytea"),
+            }
+            out.push_sql("\n");
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
