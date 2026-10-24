@@ -54,9 +54,13 @@ impl<K: CacheWeight, V: Default + CacheWeight> CacheEntry<K, V> {
     }
 }
 
-// The priorities are `(stale, frequency)` tuples, first all stale entries will be popped and
-// then non-stale entries by least frequency.
-type Priority = (bool, Reverse<u64>);
+// The priorities are `(stale, frequency, key)` triples. First all stale entries will be popped
+// and then non-stale entries by least frequency. Ties on the first two components are broken by
+// the key so that eviction is deterministic and independent of the order in which entries were
+// inserted; without the key tie-breaker the `PriorityQueue` would break ties by heap position,
+// which depends on insertion order and therefore makes the eviction set differ between otherwise
+// identical runs. See https://github.com/graphprotocol/graph-node/issues/6706
+type Priority<K> = (bool, Reverse<u64>, Reverse<K>);
 
 /// Statistics about what happened during cache eviction
 pub struct EvictStats {
@@ -96,7 +100,7 @@ impl EvictStats {
 /// evictions entities are checked for staleness.
 #[derive(Debug)]
 pub struct LfuCache<K: Eq + Hash, V> {
-    queue: PriorityQueue<CacheEntry<K, V>, Priority>,
+    queue: PriorityQueue<CacheEntry<K, V>, Priority<K>>,
     total_weight: usize,
     stale_counter: u64,
     dead_weight: bool,
@@ -135,6 +139,9 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         match self.get_mut(key.clone()) {
             None => {
                 self.total_weight += weight;
+                // Clone the key once more to break eviction-priority ties
+                // deterministically; see `type Priority<K>`.
+                let tie_break_key = key.clone();
                 self.queue.push(
                     CacheEntry {
                         weight,
@@ -142,7 +149,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
                         value,
                         will_stale: false,
                     },
-                    (false, Reverse(1)),
+                    (false, Reverse(1), Reverse(tie_break_key)),
                 );
             }
             Some(entry) => {
@@ -168,7 +175,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         // Increment the frequency by 1
         let key_entry = CacheEntry::cache_key(key);
         self.queue
-            .change_priority_by(&key_entry, |(_, Reverse(f))| {
+            .change_priority_by(&key_entry, |(_, Reverse(f), _)| {
                 *f += 1;
             });
         self.accesses += 1;
@@ -194,7 +201,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
         // the absolute minimum and popping.
         let key_entry = CacheEntry::cache_key(key.clone());
         self.queue
-            .change_priority(&key_entry, (true, Reverse(u64::MIN)))
+            .change_priority(&key_entry, (true, Reverse(u64::MIN), Reverse(key.clone())))
             .and_then(|_| {
                 self.queue.pop().map(|(e, _)| {
                     assert_eq!(e.key, key_entry.key);
@@ -306,7 +313,7 @@ impl<K: Clone + Ord + Eq + Hash + Debug + CacheWeight, V: CacheWeight + Default>
 }
 
 impl<K: Ord + Eq + Hash + 'static, V: 'static> IntoIterator for LfuCache<K, V> {
-    type Item = (CacheEntry<K, V>, Priority);
+    type Item = (CacheEntry<K, V>, Priority<K>);
     type IntoIter = Box<dyn Iterator<Item = Self::Item>>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -314,8 +321,8 @@ impl<K: Ord + Eq + Hash + 'static, V: 'static> IntoIterator for LfuCache<K, V> {
     }
 }
 
-impl<K: Ord + Eq + Hash, V> Extend<(CacheEntry<K, V>, Priority)> for LfuCache<K, V> {
-    fn extend<T: IntoIterator<Item = (CacheEntry<K, V>, Priority)>>(&mut self, iter: T) {
+impl<K: Ord + Eq + Hash, V> Extend<(CacheEntry<K, V>, Priority<K>)> for LfuCache<K, V> {
+    fn extend<T: IntoIterator<Item = (CacheEntry<K, V>, Priority<K>)>>(&mut self, iter: T) {
         self.queue.extend(iter);
     }
 }
