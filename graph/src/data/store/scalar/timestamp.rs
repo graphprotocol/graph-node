@@ -44,8 +44,12 @@ impl Timestamp {
     }
 
     pub fn from_microseconds_since_epoch(micros: i64) -> Result<Self, TimestampError> {
-        let secs = micros / 1_000_000;
-        let ns = (micros % 1_000_000) * 1_000;
+        // Euclidean div/rem so the nanosecond remainder stays in [0, 1e6) for
+        // negative (pre-epoch) micros too. Plain `/`/`%` truncate toward zero, so a
+        // sub-second negative value yields a negative `ns`, which `as u32` wraps to a
+        // huge value and `DateTime::from_timestamp` then rejects as invalid.
+        let secs = micros.div_euclid(1_000_000);
+        let ns = micros.rem_euclid(1_000_000) * 1_000;
 
         match DateTime::from_timestamp(secs, ns as u32) {
             Some(dt) => Ok(Self(dt)),
@@ -121,5 +125,36 @@ impl FromSql<diesel::sql_types::Timestamptz, diesel::pg::Pg> for Timestamp {
     fn from_sql(value: PgValue) -> diesel::deserialize::Result<Self> {
         <DateTime<Utc> as FromSql<diesel::sql_types::Timestamptz, _>>::from_sql(value)
             .map(Timestamp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Timestamp;
+
+    #[test]
+    fn from_microseconds_round_trips_including_negatives() {
+        // Pre-epoch (negative) microsecond values, including sub-second ones, must
+        // decode to a valid Timestamp and round-trip. Before the Euclidean-div fix,
+        // sub-second negatives (e.g. -1_500_000) were wrongly rejected as invalid.
+        for micros in [
+            0i64,
+            1,
+            -1,
+            1_500_000,
+            -1_500_000,
+            999_999,
+            -999_999,
+            -1_000_000,
+            1_700_000_000_000_000,
+        ] {
+            let ts = Timestamp::from_microseconds_since_epoch(micros)
+                .unwrap_or_else(|_| panic!("{micros} should be a valid timestamp"));
+            assert_eq!(
+                ts.as_microseconds_since_epoch(),
+                micros,
+                "round-trip failed for {micros}"
+            );
+        }
     }
 }
