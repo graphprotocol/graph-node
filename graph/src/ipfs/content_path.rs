@@ -82,10 +82,20 @@ impl ContentPath {
                 source: anyhow::Error::from(err).context("invalid CID"),
             })?;
 
-        if path.contains('?') {
+        if path.contains('?') || path.contains('&') || path.contains('#') {
             return Err(IpfsError::InvalidContentPath {
                 input: input.to_string(),
                 source: anyhow!("query parameters not allowed"),
+            });
+        }
+
+        if path
+            .split('/')
+            .any(|segment| segment == "." || segment == "..")
+        {
+            return Err(IpfsError::InvalidContentPath {
+                input: input.to_string(),
+                source: anyhow!("path traversal is not allowed"),
             });
         }
 
@@ -233,6 +243,34 @@ mod tests {
             err.to_string(),
             format!(
                 "'{CID_V0}/readme.md?offline=true' is not a valid IPFS content path: query parameters not allowed"
+            )
+        );
+
+        let err = ContentPath::new(format!("{CID_V0}/readme.md&offline=true")).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "'{CID_V0}/readme.md&offline=true' is not a valid IPFS content path: query parameters not allowed"
+            )
+        );
+    }
+
+    #[test]
+    fn fails_on_path_traversal() {
+        let err = ContentPath::new(format!("{CID_V0}/../secret")).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!("'{CID_V0}/../secret' is not a valid IPFS content path: path traversal is not allowed")
+        );
+
+        let err = ContentPath::new(format!("{CID_V0}/foo/../../admin")).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "'{CID_V0}/foo/../../admin' is not a valid IPFS content path: path traversal is not allowed"
             )
         );
     }
