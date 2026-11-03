@@ -15,7 +15,7 @@ use graph::abi::JsonAbi;
 use graphql_tools::parser::schema as gql;
 use semver::Version;
 
-use crate::abi::normalize_abi_json;
+use crate::abi::preprocess_abi_json;
 use crate::codegen::{
     AbiCodeGenerator, Class, GENERATED_FILE_NOTE, ModuleImports, SchemaCodeGenerator,
     Template as CodegenTemplate, TemplateCodeGenerator, TemplateKind,
@@ -235,58 +235,6 @@ fn generate_schema_types(
         .with_context(|| format!("Failed to write schema types: {:?}", output_file))?;
 
     Ok(true)
-}
-
-/// Preprocess ABI JSON to normalize artifact formats and add defaults
-/// required by alloy's ABI parser:
-/// - `anonymous: false` for events (alloy requires this field)
-/// - `param{index}` names for unnamed event parameters (to match graph-cli behavior)
-fn preprocess_abi_json(abi_str: &str) -> Result<String> {
-    // Normalize to get the ABI array from various artifact formats
-    let mut abi = normalize_abi_json(abi_str)?;
-
-    if let Some(items) = abi.as_array_mut() {
-        for item in items {
-            if let Some(obj) = item.as_object_mut() {
-                let is_event = obj
-                    .get("type")
-                    .and_then(|t| t.as_str())
-                    .map(|t| t == "event")
-                    .unwrap_or(false);
-
-                if is_event {
-                    // Add anonymous: false for events if missing (alloy requires it)
-                    if !obj.contains_key("anonymous") {
-                        obj.insert("anonymous".to_string(), serde_json::Value::Bool(false));
-                    }
-
-                    // Add param{index} names for unnamed event parameters
-                    if let Some(inputs) = obj.get_mut("inputs") {
-                        add_default_event_param_names(inputs);
-                    }
-                }
-            }
-        }
-    }
-
-    serde_json::to_string(&abi).context("Failed to serialize processed ABI")
-}
-
-/// Add `param{index}` names to unnamed event parameters to match graph-cli behavior.
-/// Alloy defaults missing names to empty strings, but for events we want `param0`, `param1`, etc.
-fn add_default_event_param_names(params: &mut serde_json::Value) {
-    if let Some(params_arr) = params.as_array_mut() {
-        for (index, param) in params_arr.iter_mut().enumerate() {
-            if let Some(obj) = param.as_object_mut()
-                && !obj.contains_key("name")
-            {
-                obj.insert(
-                    "name".to_string(),
-                    serde_json::Value::String(format!("param{}", index)),
-                );
-            }
-        }
-    }
 }
 
 /// Generate types from an ABI file.

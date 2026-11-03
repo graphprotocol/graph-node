@@ -16,6 +16,7 @@ use graph::prelude::DeploymentHash;
 use graph::schema::{InputSchema, SchemaValidationError};
 use semver::Version;
 
+use crate::abi::event_signature_with_indexed;
 use crate::manifest::{Abi, BlockHandlerFilterKind, CallHandler, DataSource, Manifest, Template};
 
 /// Validate a GraphQL schema using graph-node's InputSchema validation.
@@ -827,23 +828,6 @@ fn load_abi(abi_path: &Path) -> Option<JsonAbi> {
     let normalized = crate::abi::normalize_abi_json(&content).ok()?;
     let json_str = normalized.to_string();
     serde_json::from_str(&json_str).ok()
-}
-
-/// Build the event signature with `indexed` hints: `Name(indexed type1,type2,...)`.
-fn event_signature_with_indexed(event: &Event) -> String {
-    let params: Vec<String> = event
-        .inputs
-        .iter()
-        .map(|p| {
-            let ty = p.selector_type();
-            if p.indexed {
-                format!("indexed {}", ty)
-            } else {
-                ty.into_owned()
-            }
-        })
-        .collect();
-    format!("{}({})", event.name, params.join(","))
 }
 
 /// Validate that each event handler's event signature matches an event in the ABI.

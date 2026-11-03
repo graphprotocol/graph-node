@@ -2,6 +2,8 @@
 
 use std::collections::HashMap;
 
+use graph::abi::{Event, EventParam, Param};
+
 use super::ScaffoldOptions;
 use crate::shared::handle_reserved_word;
 
@@ -97,7 +99,7 @@ fn get_entities(events: &[ResolvedEvent]) -> String {
 pub struct EventInfo {
     pub name: String,
     pub signature: String,
-    pub inputs: Vec<EventInput>,
+    pub inputs: Vec<EventParam>,
 }
 
 /// An event resolved to the concrete names the generators render.
@@ -149,7 +151,7 @@ pub fn disambiguate_events(events: Vec<EventInfo>) -> Vec<ResolvedEvent> {
 /// ABI codegen gives the generated getters: reserved words are escaped and
 /// unnamed params become `param<index>`, with a counter for any collisions.
 /// Keeps the mapping's right-hand side in sync with the generated bindings.
-pub fn event_param_accessors(inputs: &[EventInput]) -> Vec<String> {
+pub fn event_param_accessors(inputs: &[EventParam]) -> Vec<String> {
     let mut seen: HashMap<String, u32> = HashMap::new();
     inputs
         .iter()
@@ -172,21 +174,95 @@ pub fn event_param_accessors(inputs: &[EventInput]) -> Vec<String> {
         .collect()
 }
 
-/// Event input parameter.
-#[derive(Debug, Clone)]
-pub struct EventInput {
-    pub name: String,
+/// A flattened leaf of an event input: the entity field name, the matching
+/// `event.params` accessor, and the leaf's Solidity type. A single `tuple`
+/// expands to one leaf per component (`data` -> `data_a`, `data_b`).
+pub struct InputLeaf {
+    pub field: String,
+    pub accessor: String,
     pub solidity_type: String,
-    pub indexed: bool,
 }
 
-/// Extract events from ABI JSON.
+/// Flatten an event's inputs into leaves, unrolling a single `tuple` into its
+/// components (`tuple[]` stays one leaf). The top-level accessor mirrors the
+/// generated binding getter (`event_param_accessors`) so `event.params.<x>`
+/// resolves; field names are sanitized for the schema/entity side.
+///
+/// An indexed reference type is reduced to a `bytes32` hash by the EVM, so the
+/// binding getter yields `Bytes` and there is nothing to unroll: it becomes a
+/// single hash leaf.
+pub fn flatten_event_inputs(inputs: &[EventParam]) -> Vec<InputLeaf> {
+    let accessors = event_param_accessors(inputs);
+    let mut leaves = Vec::new();
+    for (input, accessor) in inputs.iter().zip(&accessors) {
+        if crate::abi::is_hashed_when_indexed(input) {
+            leaves.push(InputLeaf {
+                field: super::sanitize_field_name(&input.name),
+                accessor: accessor.clone(),
+                solidity_type: "bytes32".to_string(),
+            });
+            continue;
+        }
+        flatten_into(
+            &mut leaves,
+            std::slice::from_ref(accessor),
+            &[super::sanitize_field_name(&input.name)],
+            &input.ty,
+            &input.components,
+        );
+    }
+    leaves
+}
+
+fn flatten_into(
+    out: &mut Vec<InputLeaf>,
+    accessor_path: &[String],
+    field_path: &[String],
+    solidity_type: &str,
+    components: &[Param],
+) {
+    if solidity_type != "tuple" {
+        out.push(InputLeaf {
+            field: field_path.join("_"),
+            accessor: accessor_path.join("."),
+            solidity_type: solidity_type.to_string(),
+        });
+        return;
+    }
+
+    for (i, comp) in components.iter().enumerate() {
+        let (raw, field) = if comp.name.is_empty() {
+            (format!("value{i}"), format!("value{i}"))
+        } else {
+            (comp.name.clone(), super::sanitize_field_name(&comp.name))
+        };
+        let mut accessor = accessor_path.to_vec();
+        accessor.push(raw);
+        let mut fields = field_path.to_vec();
+        fields.push(field);
+        flatten_into(out, &accessor, &fields, &comp.ty, &comp.components);
+    }
+}
+
+/// Extract events from the ABI, in file order.
+///
+/// The ABI is preprocessed (artifact formats unwrapped, `anonymous` and
+/// `param{index}` defaults added) so alloy can parse each event item into a
+/// typed `Event`. A malformed event is skipped with a warning.
 pub fn extract_events_from_abi(options: &ScaffoldOptions) -> Vec<EventInfo> {
     let Some(abi) = &options.abi else {
         return vec![];
     };
 
-    let Some(items) = abi.as_array() else {
+    let normalized = match crate::abi::preprocess_abi_value(abi.clone()) {
+        Ok(value) => value,
+        Err(err) => {
+            eprintln!("warning: could not parse ABI for scaffolding: {err}");
+            return vec![];
+        }
+    };
+
+    let Some(items) = normalized.as_array() else {
         return vec![];
     };
 
@@ -197,58 +273,26 @@ pub fn extract_events_from_abi(options: &ScaffoldOptions) -> Vec<EventInfo> {
             continue;
         }
 
-        let Some(name) = item.get("name").and_then(|n| n.as_str()) else {
-            continue;
-        };
-
-        let inputs = item
-            .get("inputs")
-            .and_then(|i| i.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|input| {
-                        let name = input.get("name").and_then(|n| n.as_str())?.to_string();
-                        let solidity_type = input.get("type").and_then(|t| t.as_str())?.to_string();
-                        let indexed = input
-                            .get("indexed")
-                            .and_then(|i| i.as_bool())
-                            .unwrap_or(false);
-                        Some(EventInput {
-                            name,
-                            solidity_type,
-                            indexed,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        let signature = format_event_signature(name, &inputs);
-
-        events.push(EventInfo {
-            name: name.to_string(),
-            signature,
-            inputs,
-        });
+        match serde_json::from_value::<Event>(item.clone()) {
+            Ok(event) => {
+                let signature = crate::abi::event_signature_with_indexed(&event);
+                events.push(EventInfo {
+                    name: event.name,
+                    signature,
+                    inputs: event.inputs,
+                });
+            }
+            Err(err) => {
+                let name = item
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("<unnamed>");
+                eprintln!("warning: skipping malformed event `{name}` in ABI: {err}");
+            }
+        }
     }
 
     events
-}
-
-/// Format an event signature string.
-fn format_event_signature(name: &str, inputs: &[EventInput]) -> String {
-    let params: Vec<String> = inputs
-        .iter()
-        .map(|input| {
-            if input.indexed {
-                format!("indexed {}", input.solidity_type)
-            } else {
-                input.solidity_type.clone()
-            }
-        })
-        .collect();
-
-    format!("{}({})", name, params.join(","))
 }
 
 #[cfg(test)]
@@ -379,22 +423,109 @@ mod tests {
     }
 
     #[test]
-    fn test_format_event_signature() {
-        let inputs = vec![
-            EventInput {
-                name: "from".to_string(),
-                solidity_type: "address".to_string(),
-                indexed: true,
-            },
-            EventInput {
-                name: "value".to_string(),
-                solidity_type: "uint256".to_string(),
-                indexed: false,
-            },
-        ];
+    fn test_extract_events_accepts_artifact_format() {
+        // A Foundry/Hardhat artifact wrapper is unwrapped before parsing.
+        let abi = json!({
+            "abi": [
+                {
+                    "type": "event",
+                    "name": "Transfer",
+                    "inputs": [{"name": "from", "type": "address", "indexed": true}]
+                }
+            ]
+        });
+        let options = ScaffoldOptions {
+            abi: Some(abi),
+            ..Default::default()
+        };
+        let events = extract_events_from_abi(&options);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].name, "Transfer");
+    }
 
-        let sig = format_event_signature("Transfer", &inputs);
-        assert_eq!(sig, "Transfer(indexed address,uint256)");
+    #[test]
+    fn test_extract_events_names_unnamed_params() {
+        // Unnamed event params are named `param{index}`, matching graph-cli, so
+        // the accessor and the generated getter agree. solc writes `"name": ""`
+        // for these; a hand-written ABI may omit the key. Both are unnamed.
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Act",
+                "anonymous": false,
+                "inputs": [
+                    {"name": "", "type": "uint256", "indexed": false, "internalType": "uint256"},
+                    {"name": "", "type": "address", "indexed": false, "internalType": "address"},
+                    {"type": "bool"}
+                ]
+            }
+        ]);
+        let options = ScaffoldOptions {
+            abi: Some(abi),
+            ..Default::default()
+        };
+        let events = extract_events_from_abi(&options);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].inputs[0].name, "param0");
+        assert_eq!(events[0].inputs[1].name, "param1");
+        assert_eq!(events[0].inputs[2].name, "param2");
+    }
+
+    #[test]
+    fn test_generate_schema_unnamed_params_do_not_collide() {
+        // Two unnamed params must not both sanitize to the field `value`: a
+        // duplicate field is not valid GraphQL and fails the build.
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Act",
+                "anonymous": false,
+                "inputs": [
+                    {"name": "", "type": "address", "indexed": false},
+                    {"name": "", "type": "uint8", "indexed": false}
+                ]
+            }
+        ]);
+        let options = ScaffoldOptions {
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+        let schema = super::super::generate_schema(&options);
+        assert!(schema.contains("param0: Bytes!"), "{}", schema);
+        assert!(schema.contains("param1: Int!"), "{}", schema);
+        assert!(!schema.contains("value:"), "{}", schema);
+    }
+
+    #[test]
+    fn test_extract_events_expands_tuple_signature() {
+        // A tuple param expands to its components so the topic0 hash matches the
+        // on-chain event; array suffixes are preserved.
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Filled",
+                "inputs": [
+                    {"name": "order", "type": "tuple", "components": [
+                        {"name": "maker", "type": "address"},
+                        {"name": "price", "type": "uint256"}
+                    ]},
+                    {"name": "fills", "type": "tuple[]", "components": [
+                        {"name": "amount", "type": "uint256"}
+                    ]},
+                    {"name": "fee", "type": "uint256"}
+                ]
+            }
+        ]);
+        let options = ScaffoldOptions {
+            abi: Some(abi),
+            ..Default::default()
+        };
+        let events = extract_events_from_abi(&options);
+        assert_eq!(
+            events[0].signature,
+            "Filled((address,uint256),(uint256)[],uint256)"
+        );
     }
 
     #[test]
