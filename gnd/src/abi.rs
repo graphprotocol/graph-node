@@ -9,6 +9,43 @@ use anyhow::{Context, Result, anyhow};
 use graph::abi::{DynSolType, Event, EventParam};
 use serde_json::Value;
 
+/// The AssemblyScript width class a Solidity integer maps to. Drives both the
+/// GraphQL scalar the scaffold emits and the getter/setter the codegen emits, so
+/// the schema and the generated bindings always agree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IntWidth {
+    /// Fits an `i32` -> GraphQL `Int`.
+    I32,
+    /// Fits an `i64` -> GraphQL `Int8`.
+    I64,
+    /// Needs `BigInt`.
+    Big,
+}
+
+/// Classify a Solidity integer by signedness and bit width. The cutoffs are the
+/// point where a value stops fitting the target AssemblyScript int:
+///
+/// - `i32` is signed 32-bit (`-2^31 ..= 2^31-1`): `int32` fits exactly, and an
+///   unsigned value fits while `2^bits - 1 <= 2^31 - 1`, i.e. up to 31 bits.
+/// - `i64` is signed 64-bit (`-2^63 ..= 2^63-1`): `int64` fits exactly, and an
+///   unsigned value fits up to 63 bits (`uint64`'s `2^64-1` overflows i64).
+///
+/// The signed cutoffs (32, 64) are exact: lowering either would push `int32` /
+/// `int64` to `BigInt` even though they fit. The unsigned cutoffs (31, 63) are
+/// the bit limits; Solidity int widths only come in 8-bit steps, so no real type
+/// ever lands between the largest fitting width (`uint24` / `uint56`) and the
+/// cutoff, making 31/63 and 24/56 equivalent for every valid ABI.
+pub fn classify_int_width(signed: bool, bits: u32) -> IntWidth {
+    let (i32_max, i64_max) = if signed { (32, 64) } else { (31, 63) };
+    if bits <= i32_max {
+        IntWidth::I32
+    } else if bits <= i64_max {
+        IntWidth::I64
+    } else {
+        IntWidth::Big
+    }
+}
+
 /// Resolve an `EventParam`'s declared type to `DynSolType`.
 pub fn resolve_event_param_type(param: &EventParam) -> DynSolType {
     param

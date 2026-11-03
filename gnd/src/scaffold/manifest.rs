@@ -124,18 +124,22 @@ pub struct ResolvedEvent {
 /// Resolve events for a fresh scaffold, disambiguating names that are overloaded
 /// within one ABI by suffixing repeats (`Transfer`, `Transfer1`, ...). There are
 /// no existing entities to collide with, so each entity is declared as-is.
+///
+/// Names are escaped with `handle_reserved_word` before disambiguating, matching
+/// the ABI codegen: the generated event class and the entity/handler imports must
+/// use the same alias, or an event named after an AssemblyScript reserved word
+/// (e.g. `await`) yields a schema/mapping that references a class the bindings
+/// export under a different name.
 pub fn disambiguate_events(events: Vec<EventInfo>) -> Vec<ResolvedEvent> {
-    let mut seen: HashMap<String, usize> = HashMap::new();
+    let names: Vec<String> = events
+        .iter()
+        .map(|e| handle_reserved_word(&e.name))
+        .collect();
+    let aliases = crate::shared::disambiguate_names(&names);
     events
         .into_iter()
-        .map(|event| {
-            let count = seen.entry(event.name.clone()).or_insert(0);
-            let alias = if *count == 0 {
-                event.name.clone()
-            } else {
-                format!("{}{}", event.name, count)
-            };
-            *count += 1;
+        .zip(aliases)
+        .map(|(event, alias)| {
             let entity_name = alias.clone();
             ResolvedEvent {
                 event,
@@ -211,7 +215,23 @@ pub fn flatten_event_inputs(inputs: &[EventParam]) -> Vec<InputLeaf> {
             &input.components,
         );
     }
+    dedupe_field_names(&mut leaves);
     leaves
+}
+
+/// Suffix repeated leaf field names (`value`, `value1`, ...) so the generated
+/// entity never declares the same field twice. Two distinct params can sanitize
+/// to the same field (`a-b` and `a_b` -> `a_b`), so the field side needs its own
+/// dedup. Uses the shared allocator so a generated suffix skips a real field
+/// (`value`, `value`, `value1` -> `value`, `value2`, `value1`).
+fn dedupe_field_names(leaves: &mut [InputLeaf]) {
+    let names: Vec<String> = leaves.iter().map(|leaf| leaf.field.clone()).collect();
+    for (leaf, field) in leaves
+        .iter_mut()
+        .zip(crate::shared::disambiguate_names(&names))
+    {
+        leaf.field = field;
+    }
 }
 
 fn flatten_into(
@@ -543,5 +563,48 @@ mod tests {
         assert_eq!(resolved[1].entity_name, "Transfer1");
         assert_eq!(resolved[2].alias, "Approval");
         assert!(resolved.iter().all(|r| r.declare_in_schema));
+    }
+
+    #[test]
+    fn test_disambiguate_events_suffix_skips_real_name() {
+        let ev = |name: &str| EventInfo {
+            name: name.to_string(),
+            signature: format!("{}()", name),
+            inputs: vec![],
+        };
+        // The second `Transfer` must not take `Transfer1`, which is a real event.
+        let resolved = disambiguate_events(vec![ev("Transfer"), ev("Transfer"), ev("Transfer1")]);
+        assert_eq!(resolved[0].entity_name, "Transfer");
+        assert_eq!(resolved[1].entity_name, "Transfer2");
+        assert_eq!(resolved[2].entity_name, "Transfer1");
+    }
+
+    #[test]
+    fn test_flatten_dedupes_field_names_that_sanitize_alike() {
+        // Two distinct param names that sanitize to the same field (`a-b` and
+        // `a_b` both -> `a_b`) must not produce a duplicate entity field.
+        let param = |name: &str| EventParam {
+            name: name.to_string(),
+            ty: "uint256".to_string(),
+            ..Default::default()
+        };
+        let leaves = flatten_event_inputs(&[param("a-b"), param("a_b")]);
+        let fields: Vec<&str> = leaves.iter().map(|l| l.field.as_str()).collect();
+        assert_eq!(fields, vec!["a_b", "a_b1"]);
+    }
+
+    #[test]
+    fn test_flatten_field_dedup_skips_a_real_field() {
+        // A generated suffix must not collide with a real later field: two
+        // unnamed params (both -> `value`) plus a param named `value1` must not
+        // yield two `value1`s.
+        let param = |name: &str| EventParam {
+            name: name.to_string(),
+            ty: "uint256".to_string(),
+            ..Default::default()
+        };
+        let leaves = flatten_event_inputs(&[param(""), param(""), param("value1")]);
+        let fields: Vec<&str> = leaves.iter().map(|l| l.field.as_str()).collect();
+        assert_eq!(fields, vec!["value", "value2", "value1"]);
     }
 }
