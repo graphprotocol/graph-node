@@ -1,5 +1,7 @@
 //! Mapping (AssemblyScript) generation for scaffold.
 
+use graph::abi::DynSolType;
+
 use super::ScaffoldOptions;
 use super::manifest::{EventInfo, ResolvedEvent, extract_events_from_abi};
 use super::sanitize_field_name;
@@ -205,7 +207,7 @@ fn generate_single_handler(resolved: &ResolvedEvent) -> String {
     // param<index> for unnamed).
     let mut field_assignments = String::new();
     for leaf in super::flatten_event_inputs(&resolved.event.inputs) {
-        if needs_bytes_array_cast(&leaf.solidity_type) {
+        if needs_bytes_array_cast(&leaf.ty) {
             field_assignments.push_str(&format!(
                 "  entity.{} = changetype<Bytes[]>(event.params.{})\n",
                 leaf.field, leaf.accessor
@@ -234,16 +236,25 @@ fn generate_single_handler(resolved: &ResolvedEvent) -> String {
     )
 }
 
-/// Whether a leaf is an `address[]`, whose binding type `Array<Address>` needs a
-/// `changetype` to fit a `Bytes[]` entity field.
+/// Whether a leaf is an address array (`address[]` or `address[N]`), whose
+/// binding type `Array<Address>` needs a `changetype` to fit a `Bytes[]` entity
+/// field.
 ///
 /// Only `address` qualifies: `Address extends Bytes`, so the cast is an upcast.
 /// `ethereum.Tuple` extends `Array<Value>` and is not a `Bytes`, so casting a
 /// `tuple[]` would be an unchecked reinterpret that compiles and then writes
 /// heap pointers into the entity. It has no `Bytes[]` form, so it gets no cast
 /// and fails to compile instead.
-fn needs_bytes_array_cast(solidity_type: &str) -> bool {
-    solidity_type == "address[]"
+///
+/// An indexed address array reaches the entity as a `bytes32` hash leaf, not an
+/// array (`flatten_event_inputs` short-circuits it), so it never gets here and
+/// this cast cannot reinterpret a hash.
+fn needs_bytes_array_cast(ty: &DynSolType) -> bool {
+    matches!(
+        ty,
+        DynSolType::Array(inner) | DynSolType::FixedArray(inner, _)
+            if matches!(**inner, DynSolType::Address)
+    )
 }
 
 /// Extract callable functions from ABI for documentation comments.
@@ -520,6 +531,55 @@ mod tests {
             "tuple[] must never be changetype'd to Bytes[], got:\n{}",
             mapping
         );
+    }
+
+    #[test]
+    fn test_generate_mapping_casts_fixed_size_address_array() {
+        // A non-indexed `address[N]` reaches the entity as an array, so it needs
+        // the same upcast as `address[]`; a fixed uint array does not.
+        let abi = json!([
+            {
+                "type": "event",
+                "name": "Signers",
+                "inputs": [
+                    {"name": "owners", "type": "address[3]"},
+                    {"name": "amounts", "type": "uint256[3]"}
+                ]
+            }
+        ]);
+
+        let options = ScaffoldOptions {
+            contract_name: "Vault".to_string(),
+            abi: Some(abi),
+            index_events: true,
+            ..Default::default()
+        };
+
+        let mapping = generate_mapping(&options);
+        assert!(
+            mapping.contains("entity.owners = changetype<Bytes[]>(event.params.owners)"),
+            "{}",
+            mapping
+        );
+        assert!(
+            mapping.contains("entity.amounts = event.params.amounts\n"),
+            "{}",
+            mapping
+        );
+    }
+
+    #[test]
+    fn test_needs_bytes_array_cast() {
+        let cast = |t: &str| needs_bytes_array_cast(&t.parse::<DynSolType>().unwrap());
+        // Both dynamic and fixed-size address arrays need the upcast to Bytes[].
+        assert!(cast("address[]"));
+        assert!(cast("address[3]"));
+        // Nothing else does: a plain address, a non-address array, or a tuple
+        // array (which has no Bytes[] form and must fail to compile instead).
+        assert!(!cast("address"));
+        assert!(!cast("uint256[]"));
+        assert!(!cast("uint256[3]"));
+        assert!(!cast("(address,uint256)[]"));
     }
 
     #[test]

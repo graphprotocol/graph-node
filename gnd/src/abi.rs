@@ -54,6 +54,16 @@ pub fn resolve_event_param_type(param: &EventParam) -> DynSolType {
         .expect("valid ABI type")
 }
 
+/// Parse a selector type without panicking.
+///
+/// [`resolve_event_param_type`] `.expect()`s because codegen only runs on ABIs
+/// that already resolved. Scaffolding also runs on hand-written ABIs that alloy
+/// accepts but cannot fully resolve (a component-less `tuple`), so it must fall
+/// back to a `Bytes` field rather than abort. Returns `None` for such a type.
+pub fn try_resolve_selector_type(selector_type: &str) -> Option<DynSolType> {
+    selector_type.parse::<DynSolType>().ok()
+}
+
 /// The type an indexed param actually carries in the log.
 ///
 /// A topic is exactly 32 bytes, so reference types (strings, bytes, arrays and
