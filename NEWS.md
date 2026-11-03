@@ -1,5 +1,21 @@
 # NEWS
 
+## Unreleased
+
+### What's New
+
+- **`ethereum.decode()` failures are now logged and counted.** `ethereum.decode` and `ethereum.decodeParams` return `null` on failure, which a mapping is free to swallow silently. Both now log the type string and the underlying error, and increment `deployment_ethereum_decode_failures{deployment, host_fn, kind}`. See the note below. ([#6702](https://github.com/graphprotocol/graph-node/pull/6702))
+- **Gas exhaustion inside `ethereum.decode`, `ethereum.decodeParams` and `ethereum.encode` now aborts the handler** instead of surfacing to the mapping as `null`. A handler that ran out of gas at one of these calls and made no further gas-consuming call previously completed, so this can change POI for that case against earlier versions. ([#6702](https://github.com/graphprotocol/graph-node/pull/6702))
+
+### Note on `ethereum.decode()` type string handling
+
+The `ethabi` → `alloy` migration in v0.42.0 ([#6063](https://github.com/graphprotocol/graph-node/pull/6063)) made ABI type string parsing strict: type strings `ethabi` accepted but that were never valid ABI are now rejected. `kind` distinguishes:
+
+- **`invalid_type`** — the type string cannot be parsed (e.g. `bytes128`). It is a literal in the mapping, so every call returns `null` on every block; a mapping that logs and returns then writes no entities while the deployment stays healthy and synced at chain head, diverging in POI from indexers still on pre-v0.42.0 graph-node. Logged at **error**; the subgraph must be republished. Alert on this. ([#6683](https://github.com/graphprotocol/graph-node/issues/6683))
+- **`invalid_data`** — data does not match an otherwise valid type. Can legitimately vary per event; logged at **warning**.
+
+Separately, `ethabi` decoded a leading space (the `" address"` in `"(uint256, address)"`) as `Uint(8)`; `alloy` parses it correctly, so mappings calling `.toBigInt()` on an `Address` abort on v0.42.0+. Recompile with the correct accessor. ([#6461](https://github.com/graphprotocol/graph-node/issues/6461))
+
 ## v0.45.0
 
 ```
@@ -118,18 +134,6 @@ Thanks to all contributors for this release: @erayack, @fordN, @incrypto32, @lut
 - Fixed IPC provider connections failing when configured with `ipc://` or `file://` URLs — the URL was passed directly to the transport instead of extracting the file path. ([#6443](https://github.com/graphprotocol/graph-node/pull/6443))
 - Fixed `graphman config pools` not working due to hardcoded pool size override. ([#6444](https://github.com/graphprotocol/graph-node/pull/6444))
 - Fixed unfail retry mechanism stopping after the first attempt when the deployment head was still behind the error block. ([#6529](https://github.com/graphprotocol/graph-node/pull/6529))
-
-### Note on `ethereum.decode()` whitespace handling
-
-The migration from `ethabi` to `alloy` in v0.42.0 ([#6063](https://github.com/graphprotocol/graph-node/pull/6063)) incidentally fixed a long-standing parsing bug in `ethabi` where type strings containing whitespace before a type name (e.g. `" address"` with a leading space) were silently decoded as `Uint(8)` instead of the intended type. `alloy` parses these correctly.
-
-Subgraphs that relied on the incorrect `Uint(8)` decoding to subsequently call `.toBigInt()` on what is actually an `Address` value will abort on v0.42.0+ with:
-
-```
-Mapping aborted ... Ethereum value is not an int or uint.
-```
-
-This is not a graph-node regression. Recompile the subgraph with the correct accessor (`.toAddress()` for addresses) to fix. See [#6461](https://github.com/graphprotocol/graph-node/issues/6461) for details.
 
 ### gnd (Graph Node Dev)
 
