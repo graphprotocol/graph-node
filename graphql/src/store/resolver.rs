@@ -427,6 +427,7 @@ impl Resolver for StoreResolver {
     fn record_work(&self, query: &Query, elapsed: Duration, cache_status: CacheStatus) {
         self.load_manager.record_work(
             self.store.shard(),
+            self.deployment.as_str(),
             self.store.deployment_id(),
             query.shape_hash,
             elapsed,
