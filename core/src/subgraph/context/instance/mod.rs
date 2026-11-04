@@ -103,14 +103,21 @@ where
             Some(module_bytes) => module_bytes.cheap_clone(),
         };
 
-        let mapping_request_sender = self.module_cache.sender(&module_bytes, |bytes| {
-            T::spawn_mapping(
-                bytes,
-                logger,
-                self.subgraph_id.clone(),
-                self.host_metrics.cheap_clone(),
-            )
-        })?;
+        let mapping_request_sender = {
+            let module_hash = self.module_cache.hash(&module_bytes);
+            if let Some(sender) = self.module_cache.get(&module_hash) {
+                sender.clone()
+            } else {
+                let sender = T::spawn_mapping(
+                    module_bytes.as_ref(),
+                    logger,
+                    self.subgraph_id.clone(),
+                    self.host_metrics.cheap_clone(),
+                )?;
+                self.module_cache.insert(module_hash, sender.clone());
+                sender
+            }
+        };
 
         let host = self.host_builder.build(
             self.network.clone(),
