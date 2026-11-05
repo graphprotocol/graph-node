@@ -3,6 +3,7 @@ use pretty_assertions::assert_eq;
 
 use super::*;
 
+use crate::relational::index::CreateIndex;
 use crate::{deployment_store::generate_index_creation_sql, layout_for_tests::make_dummy_site};
 
 const ID_TYPE: ColumnType = ColumnType::String;
@@ -888,3 +889,63 @@ type Data @entity(immutable: true) {
     block: Block!
 }
 "#;
+
+/// The copy and graft paths create the destination from the source's index
+/// list, so a deployment whose indexes were dropped before copying does not
+/// come back with the schema's default set. `as_ddl` on its own still writes
+/// the layout's indexes, which is what a fresh deployment needs.
+#[test]
+fn source_indexes_replace_the_layout_indexes_on_creation() {
+    let layout = test_layout(THING_GQL);
+    let namespace = layout.site.namespace.as_str().to_string();
+
+    // `thing` carries a gist attribute index in this schema. A source that
+    // does not have it must not get it on the copy, even though the layout
+    // describes it.
+    let gist_on_thing =
+        format!("create index attr_0_1_thing_big_thing on \"{namespace}\".\"thing\" using gist");
+    let layout_ddl = layout.as_ddl().expect("failed to generate DDL");
+    assert!(
+        layout_ddl.contains(&gist_on_thing),
+        "the layout is expected to describe a gist index for `thing`:\n{layout_ddl}"
+    );
+
+    let from_empty = layout
+        .as_ddl_with_source_indexes(Some(&IndexList::new(HashMap::new())))
+        .expect("failed to generate DDL");
+    assert!(
+        !from_empty.contains(&gist_on_thing),
+        "a source without that index must not produce it:\n{from_empty}"
+    );
+
+    // The time-travel indexes are not an operator's to drop: they describe
+    // how history is stored, so they are written regardless of the source.
+    for always in ["brin_thing", "thing_block_range_closed"] {
+        assert!(
+            from_empty.contains(always),
+            "`{always}` is part of the schema and must still be created:\n{from_empty}"
+        );
+    }
+
+    // An attribute index the source does carry is kept. This is the other
+    // direction of the same check: reading the source must not silently drop
+    // what it has.
+    let table = layout.table(&SqlName::from("Thing")).unwrap();
+    let kept = table
+        .indexes(&layout.input_schema)
+        .unwrap()
+        .into_iter()
+        .find(|idx| {
+            matches!(idx, CreateIndex::Parsed { name, .. }
+                if *name == "attr_0_1_thing_big_thing")
+        })
+        .expect("the schema is expected to describe the gist index");
+    let source = IndexList::new(HashMap::from([(table.name.to_string(), vec![kept])]));
+    let from_source = layout
+        .as_ddl_with_source_indexes(Some(&source))
+        .expect("failed to generate DDL");
+    assert!(
+        from_source.contains(&gist_on_thing),
+        "an index the source carries must be created:\n{from_source}"
+    );
+}

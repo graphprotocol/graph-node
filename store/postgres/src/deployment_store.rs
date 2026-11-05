@@ -176,6 +176,9 @@ impl DeploymentStore {
         DeploymentStore(Arc::new(store))
     }
 
+    /// `index_def` is the index list of the deployment this one is copied or
+    /// grafted from. When it is given, the destination's schema is created
+    /// with the source's indexes rather than the schema's default set.
     pub(crate) async fn create_deployment(
         &self,
         schema: &InputSchema,
@@ -183,6 +186,7 @@ impl DeploymentStore {
         site: Arc<Site>,
         replace: bool,
         on_sync: OnSync,
+        index_def: Option<&IndexList>,
     ) -> Result<(), StoreError> {
         let mut conn = self.pool.get_permitted().await?;
         conn.transaction::<_, StoreError, _>(async |conn| {
@@ -210,11 +214,12 @@ impl DeploymentStore {
                 let query = format!("create schema {}", &site.namespace);
                 conn.batch_execute(&query).await?;
 
-                let _ = Layout::create_relational_schema(
+                let _ = Layout::create_relational_schema_with_source_indexes(
                     conn,
                     site.clone(),
                     schema,
                     entities_with_causality_region.into_iter().collect(),
+                    index_def,
                 )
                 .await?;
 

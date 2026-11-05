@@ -946,6 +946,28 @@ impl IndexList {
                 && !(ci.is_id() && table.immutable)
         })
     }
+
+    /// The indexes to create up front when a deployment is copied or grafted
+    /// from this one.
+    ///
+    /// Unlike `indexes_for_table`, this keeps the attribute indexes that
+    /// `indexes_for_table` drops. Those are dropped there because the layout
+    /// creates them anyway, which does not hold when the attribute indexes are
+    /// taken from the source: a source that carries `attr_N_0_<table>_id`
+    /// must keep it on the copy. The indexes the layout always creates
+    /// (`brin_*` and the closed-range ones) are dropped here for the same
+    /// reason they are dropped there.
+    pub fn indexes_for_copy_table<'a>(
+        &'a self,
+        table: &'a Table,
+    ) -> impl Iterator<Item = &'a CreateIndex> {
+        static EMPTY: Vec<CreateIndex> = vec![];
+        let indexes = self.indexes.get(table.name.as_str()).unwrap_or(&EMPTY);
+
+        indexes
+            .iter()
+            .filter(move |ci| ci.fields_exist_in_dest(table) && !ci.is_default_non_attr_index())
+    }
 }
 
 #[cfg(test)]
