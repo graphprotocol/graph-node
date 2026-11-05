@@ -1302,6 +1302,10 @@ impl blockchain::DataSourceTemplate<Chain> for DataSourceTemplate {
     fn kind(&self) -> &str {
         &self.kind
     }
+
+    fn has_address_scoped_block_handler(&self) -> bool {
+        self.mapping.has_block_handler_with_call_filter()
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize)]
@@ -1596,4 +1600,83 @@ fn string_to_b256(s: &str) -> B256 {
 #[derive(Clone, Debug, Default, Hash, Eq, PartialEq, Deserialize)]
 pub struct TemplateSource {
     pub abi: String,
+}
+
+#[cfg(test)]
+mod address_scoped_block_handler_tests {
+    use super::*;
+    use graph::blockchain::DataSourceTemplate as _;
+
+    fn template_with(block_handlers: Vec<MappingBlockHandler>) -> DataSourceTemplate {
+        let mut mapping = Mapping {
+            kind: "ethereum/events".to_string(),
+            api_version: semver::Version::new(0, 0, 7),
+            language: "wasm/assemblyscript".to_string(),
+            entities: vec![],
+            abis: vec![],
+            block_handlers,
+            call_handlers: vec![],
+            event_handlers: vec![],
+            runtime: std::sync::Arc::new(vec![]),
+            link: Link {
+                link: "test".to_string(),
+            },
+        };
+        mapping.block_handlers.shrink_to_fit();
+        DataSourceTemplate {
+            kind: "ethereum/contract".to_string(),
+            network: Some("test".to_string()),
+            name: "T".to_string(),
+            manifest_idx: 0,
+            source: TemplateSource {
+                abi: "abi".to_string(),
+            },
+            mapping,
+        }
+    }
+
+    fn handler(filter: Option<BlockHandlerFilter>) -> MappingBlockHandler {
+        MappingBlockHandler {
+            handler: "h".to_string(),
+            filter,
+        }
+    }
+
+    #[test]
+    fn call_filtered_block_handler_is_address_scoped() {
+        let template = template_with(vec![handler(Some(BlockHandlerFilter::Call))]);
+        assert!(template.has_address_scoped_block_handler());
+    }
+
+    #[test]
+    fn block_handlers_without_a_call_filter_are_not_address_scoped() {
+        for filter in [
+            None,
+            Some(BlockHandlerFilter::Once),
+            Some(BlockHandlerFilter::Polling {
+                every: std::num::NonZeroU32::new(1).unwrap(),
+            }),
+        ] {
+            let template = template_with(vec![handler(filter.clone())]);
+            assert!(
+                !template.has_address_scoped_block_handler(),
+                "a {filter:?} block handler does not depend on the created address"
+            );
+        }
+    }
+
+    #[test]
+    fn a_template_without_block_handlers_is_not_address_scoped() {
+        assert!(!template_with(vec![]).has_address_scoped_block_handler());
+    }
+
+    #[test]
+    fn one_call_filtered_handler_is_enough_among_other_handlers() {
+        let template = template_with(vec![
+            handler(None),
+            handler(Some(BlockHandlerFilter::Call)),
+            handler(Some(BlockHandlerFilter::Once)),
+        ]);
+        assert!(template.has_address_scoped_block_handler());
+    }
 }

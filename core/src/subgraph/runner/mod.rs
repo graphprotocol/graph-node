@@ -14,8 +14,8 @@ use graph::blockchain::block_stream::{
     BlockStream, BlockStreamEvent, BlockWithTriggers, FirehoseCursor,
 };
 use graph::blockchain::{
-    Block, BlockTime, Blockchain, DataSource as _, SubgraphFilter, Trigger, TriggerFilter as _,
-    TriggerFilterWrapper,
+    Block, BlockTime, Blockchain, DataSource as _, DataSourceTemplate as _, SubgraphFilter,
+    Trigger, TriggerFilter as _, TriggerFilterWrapper,
 };
 use graph::components::store::{
     EmptyStore, GetScope, ReadStore, SeqGenerator, StoredDynamicDataSource,
@@ -147,7 +147,32 @@ where
     }
 
     fn is_static_filters_enabled(&self) -> bool {
-        self.inputs.static_filters || self.ctx.hosts_len() > ENV_VARS.static_filters_threshold
+        let requested =
+            self.inputs.static_filters || self.ctx.hosts_len() > ENV_VARS.static_filters_threshold;
+        if !requested {
+            return false;
+        }
+
+        // Static filters deliberately drop the addresses of created data
+        // sources, so a template handler that fires only on calls to the
+        // address of the data source it creates has nothing to match on and
+        // would never run. Such subgraphs have to keep the full filter, which
+        // means restarting the block stream whenever a data source is created.
+        let incompatible = self.ctx.templates().iter().any(|template| {
+            template
+                .as_onchain()
+                .is_some_and(|t| t.has_address_scoped_block_handler())
+        });
+        if incompatible {
+            info!(
+                self.logger,
+                "subgraph has a template handler that only fires on calls to the created \
+                 data source's address; keeping the full trigger filter instead of static filters"
+            );
+            return false;
+        }
+
+        true
     }
 
     fn build_filter(&self) -> TriggerFilterWrapper<C> {
