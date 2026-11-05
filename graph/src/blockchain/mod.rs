@@ -380,6 +380,18 @@ pub trait DataSourceTemplate<C: Blockchain>: Send + Sync + Debug {
     fn name(&self) -> &str;
     fn manifest_idx(&self) -> u32;
     fn kind(&self) -> &str;
+    /// Whether a data source created from this template carries a handler that
+    /// only fires on calls to that specific data source's address, and which
+    /// therefore cannot be expressed by a filter built from the static data
+    /// sources alone.
+    ///
+    /// Static filters drop the addresses of created data sources on purpose, so
+    /// a chain that can have such a handler must report it here and let the
+    /// runner fall back to the full filter. Defaults to `false` for chains
+    /// whose trigger filters have no equivalent construct.
+    fn has_address_scoped_block_handler(&self) -> bool {
+        false
+    }
     fn info(&self) -> DataSourceTemplateInfo {
         DataSourceTemplateInfo {
             api_version: self.api_version(),
