@@ -9,7 +9,10 @@ use crate::relational::{
     BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BYTE_ARRAY_PREFIX_SIZE, ColumnType, STRING_PREFIX_SIZE,
     VID_COLUMN,
 };
-use crate::{block_range::CAUSALITY_REGION_COLUMN, relational::index::Cond};
+use crate::{
+    block_range::CAUSALITY_REGION_COLUMN,
+    relational::index::{Cond, IndexList},
+};
 
 use super::{
     Column, Layout, SqlName, Table,
@@ -30,6 +33,17 @@ impl Layout {
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
     pub fn as_ddl(&self) -> Result<String, fmt::Error> {
+        self.as_ddl_with_source_indexes(None)
+    }
+
+    /// Like `as_ddl`, but takes the indexes that are not postponed from
+    /// `source_indexes` instead of from this layout. Callers that create the
+    /// schema for a copy or graft pass the source deployment's index list so
+    /// the destination ends up with the indexes the source actually has.
+    pub fn as_ddl_with_source_indexes(
+        &self,
+        source_indexes: Option<&IndexList>,
+    ) -> Result<String, fmt::Error> {
         let mut out = String::new();
 
         // Output enums first so table definitions can reference them
@@ -42,7 +56,7 @@ impl Layout {
         // Output 'create table' statements for all tables
         let creat = self.index_creator(false, false);
         for table in tables {
-            table.as_ddl(&self.input_schema, &creat, &mut out)?;
+            table.as_ddl(&self.input_schema, &creat, source_indexes, &mut out)?;
         }
 
         Ok(out)
@@ -410,14 +424,32 @@ impl Table {
     ///
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
+    /// `as_ddl` writes the table and the indexes that do not wait for the data
+    /// to be loaded.
+    ///
+    /// `source_indexes` is the index list of the deployment this one is copied
+    /// or grafted from. When it is given, the attribute indexes are taken from
+    /// the source instead of the layout, so that a copy carries the source's
+    /// index set rather than the schema's default one. The time-travel and
+    /// aggregate indexes are always created from the layout: they are part of
+    /// the schema every deployment needs, not something an operator drops.
     pub(crate) fn as_ddl(
         &self,
         schema: &InputSchema,
         creat: &IndexCreator,
+        source_indexes: Option<&IndexList>,
         out: &mut String,
     ) -> fmt::Result {
         self.create_table(out)?;
-        for idx in self.indexes(schema)? {
+
+        let mut indexes = self.time_travel_indexes();
+        match source_indexes {
+            Some(source) => indexes.extend(source.indexes_for_copy_table(self).cloned()),
+            None => self.add_attribute_indexes(&mut indexes),
+        }
+        self.add_aggregate_indexes(schema, &mut indexes)?;
+
+        for idx in indexes {
             if !idx.to_postpone() {
                 writeln!(out, "{};", creat.to_sql(&idx)?)?;
             }

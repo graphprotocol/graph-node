@@ -416,7 +416,14 @@ impl SubgraphStore {
 
         // Create the actual databases schema and metadata entries
         deployment_store
-            .create_deployment(schema, deployment, site.clone(), replace, OnSync::None)
+            .create_deployment(
+                schema,
+                deployment,
+                site.clone(),
+                replace,
+                OnSync::None,
+                None,
+            )
             .await?;
 
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
@@ -900,6 +907,11 @@ impl Inner {
             .get(&shard)
             .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
 
+        // The destination gets the source's index set, not the schema's
+        // default one: an operator who dropped indexes from the source to
+        // save space should not get them all back on every copy.
+        let src_indexes = src_store.load_indexes(src.cheap_clone()).await?;
+
         deployment_store
             .create_deployment(
                 &src_layout.input_schema,
@@ -907,6 +919,7 @@ impl Inner {
                 dst.clone(),
                 false,
                 on_sync,
+                Some(&src_indexes),
             )
             .await?;
 
