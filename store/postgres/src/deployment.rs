@@ -469,6 +469,7 @@ async fn reset_reorg_count(conn: &mut AsyncPgConnection, site: &Site) -> StoreRe
 pub async fn transact_block(
     conn: &mut AsyncPgConnection,
     site: &Site,
+    first_block: BlockNumber,
     ptr: &BlockPtr,
     firehose_cursor: &FirehoseCursor,
     count: i32,
@@ -480,16 +481,24 @@ pub async fn transact_block(
 
     // Sanity check: The processing direction is forward.
     //
+    // The comparison uses the first block of the batch, not its last one. A batch covers a range of
+    // blocks, and the head may have advanced into the middle of that range while the batch was
+    // being prepared: when a deployment is reassigned, the old writer can still have a batch in
+    // flight while the new writer starts at a block below the old writer's last block. Comparing
+    // only the last block lets the second batch through, and every entity written for the shared
+    // blocks then gets a second version that is also live at the head, so queries return each
+    // entity twice. A batch whose range has already been written has lost the race and is refused.
+    //
     // Performance note: This costs us an extra DB query on every update. We used to put this in the
     // `where` clause of the `update` statement, but that caused Postgres to use bitmap scans instead
     // of a simple primary key lookup. So a separate query it is.
     let block_ptr = block_ptr(conn, site).await?;
     if let Some(block_ptr_from) = block_ptr
-        && block_ptr_from.number >= ptr.number
+        && block_ptr_from.number >= first_block
     {
         return Err(StoreError::DuplicateBlockProcessing(
             site.deployment.clone(),
-            ptr.number,
+            first_block,
         ));
     }
 

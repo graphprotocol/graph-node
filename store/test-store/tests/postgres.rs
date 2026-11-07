@@ -2,6 +2,7 @@ pub mod postgres {
     pub mod aggregation;
     pub mod chain_head;
     pub mod graft;
+    pub mod overlapping_batches;
     pub mod relational;
     pub mod relational_bytes;
     pub mod store;
