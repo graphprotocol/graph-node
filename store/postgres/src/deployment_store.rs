@@ -1201,6 +1201,7 @@ impl DeploymentStore {
                 let earliest_block = deployment::transact_block(
                     conn,
                     &site,
+                    batch.first_block,
                     &batch.block_ptr,
                     &batch.firehose_cursor,
                     count,
