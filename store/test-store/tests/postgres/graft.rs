@@ -670,3 +670,126 @@ fn prune() {
         })
     }
 }
+
+/// Names of the indexes on `entity` that `CreateIndex::to_postpone()`
+/// classifies as postponed (BTree attribute indexes, not on `id` alone)
+async fn postponed_attr_indexes(
+    store: &DieselSubgraphStore,
+    loc: &DeploymentLocator,
+    entity: &str,
+) -> Vec<String> {
+    let mut names: Vec<String> = store
+        .indexes_for_entity(loc, entity)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|idx| idx.to_postpone())
+        .filter_map(|idx| idx.name().map(str::to_string))
+        .collect();
+    names.sort();
+    names
+}
+
+/// `subgraphs.deployment.postponed_indexes_created` for `hash`
+async fn postponed_flag(hash: &DeploymentHash) -> bool {
+    use diesel_async::RunQueryDsl;
+
+    #[derive(diesel::QueryableByName)]
+    struct Flag {
+        #[diesel(sql_type = diesel::sql_types::Bool)]
+        postponed_indexes_created: bool,
+    }
+
+    let mut conn = PRIMARY_POOL.get().await.unwrap();
+    diesel::sql_query(
+        "select postponed_indexes_created from subgraphs.deployment where subgraph = $1",
+    )
+    .bind::<diesel::sql_types::Text, _>(hash.as_str())
+    .get_result::<Flag>(&mut conn)
+    .await
+    .unwrap()
+    .postponed_indexes_created
+}
+
+/// `create_postponed_indexes` runs in a background task; wait for the flag
+async fn wait_for_flag(hash: &DeploymentHash) {
+    for _ in 0..60 {
+        if postponed_flag(hash).await {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    panic!("postponed indexes for {hash} were not created within 30s");
+}
+
+/// A graft made while the base has not built its postponed indexes yet must
+/// not claim they were created: the destination still has to build them once
+/// it gets near the chain head.
+#[test]
+fn graft_before_postponed_indexes() {
+    if !graph::env::ENV_VARS.postpone_attribute_index_creation {
+        println!("skipping: needs GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION=true");
+        return;
+    }
+    run_test(|store, src| async move {
+        // The source was created with postponement on and has not been near
+        // the chain head yet: no postponed index, flag false
+        assert!(!postponed_flag(&src.hash).await);
+        assert_eq!(
+            Vec::<String>::new(),
+            postponed_attr_indexes(&store, &src, USER).await
+        );
+
+        // Graft onto the source at block 1, as `graph deploy` with a `graft:`
+        // section would; `graphman copy` goes through the same
+        // `copy::Connection::copy_data`
+        let dst_id = DeploymentHash::new("grafted_postponed").unwrap();
+        let dst = create_grafted_subgraph(
+            &dst_id,
+            GRAFT_GQL,
+            TEST_SUBGRAPH_ID.as_str(),
+            BLOCKS[1].clone(),
+        )
+        .await?;
+
+        let dst_flag = postponed_flag(&dst.hash).await;
+        let dst_before = postponed_attr_indexes(&store, &dst, USER).await;
+        println!("dst after graft: flag={dst_flag} postponed={dst_before:?}");
+
+        // The source gets near the head: the runner calls
+        // `create_postponed_indexes`, which creates them
+        store
+            .cheap_clone()
+            .writable(LOGGER.clone(), src.id, Arc::new(Vec::new()))
+            .await?
+            .create_postponed_indexes()
+            .await?;
+        wait_for_flag(&src.hash).await;
+        let src_after = postponed_attr_indexes(&store, &src, USER).await;
+        println!("src after create_postponed_indexes: {src_after:?}");
+        assert!(src_after.iter().any(|n| n.ends_with("_name")));
+        assert!(src_after.iter().any(|n| n.ends_with("_email")));
+
+        // The destination gets near the head: same call
+        store
+            .cheap_clone()
+            .writable(LOGGER.clone(), dst.id, Arc::new(Vec::new()))
+            .await?
+            .create_postponed_indexes()
+            .await?;
+        wait_for_flag(&dst.hash).await;
+        // Leave the background task time to run if it were going to
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let dst_after = postponed_attr_indexes(&store, &dst, USER).await;
+        println!("dst after create_postponed_indexes: {dst_after:?}");
+
+        // The destination ends up with the postponed indexes for the columns
+        // it shares with the source
+        assert!(
+            dst_after.iter().any(|n| n.ends_with("_name"))
+                && dst_after.iter().any(|n| n.ends_with("_email")),
+            "graft marked postponed indexes as created but they are missing: {dst_after:?}"
+        );
+        Ok(())
+    })
+}
