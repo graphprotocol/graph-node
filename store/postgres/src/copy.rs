@@ -336,10 +336,21 @@ impl CopyState {
             creat.execute_many(conn, &new_idxs).await?;
         }
 
-        conn.transaction(async |conn| {
-            deployment::set_postponed_indexes_created(conn, &self.dst.site).await
-        })
-        .await?;
+        // Mark the postponed indexes as created only if the source had
+        // already created its own. When the source is still syncing it has
+        // not built them yet, so `index_list` does not contain them and we
+        // just created none of them; claiming otherwise would make
+        // `create_postponed_indexes` return early once the destination gets
+        // near the chain head and leave those attribute indexes unbuilt for
+        // good. A source that created them and then had some dropped
+        // intentionally does have the flag set, and we keep honouring that.
+        let src_created = crate::deployment::postponed_indexes_created(conn, &self.src.site).await?;
+        if src_created {
+            conn.transaction(async |conn| {
+                deployment::set_postponed_indexes_created(conn, &self.dst.site).await
+            })
+            .await?;
+        }
 
         Ok(())
     }
