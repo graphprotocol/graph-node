@@ -993,6 +993,20 @@ impl DeploymentStore {
             // Unfortunately the machinery needed to do this is not yet in place.
             // The best we can do right now is just to make sure that the block number
             // is high enough.
+            let state = deployment::state(&mut conn, site.as_ref()).await?;
+            if block.number < state.earliest_block_number {
+                // Pruning removed the causality-region digests this block's POI is
+                // computed from. Querying anyway returns a well-formed but wrong POI
+                // that nobody can tell apart from a correct one, which is worse than
+                // failing: an allocation closing against a pruned epoch block would
+                // submit it and could be disputed.
+                return Err(StoreError::Unknown(anyhow!(
+                    "block {} has been pruned for deployment {}; the earliest available block is {}",
+                    block.number,
+                    site.deployment,
+                    state.earliest_block_number
+                )));
+            }
             if latest_block_ptr.number < block.number {
                 // If a subgraph has failed deterministically then any blocks past head
                 // should return the same POI
