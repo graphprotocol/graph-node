@@ -337,7 +337,7 @@ impl CopyState {
         }
 
         conn.transaction(async |conn| {
-            deployment::set_postponed_indexes_created(conn, &self.dst.site).await
+            deployment::set_postponed_indexes_created(conn, &self.dst.site, true).await
         })
         .await?;
 

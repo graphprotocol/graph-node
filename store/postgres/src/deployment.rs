@@ -854,17 +854,18 @@ pub async fn postponed_indexes_created(
     Ok(created)
 }
 
-/// Mark the postponed (deferred) attribute indexes as created for this
-/// deployment. Once set, we never recreate these indexes — even if an
-/// external process removes them.
+/// Record whether the postponed (deferred) attribute indexes have been
+/// created for this deployment. Once set, we never recreate these indexes —
+/// even if an external process removes them.
 pub async fn set_postponed_indexes_created(
     conn: &mut AsyncPgConnection,
     site: &Site,
+    created: bool,
 ) -> Result<(), StoreError> {
     use deployment as d;
 
     update(d::table.filter(d::id.eq(site.id)))
-        .set(d::postponed_indexes_created.eq(true))
+        .set(d::postponed_indexes_created.eq(created))
         .execute(conn)
         .await?;
     Ok(())
