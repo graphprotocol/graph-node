@@ -1,7 +1,7 @@
 mod hosts;
+mod module_cache;
 
 use anyhow::ensure;
-use graph::futures01::sync::mpsc::Sender;
 use graph::{
     blockchain::{Blockchain, TriggerData as _},
     data_source::{
@@ -11,7 +11,7 @@ use graph::{
     prelude::*,
 };
 use hosts::{OffchainHosts, OnchainHosts};
-use std::collections::HashMap;
+use module_cache::ModuleCache;
 
 pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     subgraph_id: DeploymentHash,
@@ -36,7 +36,7 @@ pub(crate) struct SubgraphInstance<C: Blockchain, T: RuntimeHostBuilder<C>> {
     offchain_hosts: OffchainHosts<C, T>,
 
     /// Maps the hash of a module to a channel to the thread in which the module is instantiated.
-    module_cache: HashMap<[u8; 32], Sender<T::Req>>,
+    module_cache: ModuleCache<T::Req>,
 
     /// This manages the sequence of causality regions for the subgraph.
     causality_region_seq: CausalityRegionSeq,
@@ -85,7 +85,7 @@ where
             onchain_hosts: OnchainHosts::new(),
             subgraph_hosts: OnchainHosts::new(),
             offchain_hosts: OffchainHosts::new(),
-            module_cache: HashMap::new(),
+            module_cache: ModuleCache::new(),
             templates,
             host_metrics,
             causality_region_seq,
@@ -104,7 +104,7 @@ where
         };
 
         let mapping_request_sender = {
-            let module_hash = alloy::primitives::keccak256(module_bytes.as_ref()).0;
+            let module_hash = self.module_cache.hash(&module_bytes);
             if let Some(sender) = self.module_cache.get(&module_hash) {
                 sender.clone()
             } else {
