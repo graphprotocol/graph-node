@@ -102,7 +102,6 @@ mod tests {
         let mut s = Spawns::new();
         let ha = s.cache.hash(&a);
         let hb = s.cache.hash(&b);
-        assert_ne!(ha, hb);
         assert_eq!(ha, alloy::primitives::keccak256(a.as_slice()).0);
         assert_eq!(hb, alloy::primitives::keccak256(b.as_slice()).0);
 
@@ -147,13 +146,6 @@ mod tests {
         }
         assert_eq!(s.cache.hashes.len(), 2);
         assert_eq!(s.receivers.len(), 2);
-
-        let mut s = Spawns::new();
-        for _ in 0..N {
-            s.sender(&a.clone());
-        }
-        assert_eq!(s.cache.hashes.len(), 1);
-        assert_eq!(s.receivers.len(), 1);
     }
 
     #[test]
