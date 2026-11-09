@@ -741,7 +741,7 @@ fn late_build_skips_columns_indexed_under_other_names() {
         ));
         let dst = test_store::create_subgraph_unstarted(&dst_id, GRAFT_GQL, base).await?;
         store
-            .create_btree_index_for_deployment(&dst, "attr_9_9_user_age", "user", "age")
+            .create_btree_index_for_deployment(&dst, "attr_9_9_user_age", "user", "age", false)
             .await?;
         test_store::start_subgraph(&dst).await?;
         store.set_postponed_indexes_created(&dst, false).await?;
@@ -793,6 +793,7 @@ fn graft_resumes_after_indexes_copied_under_source_names() {
                 "attr_0_3_user_email",
                 "user",
                 r#"left("email", 256)"#,
+                false,
             )
             .await?;
 
@@ -961,6 +962,44 @@ fn graft_keeps_dropped_postponed_index() {
             vec![
                 "attr_0_1_user_name",
                 "attr_0_3_user_age",
+                "attr_0_4_user_favorite_color",
+                "attr_0_5_user_added",
+            ],
+            postponed_attr_indexes(&store, &dst, USER).await?
+        );
+        Ok(())
+    })
+}
+
+// A graft ignores an invalid index on its source.
+#[test]
+fn graft_ignores_invalid_source_index() {
+    run_test(|store, src| async move {
+        build_postponed_indexes(&store, &src).await?;
+        store
+            .drop_index_for_deployment(&src, "attr_0_4_user_age")
+            .await?;
+        // Fails on the two versions of user 3, both aged 28, and leaves an
+        // invalid index behind.
+        let res = store
+            .create_btree_index_for_deployment(&src, "attr_0_4_user_age", "user", "age", true)
+            .await;
+        assert!(res.is_err());
+
+        let dst_id = DeploymentHash::new("grafted_invalid").unwrap();
+        let dst = create_grafted_subgraph(
+            &dst_id,
+            GRAFT_GQL,
+            TEST_SUBGRAPH_ID.as_str(),
+            BLOCKS[1].clone(),
+        )
+        .await?;
+
+        assert!(store.postponed_indexes_created(&dst).await?);
+        assert_eq!(
+            vec![
+                "attr_0_1_user_name",
+                "attr_0_2_user_email",
                 "attr_0_4_user_favorite_color",
                 "attr_0_5_user_added",
             ],

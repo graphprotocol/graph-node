@@ -1420,10 +1420,13 @@ impl Inner {
         name: &str,
         table: &str,
         expr: &str,
+        unique: bool,
     ) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
         let store = self.for_site(&site)?;
-        store.create_btree_index(&site, name, table, expr).await
+        store
+            .create_btree_index(&site, name, table, expr, unique)
+            .await
     }
 
     pub async fn drop_index_for_deployment(

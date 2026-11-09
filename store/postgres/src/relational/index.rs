@@ -901,16 +901,25 @@ impl IndexList {
         IndexList { indexes }
     }
 
-    pub async fn load(conn: &mut AsyncPgConnection, layout: &Layout) -> Result<Self, StoreError> {
+    /// Load the indexes of `layout`, only the valid ones with `valid_only`.
+    pub async fn load(
+        conn: &mut AsyncPgConnection,
+        layout: &Layout,
+        valid_only: bool,
+    ) -> Result<Self, StoreError> {
         let mut indexes = HashMap::new();
         let schema_name = layout.site.namespace.clone();
         for table in layout.tables.values() {
-            let indexes_from_table =
-                catalog::indexes_for_table(conn, schema_name.as_str(), table.name.as_str(), false)
-                    .await?
-                    .into_iter()
-                    .map(CreateIndex::parse)
-                    .collect();
+            let indexes_from_table = catalog::indexes_for_table(
+                conn,
+                schema_name.as_str(),
+                table.name.as_str(),
+                valid_only,
+            )
+            .await?
+            .into_iter()
+            .map(CreateIndex::parse)
+            .collect();
             indexes.insert(table.name.to_string(), indexes_from_table);
         }
         Ok(Self::new(indexes))

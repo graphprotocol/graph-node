@@ -725,7 +725,9 @@ impl DeploymentStore {
         let postponed_indexes_created =
             deployment::postponed_indexes_created(&mut conn, &site).await?;
         let layout = self.layout(&mut conn, site).await?;
-        let list = IndexList::load(&mut conn, &layout).await?;
+        // Invalid indexes are leftovers of interrupted concurrent drops or
+        // builds.
+        let list = IndexList::load(&mut conn, &layout, true).await?;
         Ok(CopySource {
             list,
             postponed_indexes_created,
@@ -756,11 +758,13 @@ impl DeploymentStore {
         name: &str,
         table: &str,
         expr: &str,
+        unique: bool,
     ) -> Result<(), StoreError> {
         let mut conn = self.pool.get_permitted().await?;
+        let unique = if unique { "unique " } else { "" };
         let query = format!(
-            "create index \"{}\" on \"{}\".\"{}\" using btree ({})",
-            name, site.namespace, table, expr
+            "create {}index concurrently \"{}\" on \"{}\".\"{}\" using btree ({})",
+            unique, name, site.namespace, table, expr
         );
         sql_query(query).execute(&mut conn).await?;
         Ok(())
@@ -930,7 +934,7 @@ impl DeploymentStore {
         // Layout and index list are schema metadata — safe to load outside
         // the snapshot transaction
         let layout = self.layout(&mut conn, site.cheap_clone()).await?;
-        let index_list = IndexList::load(&mut conn, &layout).await?;
+        let index_list = IndexList::load(&mut conn, &layout, false).await?;
 
         // Use REPEATABLE READ to get a consistent MVCC snapshot for the
         // entire dump. All queries inside see the same database state,
