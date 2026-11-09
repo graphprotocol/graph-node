@@ -48,6 +48,7 @@ use graph::prelude::{
 use graph::schema::{ApiSchema, EntityKey, EntityType, InputSchema};
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
+use crate::copy::CopySource;
 use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
@@ -716,11 +717,19 @@ impl DeploymentStore {
         Ok(indexes.into_iter().map(CreateIndex::parse).collect())
     }
 
-    pub(crate) async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
+    /// Load `site` as the source of a copy.
+    pub(crate) async fn load_copy_source(&self, site: Arc<Site>) -> Result<CopySource, StoreError> {
         let mut conn = self.pool.get_permitted().await?;
+        // Read the flag before the indexes, so that a set flag never comes
+        // with a list from the middle of the background build.
+        let postponed_indexes_created =
+            deployment::postponed_indexes_created(&mut conn, &site).await?;
         let layout = self.layout(&mut conn, site).await?;
-
-        IndexList::load(&mut conn, &layout).await
+        let list = IndexList::load(&mut conn, &layout).await?;
+        Ok(CopySource {
+            list,
+            postponed_indexes_created,
+        })
     }
 
     pub(crate) async fn postponed_indexes_created(&self, site: &Site) -> Result<bool, StoreError> {
@@ -1583,12 +1592,12 @@ impl DeploymentStore {
         &self,
         logger: &Logger,
         site: Arc<Site>,
-        graft_src: Option<(Arc<Layout>, BlockPtr, SubgraphDeploymentEntity, IndexList)>,
+        graft_src: Option<(Arc<Layout>, BlockPtr, SubgraphDeploymentEntity, CopySource)>,
     ) -> Result<(), StoreError> {
         let dst = self.find_layout(site.cheap_clone()).await?;
 
         // If `graft_src` is `Some`, then there is a pending graft.
-        if let Some((src, block, src_deployment, index_list)) = graft_src {
+        if let Some((src, block, src_deployment, source)) = graft_src {
             info!(
                 logger,
                 "Initializing graft by copying data from {} to {}",
@@ -1619,7 +1628,7 @@ impl DeploymentStore {
                 dst_manifest_idx_and_name,
             )
             .await?;
-            let status = copy_conn.copy_data(index_list).await?;
+            let status = copy_conn.copy_data(source).await?;
             if status == crate::copy::Status::Cancelled {
                 return Err(StoreError::Canceled);
             }
