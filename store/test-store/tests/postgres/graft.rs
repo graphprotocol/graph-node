@@ -1,6 +1,6 @@
 use graph::blockchain::block_stream::FirehoseCursor;
 use graph::schema::InputSchema;
-use graph_store_postgres::command_support::OnSync;
+use graph_store_postgres::command_support::{OnSync, index::Method};
 use lazy_static::lazy_static;
 use std::{marker::PhantomData, str::FromStr};
 use test_store::*;
@@ -1005,6 +1005,145 @@ fn graft_ignores_invalid_source_index() {
             ],
             postponed_attr_indexes(&store, &dst, USER).await?
         );
+        Ok(())
+    })
+}
+
+// A graft has the source's manual indexes and not the ones it dropped.
+#[test]
+fn graft_mirrors_source_indexes() {
+    run_test(|store, src| async move {
+        store
+            .drop_index_for_deployment(&src, "attr_0_0_user_id")
+            .await?;
+        store
+            .create_manual_index(&src, USER, vec!["email".to_string()], Method::BTree, None)
+            .await?;
+
+        let dst_id = DeploymentHash::new("grafted_mirror").unwrap();
+        let dst = create_grafted_subgraph(
+            &dst_id,
+            GRAFT_GQL,
+            TEST_SUBGRAPH_ID.as_str(),
+            BLOCKS[1].clone(),
+        )
+        .await?;
+
+        let names: Vec<String> = store
+            .indexes_for_entity(&dst, USER)
+            .await?
+            .into_iter()
+            .filter_map(|idx| idx.name().map(str::to_string))
+            .collect();
+        assert!(!names.iter().any(|n| n == "attr_0_0_user_id"), "{names:?}");
+        assert!(names.iter().any(|n| n == "manual_user_email"), "{names:?}");
+        Ok(())
+    })
+}
+
+// A source index that can't be created on the graft doesn't stop the graft
+// or the copies after it.
+#[test]
+fn graft_skips_source_index_that_cannot_be_created() {
+    run_test(|store, src| async move {
+        // The graft has a table named `pet`.
+        store
+            .create_btree_index_for_deployment(&src, "pet", "user", "name", false)
+            .await?;
+        store
+            .create_btree_index_for_deployment(&src, "zz_user_email", "user", "email", false)
+            .await?;
+
+        let dst_id = DeploymentHash::new("grafted_failing").unwrap();
+        let dst = create_grafted_subgraph(
+            &dst_id,
+            GRAFT_NEW_TABLE_GQL,
+            TEST_SUBGRAPH_ID.as_str(),
+            BLOCKS[1].clone(),
+        )
+        .await?;
+
+        let names: Vec<String> = store
+            .indexes_for_entity(&dst, USER)
+            .await?
+            .into_iter()
+            .filter_map(|idx| idx.name().map(str::to_string))
+            .collect();
+        assert!(!names.iter().any(|n| n == "pet"), "{names:?}");
+        assert!(names.iter().any(|n| n == "zz_user_email"), "{names:?}");
+        Ok(())
+    })
+}
+
+// A graft that changes a table's mutability gets the layout's postponed
+// indexes for it, even ones the source dropped.
+#[test]
+fn graft_with_changed_mutability_gets_layout_indexes() {
+    run_test(|store, src| async move {
+        build_postponed_indexes(&store, &src).await?;
+        store
+            .drop_index_for_deployment(&src, "attr_0_3_user_email")
+            .await?;
+
+        let dst_id = DeploymentHash::new("grafted_immutable").unwrap();
+        let dst = create_grafted_subgraph(
+            &dst_id,
+            GRAFT_IMMUTABLE_GQL,
+            TEST_SUBGRAPH_ID.as_str(),
+            BLOCKS[0].clone(),
+        )
+        .await?;
+
+        assert_eq!(
+            vec![
+                "attr_0_0_user_name",
+                "attr_0_1_user_email",
+                "attr_0_2_user_age",
+                "attr_0_3_user_favorite_color",
+                "attr_0_4_user_added",
+            ],
+            postponed_attr_indexes(&store, &dst, USER).await?
+        );
+        Ok(())
+    })
+}
+
+// Same as `graft_mirrors_source_indexes`, for a copy to another shard.
+// Needs a test configuration with at least two shards.
+#[test]
+fn copy_mirrors_source_indexes() {
+    run_test(|store, src| async move {
+        let Some(dst_shard) = other_shard(&store, &src).await? else {
+            return Ok(());
+        };
+        store
+            .drop_index_for_deployment(&src, "attr_0_0_user_id")
+            .await?;
+        store
+            .create_manual_index(&src, USER, vec!["email".to_string()], Method::BTree, None)
+            .await?;
+
+        let dst = store
+            .copy_deployment(
+                &src,
+                dst_shard,
+                NODE_ID.clone(),
+                BLOCKS[1].clone(),
+                OnSync::None,
+            )
+            .await?;
+        test_store::start_subgraph(&dst).await?;
+        // `indexes_for_entity` looks up the active deployment for a hash.
+        store.activate(&dst).await?;
+
+        let names: Vec<String> = store
+            .indexes_for_entity(&dst, USER)
+            .await?
+            .into_iter()
+            .filter_map(|idx| idx.name().map(str::to_string))
+            .collect();
+        assert!(!names.iter().any(|n| n == "attr_0_0_user_id"), "{names:?}");
+        assert!(names.iter().any(|n| n == "manual_user_email"), "{names:?}");
         Ok(())
     })
 }

@@ -8,9 +8,13 @@ use crate::{deployment_store::generate_index_creation_sql, layout_for_tests::mak
 const ID_TYPE: ColumnType = ColumnType::String;
 
 fn test_layout(gql: &str) -> Arc<Layout> {
+    test_layout_in(gql, "sgd0815")
+}
+
+fn test_layout_in(gql: &str, nsp: &str) -> Arc<Layout> {
     let subgraph = DeploymentHash::new("subgraph").unwrap();
     let schema = InputSchema::parse_latest(gql, subgraph.clone()).expect("Test schema invalid");
-    let namespace = Namespace::new("sgd0815".to_owned()).unwrap();
+    let namespace = Namespace::new(nsp.to_owned()).unwrap();
     let site = Arc::new(make_dummy_site(subgraph, namespace, "anet".to_string()));
     let ents = {
         match schema.entity_type("FileThing") {
@@ -190,31 +194,31 @@ create index concurrently if not exists attr_1_7_scalar_color
 #[test]
 fn generate_ddl() {
     let layout = test_layout(THING_GQL);
-    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
     assert_eq!(THING_DDL, &sql); // Use `assert_eq!` to also test the formatting.
 
     let layout = test_layout(MUSIC_GQL);
-    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
     check_eqv(MUSIC_DDL, &sql);
 
     let layout = test_layout(FOREST_GQL);
-    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
     check_eqv(FOREST_DDL, &sql);
 
     let layout = test_layout(FULLTEXT_GQL);
-    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
     check_eqv(FULLTEXT_DDL, &sql);
 
     let layout = test_layout(FORWARD_ENUM_GQL);
-    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
     check_eqv(FORWARD_ENUM_SQL, &sql);
 
     let layout = test_layout(TS_GQL);
-    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
     check_eqv(TS_SQL, &sql);
 
     let layout = test_layout(LIFETIME_GQL);
-    let sql = layout.as_ddl().expect("Failed to generate DDL");
+    let sql = layout.as_ddl(None).expect("Failed to generate DDL");
     check_eqv(LIFETIME_SQL, &sql);
 }
 
@@ -341,7 +345,7 @@ fn postponed_indexes_with_block_column() {
 
     // Create everything; when postpone is enabled (debug builds), the
     // attribute btree index is omitted from the DDL
-    let sql = layout.as_ddl().unwrap();
+    let sql = layout.as_ddl(None).unwrap();
     assert!(sql.contains(&cr(BLOCK_IDX)));
     // The block$ time-travel index appears exactly once
     let count = sql.matches(BLOCK_IDX).count();
@@ -360,6 +364,152 @@ fn postponed_indexes_with_block_column() {
     let sql = creat.to_sql(&postponed[0]).unwrap();
     assert!(!sql.contains(BLOCK_IDX));
     assert!(sql.contains(&cr(ATTR_IDX)));
+}
+
+const MIRROR_GQL: &str = "
+type Thing @entity {
+    id: ID!
+    owner: Owner!
+    name: String!
+}
+type Owner @entity {
+    id: ID!
+}";
+
+fn index_list(tables: Vec<(&str, Vec<&str>)>) -> index::IndexList {
+    let definitions = tables
+        .into_iter()
+        .map(|(table, defns)| {
+            let defns = defns.into_iter().map(str::to_string).collect();
+            (table.to_string(), defns)
+        })
+        .collect();
+    index::IndexList::new(definitions)
+}
+
+#[test]
+fn ddl_mirrors_source_indexes() {
+    // The source doesn't index `thing.owner`.
+    let src = test_layout_in(MIRROR_GQL, "sgd0816");
+    let indexes = index_list(vec![
+        (
+            "thing",
+            vec!["CREATE INDEX attr_0_0_thing_id ON sgd0816.thing USING btree (id)"],
+        ),
+        (
+            "owner",
+            vec!["CREATE INDEX attr_1_0_owner_id ON sgd0816.owner USING btree (id)"],
+        ),
+    ]);
+    let layout = test_layout(&format!("{MIRROR_GQL}\ntype Pet @entity {{ id: ID! }}"));
+    let sql = layout.as_ddl(Some((&src, &indexes))).unwrap();
+
+    assert!(sql.contains("attr_0_0_thing_id"), "{sql}");
+    assert!(!sql.contains("attr_0_1_thing_owner"), "{sql}");
+    assert!(sql.contains("attr_1_0_owner_id"), "{sql}");
+    // `pet` doesn't exist in the source.
+    assert!(sql.contains("attr_2_0_pet_id"), "{sql}");
+}
+
+#[test]
+fn source_indexes_copied_verbatim() {
+    const GQL: &str = "
+    enum Status { Active, Inactive }
+    type Thing @entity {
+        id: ID!
+        from: String!
+        tags: [String!]!
+        status: Status!
+    }
+    type Other @entity {
+        id: ID!
+    }";
+    let src = test_layout_in(
+        &GQL.replace("id: ID!\n    }", "id: ID!\n        color: String!\n    }"),
+        "sgd0816",
+    );
+    let indexes = index_list(vec![
+        (
+            "thing",
+            vec![
+                "CREATE INDEX attr_0_0_thing_id ON sgd0816.thing USING btree (id) WITH (fillfactor='70')",
+                "CREATE INDEX attr_0_2_thing_tags ON sgd0816.thing USING gin (tags)",
+                r#"CREATE INDEX manual_thing_from ON sgd0816.thing USING btree ("from" DESC)"#,
+                "CREATE INDEX manual_thing_active ON sgd0816.thing USING btree (id) WHERE (status = 'Active'::sgd0816.status)",
+                "CREATE INDEX brin_thing ON sgd0816.thing USING brin (lower(block_range), COALESCE(upper(block_range), 2147483647), vid) WITH (pages_per_range='32')",
+                r#"CREATE INDEX "my-idx" ON sgd0816.thing USING btree (id)"#,
+            ],
+        ),
+        (
+            "other",
+            vec![
+                r#"CREATE INDEX attr_1_1_other_color ON sgd0816.other USING btree ("left"(color, 256))"#,
+                "CREATE INDEX manual_other_color ON sgd0816.other USING btree (color)",
+            ],
+        ),
+    ]);
+    let layout = test_layout(GQL);
+    let actions: HashMap<_, _> = layout
+        .source_indexes((&src, &indexes))
+        .unwrap()
+        .into_iter()
+        .collect();
+
+    use index::SourceIndex::*;
+    let copy = |sql: &str| Copy(sql.to_string());
+    // Indexes under graph-node's names are left out, tuned or on a removed
+    // column; `tags` is copied since the layout doesn't index it.
+    let expected: HashMap<String, _> = [
+        (
+            "CREATE INDEX attr_0_2_thing_tags ON sgd0816.thing USING gin (tags)",
+            copy("CREATE INDEX attr_0_2_thing_tags ON sgd0815.thing USING gin (tags)"),
+        ),
+        (
+            r#"CREATE INDEX manual_thing_from ON sgd0816.thing USING btree ("from" DESC)"#,
+            copy(r#"CREATE INDEX manual_thing_from ON sgd0815.thing USING btree ("from" DESC)"#),
+        ),
+        (
+            "CREATE INDEX manual_thing_active ON sgd0816.thing USING btree (id) WHERE (status = 'Active'::sgd0816.status)",
+            copy("CREATE INDEX manual_thing_active ON sgd0815.thing USING btree (id) WHERE (status = 'Active'::sgd0815.status)"),
+        ),
+        (
+            r#"CREATE INDEX "my-idx" ON sgd0816.thing USING btree (id)"#,
+            Skip("it can't be parsed"),
+        ),
+        (
+            "CREATE INDEX manual_other_color ON sgd0816.other USING btree (color)",
+            Skip("it uses a column this table doesn't have"),
+        ),
+    ]
+    .into_iter()
+    .map(|(defn, action)| (defn.to_string(), action))
+    .collect();
+    assert_eq!(expected, actions);
+
+    // The layout's `id` index replaces the source's tuned one.
+    let sql = layout.as_ddl(Some((&src, &indexes))).unwrap();
+    assert!(sql.contains("attr_0_0_thing_id"), "{sql}");
+}
+
+#[test]
+fn ddl_ignores_source_indexes_after_mutability_change() {
+    let src = test_layout_in(
+        &MIRROR_GQL.replace("type Thing @entity", "type Thing @entity(immutable: true)"),
+        "sgd0816",
+    );
+    let manual = "CREATE INDEX manual_thing_name ON sgd0816.thing USING btree (name)";
+    let indexes = index_list(vec![("thing", vec![manual])]);
+    let layout = test_layout(MIRROR_GQL);
+    let sql = layout.as_ddl(Some((&src, &indexes))).unwrap();
+
+    assert!(sql.contains("attr_0_0_thing_id"), "{sql}");
+    assert_eq!(
+        vec![(
+            manual.to_string(),
+            index::SourceIndex::Skip("its table changed mutability")
+        )],
+        layout.source_indexes((&src, &indexes)).unwrap()
+    );
 }
 
 const THING_GQL: &str = r#"
