@@ -912,31 +912,37 @@ pub(crate) async fn index_creation_is_running(
         .map_err::<StoreError, _>(Into::into)
 }
 
+/// The index definitions of a table, only the valid ones with `valid_only`.
 pub(crate) async fn indexes_for_table(
     conn: &mut AsyncPgConnection,
     schema_name: &str,
     table_name: &str,
+    valid_only: bool,
 ) -> Result<Vec<String>, StoreError> {
     #[derive(Queryable, QueryableByName)]
-    struct IndexName {
+    struct IndexDef {
         #[diesel(sql_type = Text)]
-        #[diesel(column_name = indexdef)]
         def: String,
     }
 
     let query = "
         select
-            indexdef
+            pg_get_indexdef(i.indexrelid) as def
         from
-            pg_indexes
+            pg_index i
+            join pg_class t on t.oid = i.indrelid
+            join pg_class c on c.oid = i.indexrelid
+            join pg_namespace n on n.oid = t.relnamespace
         where
-            schemaname = $1
-            and tablename = $2
-        order by indexname";
+            n.nspname = $1
+            and t.relname = $2
+            and (i.indisvalid or not $3)
+        order by c.relname";
     let results = sql_query(query)
         .bind::<Text, _>(schema_name)
         .bind::<Text, _>(table_name)
-        .load::<IndexName>(conn)
+        .bind::<Bool, _>(valid_only)
+        .load::<IndexDef>(conn)
         .await
         .map_err::<StoreError, _>(Into::into)?;
 

@@ -1394,6 +1394,40 @@ impl Inner {
         store.indexes_for_entity(site, entity_name).await
     }
 
+    #[cfg(debug_assertions)]
+    pub async fn postponed_indexes_created(
+        &self,
+        deployment: &DeploymentLocator,
+    ) -> Result<bool, StoreError> {
+        let site = self.find_site(deployment.id.into()).await?;
+        let store = self.for_site(&site)?;
+        store.postponed_indexes_created(&site).await
+    }
+
+    #[cfg(debug_assertions)]
+    pub async fn set_postponed_indexes_created(
+        &self,
+        deployment: &DeploymentLocator,
+        created: bool,
+    ) -> Result<(), StoreError> {
+        let site = self.find_site(deployment.id.into()).await?;
+        let store = self.for_site(&site)?;
+        store.set_postponed_indexes_created(&site, created).await
+    }
+
+    #[cfg(debug_assertions)]
+    pub async fn create_btree_index_for_deployment(
+        &self,
+        deployment: &DeploymentLocator,
+        name: &str,
+        table: &str,
+        expr: &str,
+    ) -> Result<(), StoreError> {
+        let site = self.find_site(deployment.id.into()).await?;
+        let store = self.for_site(&site)?;
+        store.create_btree_index(&site, name, table, expr).await
+    }
+
     pub async fn drop_index_for_deployment(
         &self,
         deployment: &DeploymentLocator,

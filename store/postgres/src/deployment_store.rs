@@ -711,7 +711,7 @@ impl DeploymentStore {
         let table = resolve_table_name(&layout, &entity_name)?;
         let table_name = &table.name;
         let indexes =
-            catalog::indexes_for_table(&mut conn, schema_name.as_str(), table_name.as_str())
+            catalog::indexes_for_table(&mut conn, schema_name.as_str(), table_name.as_str(), false)
                 .await?;
         Ok(indexes.into_iter().map(CreateIndex::parse).collect())
     }
@@ -721,6 +721,40 @@ impl DeploymentStore {
         let layout = self.layout(&mut conn, site).await?;
 
         IndexList::load(&mut conn, &layout).await
+    }
+
+    pub(crate) async fn postponed_indexes_created(&self, site: &Site) -> Result<bool, StoreError> {
+        let mut conn = self.pool.get_permitted().await?;
+        deployment::postponed_indexes_created(&mut conn, site).await
+    }
+
+    // Only used for tests
+    #[cfg(debug_assertions)]
+    pub(crate) async fn set_postponed_indexes_created(
+        &self,
+        site: &Site,
+        created: bool,
+    ) -> Result<(), StoreError> {
+        let mut conn = self.pool.get_permitted().await?;
+        deployment::set_postponed_indexes_created(&mut conn, site, created).await
+    }
+
+    // Only used for tests
+    #[cfg(debug_assertions)]
+    pub(crate) async fn create_btree_index(
+        &self,
+        site: &Site,
+        name: &str,
+        table: &str,
+        expr: &str,
+    ) -> Result<(), StoreError> {
+        let mut conn = self.pool.get_permitted().await?;
+        let query = format!(
+            "create index \"{}\" on \"{}\".\"{}\" using btree ({})",
+            name, site.namespace, table, expr
+        );
+        sql_query(query).execute(&mut conn).await?;
+        Ok(())
     }
 
     /// Drops an index for a given deployment, concurrently.
@@ -1706,14 +1740,6 @@ impl DeploymentStore {
             catalog::index_creation_is_running(&mut conn, site.namespace.as_str()).await
         }
 
-        async fn postponed_indexes_created(
-            store: &DeploymentStore,
-            site: &Site,
-        ) -> Result<bool, StoreError> {
-            let mut conn = store.pool.get_permitted().await?;
-            deployment::postponed_indexes_created(&mut conn, site).await
-        }
-
         async fn wait_for_concurrent_index_creation(
             logger: &Logger,
             store: &DeploymentStore,
@@ -1787,19 +1813,18 @@ impl DeploymentStore {
             // connection for the whole time. Instead, we get a new
             // connection for each index that we create.
 
-            if postponed_indexes_created(&store, &site).await? {
+            if store.postponed_indexes_created(&site).await? {
                 return Ok(());
             }
 
             for table in layout.tables.values() {
-                let indexes = table.indexes(&layout.input_schema).map_err(|e| {
-                    StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
-                })?;
+                let existing = {
+                    let mut conn = store.pool.get_permitted().await?;
+                    table.valid_indexes(&mut conn).await?
+                };
+                let indexes =
+                    table.postponed_indexes_to_create(&layout.input_schema, &existing, None)?;
                 for idx in indexes {
-                    if !idx.to_postpone() {
-                        continue;
-                    }
-
                     wait_for_concurrent_index_creation(&logger, &store, &site).await?;
 
                     create_index(&logger, &store, &layout, &site, &idx).await?;
@@ -1812,7 +1837,7 @@ impl DeploymentStore {
             }
 
             let mut conn = store.pool.get_permitted().await?;
-            deployment::set_postponed_indexes_created(&mut conn, &site).await?;
+            deployment::set_postponed_indexes_created(&mut conn, &site, true).await?;
             Ok(())
         }
 

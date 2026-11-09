@@ -670,3 +670,68 @@ fn prune() {
         })
     }
 }
+
+/// Sorted names of the postponed indexes on `entity` in `loc`.
+async fn postponed_attr_indexes(
+    store: &DieselSubgraphStore,
+    loc: &DeploymentLocator,
+    entity: &str,
+) -> Result<Vec<String>, StoreError> {
+    let mut names: Vec<String> = store
+        .indexes_for_entity(loc, entity)
+        .await?
+        .into_iter()
+        .filter(|idx| idx.to_postpone())
+        .filter_map(|idx| idx.name().map(str::to_string))
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+/// Run the postponed index build of `loc` and wait for it to finish.
+async fn build_postponed_indexes(
+    store: &Arc<DieselSubgraphStore>,
+    loc: &DeploymentLocator,
+) -> Result<(), StoreError> {
+    store
+        .cheap_clone()
+        .writable(LOGGER.clone(), loc.id, Arc::new(Vec::new()))
+        .await?
+        .create_postponed_indexes()
+        .await?;
+    for _ in 0..60 {
+        if store.postponed_indexes_created(loc).await? {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    panic!(
+        "postponed indexes for {} were not created within 30s",
+        loc.hash
+    );
+}
+
+// The build skips a column that is indexed under another name.
+#[test]
+fn late_build_skips_columns_indexed_under_other_names() {
+    run_test(|store, _src| async move {
+        let dst_id = DeploymentHash::new("grafted_renamed").unwrap();
+        let base = Some((
+            DeploymentHash::new(TEST_SUBGRAPH_ID.as_str()).unwrap(),
+            BLOCKS[1].clone(),
+        ));
+        let dst = test_store::create_subgraph_unstarted(&dst_id, GRAFT_GQL, base).await?;
+        store
+            .create_btree_index_for_deployment(&dst, "attr_9_9_user_age", "user", "age")
+            .await?;
+        test_store::start_subgraph(&dst).await?;
+        store.set_postponed_indexes_created(&dst, false).await?;
+
+        build_postponed_indexes(&store, &dst).await?;
+        let names = postponed_attr_indexes(&store, &dst, USER).await?;
+        // One index each on name, email, age, favorite_color and added.
+        assert_eq!(5, names.len(), "{names:?}");
+        assert!(names.iter().any(|name| name == "attr_9_9_user_age"));
+        Ok(())
+    })
+}
