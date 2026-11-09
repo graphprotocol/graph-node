@@ -688,77 +688,6 @@ impl CreateIndex {
         }
     }
 
-    /// Return `true` if any of the attribute columns (user-defined columns,
-    /// not infrastructure columns like `vid`, `block$`, etc.) referenced by
-    /// this index are NOT in `columns`.
-    pub fn references_column_not_in(&self, columns: &std::collections::HashSet<&str>) -> bool {
-        match self {
-            CreateIndex::Unknown { .. } => false,
-            CreateIndex::Parsed { columns: exprs, .. } => exprs.iter().any(|expr| match expr {
-                Expr::Column(name) | Expr::Prefix(name, _) => !columns.contains(name.as_str()),
-                _ => false,
-            }),
-        }
-    }
-
-    pub fn fields_exist_in_dest(&self, dest_table: &Table) -> bool {
-        fn column_exists(dest_table: &Table, column_name: &str) -> bool {
-            dest_table
-                .columns
-                .iter()
-                .any(|c| c.name.as_str() == column_name)
-        }
-
-        match self {
-            CreateIndex::Unknown { defn: _ } => return true,
-            CreateIndex::Parsed {
-                columns: parsed_cols,
-                ..
-            } => {
-                for c in parsed_cols {
-                    match c {
-                        Expr::Column(column_name) => {
-                            if !column_exists(dest_table, column_name) {
-                                return false;
-                            }
-                        }
-                        Expr::Prefix(column_name, _) => {
-                            if !column_exists(dest_table, column_name) {
-                                return false;
-                            }
-                        }
-                        Expr::BlockRange | Expr::BlockRangeLower | Expr::BlockRangeUpper => {
-                            if dest_table.immutable {
-                                return false;
-                            }
-                        }
-                        Expr::Vid => (),
-                        Expr::Block => {
-                            if !dest_table.immutable {
-                                return false;
-                            }
-                        }
-                        Expr::Unknown(expression) => {
-                            if expression.contains("block_range") && dest_table.immutable {
-                                return false;
-                            }
-                            if !dest_table
-                                .columns
-                                .iter()
-                                .any(|c| expression.contains(c.name.as_str()))
-                                && !expression.contains("block_range")
-                                && !expression.contains("vid")
-                            {
-                                return false;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        true
-    }
-
     /// Generate a SQL statement that creates this index. If `concurrent` is
     /// `true`, make it a concurrent index creation. If `if_not_exists` is
     /// `true` add a `if not exists` clause to the index creation.
@@ -985,30 +914,6 @@ impl IndexList {
             indexes.insert(table.name.to_string(), indexes_from_table);
         }
         Ok(Self::new(indexes))
-    }
-
-    /// Return all indexes for `table` from this list. Only indexes that are
-    /// for columns that actually exist on `table` are returned. In
-    /// addition, indexes that are always created when a deployment is
-    /// created independent of the configuration are also not returned.
-    pub fn indexes_for_table<'a>(
-        &'a self,
-        table: &'a Table,
-    ) -> impl Iterator<Item = &'a CreateIndex> {
-        static EMPTY: Vec<CreateIndex> = vec![];
-        let indexes = self.indexes.get(table.name.as_str()).unwrap_or(&EMPTY);
-
-        indexes.iter().filter(move |ci| {
-            // First we check if the fields do exist in the destination subgraph.
-            // In case of grafting that is not given.
-            ci.fields_exist_in_dest(table)
-                // Then we check if the index is one of the default indexes not based on
-                // the attributes. Those will be created anyway and we should skip them.
-                && !ci.is_default_non_attr_index()
-                // Then ID based indexes in the immutable tables are also created initially
-                // and should be skipped.
-                && !(ci.is_id() && table.immutable)
-        })
     }
 }
 
@@ -1372,45 +1277,6 @@ mod tests {
             cond: Some(TestCond::Unknown("swap_enabled")),
         };
         parse_many(sqls, exp);
-    }
-
-    #[test]
-    fn fields_exist_in_dest_out_of_order() {
-        let gql = "type Thing @entity {
-            id: Bytes!
-            early: String!
-            mid: String!
-            late: String!
-        }";
-        let layout = test_layout(gql);
-        let table = layout
-            .table_for_entity(&layout.input_schema.entity_type("Thing").unwrap())
-            .unwrap();
-
-        // Index references columns in reverse order vs the table definition.
-        // Table columns: id, early, mid, late
-        // Index columns: late, mid, early
-        // The consuming iterator finds 'late', advances past 'mid' and 'early',
-        // then can't find 'mid' because the iterator is already past it.
-        let index = CreateIndex::Parsed {
-            unique: false,
-            name: "test_reverse".to_string(),
-            nsp: "sgd0815".to_string(),
-            table: "thing".to_string(),
-            method: Method::BTree,
-            columns: vec![
-                Expr::Column("late".to_string()),
-                Expr::Column("mid".to_string()),
-                Expr::Column("early".to_string()),
-            ],
-            cond: None,
-            with: None,
-        };
-
-        assert!(
-            index.fields_exist_in_dest(table),
-            "index columns exist in table regardless of order"
-        );
     }
 
     fn thing_table(layout: &Layout) -> &Table {

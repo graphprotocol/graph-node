@@ -43,14 +43,12 @@ use graph::{derive::CheapClone, futures03::future::join_all, prelude::alloy::pri
 use crate::{
     ConnectionPool, NotificationSender,
     catalog::Catalog,
+    copy::CopySource,
     deployment::{OnSync, SubgraphHealth},
     primary::{
         self, DeploymentId, Mirror as PrimaryMirror, Primary, RestoreAction, RestoreMode, Site,
     },
-    relational::{
-        self, Layout,
-        index::{IndexList, Method},
-    },
+    relational::{self, Layout, index::Method},
     writable::{SourceableStore, WritableStore},
 };
 use crate::{
@@ -1571,9 +1569,9 @@ impl Inner {
         src_store.load_deployment(site).await
     }
 
-    pub async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
+    pub(crate) async fn load_copy_source(&self, site: Arc<Site>) -> Result<CopySource, StoreError> {
         let src_store = self.for_site(&site)?;
-        src_store.load_indexes(site).await
+        src_store.load_copy_source(site).await
     }
 
     pub async fn dump(
