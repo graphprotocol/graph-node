@@ -246,7 +246,7 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
             let result = tokio::time::timeout(Duration::from_secs(120), req).await.map_err(|x| x.into()).and_then(|x| x);
 
             match result {
-                Ok(stream) => {
+                Ok(mut stream) => {
                     info!(&logger, "Blockstream connected");
 
                     // Track the time it takes to set up the block stream
@@ -255,7 +255,33 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
                     let mut last_response_time = Instant::now();
                     let mut expected_stream_end = false;
 
-                    for await response in stream {
+                    // Idle timeout for the stream. If enabled and the upstream stops sending
+                    // frames (no message, no error, no EOF), the stream is dropped and
+                    // re-established with backoff instead of hanging indefinitely. Disabled by
+                    // default to preserve the current behavior.
+                    let idle_timeout = firehose_stream_idle_timeout();
+
+                    loop {
+                        let next = match next_with_idle_timeout(&mut stream, idle_timeout).await {
+                            Ok(next) => next,
+                            Err(()) => {
+                                error!(
+                                    logger,
+                                    "Firehose block stream idle for longer than the idle timeout, reconnecting";
+                                    "idle_timeout_secs" => idle_timeout.map(|d| d.as_secs()).unwrap_or_default(),
+                                );
+                                // Deliberate end of the stream; do not log the "completed
+                                // unexpectedly" error below.
+                                expected_stream_end = true;
+                                break;
+                            }
+                        };
+
+                        let response = match next {
+                            Some(response) => response,
+                            None => break,
+                        };
+
                         match process_firehose_response(
                             &endpoint,
                             response,
@@ -336,6 +362,46 @@ fn stream_blocks<C: Blockchain, F: FirehoseMapper<C>>(
             }
         }
     }
+}
+
+/// Returns the idle timeout to apply when waiting for the next message on a firehose
+/// block stream, configured via the `GRAPH_FIREHOSE_STREAM_IDLE_TIMEOUT_SECS` environment
+/// variable. The timeout is disabled (returns `None`) when the variable is missing,
+/// unparseable, or set to `0` seconds.
+fn firehose_stream_idle_timeout() -> Option<Duration> {
+    idle_timeout_from_env(std::env::var("GRAPH_FIREHOSE_STREAM_IDLE_TIMEOUT_SECS"))
+}
+
+/// Parses the value of `GRAPH_FIREHOSE_STREAM_IDLE_TIMEOUT_SECS` into an idle timeout.
+/// A missing, unparseable, or zero value disables the timeout (returns `None`).
+pub fn idle_timeout_from_env(value: Result<String, std::env::VarError>) -> Option<Duration> {
+    value
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|&secs| secs > 0)
+        .map(Duration::from_secs)
+}
+
+/// Waits for the next item on `stream`. When `idle` is `Some(...)` the wait is bounded by
+/// that duration so a stalled upstream cannot hang the receive loop forever. Returns
+/// `Ok(Some(item))` when an item arrives, `Ok(None)` when the stream ends, and `Err(())`
+/// when no item arrived within the idle timeout.
+pub async fn next_with_idle_timeout<S, T>(
+    stream: &mut S,
+    idle: Option<Duration>,
+) -> Result<Option<T>, ()>
+where
+    S: futures03::Stream<Item = T> + Unpin,
+{
+    let next = match idle {
+        Some(idle) => match tokio::time::timeout(idle, stream.next()).await {
+            Ok(next) => next,
+            Err(_) => return Err(()),
+        },
+        None => stream.next().await,
+    };
+
+    Ok(next)
 }
 
 enum BlockResponse<C: Blockchain> {
