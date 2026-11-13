@@ -298,6 +298,13 @@ those.
 - `GRAPH_POSTPONE_ATTRIBUTE_INDEX_CREATION`: During the coping of a subgraph
   postponing creation of certain indexes (btree, attribute based ones), would
   speed up syncing
+- `GRAPH_STORE_COPY_MIRROR_INDEXES`: Whether copies and grafts take the
+  indexes created with their tables from their source: attribute indexes
+  dropped on the source stay dropped, and the source's other indexes,
+  including manual ones, are carried over. When `false`, these indexes
+  come from the destination's own layout, as before. Set it on the node
+  that runs `graphman copy create` and on the nodes that handle deployments
+  (for grafts). Defaults to `true`.
 - `GRAPH_STORE_INSERT_EXTRA_COLS`: Makes it possible to work around bugs in
   the subgraph writing code that manifest as Postgres errors saying 'number
   of parameters must be between 0 and 65535' Such errors are always

@@ -514,7 +514,7 @@ async fn create_schema(conn: &mut AsyncPgConnection) -> Layout {
     let query = format!("create schema {}", NAMESPACE.as_str());
     conn.batch_execute(&query).await.unwrap();
 
-    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new())
+    Layout::create_relational_schema(conn, Arc::new(site), &schema, BTreeSet::new(), None)
         .await
         .expect("Failed to create relational schema")
 }
@@ -667,6 +667,7 @@ async fn copy_populates_fulltext() {
             Arc::new(dst_site),
             &THINGS_SCHEMA,
             BTreeSet::new(),
+            None,
         )
         .await
         .expect("Failed to create destination relational schema");

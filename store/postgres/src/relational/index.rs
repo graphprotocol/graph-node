@@ -10,7 +10,7 @@ use graph::components::store::StoreError;
 use graph::itertools::Itertools;
 use graph::prelude::{
     BlockNumber, lazy_static,
-    regex::{Captures, Regex},
+    regex::{self, Captures, Regex},
 };
 use graph::schema::InputSchema;
 
@@ -644,17 +644,10 @@ impl CreateIndex {
             return false;
         }
 
-        fn has_prefix(s: &str, prefix: &str) -> bool {
-            s.starts_with(prefix)
-                || s.ends_with("\"") && s.starts_with(format!("\"{}", prefix).as_str())
-        }
         match self {
             CreateIndex::Unknown { .. } => false,
             CreateIndex::Parsed {
-                name,
-                columns,
-                method,
-                ..
+                columns, method, ..
             } => {
                 if *method != Method::BTree {
                     return false;
@@ -662,9 +655,21 @@ impl CreateIndex {
                 if columns.len() == 1 && columns[0].is_id() {
                     return false;
                 }
-                has_prefix(name, "attr_") && self.is_attribute_index()
+                self.is_attr_index()
             }
         }
+    }
+
+    /// Whether this index has the name of an attribute index graph-node creates.
+    pub fn has_attr_name(&self) -> bool {
+        self.name().is_some_and(|name| {
+            name.starts_with("attr_") || name.ends_with('"') && name.starts_with("\"attr_")
+        })
+    }
+
+    /// Whether this is an attribute index that graph-node created.
+    pub fn is_attr_index(&self) -> bool {
+        self.has_attr_name() && self.is_attribute_index()
     }
 
     pub fn name(&self) -> Option<&str> {
@@ -855,17 +860,15 @@ impl Table {
 
     /// The postponed indexes this table still needs. Leaves out an index if
     /// `existing` has one of the same shape, or if the copy source `src` has
-    /// its columns but no postponed index on them.
+    /// its columns but no `attr_` index on them.
     pub(crate) fn postponed_indexes_to_create(
         &self,
         schema: &InputSchema,
         existing: &[CreateIndex],
-        src: Option<(&Table, &[CreateIndex])>,
+        src: Option<SourceTable>,
     ) -> Result<Vec<CreateIndex>, StoreError> {
-        let indexes = self.indexes(schema).map_err(|e| {
-            StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
-        })?;
-        Ok(indexes
+        Ok(self
+            .layout_indexes(schema)?
             .into_iter()
             .filter(|idx| idx.to_postpone())
             .filter(|idx| {
@@ -875,45 +878,209 @@ impl Table {
                 {
                     return false;
                 }
-                let Some((src_table, src_indexes)) = src else {
-                    return true;
-                };
-                let columns = idx.attribute_columns();
-                let src_has_columns = columns
-                    .iter()
-                    .all(|col| src_table.columns.iter().any(|c| c.name.as_str() == *col));
-                !src_has_columns
-                    || src_indexes
-                        .iter()
-                        .any(|s| s.to_postpone() && s.attribute_columns() == columns)
+                src.is_none_or(|src| !src.dropped(idx))
             })
             .collect())
     }
+
+    /// The indexes of the copy source `src` that this table doesn't create
+    /// itself, each with its definition on the source and what to do with
+    /// it.
+    pub(crate) fn source_indexes(
+        &self,
+        schema: &InputSchema,
+        src: SourceTable,
+    ) -> Result<Vec<(String, SourceIndex)>, StoreError> {
+        let own = self.layout_indexes(schema)?;
+        let has_column = |name: &str| self.columns.iter().any(|c| c.name.as_str() == name);
+        let src_nsp = regex::escape(src.table.nsp.as_str());
+        let src_nsp = Regex::new(&format!(r"\b{}\.", src_nsp)).unwrap();
+
+        let mut indexes = Vec::new();
+        for (idx, defn) in src.indexes.iter().zip(src.definitions) {
+            let CreateIndex::Parsed {
+                name,
+                columns,
+                cond,
+                ..
+            } = idx
+            else {
+                indexes.push((defn.clone(), SourceIndex::Skip("it can't be parsed")));
+                continue;
+            };
+            let columns_indexed = |o: &CreateIndex| {
+                o.is_attr_index() && o.attribute_columns() == idx.attribute_columns()
+            };
+            // Postgres quotes names like `brin_poi2$`; the layout's are unquoted.
+            let builtin_name = |o: &CreateIndex| o.name() == Some(name.trim_matches('"'));
+            if idx.is_default_non_attr_index()
+                || (idx.is_id() && self.immutable)
+                || own
+                    .iter()
+                    .any(|o| !o.is_attr_index() && (idx.is_same_index(o) || builtin_name(o)))
+                || (idx.has_attr_name()
+                    && (own.iter().any(columns_indexed)
+                        || !idx.attribute_columns().into_iter().all(has_column)))
+            {
+                // graph-node's own: this table creates the ones it needs
+                continue;
+            }
+            // An expression or condition that isn't parsed can use any column.
+            let opaque = columns.iter().any(|expr| matches!(expr, Expr::Unknown(_)))
+                || matches!(cond, Some(Cond::Unknown(_)));
+            let action = if (opaque
+                && !src
+                    .table
+                    .columns
+                    .iter()
+                    .all(|c| has_column(c.name.as_str())))
+                || !idx.attribute_columns().into_iter().all(has_column)
+            {
+                SourceIndex::Skip("it uses a column this table doesn't have")
+            } else {
+                let sql = src_nsp.replace_all(defn, format!("{}.", self.nsp));
+                SourceIndex::Copy(sql.into_owned())
+            };
+            indexes.push((defn.clone(), action));
+        }
+        Ok(indexes)
+    }
+
+    fn layout_indexes(&self, schema: &InputSchema) -> Result<Vec<CreateIndex>, StoreError> {
+        self.indexes(schema).map_err(|e| {
+            StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
+        })
+    }
+}
+
+impl Layout {
+    /// The indexes of the copy source `src` that this layout doesn't create
+    /// itself, each with its definition on the source and what to do with
+    /// it.
+    pub(crate) fn source_indexes(
+        &self,
+        src: (&Layout, &IndexList),
+    ) -> Result<Vec<(String, SourceIndex)>, StoreError> {
+        let (src_layout, src_indexes) = src;
+        let mut indexes = Vec::new();
+        for table in self.tables.values() {
+            let Some(src_table) = src_layout.table(table.name.as_str()) else {
+                continue;
+            };
+            let mut actions =
+                table.source_indexes(&self.input_schema, src_indexes.source_table(src_table))?;
+            if src_table.immutable != table.immutable {
+                for (_, action) in &mut actions {
+                    if let SourceIndex::Copy(_) = action {
+                        *action = SourceIndex::Skip("its table changed mutability");
+                    }
+                }
+            }
+            indexes.extend(actions);
+        }
+        Ok(indexes)
+    }
+}
+
+/// The source table that `table` mirrors in a copy from `src`: the one with
+/// the same name and mutability. Index kinds differ between mutable and
+/// immutable tables.
+pub(crate) fn mirrored_table<'a>(
+    table: &Table,
+    src: (&'a Layout, &'a IndexList),
+) -> Option<SourceTable<'a>> {
+    let (src_layout, src_indexes) = src;
+    let src_table = src_layout
+        .table(table.name.as_str())
+        .filter(|src_table| src_table.immutable == table.immutable)?;
+    Some(src_indexes.source_table(src_table))
+}
+
+/// A table of a copy source and its indexes.
+#[derive(Clone, Copy)]
+pub(crate) struct SourceTable<'a> {
+    table: &'a Table,
+    indexes: &'a [CreateIndex],
+    /// The definitions of `indexes` as Postgres printed them.
+    definitions: &'a [String],
+}
+
+impl SourceTable<'_> {
+    /// Whether the source has the columns of `idx` but no `attr_` index on them.
+    pub(crate) fn dropped(&self, idx: &CreateIndex) -> bool {
+        let columns = idx.attribute_columns();
+        columns
+            .iter()
+            .all(|col| self.table.columns.iter().any(|c| c.name.as_str() == *col))
+            && !self
+                .indexes
+                .iter()
+                .any(|s| s.has_attr_name() && s.attribute_columns() == columns)
+    }
+}
+
+/// What happens to an index of a copy source that the destination doesn't
+/// create itself.
+#[derive(Debug, PartialEq)]
+pub(crate) enum SourceIndex {
+    /// Create it with this statement.
+    Copy(String),
+    /// Leave it out, for this reason.
+    Skip(&'static str),
 }
 
 #[derive(Debug)]
 pub struct IndexList {
     pub(crate) indexes: HashMap<String, Vec<CreateIndex>>,
+    /// The definitions of `indexes` as Postgres printed them.
+    definitions: HashMap<String, Vec<String>>,
 }
 
 impl IndexList {
-    pub fn new(indexes: HashMap<String, Vec<CreateIndex>>) -> Self {
-        IndexList { indexes }
+    /// Parse `definitions`, the index definitions of each table.
+    pub fn new(definitions: HashMap<String, Vec<String>>) -> Self {
+        let indexes = definitions
+            .iter()
+            .map(|(table, defns)| {
+                let indexes = defns.iter().cloned().map(CreateIndex::parse).collect();
+                (table.clone(), indexes)
+            })
+            .collect();
+        IndexList {
+            indexes,
+            definitions,
+        }
     }
 
-    pub async fn load(conn: &mut AsyncPgConnection, layout: &Layout) -> Result<Self, StoreError> {
-        let mut indexes = HashMap::new();
+    /// Load the indexes of `layout`, only the valid ones with `valid_only`.
+    pub async fn load(
+        conn: &mut AsyncPgConnection,
+        layout: &Layout,
+        valid_only: bool,
+    ) -> Result<Self, StoreError> {
+        let mut definitions = HashMap::new();
         let schema_name = layout.site.namespace.clone();
         for table in layout.tables.values() {
-            let indexes_from_table =
-                catalog::indexes_for_table(conn, schema_name.as_str(), table.name.as_str(), false)
-                    .await?
-                    .into_iter()
-                    .map(CreateIndex::parse)
-                    .collect();
-            indexes.insert(table.name.to_string(), indexes_from_table);
+            let defns = catalog::indexes_for_table(
+                conn,
+                schema_name.as_str(),
+                table.name.as_str(),
+                valid_only,
+            )
+            .await?;
+            definitions.insert(table.name.to_string(), defns);
         }
-        Ok(Self::new(indexes))
+        Ok(Self::new(definitions))
+    }
+
+    /// `table` of this list's deployment, with its indexes.
+    pub(crate) fn source_table<'a>(&'a self, table: &'a Table) -> SourceTable<'a> {
+        let name = table.name.as_str();
+        SourceTable {
+            table,
+            indexes: self.indexes.get(name).map(Vec::as_slice).unwrap_or(&[]),
+            definitions: self.definitions.get(name).map(Vec::as_slice).unwrap_or(&[]),
+        }
     }
 }
 
@@ -1378,18 +1545,25 @@ mod tests {
 
     #[test]
     fn postponed_indexes_to_create_from_source() {
-        // The source indexes `email` with a different shape and doesn't
-        // index `name`.
+        // The source indexes `email` with a different shape, has a tuned
+        // `age` index and doesn't index `name`.
         let src_layout = test_layout(
             "type Thing @entity {
                 id: ID!
                 email: String!
                 name: String!
+                age: Int!
             }",
         );
-        let src_indexes = [CreateIndex::parse(
-            r#"CREATE INDEX attr_0_1_thing_email ON sgd0815.thing USING btree (email)"#.to_string(),
-        )];
+        let src_indexes = IndexList::new(HashMap::from([(
+            "thing".to_string(),
+            vec![
+                r#"CREATE INDEX attr_0_1_thing_email ON sgd0815.thing USING btree (email)"#
+                    .to_string(),
+                "CREATE INDEX attr_0_3_thing_age ON sgd0815.thing USING btree (age) WITH (fillfactor='70')"
+                    .to_string(),
+            ],
+        )]));
         let layout = test_layout(POSTPONED_GQL);
         let table = thing_table(&layout);
 
@@ -1397,7 +1571,7 @@ mod tests {
             .postponed_indexes_to_create(
                 &layout.input_schema,
                 &[],
-                Some((thing_table(&src_layout), &src_indexes)),
+                Some(src_indexes.source_table(thing_table(&src_layout))),
             )
             .unwrap();
         assert_eq!(vec!["age", "data", "email"], sorted_columns(&to_create));

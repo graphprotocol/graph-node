@@ -57,7 +57,7 @@ impl TablePair {
             // In case of pruning we don't do delayed creation of indexes,
             // as the asumption is that there is not that much data inserted.
             let creat = src_layout.index_creator(false, false);
-            dst.as_ddl(&src_layout.input_schema, &creat, &mut query)?;
+            dst.as_ddl(&src_layout.input_schema, &creat, None, &mut query)?;
         }
         conn.batch_execute(&query).await?;
 
