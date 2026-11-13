@@ -263,7 +263,7 @@ async fn main() -> Result<()> {
     };
 
     if let Err(e) = res {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {:#}", e);
         std::process::exit(1);
     }
 
