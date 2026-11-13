@@ -494,7 +494,8 @@ impl SchemaCodeGenerator {
 
         let value_type = self.value_type_from_field(field);
         let return_type = self.type_from_field(field);
-        let nullable = field.is_nullable;
+        // AS primitives can't be nullable, so take nullability from the AS type.
+        let nullable = matches!(return_type, TypeExpr::Nullable(_));
 
         let primitive_default = match &return_type {
             TypeExpr::Named(t) => t.get_primitive_default(),
@@ -575,13 +576,8 @@ impl SchemaCodeGenerator {
         let safe_name = handle_reserved_word(&field.name);
         let value_type = self.value_type_from_field(field);
         let param_type = self.type_from_field(field);
-        let nullable = field.is_nullable;
-
-        let set_code = if nullable {
-            let inner_type = match &param_type {
-                TypeExpr::Nullable(n) => n.inner.to_string(),
-                other => other.to_string(),
-            };
+        let set_code = if let TypeExpr::Nullable(n) = &param_type {
+            let inner_type = n.inner.to_string();
             format!(
                 r#"
       if (!value) {{
@@ -760,6 +756,68 @@ mod tests {
         assert!(method_names.contains(&"set name"));
         assert!(method_names.contains(&"get symbol"));
         assert!(method_names.contains(&"set symbol"));
+    }
+
+    #[test]
+    fn test_nullable_primitive_fields() {
+        // Nullable primitives, incl. Int8-id entity refs, get non-nullable accessors.
+        let schema = r#"
+            type Example @entity(immutable: true) {
+                id: ID!
+                side: Int
+                flag: Boolean
+                big: Int8
+                at: Timestamp
+                counter: Counter
+                name: String
+            }
+
+            type Counter @entity(immutable: true) {
+                id: Int8!
+            }
+        "#;
+        let doc = parse_schema::<String>(schema).unwrap();
+        let generator = SchemaCodeGenerator::new(&doc).unwrap();
+
+        let classes = generator.generate_types(true);
+        assert_eq!(classes.len(), 2);
+
+        let example = &classes[0];
+        let body = |name: &str| -> String {
+            example
+                .methods
+                .iter()
+                .find(|m| m.name == name)
+                .unwrap_or_else(|| panic!("no method `{name}`"))
+                .body
+                .clone()
+        };
+
+        for (field, default) in [
+            ("side", "0"),
+            ("flag", "false"),
+            ("big", "0"),
+            ("at", "0"),
+            ("counter", "0"),
+        ] {
+            let getter = body(&format!("get {field}"));
+            assert!(
+                getter.contains(&format!("return {default}")) && !getter.contains("return null"),
+                "nullable primitive `{field}` should return its default, got: {getter}"
+            );
+
+            let setter = body(&format!("set {field}"));
+            assert!(
+                setter.contains(&format!("this.set('{field}'")) && !setter.contains("unset"),
+                "nullable primitive `{field}` should always be set, got: {setter}"
+            );
+        }
+
+        // A nullable field of a non-primitive type keeps the nullable accessors
+        let getter = body("get name");
+        assert!(getter.contains("return null"), "got: {getter}");
+        let setter = body("set name");
+        assert!(setter.contains("this.unset('name')"), "got: {setter}");
     }
 
     #[test]
