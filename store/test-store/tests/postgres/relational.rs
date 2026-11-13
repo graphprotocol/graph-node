@@ -1,5 +1,6 @@
 //! Test mapping of GraphQL schema to a relational schema
 use diesel_async::SimpleAsyncConnection;
+use graph::components::store::EntityOperation;
 use graph::components::store::write::{EntityModification, RowGroup};
 use graph::data::store::scalar;
 use graph::entity;
@@ -505,7 +506,11 @@ async fn insert_pets(conn: &mut AsyncPgConnection, layout: &Layout) {
 }
 
 async fn create_schema(conn: &mut AsyncPgConnection) -> Layout {
-    let schema = InputSchema::parse_latest(THINGS_GQL, THINGS_SUBGRAPH_ID.clone()).unwrap();
+    create_schema_from(conn, THINGS_GQL).await
+}
+
+async fn create_schema_from(conn: &mut AsyncPgConnection, gql: &str) -> Layout {
+    let schema = InputSchema::parse_latest(gql, THINGS_SUBGRAPH_ID.clone()).unwrap();
     let site = make_dummy_site(
         THINGS_SUBGRAPH_ID.clone(),
         NAMESPACE.clone(),
@@ -571,6 +576,141 @@ where
 
         // Run test
         test(conn, &layout).await;
+    })
+    .await;
+}
+
+async fn assert_changes_at(
+    conn: &mut AsyncPgConnection,
+    layout: &Layout,
+    block: BlockNumber,
+    expected: Vec<EntityOperation>,
+) {
+    let mut changes = layout.find_changes(conn, block).await.unwrap();
+    for change in &mut changes {
+        if let EntityOperation::Set { data, .. } = change {
+            data.remove_null_fields();
+        }
+    }
+    assert_eq!(changes.len(), expected.len(), "changes at block {block}");
+    for change in expected {
+        assert!(
+            changes.contains(&change),
+            "missing {change:?} in changes at block {block}: {changes:?}"
+        );
+    }
+}
+
+#[graph::test]
+async fn find_changes_with_immutable_entities() {
+    run_test_with_conn(async |conn| {
+        remove_schema(conn).await;
+        let layout = &create_schema_from(
+            conn,
+            "type Ferret @entity { id: ID!, name: String! }
+             type Mink @entity(immutable: true) { id: ID!, order: Int! }",
+        )
+        .await;
+        let ferret_type = layout.input_schema.entity_type("Ferret").unwrap();
+        let mink_type = layout.input_schema.entity_type("Mink").unwrap();
+        let old = entity! { layout.input_schema => id: "changed", name: "old", vid: 0i64 };
+        let removed = entity! { layout.input_schema => id: "removed", name: "gone", vid: 1i64 };
+        let updated = entity! { layout.input_schema => id: "changed", name: "new", vid: 2i64 };
+        let first = entity! { layout.input_schema => id: "first", order: 1, vid: 3i64 };
+        let later = entity! { layout.input_schema => id: "later", order: 2, vid: 4i64 };
+
+        insert_entity_at(
+            conn,
+            layout,
+            &ferret_type,
+            vec![old.clone(), removed.clone()],
+            0,
+        )
+        .await;
+        update_entity_at(conn, layout, &ferret_type, vec![updated.clone()], 1).await;
+        let removed_key = ferret_type.key(removed.id());
+        let group = row_group_delete(&ferret_type, 1, vec![removed_key.clone()]);
+        assert_eq!(
+            layout.delete(conn, &group, &MOCK_STOPWATCH).await.unwrap(),
+            1
+        );
+        insert_entity_at(conn, layout, &mink_type, vec![first.clone()], 1).await;
+        insert_entity_at(conn, layout, &mink_type, vec![later.clone()], 2).await;
+
+        assert_changes_at(
+            conn,
+            layout,
+            0,
+            vec![
+                EntityOperation::Set {
+                    key: ferret_type.key(old.id()),
+                    data: old,
+                },
+                EntityOperation::Set {
+                    key: removed_key.clone(),
+                    data: removed,
+                },
+            ],
+        )
+        .await;
+        assert_changes_at(
+            conn,
+            layout,
+            1,
+            vec![
+                EntityOperation::Set {
+                    key: ferret_type.key(updated.id()),
+                    data: updated,
+                },
+                EntityOperation::Set {
+                    key: mink_type.key(first.id()),
+                    data: first,
+                },
+                EntityOperation::Remove { key: removed_key },
+            ],
+        )
+        .await;
+        assert_changes_at(
+            conn,
+            layout,
+            2,
+            vec![EntityOperation::Set {
+                key: mink_type.key(later.id()),
+                data: later,
+            }],
+        )
+        .await;
+        assert_changes_at(conn, layout, 3, vec![]).await;
+    })
+    .await;
+}
+
+#[graph::test]
+async fn find_changes_with_only_immutable_entities() {
+    run_test_with_conn(async |conn| {
+        remove_schema(conn).await;
+        let layout = create_schema_from(
+            conn,
+            "type Event @entity(immutable: true) { id: ID!, value: Int! }",
+        )
+        .await;
+        let event_type = layout.input_schema.entity_type("Event").unwrap();
+        assert_changes_at(conn, &layout, 0, vec![]).await;
+
+        let event = entity! { layout.input_schema => id: "event", value: 42, vid: 0i64 };
+        insert_entity_at(conn, &layout, &event_type, vec![event.clone()], 1).await;
+        assert_changes_at(conn, &layout, 0, vec![]).await;
+        assert_changes_at(
+            conn,
+            &layout,
+            1,
+            vec![EntityOperation::Set {
+                key: event_type.key(event.id()),
+                data: event,
+            }],
+        )
+        .await;
+        assert_changes_at(conn, &layout, 2, vec![]).await;
     })
     .await;
 }

@@ -699,9 +699,15 @@ impl Layout {
         let inserts_or_updates = FindChangesQuery::new(&tables[..], block)
             .load::<EntityData>(conn)
             .await?;
-        let deletions = FindPossibleDeletionsQuery::new(&tables[..], block)
-            .load::<EntityDeletion>(conn)
-            .await?;
+        // Immutable entities have no block range and cannot be deleted.
+        tables.retain(|table| !table.immutable);
+        let deletions = if tables.is_empty() {
+            Vec::new()
+        } else {
+            FindPossibleDeletionsQuery::new(&tables[..], block)
+                .load::<EntityDeletion>(conn)
+                .await?
+        };
 
         let mut processed_entities = HashSet::new();
         let mut changes = Vec::new();
