@@ -35,6 +35,9 @@ pub mod ipfs;
 
 pub mod tls;
 
+/// Opt-in OpenTelemetry tracing.
+pub mod telemetry;
+
 pub mod abi;
 
 pub mod amp;

@@ -847,6 +847,153 @@ async fn file_data_sources() {
 }
 
 #[graph::test]
+async fn block_spans() {
+    use graph::telemetry::testing::{in_child_process, install_with, run_in_subprocess};
+    use graph::telemetry::{SpanGroup, SpanGroups};
+
+    // The tracer provider is process-global and would stay on for every
+    // other test in this binary, so this test runs in a process of its own.
+    // That also keeps `block_handlers`, which deploys the same subgraph
+    // and so shares its deployment hash, out of the exported spans.
+    if !in_child_process() {
+        return run_in_subprocess("block_spans", &[]);
+    }
+    let spans = install_with(
+        SpanGroups::NONE
+            .with(SpanGroup::Block)
+            .with(SpanGroup::Handler)
+            .with(SpanGroup::HostFn),
+    );
+
+    let RunnerTestRecipe { stores, test_info } =
+        RunnerTestRecipe::new("block_spans", "block-handlers").await;
+
+    let blocks: Vec<BlockWithTriggers<graph_chain_ethereum::Chain>> = {
+        let block_0 = genesis();
+        let block_1_to_3 = generate_empty_blocks_for_range(block_0.ptr(), 1, 3, 0);
+        let block_4 = {
+            let mut block = empty_block(block_1_to_3.last().unwrap().ptr(), test_ptr(4));
+            push_test_polling_trigger(&mut block);
+            block
+        };
+        vec![block_0]
+            .into_iter()
+            .chain(block_1_to_3)
+            .chain(vec![block_4])
+            .collect()
+    };
+
+    let hashes: HashMap<i32, String> = blocks
+        .iter()
+        .map(|block| (block.ptr().number, block.ptr().hash_hex()))
+        .collect();
+
+    let stop_block = test_ptr(4);
+    let chain = chain(&test_info.test_name, blocks, &stores, None).await;
+    let ctx = fixture::setup(&test_info, &stores, &chain, None, None).await;
+    ctx.start_and_sync_to(stop_block).await;
+
+    let roots = spans.spans_with_attr("subgraph_id", &test_info.hash.to_string());
+    assert!(!roots.is_empty(), "no block spans were exported");
+    assert!(roots.iter().all(|span| span.name == "process_block"));
+    assert!(roots.iter().all(|span| span.parent_span_id.is_none()));
+    assert!(roots.iter().all(|span| !span.is_error));
+
+    // Exactly one trace per processed block, with the block's identity on it.
+    let mut block_numbers: Vec<i32> = roots
+        .iter()
+        .map(|span| span.attr("block_number").unwrap().parse().unwrap())
+        .collect();
+    block_numbers.sort();
+    assert_eq!(block_numbers, (0..=4).collect::<Vec<_>>());
+    for root in &roots {
+        let number: i32 = root.attr("block_number").unwrap().parse().unwrap();
+        assert_eq!(root.attr("block_hash"), Some(hashes[&number].as_str()));
+        assert_eq!(root.attr("network"), Some("test"));
+        assert_eq!(root.attr("shard"), Some("primary"));
+    }
+
+    // The block with the polling trigger ran a handler; every block was
+    // written to the store.
+    let block_4 = roots
+        .iter()
+        .find(|span| span.attr("block_number") == Some("4"))
+        .unwrap();
+    let children = spans.children_of(block_4);
+    let names: Vec<&str> = children.iter().map(|span| span.name.as_str()).collect();
+    for expected in [
+        "process_triggers",
+        "handle_new_data_sources",
+        "update_proof_of_indexing",
+        "as_modifications",
+        "transact_block",
+    ] {
+        assert!(
+            names.contains(&expected),
+            "no {expected} under block 4: {names:?}"
+        );
+    }
+    let transact = children
+        .iter()
+        .find(|span| span.name == "transact_block")
+        .unwrap_or_else(|| panic!("no transact_block span under block 4: {names:?}"));
+    assert!(transact.attr("entity_count").is_some());
+    let triggers = children
+        .iter()
+        .find(|span| span.name == "process_triggers")
+        .unwrap();
+    let handlers: Vec<_> = spans
+        .children_of(triggers)
+        .into_iter()
+        .filter(|span| span.name == "run_handler")
+        .collect();
+    assert!(!handlers.is_empty(), "no handler ran for block 4");
+    for handler in &handlers {
+        assert_eq!(handler.attr("handler"), Some("handleBlockPolling"));
+        assert_eq!(handler.attr("trigger"), Some("onchain"));
+        // A block handler has no transaction.
+        assert_eq!(handler.attr("tx_hash"), None);
+
+        // The handler saves one entity; the host function span names its
+        // type.
+        let store_sets: Vec<_> = spans
+            .children_of(handler)
+            .into_iter()
+            .filter(|span| span.name == "host_export_store_set")
+            .collect();
+        assert_eq!(
+            store_sets.len(),
+            1,
+            "expected one store.set per handler run"
+        );
+        assert_eq!(
+            store_sets[0].attr("entity_type"),
+            Some("BlockFromPollingHandler")
+        );
+        assert_eq!(store_sets[0].attr("host_function"), Some("store.set"));
+
+        // Every other host function call is a `host_export_other` span
+        // that names the import it was made for: the handler logs once
+        // and converts the block number to a string twice.
+        let mut others: Vec<_> = spans
+            .children_of(handler)
+            .into_iter()
+            .filter(|span| span.name == "host_export_other")
+            .map(|span| span.attr("host_function").unwrap_or("").to_owned())
+            .collect();
+        others.sort();
+        assert_eq!(
+            others,
+            [
+                "log.log",
+                "typeConversion.bigIntToString",
+                "typeConversion.bigIntToString"
+            ]
+        );
+    }
+}
+
+#[graph::test]
 async fn block_handlers() {
     let RunnerTestRecipe { stores, test_info } =
         RunnerTestRecipe::new("block_handlers", "block-handlers").await;

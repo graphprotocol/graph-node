@@ -297,7 +297,8 @@ fn link_chain_host_fn(
                     let gas = caller.data().gas.cheap_clone();
                     let host_metrics = caller.data().host_metrics.cheap_clone();
                     let stopwatch = host_metrics.stopwatch.cheap_clone();
-                    let _section = stopwatch.start_section(&section_name);
+                    let _section = stopwatch
+                        .start_section_with(&section_name, || [("host_function", name.into())]);
 
                     let ctx = HostFnCtx {
                         logger: caller.data().ctx.logger.cheap_clone(),
@@ -379,7 +380,10 @@ pub(crate) fn build_linker(
                         Box::new(async move {
                             let gas = caller.data().gas.cheap_clone();
                             let host_metrics = caller.data().host_metrics.cheap_clone();
-                            let _section = host_metrics.stopwatch.start_section($section);
+                            let _section = host_metrics.stopwatch.start_section_with(
+                                $section,
+                                || [("host_function", $wasm_name.into())],
+                            );
 
                             #[allow(unused_mut)]
                             let mut ctx = std::pin::pin!(WasmInstanceContext::new(&mut caller));
@@ -426,7 +430,10 @@ pub(crate) fn build_linker(
                         Box::new(async move {
                             let gas = caller.data().gas.cheap_clone();
                             let host_metrics = caller.data().host_metrics.cheap_clone();
-                            let _section = host_metrics.stopwatch.start_section($section);
+                            let _section = host_metrics.stopwatch.start_section_with(
+                                $section,
+                                || [("host_function", $wasm_name.into())],
+                            );
 
                             #[allow(unused_mut)]
                             let mut ctx = WasmInstanceContext::new(&mut caller);

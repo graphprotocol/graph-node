@@ -11,6 +11,7 @@ pub use causality_region::CausalityRegion;
 #[cfg(test)]
 mod tests;
 
+use crate::telemetry::AttrValue;
 use crate::{
     blockchain::{
         Block, BlockPtr, BlockTime, Blockchain, DataSource as _, DataSourceTemplate as _,
@@ -659,6 +660,17 @@ impl<C: Blockchain> MappingTrigger<C> {
             Self::Offchain(_) => None,
             Self::Subgraph(_) => None, // TODO(krishna)
         }
+    }
+
+    /// Attributes for the span of the handler that processes this trigger.
+    pub fn trace_attributes(&self) -> Vec<(&'static str, AttrValue)> {
+        let (kind, mut attrs) = match self {
+            Self::Onchain(trigger) => ("onchain", trigger.trace_attributes()),
+            Self::Offchain(_) => ("offchain", Vec::new()),
+            Self::Subgraph(_) => ("subgraph", Vec::new()),
+        };
+        attrs.push(("trigger", kind.into()));
+        attrs
     }
 }
 

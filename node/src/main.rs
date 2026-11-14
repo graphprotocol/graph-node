@@ -38,6 +38,28 @@ async fn main_inner() {
         "Runtime configured with {} max blocking threads", *MAX_BLOCKING_THREADS
     );
 
+    let telemetry = graph::telemetry::init(&graph::telemetry::Config::from(&*env_vars), &logger)
+        .unwrap_or_else(|err| panic!("Failed to initialize OpenTelemetry tracing: {err:#}"));
+    if telemetry.is_enabled() {
+        // graph-node has no shutdown sequence; it runs until it is killed.
+        // With tracing on, catch the termination signals so that buffered
+        // spans are flushed before the process exits.
+        let logger = logger.clone();
+        graph::spawn(async move {
+            let code = wait_for_termination().await;
+            info!(logger, "Shutting down, flushing traces");
+            // Shutdown blocks until the export finished or timed out.
+            let result = graph::spawn_blocking_allow_panic(move || telemetry.shutdown())
+                .await
+                .map_err(graph::anyhow::Error::from)
+                .and_then(|result| result);
+            if let Err(err) = result {
+                error!(logger, "Failed to flush traces"; "error" => format!("{err:#}"));
+            }
+            std::process::exit(code);
+        });
+    }
+
     let (prometheus_registry, metrics_registry) = launcher::setup_metrics(&logger);
 
     let ipfs_client = graph::ipfs::new_ipfs_client(&opt.ipfs, &metrics_registry, &logger)
@@ -65,4 +87,23 @@ async fn main_inner() {
         cancel_token,
     )
     .await;
+}
+
+/// Wait for SIGINT or SIGTERM and return the exit code the default signal
+/// disposition would have produced.
+async fn wait_for_termination() -> i32 {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut terminate = signal(SignalKind::terminate()).expect("can listen for SIGTERM");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => 130,
+            _ = terminate.recv() => 143,
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+        130
+    }
 }

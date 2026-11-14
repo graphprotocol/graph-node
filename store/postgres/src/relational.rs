@@ -44,6 +44,7 @@ use graph::schema::{
     InputSchema,
 };
 use graph::slog::{debug, warn};
+use graph::telemetry::{self, Context, Span, SpanGroup};
 use inflector::Inflector;
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -93,6 +94,74 @@ const DELETE_OPERATION_CHUNK_SIZE: usize = 1_000;
 /// bigger than Postgres' limit on such strings which is about 2k
 pub const STRING_PREFIX_SIZE: usize = 256;
 pub const BYTE_ARRAY_PREFIX_SIZE: usize = 64;
+
+/// SQL text in logs and spans is cut to this many bytes (20kB).
+const SQL_TEXT_MAXLEN: usize = 20_480;
+
+/// Cut `text` to at most `max` bytes, on a char boundary and including
+/// the marker that shows it was cut.
+fn truncate_sql(text: &mut String, max: usize) {
+    const MARKER: &str = " ...";
+    if text.len() <= max {
+        return;
+    }
+    // Leave room for the marker when it fits at all.
+    let mut end = if max >= MARKER.len() {
+        max - MARKER.len()
+    } else {
+        max
+    };
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.truncate(end);
+    if max >= MARKER.len() {
+        text.push_str(MARKER);
+    }
+}
+
+#[cfg(test)]
+mod truncate_sql_tests {
+    use super::truncate_sql;
+
+    #[test]
+    fn keeps_short_text() {
+        let mut text = "select 1".to_string();
+        truncate_sql(&mut text, 20);
+        assert_eq!(text, "select 1");
+        assert!(text.len() <= 20);
+    }
+
+    #[test]
+    fn stays_within_max_bytes() {
+        let mut text = "x".repeat(100);
+        truncate_sql(&mut text, 10);
+        assert_eq!(text, "xxxxxx ...");
+        assert!(text.len() <= 10);
+    }
+
+    #[test]
+    fn respects_char_boundaries() {
+        // Each `ü` is two bytes; a cut at 7 would split one.
+        let mut text = "ü".repeat(50);
+        truncate_sql(&mut text, 11);
+        assert_eq!(text, "üüü ...");
+        assert!(text.len() <= 11);
+    }
+
+    #[test]
+    fn max_smaller_than_marker() {
+        let mut text = "abcdef".to_string();
+        truncate_sql(&mut text, 2);
+        assert_eq!(text, "ab");
+        assert!(text.len() <= 2);
+
+        let mut text = "üüü".to_string();
+        truncate_sql(&mut text, 3);
+        assert_eq!(text, "ü");
+        assert!(text.len() <= 3);
+    }
+}
 
 lazy_static! {
     pub(crate) static ref STATEMENT_TIMEOUT: Option<String> = ENV_VARS
@@ -851,8 +920,7 @@ impl Layout {
             entity_count: usize,
             trace: bool,
         ) -> Trace {
-            // 20kB
-            const MAXLEN: usize = 20_480;
+            const MAXLEN: usize = SQL_TEXT_MAXLEN;
 
             if !ENV_VARS.log_sql_timing() && !trace {
                 return Trace::None;
@@ -870,10 +938,7 @@ impl Layout {
                 // If the query + bind variables is more than MAXLEN, truncate it;
                 // this will happen when queries have very large bind variables
                 // (e.g., long arrays of string ids)
-                if text.len() > MAXLEN {
-                    text.truncate(MAXLEN);
-                    text.push_str(" ...");
-                }
+                truncate_sql(&mut text, MAXLEN);
                 info!(
                     logger,
                     "Query timing (SQL)";
@@ -903,6 +968,24 @@ impl Layout {
 
         let query_clone = query.clone();
 
+        // The query is a child of whatever trace is attached to this
+        // thread, which is the GraphQL request's when there is one. With
+        // nothing attached there is no span.
+        let mut span = match Context::current() {
+            Some(ctx) if telemetry::group_enabled(SpanGroup::Store) => {
+                Span::child("db_query", &ctx)
+            }
+            _ => Span::noop(),
+        };
+        if span.is_recording() {
+            span.set_attr("subgraph_id", self.site.deployment.to_string());
+            if ENV_VARS.log_sql_timing() {
+                let mut text = debug_query(&query_clone).to_string().replace('\n', "\t");
+                truncate_sql(&mut text, SQL_TEXT_MAXLEN);
+                span.set_attr("sql", text);
+            }
+        }
+
         let start = Instant::now();
         let values = conn
             .transaction(async |conn| {
@@ -913,6 +996,7 @@ impl Layout {
             })
             .await
             .map_err(|e| {
+                span.set_error(&e.to_string());
                 use diesel::result::DatabaseErrorKind;
                 use diesel::result::Error::*;
                 // Sometimes `debug_query(..)` can't be turned into a
@@ -938,6 +1022,8 @@ impl Layout {
                     )),
                 }
             })?;
+        span.set_attr("entity_count", values.len());
+        span.end();
         let trace = log_query_timing(logger, &query_clone, start.elapsed(), values.len(), trace);
 
         let parent_type = filter_collection.parent_type()?.map(ColumnType::from);

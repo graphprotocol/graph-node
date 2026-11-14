@@ -57,6 +57,7 @@ use self::{
     client::ChainClient,
 };
 use crate::components::network_provider::ChainName;
+use crate::telemetry::AttrValue;
 
 #[async_trait]
 pub trait BlockIngestor: 'static + Send + Sync {
@@ -492,6 +493,13 @@ pub trait MappingTriggerTrait {
     /// If there is an error when processing this trigger, this will called to add relevant context.
     /// For example an useful return is: `"block #<N> (<hash>), transaction <tx_hash>".
     fn error_context(&self) -> String;
+
+    /// Attributes that identify this trigger on the span of the handler
+    /// that processes it, like the transaction hash. Only called when
+    /// tracing is on.
+    fn trace_attributes(&self) -> Vec<(&'static str, AttrValue)> {
+        Vec::new()
+    }
 }
 
 /// A callback that is called after the triggers have been decoded.

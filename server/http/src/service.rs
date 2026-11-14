@@ -28,6 +28,7 @@ use graph::prelude::serde_json::json;
 use graph::semver::VersionReq;
 use graph::slog::Logger;
 use graph::slog::error;
+use graph::telemetry::{self, Span, SpanGroup};
 use graph::url::form_urlencoded;
 use graph::{components::server::query::ServerError, data::query::QueryTarget};
 
@@ -45,6 +46,46 @@ fn client_error(msg: impl Into<String>) -> ServerResponse {
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .body(Full::from(response_str))
         .unwrap()
+}
+
+/// Start the span for a GraphQL request, as a child of the trace the
+/// request's W3C headers refer to, or as a new trace. The `graphql` span
+/// group must be enabled, or the span is a no-op.
+fn request_span<T>(request: &Request<T>, target: &QueryTarget) -> Span {
+    if !telemetry::group_enabled(SpanGroup::GraphQl) {
+        return Span::noop();
+    }
+    let mut span = match telemetry::extract(request.headers()) {
+        Some(parent) => Span::child("graphql_query", &parent),
+        None => Span::root("graphql_query"),
+    };
+    if span.is_recording() {
+        let (subgraph, version) = match target {
+            QueryTarget::Name(name, version) => (name.to_string(), version),
+            QueryTarget::Deployment(id, version) => (id.to_string(), version),
+        };
+        span.set_attrs([
+            ("subgraph", subgraph.into()),
+            ("api_version", version.version.to_string().into()),
+        ]);
+    }
+    span
+}
+
+/// Join `errors` for a span status, stopping once the status is as long
+/// as it can get anyway.
+fn error_message(errors: &[QueryError]) -> String {
+    let mut message = String::new();
+    for error in errors {
+        if message.len() >= telemetry::MAX_ERROR_MESSAGE_LEN {
+            break;
+        }
+        if !message.is_empty() {
+            message.push_str("; ");
+        }
+        message.push_str(&error.to_string());
+    }
+    message
 }
 
 /// A Hyper Service that serves GraphQL over a POST / endpoint.
@@ -168,24 +209,49 @@ where
                     })
                     .unwrap_or(false)
         };
-        let body = request
-            .collect()
-            .await
-            .map_err(|_| ServerError::InternalError("Failed to read request body".into()))?
-            .to_bytes();
+        let mut span = request_span(&request, &target);
+        let body = match request.collect().await {
+            Ok(body) => body.to_bytes(),
+            Err(_) => {
+                let err = ServerError::InternalError("Failed to read request body".into());
+                span.set_error(&err.to_string());
+                return Err(err);
+            }
+        };
         let query = parse_graphql_request(&body, trace);
         let query_parsing_time = start.elapsed();
 
         let mut result = match query {
             Ok(query) => {
+                if span.is_recording() {
+                    // The same id that query timing logs carry, so the two
+                    // can be matched up.
+                    span.set_attr("query_id", query.query_id());
+                }
+                let query = query.with_trace_context(span.context());
                 self.graphql_runner
                     .cheap_clone()
                     .run_query(query, target)
                     .await
             }
             Err(ServerError::QueryError(e)) => QueryResult::from(e).into(),
-            Err(e) => return Err(e),
+            Err(e) => {
+                span.set_error(&e.to_string());
+                return Err(e);
+            }
         };
+
+        if span.is_recording() {
+            if let Some(deployment) = result.deployment_hash() {
+                span.set_attr("deployment", deployment.to_string());
+            }
+            if result.has_errors() {
+                let errors = result.errors();
+                span.set_attr("error_count", errors.len());
+                span.set_error(&error_message(&errors));
+            }
+        }
+        span.end();
 
         result.trace.query_parsing(query_parsing_time);
         self.graphql_runner
@@ -604,5 +670,106 @@ mod tests {
             .as_str()
             .expect("Query result field \"name\" is not a string");
         assert_eq!(name, "Jordi".to_string());
+    }
+
+    mod spans {
+        use graph::http_body_util::Full;
+        use graph::hyper::body::Bytes;
+        use graph::hyper::header::{CONTENT_LENGTH, CONTENT_TYPE};
+        use graph::hyper::{Method, Request};
+        use graph::prelude::*;
+        use graph::telemetry::testing::{
+            ExportedSpan, Handle, in_child_process, install_with, run_in_subprocess,
+        };
+        use graph::telemetry::{SpanGroup, SpanGroups};
+
+        use super::{GraphQLService, TestGraphQlRunner};
+
+        const TRACEPARENT: &str = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+
+        /// The tests in this module share the process-global exporter; the
+        /// first `install_with` wins, so they all ask for the same groups.
+        /// Each uses its own subgraph name to find its span.
+        fn install() -> &'static Handle {
+            install_with(SpanGroups::NONE.with(SpanGroup::GraphQl))
+        }
+
+        async fn post(subgraph: &str, traceparent: Option<&str>, query: &str) {
+            let logger = Logger::root(slog::Discard, o!());
+            let service = GraphQLService::new(logger, Arc::new(TestGraphQlRunner));
+            let body = serde_json::to_string(&serde_json::json!({ "query": query })).unwrap();
+            let mut request = Request::builder()
+                .method(Method::POST)
+                .header(CONTENT_TYPE, "application/json")
+                .header(CONTENT_LENGTH, body.len())
+                .uri(format!("http://localhost:8000/subgraphs/name/{subgraph}"));
+            if let Some(traceparent) = traceparent {
+                request = request.header("traceparent", traceparent);
+            }
+            let request: Request<Full<Bytes>> = request.body(Full::from(body)).unwrap();
+            service.call(request).await;
+        }
+
+        fn request_span(spans: &Handle, subgraph: &str) -> ExportedSpan {
+            let mut spans = spans.spans_with_attr("subgraph", subgraph);
+            assert_eq!(spans.len(), 1, "one span for {subgraph}: {spans:?}");
+            let span = spans.pop().unwrap();
+            assert_eq!(span.name, "graphql_query");
+            assert!(span.attr("api_version").is_some());
+            span
+        }
+
+        #[graph::test]
+        async fn joins_the_trace_from_the_traceparent_header() {
+            let spans = install();
+            post("spans/traceparent", Some(TRACEPARENT), "{ name }").await;
+
+            let span = request_span(spans, "spans/traceparent");
+            assert!(span.attr("query_id").is_some());
+            assert_eq!(span.trace_id, "0af7651916cd43dd8448eb211c80319c");
+            assert_eq!(span.parent_span_id.as_deref(), Some("b7ad6b7169203331"));
+            assert!(!span.is_error);
+        }
+
+        #[graph::test]
+        async fn starts_a_trace_without_a_traceparent_header() {
+            let spans = install();
+            post("spans/root", None, "{ name }").await;
+
+            let span = request_span(spans, "spans/root");
+            assert_eq!(span.parent_span_id, None);
+            assert!(!span.is_error);
+        }
+
+        #[graph::test]
+        async fn records_query_errors() {
+            let spans = install();
+            post("spans/error", None, "{ name").await;
+
+            // The query did not parse, so there is no query id.
+            let span = request_span(spans, "spans/error");
+            assert_eq!(span.attr("query_id"), None);
+            assert!(span.is_error);
+            assert!(
+                span.error_message
+                    .as_deref()
+                    .is_some_and(|message| message.contains("Unexpected")),
+                "{:?}",
+                span.error_message
+            );
+        }
+
+        #[graph::test]
+        async fn needs_the_graphql_group() {
+            // The enabled groups are process-global, so this test gets a
+            // process of its own.
+            if !in_child_process() {
+                return run_in_subprocess("service::tests::spans::needs_the_graphql_group", &[]);
+            }
+            let spans = install_with(SpanGroups::NONE.with(SpanGroup::Store));
+            post("spans/off", Some(TRACEPARENT), "{ name }").await;
+
+            assert!(spans.spans().is_empty(), "{:?}", spans.spans());
+        }
     }
 }

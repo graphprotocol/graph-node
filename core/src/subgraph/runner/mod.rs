@@ -42,6 +42,7 @@ use graph::prelude::{
 };
 use graph::schema::EntityKey;
 use graph::slog::{Logger, debug, error, info, o, trace, warn};
+use graph::telemetry::SpanGroup;
 use graph::util::lfu_cache::EvictStats;
 use graph::util::{backoff::ExponentialBackoff, lfu_cache::LfuCache};
 use std::sync::Arc;
@@ -578,9 +579,29 @@ where
         let block_start = Instant::now();
 
         let action = {
-            let stopwatch = &self.metrics.stream.stopwatch;
-            let _section = stopwatch.start_section(PROCESS_BLOCK_SECTION_NAME);
-            self.process_block(block, cursor).await
+            let stopwatch = self.metrics.stream.stopwatch.cheap_clone();
+            // Each block is its own trace.
+            let _section = stopwatch.start_root_section(
+                PROCESS_BLOCK_SECTION_NAME,
+                SpanGroup::Block,
+                || {
+                    [
+                        (
+                            "subgraph_id",
+                            self.inputs.deployment.hash.to_string().into(),
+                        ),
+                        ("block_number", block_ptr.number.into()),
+                        ("block_hash", block_ptr.hash_hex().into()),
+                        ("network", self.inputs.network.clone().into()),
+                    ]
+                },
+                &[],
+            );
+            let action = self.process_block(block, cursor).await;
+            if let Err(err) = &action {
+                stopwatch.set_error_with(|| err.to_string());
+            }
+            action
         };
 
         let action = self.handle_action(block_start, block_ptr, action).await?;
@@ -720,7 +741,11 @@ where
 
         // Transact entity operations into the store and update the
         // subgraph's block stream pointer
-        let _section = self.metrics.host.stopwatch.start_section("transact_block");
+        let _section = self
+            .metrics
+            .host
+            .stopwatch
+            .start_section_with("transact_block", || [("entity_count", mods.len().into())]);
         let start = Instant::now();
 
         // If a deterministic error has happened, make the PoI to be the only entity that'll be stored.
@@ -1098,7 +1123,7 @@ where
             vid_gen,
         );
 
-        let _section = self
+        let section = self
             .metrics
             .stream
             .stopwatch
@@ -1133,6 +1158,10 @@ where
             // See also b21fa73b-6453-4340-99fb-1a78ec62efb1.
             Err(MappingError::PossibleReorg(e)) => return Err(ProcessingError::PossibleReorg(e)),
         }
+
+        // The later stages have sections of their own and are not part
+        // of trigger processing.
+        section.end();
 
         // Check if there are any datasources that have expired in this block. ie: the end_block
         // of that data source is equal to the block number of the current block.
@@ -1485,7 +1514,7 @@ where
             close_to_chain_head(block_ptr, &self.state.cached_head_ptr, CAUGHT_UP_DISTANCE);
         if is_caught_up {
             // Stop recording time-to-sync metrics.
-            self.metrics.stream.stopwatch.disable();
+            self.metrics.stream.stopwatch.stop_recording();
         }
         Ok(is_caught_up)
     }

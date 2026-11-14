@@ -208,6 +208,14 @@ async fn ethereum_call(
         asc_get::<_, AscUnresolvedContractCall, _>(ctx.heap, wasm_ptr.into(), &ctx.gas, 0)?
     };
 
+    ctx.metrics.stopwatch.set_attrs_with(|| {
+        [
+            ("contract", call.contract_name.clone().into()),
+            ("function", call.function_name.clone().into()),
+            ("address", format!("{:#x}", call.contract_address).into()),
+        ]
+    });
+
     let result = eth_call(
         eth_adapter,
         call_cache,

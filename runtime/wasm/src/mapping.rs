@@ -154,7 +154,14 @@ where
 {
     let logger = logger.cheap_clone();
 
-    let _section = host_metrics.stopwatch.start_section("run_handler");
+    // The handler span names the handler and its trigger.
+    let _section = host_metrics
+        .stopwatch
+        .start_section_with("run_handler", || {
+            let mut attrs = vec![("handler", trigger.handler_name().to_owned().into())];
+            attrs.extend(trigger.trigger.trace_attributes());
+            attrs
+        });
     if ENV_VARS.log_trigger_data {
         debug!(logger, "trigger data: {:?}", trigger);
     }

@@ -17,6 +17,7 @@ use self::store::*;
 use crate::{
     components::{store::BlockNumber, subgraph::SubgraphVersionSwitchingMode},
     runtime::gas::CONST_MAX_GAS_PER_HANDLER,
+    telemetry::SpanGroups,
 };
 
 pub use self::amp::AmpEnv;
@@ -235,6 +236,13 @@ pub struct EnvVars {
     /// which must be an absolute path. This only has an effect in debug
     /// builds. Set with `GRAPH_SECTION_MAP`. Defaults to `None`.
     pub section_map: Option<String>,
+    /// Export OpenTelemetry spans over OTLP. Set by the flag
+    /// `GRAPH_OTEL_TRACING`. Off by default.
+    pub otel_tracing: bool,
+    /// Which groups of spans to emit when tracing is on. Set by
+    /// `GRAPH_OTEL_SPANS` as a comma-separated list of group names; see
+    /// [`SpanGroups`]. Defaults to every group except `host_fn`.
+    pub otel_spans: SpanGroups,
     /// Set the maximum grpc decode size(in MB) for firehose BlockIngestor connections.
     /// Defaults to 25MB
     pub firehose_grpc_max_decode_size_mb: usize,
@@ -372,6 +380,8 @@ impl EnvVars {
                 .unwrap_or(2 * inner.reorg_threshold),
             dips_metrics_object_store_url: inner.dips_metrics_object_store_url,
             section_map: inner.section_map,
+            otel_tracing: inner.otel_tracing.0,
+            otel_spans: inner.otel_spans,
             firehose_grpc_max_decode_size_mb: inner.firehose_grpc_max_decode_size_mb,
             genesis_validation_enabled: inner.genesis_validation_enabled.0,
             disable_deployment_hash_validation: inner.disable_deployment_hash_validation.0,
@@ -593,6 +603,10 @@ struct Inner {
     dips_metrics_object_store_url: Option<String>,
     #[envconfig(from = "GRAPH_SECTION_MAP")]
     section_map: Option<String>,
+    #[envconfig(from = "GRAPH_OTEL_TRACING", default = "false")]
+    otel_tracing: EnvVarBoolean,
+    #[envconfig(from = "GRAPH_OTEL_SPANS", default = "block,handler,store,graphql")]
+    otel_spans: SpanGroups,
     #[envconfig(from = "GRAPH_NODE_FIREHOSE_MAX_DECODE_SIZE", default = "25")]
     firehose_grpc_max_decode_size_mb: usize,
     #[envconfig(from = "GRAPH_NODE_GENESIS_VALIDATION_ENABLED", default = "false")]
