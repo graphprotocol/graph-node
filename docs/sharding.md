@@ -67,7 +67,7 @@ Data can be added to new shards by setting up [deployment
 rules](./config.md#controlling-deployment) that send certain subgraphs to
 the new shard. It is also possible to store the block cache for new chains
 in a new shard by setting the `shard` attribute of the [chain
-definition](./config.md#configuring-ethereum-providers)
+definition](./config.md#configuring-chains)
 
 With shards, there are many possibilities how data can be split between
 them. One possible setup is:
