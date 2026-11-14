@@ -478,7 +478,7 @@ pub async fn run(
         None => {
             info!(
                 logger,
-                "No [log_store] section in config, log queries will return empty results"
+                "No [log_store] section in config, log queries are not supported"
             );
             (
                 Arc::new(graph::components::log_store::NoOpLogStore)
