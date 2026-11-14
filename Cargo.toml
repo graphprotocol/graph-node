@@ -35,8 +35,8 @@ repository = "https://github.com/graphprotocol/graph-node"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-alloy = { version = "2.0.5", features = ["dyn-abi", "json-abi", "full", "arbitrary", "json-rpc", "serde"] }
-alloy-rpc-types = "2.0.0"
+alloy = { version = "2.5.0", features = ["dyn-abi", "json-abi", "full", "arbitrary", "json-rpc", "serde"] }
+alloy-rpc-types = "2.5.0"
 # rustls is pulled in transitively by alloy (aws_lc_rs) and object_store via
 # reqwest (ring). With both providers linked, rustls 0.23 requires an explicit
 # default provider to be installed before any TLS use. We install aws_lc_rs
@@ -56,7 +56,6 @@ derive_more = { version = "2.1.1", default-features = false }
 diesel = { version = "2.2.7", features = [
     "postgres",
     "serde_json",
-    "numeric",
     "r2d2",
     "chrono",
     "i-implement-a-third-party-backend-and-opt-into-breaking-changes",
@@ -121,9 +120,9 @@ url = "2.5.8"
 
 # Dependencies related to Amp subgraphs
 ahash = "0.8.11"
-arrow = { version = "=59.0.0" }
-arrow-flight = { version = "=59.0.0", features = ["flight-sql-experimental"] }
-parquet = { version = "=59.0.0" }
+arrow = { version = "=60.0.0" }
+arrow-flight = { version = "=60.0.0", features = ["flight-sql"] }
+parquet = { version = "=60.0.0" }
 futures = "0.3.31"
 half = "2.7.1"
 indoc = "2.0.7"
