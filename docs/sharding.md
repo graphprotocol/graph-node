@@ -135,7 +135,7 @@ to import data from one shard into another. These namespaces are:
 
 The code that sets up these mappings is in `ForeignServer::map_primary` and
 `ForeignServer::map_metadata`
-[here](https://github.com/graphprotocol/graph-node/blob/master/store/postgres/src/connection_pool.rs)
+[here](https://github.com/graphprotocol/graph-node/blob/master/store/postgres/src/pool/foreign_server.rs)
 
 The mappings can be rebuilt by running `graphman database remap`.
 
