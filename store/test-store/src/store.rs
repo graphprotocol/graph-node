@@ -167,8 +167,69 @@ pub async fn create_subgraph(
     schema: &str,
     base: Option<(DeploymentHash, BlockPtr)>,
 ) -> Result<DeploymentLocator, StoreError> {
-    let schema = InputSchema::parse_latest(schema, subgraph_id.clone()).unwrap();
+    let (schema, manifest) = test_manifest(subgraph_id, schema);
+    create_subgraph_with_manifest(subgraph_id, schema, manifest, base).await
+}
 
+/// Like `create_subgraph`, but doesn't start the deployment.
+pub async fn create_subgraph_unstarted(
+    subgraph_id: &DeploymentHash,
+    schema: &str,
+    base: Option<(DeploymentHash, BlockPtr)>,
+) -> Result<DeploymentLocator, StoreError> {
+    let (schema, manifest) = test_manifest(subgraph_id, schema);
+    let (name, deployment) = deployment_create(subgraph_id, &manifest, base);
+    SUBGRAPH_STORE
+        .create_deployment_replace(
+            name,
+            &schema,
+            deployment,
+            NODE_ID.clone(),
+            NETWORK_NAME.to_string(),
+            SubgraphVersionSwitchingMode::Instant,
+        )
+        .await
+}
+
+pub async fn create_subgraph_with_manifest(
+    subgraph_id: &DeploymentHash,
+    schema: InputSchema,
+    manifest: SubgraphManifest<graph::blockchain::mock::MockBlockchain>,
+    base: Option<(DeploymentHash, BlockPtr)>,
+) -> Result<DeploymentLocator, StoreError> {
+    let (name, deployment) = deployment_create(subgraph_id, &manifest, base);
+    let deployment = SUBGRAPH_STORE
+        .create_deployment_replace(
+            name,
+            &schema,
+            deployment,
+            NODE_ID.clone(),
+            NETWORK_NAME.to_string(),
+            SubgraphVersionSwitchingMode::Instant,
+        )
+        .await?;
+    start_subgraph(&deployment).await?;
+    Ok(deployment)
+}
+
+/// Start `deployment`; this runs a pending graft's copy.
+pub async fn start_subgraph(deployment: &DeploymentLocator) -> Result<(), StoreError> {
+    SUBGRAPH_STORE
+        .cheap_clone()
+        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
+        .await?
+        .start_subgraph_deployment(&LOGGER)
+        .await
+}
+
+fn test_manifest(
+    subgraph_id: &DeploymentHash,
+    schema: &str,
+) -> (
+    InputSchema,
+    SubgraphManifest<graph::blockchain::mock::MockBlockchain>,
+) {
+    let schema = InputSchema::parse_latest(schema, subgraph_id.clone()).unwrap();
     let manifest = SubgraphManifest::<graph::blockchain::mock::MockBlockchain> {
         id: subgraph_id.clone(),
         spec_version: Version::new(1, 3, 0),
@@ -182,39 +243,20 @@ pub async fn create_subgraph(
         chain: PhantomData,
         indexer_hints: None,
     };
-
-    create_subgraph_with_manifest(subgraph_id, schema, manifest, base).await
+    (schema, manifest)
 }
 
-pub async fn create_subgraph_with_manifest(
+fn deployment_create(
     subgraph_id: &DeploymentHash,
-    schema: InputSchema,
-    manifest: SubgraphManifest<graph::blockchain::mock::MockBlockchain>,
+    manifest: &SubgraphManifest<graph::blockchain::mock::MockBlockchain>,
     base: Option<(DeploymentHash, BlockPtr)>,
-) -> Result<DeploymentLocator, StoreError> {
+) -> (SubgraphName, DeploymentCreate) {
     let mut yaml = serde_yaml::Mapping::new();
     yaml.insert("dataSources".into(), Vec::<serde_yaml::Value>::new().into());
     let yaml = serde_yaml::to_string(&yaml).unwrap();
-    let deployment = DeploymentCreate::new(yaml, &manifest, None).graft(base);
+    let deployment = DeploymentCreate::new(yaml, manifest, None).graft(base);
     let name = SubgraphName::new_unchecked(subgraph_id.to_string());
-    let deployment = SUBGRAPH_STORE
-        .create_deployment_replace(
-            name,
-            &schema,
-            deployment,
-            NODE_ID.clone(),
-            NETWORK_NAME.to_string(),
-            SubgraphVersionSwitchingMode::Instant,
-        )
-        .await?;
-
-    SUBGRAPH_STORE
-        .cheap_clone()
-        .writable(LOGGER.clone(), deployment.id, Arc::new(Vec::new()))
-        .await?
-        .start_subgraph_deployment(&LOGGER)
-        .await?;
-    Ok(deployment)
+    (name, deployment)
 }
 
 pub async fn create_test_subgraph(subgraph_id: &DeploymentHash, schema: &str) -> DeploymentLocator {

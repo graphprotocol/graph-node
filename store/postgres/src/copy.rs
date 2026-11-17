@@ -12,7 +12,6 @@
 //! operation can resume after an interruption, for example, because
 //! `graph-node` was restarted while the copy was running.
 use std::{
-    collections::HashSet,
     convert::TryFrom,
     future::Future,
     pin::Pin,
@@ -101,6 +100,14 @@ table! {
 pub enum Status {
     Finished,
     Cancelled,
+}
+
+/// The source of a copy, as read when the copy starts.
+pub(crate) struct CopySource {
+    /// The source's indexes.
+    pub(crate) list: IndexList,
+    /// Whether the source has built its postponed indexes.
+    pub(crate) postponed_indexes_created: bool,
 }
 
 struct CopyState {
@@ -299,45 +306,39 @@ impl CopyState {
         self.finished.iter().chain(self.unfinished.iter())
     }
 
-    /// Create the indexes that were postponed at the start of the
-    /// copy/graft operation: first the ones that existed in the source
-    /// subgraph, then any indexes for new fields that don't exist in the
-    /// source.
+    /// Create the postponed indexes `dst` needs and give it the source's
+    /// `postponed_indexes_created` flag.
     async fn create_indexes(
         &self,
         conn: &mut AsyncPgConnection,
-        index_list: &IndexList,
+        source: &CopySource,
     ) -> Result<(), StoreError> {
         let creat = self.dst.index_creator(false, true);
-        let dst_nsp = self.dst.site.namespace.to_string();
 
-        // Create the indexes that existed in the source subgraph
-        for table in self.all_tables() {
-            let idxs = index_list
-                .indexes_for_table(&table.dst)
-                .filter(|idx| idx.to_postpone())
-                .map(|idx| idx.with_nsp(dst_nsp.clone()))
-                .collect::<Result<Vec<_>, _>>()?;
-
+        for dst_table in self.dst.tables.values() {
+            // May already hold postponed indexes from an interrupted run or an older version's copy.
+            let existing = dst_table.valid_indexes(conn).await?;
+            let src = self
+                .src
+                .table_for_entity(&dst_table.object)
+                .ok()
+                .map(|src_table| {
+                    let indexes = source
+                        .list
+                        .indexes
+                        .get(src_table.name.as_str())
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[]);
+                    (src_table.as_ref(), indexes)
+                });
+            let idxs =
+                dst_table.postponed_indexes_to_create(&self.dst.input_schema, &existing, src)?;
             creat.execute_many(conn, &idxs).await?;
         }
 
-        // Create indexes for new fields that don't exist in the source
-        for table in self.all_tables() {
-            let src_columns: HashSet<&str> =
-                table.src.columns.iter().map(|c| c.name.as_str()).collect();
-            let new_idxs: Vec<_> = table
-                .dst
-                .indexes(&self.dst.input_schema)
-                .map_err(|_| internal_error!("failed to generate indexes for copy"))?
-                .into_iter()
-                .filter(|idx| idx.to_postpone() && idx.references_column_not_in(&src_columns))
-                .collect();
-            creat.execute_many(conn, &new_idxs).await?;
-        }
-
+        let created = source.postponed_indexes_created;
         conn.transaction(async |conn| {
-            deployment::set_postponed_indexes_created(conn, &self.dst.site).await
+            deployment::set_postponed_indexes_created(conn, &self.dst.site, created).await
         })
         .await?;
 
@@ -1191,7 +1192,7 @@ impl Connection {
         }
     }
 
-    async fn copy_data_internal(&mut self, index_list: IndexList) -> Result<Status, StoreError> {
+    async fn copy_data_internal(&mut self, source: CopySource) -> Result<Status, StoreError> {
         let src = self.src.clone();
         let dst = self.dst.clone();
         let target_block = self.target_block.clone();
@@ -1282,7 +1283,7 @@ impl Connection {
         }
         debug_assert!(self.conn.is_some());
 
-        state.create_indexes(self.get_conn()?, &index_list).await?;
+        state.create_indexes(self.get_conn()?, &source).await?;
 
         self.copy_private_data_sources(&state).await?;
 
@@ -1299,7 +1300,7 @@ impl Connection {
     /// block is guaranteed to not be subject to chain reorgs. All data up
     /// to and including `target_block` will be copied.
     ///
-    /// The parameter index_list is a list of indexes that exist on the `src`.
+    /// The parameter `source` describes the indexes of `src`.
     ///
     /// The copy logic makes heavy use of the fact that the `vid` and
     /// `block_range` of entity versions are related since for two entity
@@ -1309,7 +1310,7 @@ impl Connection {
     /// lower(v1.block_range) => v2.vid > v1.vid` and we can therefore stop
     /// the copying of each table as soon as we hit `max_vid = max { v.vid |
     /// lower(v.block_range) <= target_block.number }`.
-    pub async fn copy_data(mut self, index_list: IndexList) -> Result<Status, StoreError> {
+    pub async fn copy_data(mut self, source: CopySource) -> Result<Status, StoreError> {
         // We require sole access to the destination site, and that we get a
         // consistent view of what has been copied so far. In general, that
         // is always true. It can happen though that this function runs when
@@ -1329,7 +1330,7 @@ impl Connection {
         };
         conn.lock(&self.logger, &dst_site).await?;
 
-        let res = self.copy_data_internal(index_list).await;
+        let res = self.copy_data_internal(source).await;
 
         match self.conn.as_mut() {
             None => {
