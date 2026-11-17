@@ -50,8 +50,7 @@ use crate::relational::{
 use crate::{
     block_range::{
         BLOCK_COLUMN, BLOCK_RANGE_COLUMN, BLOCK_RANGE_CURRENT, BlockRangeColumn,
-        BlockRangeLowerBoundClause, BlockRangeUpperBoundClause, BlockRangeValue,
-        CAUSALITY_REGION_COLUMN,
+        BlockRangeUpperBoundClause, BlockRangeValue, CAUSALITY_REGION_COLUMN,
     },
     primary::Site,
 };
@@ -2005,17 +2004,17 @@ impl<'a, Conn> RunQueryDsl<Conn> for FindRangeQuery<'a> {}
 
 /// Builds a query over a given set of [`Table`]s in an attempt to find updated
 /// and/or newly inserted entities at a given block number; i.e. such that the
-/// block range's lower bound is equal to said block number.
+/// block range's lower bound, or the creation block for immutable entities,
+/// is equal to said block number.
 #[derive(Debug)]
 pub struct FindChangesQuery<'a> {
     pub(crate) tables: &'a [&'a Table],
-    br_clause: BlockRangeLowerBoundClause<'a>,
+    block: BlockNumber,
 }
 
 impl<'a> FindChangesQuery<'a> {
     pub fn new(tables: &'a [&'a Table], block: BlockNumber) -> Self {
-        let br_clause = BlockRangeLowerBoundClause::new("e.", block);
-        Self { tables, br_clause }
+        Self { tables, block }
     }
 }
 
@@ -2033,7 +2032,15 @@ impl<'a> QueryFragment<Pg> for FindChangesQuery<'a> {
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
-            self.br_clause.walk_ast(out.reborrow())?;
+            if table.immutable {
+                out.push_identifier(BLOCK_COLUMN)?;
+            } else {
+                out.push_sql("lower(");
+                out.push_identifier(BLOCK_RANGE_COLUMN)?;
+                out.push_sql(")");
+            }
+            out.push_sql(" = ");
+            out.push_bind_param::<Integer, _>(&self.block)?;
         }
 
         Ok(())

@@ -97,25 +97,6 @@ impl ToSql<Range<Integer>, Pg> for BlockRange {
 }
 
 #[derive(Debug, Constructor)]
-pub struct BlockRangeLowerBoundClause<'a> {
-    _table_prefix: &'a str,
-    block: BlockNumber,
-}
-
-impl<'a> QueryFragment<Pg> for BlockRangeLowerBoundClause<'a> {
-    fn walk_ast<'b>(&'b self, mut out: AstPass<'_, 'b, Pg>) -> QueryResult<()> {
-        out.unsafe_to_cache_prepared();
-
-        out.push_sql("lower(");
-        out.push_identifier(BLOCK_RANGE_COLUMN)?;
-        out.push_sql(") = ");
-        out.push_bind_param::<Integer, _>(&self.block)?;
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Constructor)]
 pub struct BlockRangeUpperBoundClause<'a> {
     _table_prefix: &'a str,
     block: BlockNumber,
