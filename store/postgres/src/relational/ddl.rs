@@ -13,7 +13,9 @@ use crate::{block_range::CAUSALITY_REGION_COLUMN, relational::index::Cond};
 
 use super::{
     Column, Layout, SqlName, Table,
-    index::{CreateIndex, Expr, IndexCreator, Method, PrefixKind},
+    index::{
+        CreateIndex, Expr, IndexCreator, IndexList, Method, PrefixKind, SourceTable, mirrored_table,
+    },
 };
 
 // In debug builds (for testing etc.) unconditionally create exclusion constraints, in release
@@ -28,8 +30,9 @@ impl Layout {
     /// and `create index` etc. statements needed in the database schema
     ///
     /// See the unit tests at the end of this file for the actual DDL that
-    /// gets generated
-    pub fn as_ddl(&self) -> Result<String, fmt::Error> {
+    /// gets generated. For a copy or graft, `src` is the source's layout and
+    /// indexes.
+    pub fn as_ddl(&self, src: Option<(&Layout, &IndexList)>) -> Result<String, fmt::Error> {
         let mut out = String::new();
 
         // Output enums first so table definitions can reference them
@@ -42,7 +45,8 @@ impl Layout {
         // Output 'create table' statements for all tables
         let creat = self.index_creator(false, false);
         for table in tables {
-            table.as_ddl(&self.input_schema, &creat, &mut out)?;
+            let src = src.and_then(|src| mirrored_table(table, src));
+            table.as_ddl(&self.input_schema, &creat, src, &mut out)?;
         }
 
         Ok(out)
@@ -406,7 +410,9 @@ impl Table {
     }
 
     /// Generate the DDL for one table, i.e. one `create table` statement
-    /// and all `create index` statements for the table's columns
+    /// and all `create index` statements for the table's columns. With
+    /// `src`, the table of a copy source, attribute indexes the source
+    /// dropped are left out.
     ///
     /// See the unit tests at the end of this file for the actual DDL that
     /// gets generated
@@ -414,11 +420,13 @@ impl Table {
         &self,
         schema: &InputSchema,
         creat: &IndexCreator,
+        src: Option<SourceTable>,
         out: &mut String,
     ) -> fmt::Result {
         self.create_table(out)?;
         for idx in self.indexes(schema)? {
-            if !idx.to_postpone() {
+            let dropped = src.is_some_and(|src| idx.is_attr_index() && src.dropped(&idx));
+            if !idx.to_postpone() && !dropped {
                 writeln!(out, "{};", creat.to_sql(&idx)?)?;
             }
         }
