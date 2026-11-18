@@ -66,9 +66,9 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            file make perl pkg-config protobuf-compiler libprotobuf-dev
+            binutils file make perl pkg-config protobuf-compiler libprotobuf-dev
           if [ "${{ matrix.target }}" = aarch64-unknown-linux-gnu ]; then
-            sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+            sudo apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu libc6-dev-arm64-cross qemu-user
             echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
           fi
 
@@ -78,7 +78,10 @@ jobs:
       - name: Build
         run: cargo build --release --locked --target ${{ matrix.target }} --bin graph-node --bin gnd
 
-      # A cross-built binary cannot run here, so its architecture is asserted instead.
+      # The architecture is asserted, and the binary must not need libpq on the
+      # host: it is linked statically only because gnd's pq-sys `bundled`
+      # feature is unified into this build. A cross-built binary runs under
+      # qemu-user against the cross libc.
       - name: Stage binary
         env:
           FILE_TYPE: ${{ matrix.file_type }}
@@ -92,8 +95,16 @@ jobs:
           kind=$(file -b "$binary")
           echo "$kind"
           grep -qE "$FILE_TYPE" <<<"$kind" || { echo "unexpected binary type: $kind" >&2; exit 1; }
+          needed=$(readelf -d "$binary" | awk '/NEEDED/ {print $NF}')
+          echo "$needed"
+          if grep -q libpq <<<"$needed"; then
+            echo "graph-node links libpq dynamically; expected it statically linked" >&2
+            exit 1
+          fi
           if [ "$RUN_CHECK" = true ]; then
             "$binary" --help > /dev/null
+          else
+            qemu-aarch64 -L /usr/aarch64-linux-gnu "$binary" --help > /dev/null
           fi
           gzip "$binary"
 
@@ -111,6 +122,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     concurrency:
       group: publish
     steps:
@@ -150,6 +163,14 @@ jobs:
         with:
           name: release-bundle
           path: dist/*
+
+      # Build provenance for the release's archives, stored with GitHub:
+      #   gh attestation verify graph-node-linux-x86_64.gz -R graphprotocol/graph-node
+      - name: Attest binaries
+        if: ${{ !inputs.dry_run }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.gz
 
       - name: Attach to release
         if: ${{ !inputs.dry_run }}
