@@ -9,6 +9,7 @@ use std::sync::Arc;
 use crate::{
     data::graphql::shape_hash::shape_hash,
     prelude::{ApiVersion, DeploymentHash, ENV_VARS, SubgraphName, q, r},
+    telemetry,
 };
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<q::Number, D::Error>
@@ -135,6 +136,10 @@ pub struct Query {
     pub query_text: Arc<String>,
     pub variables_text: Arc<String>,
     pub trace: bool,
+    /// The tracing span of the request this query belongs to, if the
+    /// request is traced. Spans for work done on its behalf are started
+    /// under it.
+    pub trace_context: Option<telemetry::Context>,
 }
 
 impl Query {
@@ -162,7 +167,24 @@ impl Query {
             query_text: Arc::new(query_text),
             variables_text: Arc::new(variables_text),
             trace,
+            trace_context: None,
         }
+    }
+
+    pub fn with_trace_context(mut self, trace_context: Option<telemetry::Context>) -> Self {
+        self.trace_context = trace_context;
+        self
+    }
+
+    /// An identifier for this query that is stable across identical
+    /// requests. It is what query timing logs are tagged with; the texts it
+    /// hashes are only meaningful when the query is traced or query timing
+    /// is logged, see [`Query::new`].
+    pub fn query_id(&self) -> String {
+        let mut hasher = DefaultHasher::new();
+        self.query_text.hash(&mut hasher);
+        self.variables_text.hash(&mut hasher);
+        format!("{:x}-{:x}", self.shape_hash, hasher.finish())
     }
 }
 

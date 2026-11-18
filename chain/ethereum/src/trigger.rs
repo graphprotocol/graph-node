@@ -22,6 +22,7 @@ use graph::runtime::HostExportError;
 use graph::runtime::asc_new;
 use graph::runtime::gas::GasCounter;
 use graph::semver::Version;
+use graph::telemetry::AttrValue;
 use graph_runtime_wasm::module::ToAscPtr;
 use std::{cmp::Ordering, sync::Arc};
 
@@ -71,6 +72,36 @@ impl MappingTriggerTrait for MappingTrigger {
             None => String::new(),
         }
     }
+
+    fn trace_attributes(&self) -> Vec<(&'static str, AttrValue)> {
+        match self {
+            MappingTrigger::Log { log, .. } => {
+                transaction_attributes(log.transaction_hash, log.log_index)
+            }
+            MappingTrigger::Call { call, .. } => {
+                transaction_attributes(call.transaction_hash, None)
+            }
+            MappingTrigger::Block { .. } => Vec::new(),
+        }
+    }
+}
+
+/// The span attributes that locate a trigger inside its block.
+fn transaction_attributes(
+    tx_hash: Option<B256>,
+    log_index: Option<u64>,
+) -> Vec<(&'static str, AttrValue)> {
+    let mut attrs = Vec::new();
+    if let Some(tx_hash) = tx_hash {
+        attrs.push(("tx_hash", format!("{tx_hash:#x}").into()));
+    }
+    if let Some(log_index) = log_index {
+        attrs.push((
+            "log_index",
+            i64::try_from(log_index).unwrap_or(i64::MAX).into(),
+        ));
+    }
+    attrs
 }
 
 // Logging the block is too verbose, so this strips the block from the trigger for Debug.
@@ -647,5 +678,28 @@ impl<'a> EthereumCallData<'a> {
 
     pub fn to(&self) -> &Address {
         &self.call.to
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transaction_attributes_name_the_transaction() {
+        let tx_hash = B256::from([0xab; 32]);
+        let attrs = transaction_attributes(Some(tx_hash), Some(7));
+        assert_eq!(
+            attrs,
+            vec![
+                ("tx_hash", AttrValue::from(format!("0x{}", "ab".repeat(32)))),
+                ("log_index", AttrValue::from(7i64)),
+            ]
+        );
+        assert_eq!(
+            transaction_attributes(Some(tx_hash), None),
+            vec![("tx_hash", AttrValue::from(format!("0x{}", "ab".repeat(32))))]
+        );
+        assert!(transaction_attributes(None, None).is_empty());
     }
 }

@@ -6,11 +6,10 @@ use graphql_tools::validation::rules::*;
 use graphql_tools::validation::validate::{ValidationPlan, validate};
 use lazy_static::lazy_static;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::hash::{Hash, Hasher};
+use std::convert::TryFrom;
 use std::iter::FromIterator;
 use std::sync::Arc;
 use std::time::Instant;
-use std::{collections::hash_map::DefaultHasher, convert::TryFrom};
 
 use graph::data::graphql::{ObjectOrInterface, ext::TypeExt};
 use graph::data::query::{Query as GraphDataQuery, QueryVariables};
@@ -21,6 +20,7 @@ use graph::prelude::{
 };
 use graph::schema::ErrorPolicy;
 use graph::schema::ast::{self as sast};
+use graph::telemetry;
 
 use crate::execution::ast as a;
 use crate::execution::get_field;
@@ -128,6 +128,8 @@ pub struct Query {
     pub query_text: Arc<String>,
     pub variables_text: Arc<String>,
     pub query_id: String,
+    /// See [`GraphDataQuery::trace_context`]
+    pub trace_context: Option<telemetry::Context>,
 }
 
 fn validate_query(
@@ -185,13 +187,7 @@ impl Query {
         max_depth: u8,
         metrics: Arc<dyn GraphQLMetrics>,
     ) -> Result<Arc<Self>, Vec<QueryExecutionError>> {
-        let query_hash = {
-            let mut hasher = DefaultHasher::new();
-            query.query_text.hash(&mut hasher);
-            query.variables_text.hash(&mut hasher);
-            hasher.finish()
-        };
-        let query_id = format!("{:x}-{:x}", query.shape_hash, query_hash);
+        let query_id = query.query_id();
         let logger = logger.new(o!(
             "subgraph_id" => schema.id().clone(),
             "query_id" => query_id.clone()
@@ -264,6 +260,7 @@ impl Query {
             query_text: query.query_text.cheap_clone(),
             variables_text: query.variables_text.cheap_clone(),
             query_id,
+            trace_context: query.trace_context,
         };
 
         Ok(Arc::new(query))

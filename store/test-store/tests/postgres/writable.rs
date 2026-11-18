@@ -526,3 +526,217 @@ fn read_range_pool_created_test() {
         }
     })
 }
+
+/// Transact `ops` at `block` through `writable` with `stopwatch`, the way
+/// the subgraph runner does, so that the block's trace is the one the
+/// write gets linked to.
+async fn transact_with_stopwatch(
+    writable: &Arc<dyn WritableStore>,
+    stopwatch: &StopwatchMetrics,
+    block: u8,
+    ops: Vec<EntityOperation>,
+) {
+    let block_ptr = block_pointer(block);
+    let mut entity_cache = EntityCache::new(
+        Arc::new(writable.clone()),
+        SeqGenerator::new(block_ptr.number),
+    );
+    entity_cache.append(ops);
+    let mods = entity_cache
+        .as_modifications(block_ptr.number, stopwatch)
+        .await
+        .expect("failed to convert to modifications")
+        .modifications;
+    let block_time = graph::blockchain::BlockTime::for_test(&block_ptr);
+    writable
+        .transact_block_operations(
+            block_ptr,
+            block_time,
+            FirehoseCursor::None,
+            mods,
+            stopwatch,
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            false,
+            false,
+        )
+        .await
+        .unwrap();
+}
+
+// The tracer provider is process-global. The tests in this binary
+// serialise their database access with an in-process lock, so a test
+// cannot re-execute itself in a subprocess the way the runner tests do; it
+// would race every other test for the database. The exporter is installed
+// in-process instead, and the tracing tests only look at the spans of the
+// traces they created themselves.
+
+/// The groups the tracing tests in this binary need. The first call to
+/// `install_with` in the process decides, so both tests ask for the same.
+fn tracing_groups() -> graph::telemetry::SpanGroups {
+    use graph::telemetry::{SpanGroup, SpanGroups};
+    SpanGroups::NONE
+        .with(SpanGroup::Block)
+        .with(SpanGroup::Store)
+}
+
+#[test]
+fn write_batch_links_block_traces() {
+    use graph::telemetry::SpanGroup;
+    use graph::telemetry::testing::install_with;
+
+    let spans = install_with(tracing_groups());
+
+    run_test(move |_, writable, _, deployment| async move {
+        let stopwatch = StopwatchMetrics::new(
+            LOGGER.clone(),
+            deployment.hash.clone(),
+            "process",
+            Arc::new(MetricsRegistry::mock()),
+            "primary".to_string(),
+        );
+
+        // Two blocks, each its own trace, as in the runner.
+        let mut block_traces = Vec::new();
+        for block in 1..=2u8 {
+            let section = stopwatch.start_root_section(
+                "process_block",
+                SpanGroup::Block,
+                || [("block_number", (block as i32).into())],
+                &[],
+            );
+            block_traces.push(stopwatch.current_context().unwrap().trace_id());
+            let data = entity! { TEST_SUBGRAPH_SCHEMA =>
+                id: &block.to_string(),
+                count: block as i32,
+                vid: block as i64,
+            };
+            let key = COUNTER2_TYPE.parse_key(block.to_string()).unwrap();
+            transact_with_stopwatch(
+                &writable,
+                &stopwatch,
+                block,
+                vec![EntityOperation::Set { key, data }],
+            )
+            .await;
+            section.end();
+        }
+        writable.flush().await.unwrap();
+
+        // The writes may have landed in one batch or two. Either way, every
+        // write links only to our blocks, and between them they link to
+        // both.
+        let writes: Vec<_> = spans
+            .spans()
+            .into_iter()
+            .filter(|span| {
+                span.name == "write_batch"
+                    && span
+                        .links
+                        .iter()
+                        .any(|(trace_id, _)| block_traces.contains(trace_id))
+            })
+            .collect();
+        assert!(
+            !writes.is_empty(),
+            "no write_batch span linked to the blocks"
+        );
+        let mut linked: Vec<&str> = writes
+            .iter()
+            .flat_map(|span| span.links.iter().map(|(trace_id, _)| trace_id.as_str()))
+            .collect();
+        linked.sort();
+        linked.dedup();
+        let mut expected: Vec<&str> = block_traces.iter().map(String::as_str).collect();
+        expected.sort();
+        assert_eq!(linked, expected);
+
+        for write in &writes {
+            assert_eq!(write.parent_span_id, None, "write_batch is a root");
+            assert!(
+                !block_traces.contains(&write.trace_id),
+                "the write is its own trace"
+            );
+            assert!(!write.is_error);
+            assert_eq!(
+                write.attr("subgraph_id"),
+                Some(deployment.hash.to_string().as_str())
+            );
+            assert!(write.attr("first_block").is_some());
+            assert!(write.attr("last_block").is_some());
+            assert!(write.attr("entity_count").is_some());
+            let children: Vec<String> = spans
+                .children_of(write)
+                .into_iter()
+                .map(|span| span.name)
+                .collect();
+            assert!(
+                children
+                    .iter()
+                    .any(|name| name == "apply_entity_modifications"),
+                "store sections nest under write_batch: {children:?}"
+            );
+        }
+    });
+}
+
+#[test]
+fn db_query_spans_join_the_attached_trace() {
+    use graph::prelude::{AttributeNames, BLOCK_NUMBER_MAX, EntityCollection, EntityQuery};
+    use graph::telemetry::Span;
+    use graph::telemetry::testing::install_with;
+
+    let spans = install_with(tracing_groups());
+
+    run_test(move |store, _, _, deployment| async move {
+        let query = || {
+            EntityQuery::new(
+                deployment.hash.clone(),
+                BLOCK_NUMBER_MAX,
+                EntityCollection::All(vec![(COUNTER_TYPE.clone(), AttributeNames::All)]),
+            )
+        };
+        let subgraph_store = store.subgraph_store();
+
+        // With a trace attached to the thread that runs the query, the way
+        // GraphQL execution does it, the query becomes a child span.
+        let mut root = Span::root("graphql_query");
+        root.set_attr("test", "db_query_spans_join_the_attached_trace");
+        let ctx = root.context().unwrap();
+        let (store_clone, query_clone) = (subgraph_store.clone(), query());
+        graph::spawn_blocking_allow_panic(move || {
+            let _guard = ctx.attach();
+            graph::block_on(store_clone.find(query_clone))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        root.end();
+
+        let roots = spans.spans_with_attr("test", "db_query_spans_join_the_attached_trace");
+        assert_eq!(roots.len(), 1);
+        let queries = spans.children_of(&roots[0]);
+        assert_eq!(queries.len(), 1, "one db_query under the request");
+        let db_query = &queries[0];
+        assert_eq!(db_query.name, "db_query");
+        assert_eq!(
+            db_query.attr("subgraph_id"),
+            Some(deployment.hash.to_string().as_str())
+        );
+        assert_eq!(db_query.attr("entity_count"), Some("0"));
+        assert!(!db_query.is_error);
+
+        // Without an attached trace the query joins nothing: the request
+        // still has its one child, and no `db_query` is a root.
+        subgraph_store.find(query()).await.unwrap();
+        assert_eq!(spans.children_of(&roots[0]).len(), 1);
+        assert!(
+            spans
+                .spans()
+                .iter()
+                .all(|span| span.name != "db_query" || span.parent_span_id.is_some()),
+            "a db_query span without a parent was exported"
+        );
+    });
+}
