@@ -191,7 +191,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org) with the crate a
 - All crates: `refactor(all): {description}`
 - Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`; mark breaking changes with `!` (`feat(store)!: ...`)
 
-release-please reads every commit on master, so each one must follow this format. The Semantic PR workflow checks PR titles, which become the commit message when a PR is squash-merged. release-please derives versions and the changelog from these commits: while the version is below 1.0, `feat` and breaking changes bump the minor version, `fix` and `perf` bump the patch version.
+Pull requests are squash-merged, so the PR title becomes the commit on master; the Semantic PR workflow checks it. release-please derives versions and the changelog from these commits: while the version is below 1.0, `feat` and breaking changes bump the minor version, `fix` and `perf` bump the patch version. Commits inside a PR use the same format.
 
 ### Git Workflow
 
