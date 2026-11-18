@@ -715,6 +715,83 @@ async fn find_changes_with_only_immutable_entities() {
     .await;
 }
 
+/// Updates one entity and deletes another per type in `gql` at block 1,
+/// then checks that `find_changes` reports exactly those operations
+async fn check_find_changes_with_ids(conn: &mut AsyncPgConnection, gql: &str) {
+    remove_schema(conn).await;
+    let layout = &create_schema_from(conn, gql).await;
+
+    // 0xff never occurs in UTF-8, so a raw bytea id can't pass as text
+    let things = [
+        ("StringThing", Value::from("keep"), Value::from("gone")),
+        (
+            "BytesThing",
+            Value::from(Bytes::from_str("ff01").unwrap()),
+            Value::from(Bytes::from_str("ff02").unwrap()),
+        ),
+        ("Int8Thing", Value::from(1i64), Value::from(2i64)),
+    ];
+
+    let mut expected = Vec::new();
+    for (i, (typename, keep_id, gone_id)) in things.into_iter().enumerate() {
+        let Ok(entity_type) = layout.input_schema.entity_type(typename) else {
+            continue;
+        };
+        let vid = 3 * i as i64;
+        let keep = entity! { layout.input_schema => id: keep_id.clone(), name: "old", vid: vid };
+        let gone = entity! { layout.input_schema => id: gone_id, name: "gone", vid: vid + 1 };
+        let updated = entity! { layout.input_schema => id: keep_id, name: "new", vid: vid + 2 };
+
+        insert_entity_at(conn, layout, &entity_type, vec![keep, gone.clone()], 0).await;
+        update_entity_at(conn, layout, &entity_type, vec![updated.clone()], 1).await;
+        let gone_key = entity_type.key(gone.id());
+        let group = row_group_delete(&entity_type, 1, vec![gone_key.clone()]);
+        assert_eq!(
+            layout.delete(conn, &group, &MOCK_STOPWATCH).await.unwrap(),
+            1
+        );
+
+        expected.push(EntityOperation::Set {
+            key: entity_type.key(updated.id()),
+            data: updated,
+        });
+        expected.push(EntityOperation::Remove { key: gone_key });
+    }
+    assert!(!expected.is_empty(), "no test entity type in schema: {gql}");
+
+    assert_changes_at(conn, layout, 1, expected).await;
+    assert_changes_at(conn, layout, BLOCK_NUMBER_MAX, vec![]).await;
+}
+
+#[graph::test]
+async fn find_changes_with_bytes_ids() {
+    run_test_with_conn(async |conn| {
+        let gql = "type BytesThing @entity { id: Bytes!, name: String! }";
+        check_find_changes_with_ids(conn, gql).await;
+    })
+    .await;
+}
+
+#[graph::test]
+async fn find_changes_with_int8_ids() {
+    run_test_with_conn(async |conn| {
+        let gql = "type Int8Thing @entity { id: Int8!, name: String! }";
+        check_find_changes_with_ids(conn, gql).await;
+    })
+    .await;
+}
+
+#[graph::test]
+async fn find_changes_with_mixed_id_types() {
+    run_test_with_conn(async |conn| {
+        let gql = "type StringThing @entity { id: ID!, name: String! }
+                   type BytesThing @entity { id: Bytes!, name: String! }
+                   type Int8Thing @entity { id: Int8!, name: String! }";
+        check_find_changes_with_ids(conn, gql).await;
+    })
+    .await;
+}
+
 #[graph::test]
 async fn find() {
     run_test(async |conn, layout| {
