@@ -29,6 +29,10 @@ updates:
     prefix: build
     include: scope
   open-pull-requests-limit: 10
+  # Wait a week after a release before proposing it: most malicious or broken
+  # releases are yanked within days.
+  cooldown:
+    default-days: 7
   # One PR for all crate updates. wasmtime keeps its own PR: it ships a major
   # version monthly and some need code changes in runtime/, which would hold
   # the rest back.
@@ -153,8 +157,25 @@ updates:
   commit-message:
     prefix: build
     include: scope
+  cooldown:
+    default-days: 7
   groups:
     actions:
+      patterns:
+        - "*"
+
+# The base images in docker/Dockerfile, pinned by digest.
+- package-ecosystem: docker
+  directory: "/docker"
+  schedule:
+    interval: weekly
+  commit-message:
+    prefix: build
+    include: scope
+  cooldown:
+    default-days: 7
+  groups:
+    base-images:
       patterns:
         - "*"
 
