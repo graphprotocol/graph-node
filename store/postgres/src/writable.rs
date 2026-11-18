@@ -1344,12 +1344,14 @@ impl Queue {
         ) -> impl Iterator<Item = (EntityKey, Option<Entity>)> + 'a {
             batch
                 .effective_ops(&derived_query.entity_type, at)
-                .filter_map(|op| match op {
+                .map(|op| match op {
                     EntityOp::Write { key, entity } if is_related(derived_query, entity) => {
-                        Some((key.clone(), Some(entity.clone())))
+                        (key.clone(), Some(entity.clone()))
                     }
-                    EntityOp::Write { .. } => None,
-                    EntityOp::Remove { key } => Some((key.clone(), None)),
+                    // A newer queued version supersedes the database row even
+                    // when it is no longer related: exclude its key
+                    EntityOp::Write { key, .. } => (key.clone(), None),
+                    EntityOp::Remove { key } => (key.clone(), None),
                 })
         }
 
