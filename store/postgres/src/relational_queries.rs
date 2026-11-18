@@ -2097,7 +2097,11 @@ impl<'a> QueryFragment<Pg> for FindPossibleDeletionsQuery<'a> {
             } else {
                 out.push_sql("0 as causality_region, ");
             }
-            out.push_sql("e.id\n");
+            // EntityDeletion reads id as text; encode keeps Bytes ids independent of bytea_output
+            match table.primary_key().column_type.id_type()? {
+                IdType::Bytes => out.push_sql("encode(e.id, 'hex') as id\n"),
+                IdType::String | IdType::Int8 => out.push_sql("e.id::text as id\n"),
+            }
             out.push_sql("  from ");
             out.push_sql(table.qualified_name.as_str());
             out.push_sql(" e\n where ");
