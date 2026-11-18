@@ -344,13 +344,13 @@ where
         let hex_value = value.trim_start_matches("0x");
 
         i64::from_str_radix(hex_value, 16)
-            .map(|secs| BlockTime::since_epoch(secs, 0))
             .map_err(serde::de::Error::custom)
+            .and_then(|secs| BlockTime::try_since_epoch(secs, 0).map_err(serde::de::Error::custom))
     } else {
         value
             .parse::<i64>()
-            .map(|secs| BlockTime::since_epoch(secs, 0))
             .map_err(serde::de::Error::custom)
+            .and_then(|secs| BlockTime::try_since_epoch(secs, 0).map_err(serde::de::Error::custom))
     }
 }
 #[derive(Clone, PartialEq, Eq, Hash, Deserialize)]
@@ -451,7 +451,7 @@ impl TryFrom<(B256, i32, B256, u64)> for ExtendedBlockPtr {
 
         // Convert timestamp to `BlockTime`
         let secs = timestamp;
-        let block_time = BlockTime::since_epoch(secs as i64, 0);
+        let block_time = BlockTime::try_since_epoch(secs as i64, 0)?;
 
         Ok(ExtendedBlockPtr {
             hash: hash.into(),
@@ -519,12 +519,28 @@ impl BlockTime {
 
     /// Construct a block time that is the given number of seconds and
     /// nanoseconds after the Unix epoch
+    /// Construct a block time that is `secs`/`nanos` after the Unix epoch,
+    /// returning an error for an out-of-range value instead of panicking.
+    /// Prefer this wherever an error can be propagated (deserialization,
+    /// `TryFrom`) so a malformed block time from an untrusted source is
+    /// rejected rather than crashing the node.
+    pub fn try_since_epoch(secs: i64, nanos: u32) -> Result<Self, anyhow::Error> {
+        Timestamp::since_epoch(secs, nanos)
+            .map(Self)
+            .ok_or_else(|| anyhow!("invalid block time: {}s {}ns", secs, nanos))
+    }
+
+    /// Construct a block time that is `secs`/`nanos` after the Unix epoch.
+    ///
+    /// Infallible, for callers with no error channel (e.g. the firehose decode
+    /// path). Rather than panicking on an out-of-range value as it used to, it
+    /// drops a bad sub-second component and clamps an out-of-range second to the
+    /// representable range. Prefer `try_since_epoch` where an error can be
+    /// returned.
     pub fn since_epoch(secs: i64, nanos: u32) -> Self {
-        Self(
-            Timestamp::since_epoch(secs, nanos)
-                .ok_or_else(|| anyhow!("invalid block time: {}s {}ns", secs, nanos))
-                .unwrap(),
-        )
+        Self::try_since_epoch(secs, nanos)
+            .or_else(|_| Self::try_since_epoch(secs, 0))
+            .unwrap_or(if secs < 0 { Self::MIN } else { Self::MAX })
     }
 
     /// Construct a block time for tests where blocks are exactly 45 minutes
@@ -665,6 +681,43 @@ mod tests {
         assert!(
             result.is_err(),
             "Deserialization should have failed for invalid block number"
+        );
+    }
+
+    #[test]
+    fn test_out_of_range_block_time_deserialization_is_rejected() {
+        // A block-header timestamp outside the representable range must be
+        // rejected as an error, not panic the deserializer.
+        let json_data = r#"
+        {
+            "hash": "0x8186da3ec5590631ae7b9415ce58548cb98c7f1dc68c5ea1c519a3f0f6a25aac",
+            "number": "0x2A",
+            "parentHash": "0xd71699894d637632dea4d425396086edf033c1ff72b13753e8c4e67700e3eb8e",
+            "timestamp": "0x7fffffffffffffff"
+        }
+        "#;
+
+        let result: Result<ExtendedBlockPtr, _> = serde_json::from_str(json_data);
+        assert!(
+            result.is_err(),
+            "an out-of-range block time must be rejected, not panic"
+        );
+    }
+
+    #[test]
+    fn test_block_time_since_epoch_does_not_panic_on_out_of_range() {
+        // try_since_epoch surfaces the error...
+        assert!(BlockTime::try_since_epoch(i64::MAX, 0).is_err());
+        assert!(BlockTime::try_since_epoch(0, 2_000_000_000).is_err());
+
+        // ...and the infallible constructor clamps instead of panicking.
+        assert_eq!(BlockTime::since_epoch(i64::MAX, 0), BlockTime::MAX);
+        assert_eq!(BlockTime::since_epoch(i64::MIN, 0), BlockTime::MIN);
+
+        // A bad sub-second component is dropped, keeping the (valid) second.
+        assert_eq!(
+            BlockTime::since_epoch(0, 2_000_000_000),
+            BlockTime::since_epoch(0, 0)
         );
     }
 }
