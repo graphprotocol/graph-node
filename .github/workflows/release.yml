@@ -19,14 +19,25 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
-      # A pull request opened with GITHUB_TOKEN does not trigger workflows, so
-      # the release PR is opened as the app instead.
+      # release-please acts as the organisation's release App, not as
+      # GITHUB_TOKEN: what GITHUB_TOKEN creates triggers no workflows, so the
+      # release would not run `gnd-binary-build.yml` (on: release: published)
+      # and the release PR would get no CI. The App is shared by the
+      # organisation's release-please repositories (org variable
+      # RELEASE_APP_CLIENT_ID, org secret RELEASE_APP_PRIVATE_KEY, both
+      # granted to selected repositories); the token is limited to this
+      # repository and to what release-please needs.
       - name: Mint app token
         id: app-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
         with:
-          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
 
       - name: Run release-please
         id: release

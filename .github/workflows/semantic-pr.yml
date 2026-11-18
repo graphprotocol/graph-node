@@ -1,14 +1,17 @@
 name: Semantic PR
 
+# pull_request, not pull_request_target: the check only reads the title, so
+# a fork's read-only token is enough, and the repository keeps no
+# pull_request_target job (a condition of running on forge's public runners).
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, edited, synchronize, reopened]
 
 permissions:
   pull-requests: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
