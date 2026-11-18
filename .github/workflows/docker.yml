@@ -6,7 +6,7 @@ name: Docker images
 # | Build                                     | Tags                       |
 # |-------------------------------------------|----------------------------|
 # | every build                               | 7-char short SHA           |
-# | push to master                            | `nightly`                  |
+# | push to master (except a release commit)  | `nightly`                  |
 # | push to hotfix/**                         | (short SHA only)           |
 # | push of a `canary-*` tag                  | the tag, e.g. `canary-fix` |
 # | release (called from release.yml)         | `vX.Y.Z`, `latest`         |
@@ -40,6 +40,15 @@ env:
 jobs:
   docker:
     name: Build and push images
+    # release-please's release commit is built once, by the release
+    # (release.yml calls this workflow with tag_name), so its short-SHA tag is
+    # the release image; its own push to master builds nothing, and `nightly`
+    # stays on the commit before it. A called run sees the caller's push
+    # event, hence the tag_name test.
+    if: >-
+      inputs.tag_name != '' ||
+      github.event_name != 'push' ||
+      !startsWith(github.event.head_commit.message, 'chore(master): release ')
     # The Dockerfile compiles graph-node in release mode, which needs the
     # cores and disk of a large runner.
     runs-on: nscloud-ubuntu-22.04-amd64-16x32
