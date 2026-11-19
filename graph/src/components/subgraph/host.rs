@@ -100,6 +100,7 @@ pub struct HostMetrics {
     handler_execution_time: Box<HistogramVec>,
     host_fn_execution_time: Box<HistogramVec>,
     eth_call_execution_time: Box<HistogramVec>,
+    ethereum_decode_failures: Box<CounterVec>,
     pub gas_metrics: GasMetrics,
     pub stopwatch: StopwatchMetrics,
 }
@@ -139,13 +140,31 @@ impl HostMetrics {
                 vec![0.025, 0.05, 0.2, 2.0, 8.0, 20.0],
             )
             .expect("failed to create `deployment_host_fn_execution_time` histogram");
+
+        let ethereum_decode_failures = registry
+            .new_deployment_counter_vec(
+                "deployment_ethereum_decode_failures",
+                "Counts ethereum.decode and ethereum.decodeParams calls that returned null",
+                subgraph,
+                vec![String::from("host_fn"), String::from("kind")],
+            )
+            .expect("failed to create `deployment_ethereum_decode_failures` counter");
+
         Self {
             handler_execution_time,
             host_fn_execution_time,
             stopwatch,
             gas_metrics,
             eth_call_execution_time,
+            ethereum_decode_failures,
         }
+    }
+
+    /// `kind` is `invalid_type` or `invalid_data`.
+    pub fn inc_ethereum_decode_failure(&self, host_fn: &str, kind: &str) {
+        self.ethereum_decode_failures
+            .with_label_values(&[host_fn, kind][..])
+            .inc();
     }
 
     pub fn observe_handler_execution_time(&self, duration: f64, handler: &str) {
