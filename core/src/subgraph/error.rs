@@ -51,7 +51,10 @@ pub enum ProcessingError {
 
     // The error had a deterministic cause but, for a possibly non-deterministic reason, we chose to
     // halt processing due to the error.
-    #[error("{0}")]
+    // The runner persists this variant with `{:#}`, so the renderer has to
+    // keep the alternates reaching the cause. `{0}` alone would print only the
+    // outermost anyhow message and drop the store diagnostic under it.
+    #[error("{0:#}")]
     Deterministic(Box<dyn DeterministicError>),
 
     /// A possible blockchain reorganization was detected.
@@ -187,5 +190,28 @@ impl<T> ClassifyErrorHelper<T, StoreError> for Result<T, StoreError> {
                 ProcessingError::Unknown(Error::from(e))
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The runner formats the whole enum with `{:#}` when it persists a fatal
+    /// error, so that rendering is what an operator ends up reading. A
+    /// deterministic error that arrives already classified still has to show
+    /// the store diagnostic under the transaction context; otherwise the
+    /// message says only that transacting failed.
+    #[test]
+    fn a_deterministic_error_keeps_its_cause_under_the_context() {
+        let store: ProcessingError =
+            ProcessingError::Deterministic(Box::new(anyhow!("synthetic constraint violation")));
+
+        let detailed = store.detail("Failed to transact block operations");
+
+        assert_eq!(
+            format!("{detailed:#}"),
+            "Failed to transact block operations: synthetic constraint violation"
+        );
     }
 }
