@@ -12,6 +12,12 @@ updates:
     - dependency-name: "@graphprotocol/graph-*"
   versioning-strategy: lockfile-only
 
+- package-ecosystem: docker
+  directory: "/docker"
+  schedule:
+    interval: weekly
+  open-pull-requests-limit: 5
+
 - package-ecosystem: cargo
   directory: "/"
   schedule:
