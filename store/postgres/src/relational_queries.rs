@@ -2188,13 +2188,12 @@ impl<'a> Query for FindManyQuery<'a> {
 
 impl<'a, Conn> RunQueryDsl<Conn> for FindManyQuery<'a> {}
 
-/// A query that finds an entity by key. Used during indexing.
-/// See also `FindManyQuery`.
+/// A query that finds the entities whose `entity_field` references
+/// `value`. Used by `loadRelated`.
 #[derive(Debug)]
 pub struct FindDerivedQuery<'a> {
     table: &'a Table,
     derived_query: &'a DerivedEntityQuery,
-    excluded_keys: IdList,
     br_column: BlockRangeColumn<'a>,
 }
 
@@ -2203,13 +2202,11 @@ impl<'a> FindDerivedQuery<'a> {
         table: &'a Table,
         derived_query: &'a DerivedEntityQuery,
         block: BlockNumber,
-        excluded_keys: IdList,
     ) -> Self {
         let br_column = BlockRangeColumn::new(table, "e.", block);
         Self {
             table,
             derived_query,
-            excluded_keys,
             br_column,
         }
     }
@@ -2235,18 +2232,6 @@ impl<'a> QueryFragment<Pg> for FindDerivedQuery<'a> {
         out.push_sql("  from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" e\n where ");
-        // This clause with an empty array would filter out everything
-        if !self.excluded_keys.is_empty() {
-            out.push_identifier(&self.table.primary_key().name)?;
-            // For truly gigantic `excluded_keys` lists, this will be slow, and
-            // we should rewrite this query to use a CTE or a temp table to hold
-            // the excluded keys.
-            // `id <> all(..)` excludes every listed key; `id != any(..)`
-            // would hold for any row once two or more keys are listed
-            out.push_sql(" <> all(");
-            self.excluded_keys.push_bind_param(&mut out)?;
-            out.push_sql(") and ");
-        }
         out.push_identifier(entity_field.to_snake_case().as_str())?;
         out.push_sql(" = ");
         entity_id.push_bind_param(&mut out)?;

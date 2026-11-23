@@ -349,11 +349,10 @@ impl SyncStore {
         &self,
         key: &DerivedEntityQuery,
         block: BlockNumber,
-        excluded_keys: Vec<EntityKey>,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         retry::forever(&self.logger, "get_derived", || async {
             self.writable
-                .get_derived(self.site.cheap_clone(), key, block, &excluded_keys)
+                .get_derived(self.site.cheap_clone(), key, block)
                 .await
         })
         .await
@@ -1348,10 +1347,8 @@ impl Queue {
                     EntityOp::Write { key, entity } if is_related(derived_query, entity) => {
                         (key.clone(), Some(entity.clone()))
                     }
-                    // A newer queued version supersedes the database row even
-                    // when it is no longer related: exclude its key
-                    EntityOp::Write { key, .. } => (key.clone(), None),
-                    EntityOp::Remove { key } => (key.clone(), None),
+                    // Removed, or no longer related: still hides the database row
+                    EntityOp::Write { key, .. } | EntityOp::Remove { key } => (key.clone(), None),
                 })
         }
 
@@ -1370,16 +1367,14 @@ impl Queue {
             },
         );
 
-        let excluded_keys: Vec<EntityKey> = entities_in_queue.keys().cloned().collect();
+        let mut items_from_database = self.store.get_derived(derived_query, query_block).await?;
 
-        // We filter to exclude the entities ids that we already have from the queue
-        let mut items_from_database = self
-            .store
-            .get_derived(derived_query, query_block, excluded_keys)
-            .await?;
+        // A queued change to an id supersedes its database row. Match ids, not
+        // keys: a batch keeps only the newest change per id across causality
+        // regions, so a removal can hide behind a write in another region
+        let queued: BTreeSet<_> = entities_in_queue.keys().map(|key| &key.entity_id).collect();
+        items_from_database.retain(|key, _| !queued.contains(&key.entity_id));
 
-        // Extend the store results with the entities from the queue.
-        // This overwrites any entitiy from the database with the same key from queue
         let items_from_queue: BTreeMap<EntityKey, Entity> = entities_in_queue
             .into_iter()
             .filter_map(|(key, entity)| entity.map(|entity| (key, entity)))
@@ -1548,7 +1543,7 @@ impl Writer {
         key: &DerivedEntityQuery,
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         match self {
-            Writer::Sync(store) => store.get_derived(key, BLOCK_NUMBER_MAX, vec![]).await,
+            Writer::Sync(store) => store.get_derived(key, BLOCK_NUMBER_MAX).await,
             Writer::Async { queue, .. } => queue.get_derived(key).await,
         }
     }
