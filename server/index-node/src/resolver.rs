@@ -690,7 +690,17 @@ where
             BlockchainKind::Ethereum | BlockchainKind::Near => (),
         }
 
-        // The given network does not exist.
+        // The given network does not exist. Say so: the caller answers `null`,
+        // which reads the same as "no such block", and a query node has no
+        // chains at all, so this is the first thing to check when
+        // `blockHashFromNumber` comes back empty.
+        warn!(
+            self.logger,
+            "No blockchain for network";
+            "network" => &network,
+            "block_number" => block_number,
+        );
+
         Ok(None)
     }
 }
