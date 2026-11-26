@@ -12,8 +12,8 @@ name: Docker images
 # | release (called from release.yml)         | `vX.Y.Z`, `latest`         |
 # | run by hand (workflow_dispatch)           | (short SHA only)           |
 #
-# Canary images replace the Cloud Build tag trigger: to get an image of a
-# commit that isn't on master, push a tag `canary-<anything>` pointing at it.
+# To get an image of a commit that isn't on master (a canary), push a tag
+# `canary-<anything>` pointing at it.
 on:
   push:
     branches: [master, "hotfix/**"]
@@ -133,8 +133,8 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       # context is set because the action's default is a git context of
-      # github.sha, which is not the checked-out release tag. linux/amd64 only,
-      # as Cloud Build built. The build args only fill /etc/image-info.
+      # github.sha, which is not the checked-out release tag. linux/amd64 only.
+      # The build args only fill /etc/image-info.
       - name: Build and push graph-node
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
