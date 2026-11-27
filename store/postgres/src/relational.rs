@@ -72,8 +72,8 @@ use graph::components::store::{AttributeNames, DerivedEntityQuery};
 use graph::data::store::{BYTES_SCALAR, IdList, IdType};
 use graph::data::subgraph::schema::POI_TABLE;
 use graph::prelude::{
-    BlockNumber, DeploymentHash, Entity, EntityOperation, Logger, QueryExecutionError, StoreError,
-    ValueType, anyhow, info,
+    BLOCK_NUMBER_MAX, BlockNumber, DeploymentHash, Entity, EntityOperation, Logger,
+    QueryExecutionError, StoreError, ValueType, anyhow, info,
 };
 
 use crate::ForeignServer;
@@ -689,6 +689,10 @@ impl Layout {
         conn: &mut AsyncPgConnection,
         block: BlockNumber,
     ) -> Result<Vec<EntityOperation>, StoreError> {
+        if block == BLOCK_NUMBER_MAX {
+            return Ok(Vec::new());
+        }
+
         let mut tables = Vec::new();
         for table in self.tables.values() {
             if table.name.as_str() != POI_TABLE {
