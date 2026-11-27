@@ -5,7 +5,7 @@ updates:
   # The pnpm workspace root; the integration test packages are its members.
   directory: "/"
   schedule:
-    interval: weekly
+    interval: monthly
   # Commit messages become `build(deps): ...`, a Conventional Commits title.
   commit-message:
     prefix: build
@@ -24,7 +24,7 @@ updates:
 - package-ecosystem: cargo
   directory: "/"
   schedule:
-    interval: weekly
+    interval: monthly
   commit-message:
     prefix: build
     include: scope
@@ -149,7 +149,7 @@ updates:
 - package-ecosystem: github-actions
   directory: "/"
   schedule:
-    interval: weekly
+    interval: monthly
   commit-message:
     prefix: build
     include: scope
@@ -161,7 +161,7 @@ updates:
 - package-ecosystem: rust-toolchain
   directory: "/"
   schedule:
-    interval: weekly
+    interval: monthly
   commit-message:
     prefix: build
     include: scope
