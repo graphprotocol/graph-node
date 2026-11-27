@@ -41,6 +41,18 @@ const SCHEMA_GQL: &str = "
         id: String!,
         value: String!
     }
+    type Parent @entity {
+        id: ID!,
+        children: [Child!]! @derivedFrom(field: \"parent\")
+    }
+    type Child @entity {
+        id: ID!,
+        parent: Parent!
+    }
+    type FileChild @entity {
+        id: ID!,
+        parent: Parent!
+    }
     type PoolCreated @entity(immutable: true) {
         id: Bytes!,
         token0: Bytes!,
@@ -69,6 +81,9 @@ lazy_static! {
             .expect("Failed to parse user schema");
     static ref COUNTER_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type(COUNTER).unwrap();
     static ref COUNTER2_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type(COUNTER2).unwrap();
+    static ref PARENT_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type("Parent").unwrap();
+    static ref CHILD_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type("Child").unwrap();
+    static ref FILE_CHILD_TYPE: EntityType = TEST_SUBGRAPH_SCHEMA.entity_type("FileChild").unwrap();
 }
 
 /// Inserts test data into the store.
@@ -90,7 +105,9 @@ async fn insert_test_data(store: Arc<DieselSubgraphStore>) -> DeploymentLocator 
     };
 
     // Create SubgraphDeploymentEntity
-    let deployment = DeploymentCreate::new(String::new(), &manifest, None);
+    // `FileChild` gets a causality region as if a file data source wrote it
+    let deployment = DeploymentCreate::new(String::new(), &manifest, None)
+        .entities_with_causality_region(BTreeSet::from([FILE_CHILD_TYPE.clone()]));
     let name = SubgraphName::new("test/writable").unwrap();
     let node_id = NodeId::new("test").unwrap();
 
@@ -201,6 +218,22 @@ async fn insert_count(
 async fn pause_writer(deployment: &DeploymentLocator) {
     flush(deployment).await.unwrap();
     writable::allow_steps(deployment, 0).await;
+}
+
+/// Assert that the blocks after block 2 are still in the write queue
+async fn assert_queued_after_block_2(
+    store: &Arc<DieselSubgraphStore>,
+    deployment: &DeploymentLocator,
+) {
+    let head = store
+        .least_block_ptr(&deployment.hash)
+        .await
+        .unwrap()
+        .map(|ptr| ptr.number);
+    assert!(
+        matches!(head, Some(1) | Some(2)),
+        "blocks after 2 must still be queued, database head is {head:?}"
+    );
 }
 
 /// Test that looking up entities when several changes to the same entity
@@ -314,6 +347,171 @@ fn get_derived_batch() {
 #[test]
 fn get_derived_nobatch() {
     get_with_pending(false, count_get_derived);
+}
+
+fn set_parent(id: &str, vid: i64) -> EntityOperation {
+    EntityOperation::Set {
+        key: PARENT_TYPE.parse_key(id).unwrap(),
+        data: entity! { TEST_SUBGRAPH_SCHEMA => id: id, vid: vid },
+    }
+}
+
+fn set_child(id: &str, parent: &str, vid: i64) -> EntityOperation {
+    EntityOperation::Set {
+        key: CHILD_TYPE.parse_key(id).unwrap(),
+        data: entity! { TEST_SUBGRAPH_SCHEMA => id: id, parent: parent, vid: vid },
+    }
+}
+
+fn remove_child(id: &str) -> EntityOperation {
+    EntityOperation::Remove {
+        key: CHILD_TYPE.parse_key(id).unwrap(),
+    }
+}
+
+/// The ids of the children of `parent` according to `get_derived`
+async fn children_of(writable: &Arc<dyn WritableStore>, parent: &str) -> Vec<String> {
+    let query = DerivedEntityQuery {
+        entity_type: CHILD_TYPE.clone(),
+        entity_field: Word::from("parent"),
+        value: PARENT_TYPE.parse_id(parent).unwrap(),
+        causality_region: CausalityRegion::ONCHAIN,
+    };
+    let map = writable.get_derived(&query).await.unwrap();
+    let mut ids: Vec<String> = map.keys().map(|k| k.entity_id.to_string()).collect();
+    ids.sort();
+    ids
+}
+
+/// `get_derived` while the changes of a block are still in the write
+/// queue must give the same answer as after they are written. Block 1
+/// (parents `p0`, `p1`; children `w`, `x` under `p0`) is written to the
+/// database; block 2 is empty and absorbs a writer that may already be
+/// past its pause point; block 3 (`queued`) is held in the queue.
+fn derived_with_pending(queued: Vec<EntityOperation>, expected: &'static [&'static str]) {
+    run_test(move |store, writable, _, deployment| async move {
+        let subgraph_store = store.subgraph_store();
+        let base = vec![
+            set_parent("p0", 1),
+            set_parent("p1", 2),
+            set_child("w", "p0", 3),
+            set_child("x", "p0", 4),
+        ];
+        transact_entity_operations(&subgraph_store, &deployment, block_pointer(1), base)
+            .await
+            .unwrap();
+        pause_writer(&deployment).await;
+        transact_entity_operations(&subgraph_store, &deployment, block_pointer(2), vec![])
+            .await
+            .unwrap();
+        transact_entity_operations(&subgraph_store, &deployment, block_pointer(3), queued)
+            .await
+            .unwrap();
+        assert_queued_after_block_2(&subgraph_store, &deployment).await;
+        let expected: Vec<String> = expected.iter().map(|s| s.to_string()).collect();
+        assert_eq!(expected, children_of(&writable, "p0").await, "while queued");
+
+        writable.flush().await.unwrap();
+        assert_eq!(expected, children_of(&writable, "p0").await, "after flush");
+    })
+}
+
+/// Control: one queued removal hides the database row
+#[test]
+fn get_derived_pending_one_removal() {
+    derived_with_pending(vec![remove_child("x")], &["w"]);
+}
+
+/// Two queued removals hide both database rows
+#[test]
+fn get_derived_pending_two_removals() {
+    derived_with_pending(vec![remove_child("w"), remove_child("x")], &[]);
+}
+
+/// A queued removal plus a queued creation
+#[test]
+fn get_derived_pending_removal_and_creation() {
+    derived_with_pending(
+        vec![remove_child("x"), set_child("y", "p0", 5)],
+        &["w", "y"],
+    );
+}
+
+/// A queued write that moves `x` to another parent must hide the stored `x`
+#[test]
+fn get_derived_pending_parent_change() {
+    derived_with_pending(vec![set_child("x", "p1", 5)], &["w"]);
+}
+
+/// The ids of the onchain `FileChild` children of `p0` according to
+/// `get_derived`, filtered with `DerivedEntityQuery::matches` as
+/// `EntityCache::load_related` does: `get_derived` also returns queued
+/// entities from other causality regions
+async fn onchain_file_children_of_p0(writable: &Arc<dyn WritableStore>) -> Vec<String> {
+    let query = DerivedEntityQuery {
+        entity_type: FILE_CHILD_TYPE.clone(),
+        entity_field: Word::from("parent"),
+        value: PARENT_TYPE.parse_id("p0").unwrap(),
+        causality_region: CausalityRegion::ONCHAIN,
+    };
+    let map = writable.get_derived(&query).await.unwrap();
+    map.iter()
+        .filter(|(key, entity)| query.matches(key, entity))
+        .map(|(key, _)| key.entity_id.to_string())
+        .collect()
+}
+
+/// `x` is written onchain; one queued batch then removes it onchain and a
+/// file data source creates its own `x`. The queue only shows the newer
+/// `x`, which must still hide the onchain `x` read from the database.
+/// Fails if `get_derived` matches database rows by key instead of id.
+/// Blocks 3 and 4 share a batch only with write batching enabled
+#[test]
+fn get_derived_pending_causality_region() {
+    assert!(
+        ENV_VARS.store.write_batch_size > 0 && !ENV_VARS.store.write_batch_duration.is_zero(),
+        "this test needs write batching"
+    );
+    run_test(|store, writable, _, deployment| async move {
+        let subgraph_store = store.subgraph_store();
+        let set_x = |causality_region, vid: i64| EntityOperation::Set {
+            key: FILE_CHILD_TYPE.parse_key_in("x", causality_region).unwrap(),
+            data: entity! { TEST_SUBGRAPH_SCHEMA => id: "x", parent: "p0", vid: vid },
+        };
+        let remove_x = EntityOperation::Remove {
+            key: FILE_CHILD_TYPE
+                .parse_key_in("x", CausalityRegion::ONCHAIN)
+                .unwrap(),
+        };
+
+        let transact = |block, ops| {
+            transact_entity_operations(&subgraph_store, &deployment, block_pointer(block), ops)
+        };
+        transact(1, vec![set_x(CausalityRegion::ONCHAIN, 1)])
+            .await
+            .unwrap();
+        pause_writer(&deployment).await;
+        // Absorbs a writer that may already be past its pause point
+        transact(2, vec![]).await.unwrap();
+        transact(3, vec![remove_x]).await.unwrap();
+        transact(4, vec![set_x(CausalityRegion::ONCHAIN.next(), 2)])
+            .await
+            .unwrap();
+        assert_queued_after_block_2(&subgraph_store, &deployment).await;
+        let expected: Vec<String> = vec![];
+        assert_eq!(
+            expected,
+            onchain_file_children_of_p0(&writable).await,
+            "while queued"
+        );
+
+        writable.flush().await.unwrap();
+        assert_eq!(
+            expected,
+            onchain_file_children_of_p0(&writable).await,
+            "after flush"
+        );
+    })
 }
 
 #[test]

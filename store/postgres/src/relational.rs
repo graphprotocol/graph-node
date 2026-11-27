@@ -664,12 +664,9 @@ impl Layout {
         conn: &mut AsyncPgConnection,
         derived_query: &DerivedEntityQuery,
         block: BlockNumber,
-        excluded_keys: &[EntityKey],
     ) -> Result<BTreeMap<EntityKey, Entity>, StoreError> {
         let table = self.table_for_entity(&derived_query.entity_type)?;
-        let ids = excluded_keys.iter().map(|key| &key.entity_id).cloned();
-        let excluded_keys = IdList::try_from_iter(derived_query.entity_type.id_type()?, ids)?;
-        let query = FindDerivedQuery::new(table, derived_query, block, excluded_keys);
+        let query = FindDerivedQuery::new(table, derived_query, block);
 
         let mut entities = BTreeMap::new();
 
