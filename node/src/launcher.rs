@@ -280,9 +280,6 @@ fn build_subgraph_registrar(
     let static_filters = ENV_VARS.experimental_static_filters;
     let sg_count = Arc::new(SubgraphCountMetric::new(metrics_registry.cheap_clone()));
 
-    let mut subgraph_instance_managers =
-        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
-
     let subgraph_instance_manager = graph_core::subgraph::SubgraphInstanceManager::new(
         logger_factory,
         env_vars.cheap_clone(),
@@ -296,16 +293,10 @@ fn build_subgraph_registrar(
         static_filters,
     );
 
-    subgraph_instance_managers.add(
-        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
-        Arc::new(subgraph_instance_manager),
-    );
-
     let subgraph_provider = graph_core::subgraph_provider::SubgraphProvider::new(
         logger_factory,
         sg_count.cheap_clone(),
-        tokio_util::sync::CancellationToken::new(),
-        subgraph_instance_managers,
+        Arc::new(subgraph_instance_manager),
     );
 
     // Check version switching mode environment variable

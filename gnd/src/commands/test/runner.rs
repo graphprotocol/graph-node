@@ -744,18 +744,10 @@ async fn setup_context(
         static_filters,
     ));
 
-    let mut subgraph_instance_managers =
-        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
-    subgraph_instance_managers.add(
-        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
-        subgraph_instance_manager.cheap_clone(),
-    );
-
     let subgraph_provider = Arc::new(graph_core::subgraph_provider::SubgraphProvider::new(
         &logger_factory,
         sg_count.cheap_clone(),
-        tokio_util::sync::CancellationToken::new(),
-        subgraph_instance_managers,
+        subgraph_instance_manager.cheap_clone(),
     ));
 
     let load_manager = LoadManager::new(logger, Vec::new(), Vec::new(), mock_registry.clone());

@@ -8,34 +8,22 @@ use graph::{
     },
     log::factory::LoggerFactory,
 };
-use itertools::Itertools as _;
 use parking_lot::RwLock;
-use slog::{debug, error};
-use tokio_util::sync::CancellationToken;
+use slog::debug;
 
 /// Starts and stops subgraph deployments.
 ///
-/// For each subgraph deployment, finds the appropriate subgraph instance manager
-/// for its subgraph processing kind to handle the processing of the subgraph deployment.
+/// Forwards subgraph deployment start and stop requests to the subgraph instance manager.
 pub struct SubgraphProvider {
     logger_factory: LoggerFactory,
     count_metrics: Arc<SubgraphCountMetric>,
 
-    /// Stops active subgraph start request tasks.
-    ///
-    /// When a subgraph deployment start request is processed, a background task is created
-    /// to find the appropriate subgraph instance manager. This token stops all tasks that
-    /// are still waiting for subgraphs to start.
-    cancel_token: CancellationToken,
+    /// Handles the processing of started subgraph deployments.
+    instance_manager: Arc<dyn SubgraphInstanceManager>,
 
-    /// Contains the enabled subgraph instance managers.
+    /// Maintains a list of started subgraphs.
     ///
-    /// Only subgraphs for which there is an appropriate instance manager will be started.
-    instance_managers: SubgraphInstanceManagers,
-
-    /// Maintains a list of started subgraphs with their processing kinds.
-    ///
-    /// Used to forward subgraph deployment stop requests to the appropriate subgraph instance manager.
+    /// Used to ignore duplicate start requests and to stop active start request tasks.
     assignments: SubgraphAssignments,
 }
 
@@ -45,49 +33,23 @@ impl SubgraphProvider {
     /// # Arguments
     /// - `logger_factory`: Creates loggers for each subgraph deployment start/stop request
     /// - `count_metrics`: Tracks the number of started subgraph deployments
-    /// - `cancel_token`: Stops active subgraph start request tasks
-    /// - `instance_managers`: Contains the enabled subgraph instance managers
+    /// - `instance_manager`: Handles the processing of started subgraph deployments
     pub fn new(
         logger_factory: &LoggerFactory,
         count_metrics: Arc<SubgraphCountMetric>,
-        cancel_token: CancellationToken,
-        instance_managers: SubgraphInstanceManagers,
+        instance_manager: Arc<dyn SubgraphInstanceManager>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphProvider", None);
         let logger_factory = logger_factory.with_parent(logger.cheap_clone());
 
-        debug!(logger, "Creating subgraph provider";
-            "enabled_subgraph_processing_kinds" => instance_managers.0.keys().join(", ")
-        );
+        debug!(logger, "Creating subgraph provider");
 
         Self {
             logger_factory,
             count_metrics,
-            cancel_token,
-            instance_managers,
+            instance_manager,
             assignments: SubgraphAssignments::new(),
         }
-    }
-
-    /// Starts a subgraph deployment with the appropriate subgraph instance manager.
-    ///
-    /// Finds the required instance manager for the subgraph processing kind and forwards
-    /// the start request to that instance manager. Keeps the subgraph processing kind
-    /// in memory for handling the stop requests.
-    async fn assign_and_start_subgraph(
-        &self,
-        loc: DeploymentLocator,
-        stop_block: Option<i32>,
-    ) -> Result<(), Error> {
-        let subgraph_kind = SubgraphProcessingKind::Trigger;
-        self.assignments.set_subgraph_kind(&loc, subgraph_kind);
-
-        let Some(instance_manager) = self.instance_managers.get(&subgraph_kind) else {
-            return Err(Error::GetManager { loc, subgraph_kind });
-        };
-
-        instance_manager.start_subgraph(loc, stop_block).await;
-        Ok(())
     }
 }
 
@@ -107,39 +69,22 @@ impl SubgraphInstanceManager for SubgraphProvider {
         self.count_metrics.deployment_count.inc();
 
         let handle = tokio::spawn({
-            let provider = self.cheap_clone();
+            let instance_manager = self.instance_manager.cheap_clone();
             let loc = loc.cheap_clone();
             let start_instant = Instant::now();
 
             async move {
                 debug!(logger, "Starting subgraph");
 
-                let fut = provider.assign_and_start_subgraph(loc, stop_block);
-                match provider.cancel_token.run_until_cancelled(fut).await {
-                    Some(Ok(())) => {
-                        debug!(logger, "Subgraph started";
-                            "duration_ms" => start_instant.elapsed().as_millis()
-                        );
-                    }
-                    Some(Err(e)) => {
-                        error!(logger, "Subgraph failed to start";
-                            "e" => ?e
-                        );
-                    }
-                    None => {
-                        debug!(logger, "Subgraph start cancelled");
-                    }
-                }
+                instance_manager.start_subgraph(loc, stop_block).await;
+
+                debug!(logger, "Subgraph started";
+                    "duration_ms" => start_instant.elapsed().as_millis()
+                );
             }
         });
 
-        self.assignments.add(
-            loc,
-            SubgraphAssignment {
-                handle,
-                subgraph_kind: None,
-            },
-        )
+        self.assignments.add(loc, handle)
     }
 
     async fn stop_subgraph(&self, loc: DeploymentLocator) {
@@ -150,11 +95,7 @@ impl SubgraphInstanceManager for SubgraphProvider {
 
         debug!(logger, "Stopping subgraph");
 
-        let Some(SubgraphAssignment {
-            handle,
-            subgraph_kind,
-        }) = self.assignments.take(&loc)
-        else {
+        let Some(handle) = self.assignments.take(&loc) else {
             debug!(logger, "Subgraph is not started");
             return;
         };
@@ -162,78 +103,13 @@ impl SubgraphInstanceManager for SubgraphProvider {
         handle.abort();
         self.count_metrics.deployment_count.dec();
 
-        let Some(subgraph_kind) = subgraph_kind else {
-            debug!(logger, "Unknown subgraph kind");
-            return;
-        };
-
-        let Some(instance_manager) = self.instance_managers.get(&subgraph_kind) else {
-            debug!(logger, "Missing instance manager");
-            return;
-        };
-
-        instance_manager.stop_subgraph(loc).await;
+        self.instance_manager.stop_subgraph(loc).await;
         debug!(logger, "Subgraph stopped");
     }
 }
 
-/// Enumerates all possible errors of the subgraph provider.
-#[derive(Debug, thiserror::Error)]
-enum Error {
-    #[error("failed to get instance manager for '{loc}' with kind '{subgraph_kind}'")]
-    GetManager {
-        loc: DeploymentLocator,
-        subgraph_kind: SubgraphProcessingKind,
-    },
-}
-
-/// Contains a mapping of enabled subgraph instance managers by subgraph processing kinds.
-///
-/// Before starting a subgraph, the appropriate instance manager is loaded from this mapping.
-#[derive(Default)]
-pub struct SubgraphInstanceManagers(
-    HashMap<SubgraphProcessingKind, Arc<dyn SubgraphInstanceManager>>,
-);
-
-impl SubgraphInstanceManagers {
-    /// Creates a new empty subgraph instance manager mapping.
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    /// Adds a new subgraph instance manager for all subgraphs of the specified processing kind.
-    pub fn add(
-        &mut self,
-        subgraph_kind: SubgraphProcessingKind,
-        instance_manager: Arc<dyn SubgraphInstanceManager>,
-    ) {
-        self.0.insert(subgraph_kind, instance_manager);
-    }
-
-    /// Returns the subgraph instance manager for the specified processing kind.
-    pub fn get(
-        &self,
-        subgraph_kind: &SubgraphProcessingKind,
-    ) -> Option<Arc<dyn SubgraphInstanceManager>> {
-        self.0
-            .get(subgraph_kind)
-            .map(|instance_manager| instance_manager.cheap_clone())
-    }
-}
-
-/// Enumerates the supported subgraph processing kinds.
-///
-/// Subgraphs may have different processing requirements, and this enum helps to map them
-/// to the appropriate instance managers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, strum::Display)]
-#[strum(serialize_all = "snake_case")]
-pub enum SubgraphProcessingKind {
-    /// Represents trigger-based subgraphs.
-    Trigger,
-}
-
-/// Maintains a list of started subgraph deployments with details required for stopping them.
-struct SubgraphAssignments(RwLock<HashMap<DeploymentLocator, SubgraphAssignment>>);
+/// Maintains a list of started subgraph deployments with the handles to their start request tasks.
+struct SubgraphAssignments(RwLock<HashMap<DeploymentLocator, tokio::task::JoinHandle<()>>>);
 
 impl SubgraphAssignments {
     /// Creates a new empty list of started subgraph deployments.
@@ -242,15 +118,8 @@ impl SubgraphAssignments {
     }
 
     /// Adds a new subgraph deployment to the list of started subgraph deployments.
-    fn add(&self, loc: DeploymentLocator, subgraph_assignment: SubgraphAssignment) {
-        self.0.write().insert(loc, subgraph_assignment);
-    }
-
-    /// Updates the started subgraph deployment with the specified subgraph processing kind.
-    fn set_subgraph_kind(&self, loc: &DeploymentLocator, subgraph_kind: SubgraphProcessingKind) {
-        if let Some(subgraph_assignment) = self.0.write().get_mut(loc) {
-            subgraph_assignment.subgraph_kind = Some(subgraph_kind);
-        }
+    fn add(&self, loc: DeploymentLocator, handle: tokio::task::JoinHandle<()>) {
+        self.0.write().insert(loc, handle);
     }
 
     /// Checks if the subgraph deployment is started.
@@ -258,21 +127,8 @@ impl SubgraphAssignments {
         self.0.read().contains_key(loc)
     }
 
-    /// Removes the subgraph deployment from the list of started subgraph deployments and returns its details.
-    fn take(&self, loc: &DeploymentLocator) -> Option<SubgraphAssignment> {
+    /// Removes the subgraph deployment from the list of started subgraph deployments and returns its start request task handle.
+    fn take(&self, loc: &DeploymentLocator) -> Option<tokio::task::JoinHandle<()>> {
         self.0.write().remove(loc)
     }
-}
-
-/// Contains the details of a started subgraph deployment.
-struct SubgraphAssignment {
-    /// The handle to the background task that starts this subgraph deployment.
-    handle: tokio::task::JoinHandle<()>,
-
-    /// The subgraph processing kind of this subgraph deployment.
-    ///
-    /// Used to get the appropriate subgraph instance manager to forward the stop request to.
-    ///
-    /// Set to `None` until the start request task runs.
-    subgraph_kind: Option<SubgraphProcessingKind>,
 }

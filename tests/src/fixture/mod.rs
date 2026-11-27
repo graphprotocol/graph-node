@@ -585,19 +585,10 @@ pub async fn setup_inner<C: Blockchain>(
         static_filters,
     ));
 
-    let mut subgraph_instance_managers =
-        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
-
-    subgraph_instance_managers.add(
-        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
-        subgraph_instance_manager.cheap_clone(),
-    );
-
     let subgraph_provider = Arc::new(graph_core::subgraph_provider::SubgraphProvider::new(
         &logger_factory,
         sg_count.cheap_clone(),
-        tokio_util::sync::CancellationToken::new(),
-        subgraph_instance_managers,
+        subgraph_instance_manager.cheap_clone(),
     ));
 
     // Graphql runner

@@ -22,7 +22,6 @@ use graph::prelude::{
 };
 use graph::slog::{Logger, debug, info};
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
-use tokio_util::sync::CancellationToken;
 
 async fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
     let mut locators = store.locators(hash).await?;
@@ -50,7 +49,6 @@ pub async fn run(
         subgraph, stop_block
     );
 
-    let cancel_token = CancellationToken::new();
     let env_vars = Arc::new(EnvVars::from_env().unwrap());
     let metrics_registry = metrics_ctx.registry.clone();
     let logger_factory = LoggerFactory::new(logger.clone(), None, metrics_ctx.registry.clone());
@@ -139,9 +137,6 @@ pub async fn run(
     let static_filters = ENV_VARS.experimental_static_filters;
     let sg_metrics = Arc::new(SubgraphCountMetric::new(metrics_registry.clone()));
 
-    let mut subgraph_instance_managers =
-        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
-
     let subgraph_instance_manager = graph_core::subgraph::SubgraphInstanceManager::new(
         &logger_factory,
         env_vars.cheap_clone(),
@@ -155,16 +150,10 @@ pub async fn run(
         static_filters,
     );
 
-    subgraph_instance_managers.add(
-        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
-        Arc::new(subgraph_instance_manager),
-    );
-
     let subgraph_provider = Arc::new(graph_core::subgraph_provider::SubgraphProvider::new(
         &logger_factory,
         sg_metrics.cheap_clone(),
-        cancel_token.clone(),
-        subgraph_instance_managers,
+        Arc::new(subgraph_instance_manager),
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});

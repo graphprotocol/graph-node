@@ -3809,7 +3809,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
- "tokio-util",
  "tower 0.5.2",
  "url",
  "walkdir",
@@ -3970,11 +3969,9 @@ dependencies = [
  "parking_lot",
  "serde_yaml",
  "slog",
- "strum 0.28.0",
  "thiserror 2.0.18",
  "tokio",
  "tokio-retry",
- "tokio-util",
  "tower 0.5.3",
  "tower-test",
  "wiremock",
@@ -4028,7 +4025,6 @@ dependencies = [
  "shellexpand",
  "termcolor",
  "tokio",
- "tokio-util",
  "url",
 ]
 
@@ -4182,7 +4178,6 @@ dependencies = [
  "slog-term",
  "tokio",
  "tokio-stream",
- "tokio-util",
 ]
 
 [[package]]

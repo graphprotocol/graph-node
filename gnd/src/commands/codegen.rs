@@ -85,9 +85,7 @@ fn get_files_to_watch(manifest_path: &Path, manifest: &Manifest) -> Vec<PathBuf>
     let mut files = vec![manifest_path.to_path_buf()];
 
     // Add schema file
-    if let Some(schema_path) = &manifest.schema {
-        files.push(resolve_path(manifest_path, schema_path));
-    }
+    files.push(resolve_path(manifest_path, &manifest.schema));
 
     // Add ABI files
     for ds in &manifest.data_sources {
@@ -128,10 +126,8 @@ async fn generate_types(opt: &CodegenOpt) -> Result<()> {
         .with_context(|| format!("Failed to create output directory: {:?}", opt.output_dir))?;
 
     // Generate schema types
-    if let Some(schema_path) = manifest.schema.as_ref() {
-        let schema_path = resolve_path(&opt.manifest, schema_path);
-        let _ = generate_schema_types(&schema_path, &opt.output_dir, &manifest.spec_version)?;
-    }
+    let schema_path = resolve_path(&opt.manifest, &manifest.schema);
+    let _ = generate_schema_types(&schema_path, &opt.output_dir, &manifest.spec_version)?;
 
     // Generate ABI types for each data source
     for ds in &manifest.data_sources {

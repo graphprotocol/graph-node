@@ -110,9 +110,7 @@ fn get_files_to_watch(manifest_path: &Path, manifest: &Manifest) -> Vec<PathBuf>
     let mut files = vec![manifest_path.to_path_buf()];
 
     // Add schema file
-    if let Some(schema_path) = &manifest.schema {
-        files.push(resolve_path(manifest_path, schema_path));
-    }
+    files.push(resolve_path(manifest_path, &manifest.schema));
 
     // Add mapping files
     for ds in &manifest.data_sources {
@@ -164,20 +162,18 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
     }
 
     // Validate schema before compilation
-    if let Some(schema_path) = &manifest.schema {
-        let schema_path = resolve_path(&opt.manifest, schema_path);
-        let validation_errors = validate_schema(&schema_path, &manifest.spec_version)?;
+    let schema_path = resolve_path(&opt.manifest, &manifest.schema);
+    let validation_errors = validate_schema(&schema_path, &manifest.spec_version)?;
 
-        if !validation_errors.is_empty() {
-            eprintln!(
-                "Schema validation errors:\n{}",
-                format_schema_errors(&validation_errors)
-            );
-            return Err(anyhow!(
-                "Schema validation failed with {} error(s)",
-                validation_errors.len()
-            ));
-        }
+    if !validation_errors.is_empty() {
+        eprintln!(
+            "Schema validation errors:\n{}",
+            format_schema_errors(&validation_errors)
+        );
+        return Err(anyhow!(
+            "Schema validation failed with {} error(s)",
+            validation_errors.len()
+        ));
     }
 
     // Find graph-ts and node_modules
@@ -285,10 +281,8 @@ async fn build_subgraph(opt: &BuildOpt) -> Result<BuildResult> {
     }
 
     // Copy schema file
-    if let Some(schema_path) = &manifest.schema {
-        let schema_path = resolve_path(&opt.manifest, schema_path);
-        copy_schema(&schema_path, &opt.output_dir)?;
-    }
+    let schema_path = resolve_path(&opt.manifest, &manifest.schema);
+    copy_schema(&schema_path, &opt.output_dir)?;
 
     // Copy ABI files for data sources
     for ds in &manifest.data_sources {
@@ -353,17 +347,15 @@ async fn upload_to_ipfs(ipfs_url: &str, output_dir: &Path, manifest: &Manifest) 
     let mut uploaded = UploadedFiles::default();
 
     // Upload schema file
-    if let Some(schema_path) = &manifest.schema {
-        let schema_name = Path::new(schema_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("schema.graphql");
-        let schema_file = output_dir.join(schema_name);
-        let content = fs::read(&schema_file)
-            .with_context(|| format!("Failed to read schema file: {}", schema_file.display()))?;
-        let hash = upload_file_to_ipfs(&client, schema_name, content, &mut uploaded).await?;
-        step(Step::Write, &format!("  {} => {}", schema_name, hash));
-    }
+    let schema_name = Path::new(&manifest.schema)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("schema.graphql");
+    let schema_file = output_dir.join(schema_name);
+    let content = fs::read(&schema_file)
+        .with_context(|| format!("Failed to read schema file: {}", schema_file.display()))?;
+    let hash = upload_file_to_ipfs(&client, schema_name, content, &mut uploaded).await?;
+    step(Step::Write, &format!("  {} => {}", schema_name, hash));
 
     // Upload ABI files for data sources
     for ds in &manifest.data_sources {
@@ -489,19 +481,17 @@ fn create_ipfs_manifest(
     let mut value: serde_yaml::Value = serde_yaml::from_str(&manifest_str)?;
 
     // Update schema path to IPFS reference
-    if let Some(schema_path) = &manifest.schema {
-        let schema_name = Path::new(schema_path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("schema.graphql");
+    let schema_name = Path::new(&manifest.schema)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("schema.graphql");
 
-        // Find the hash for this file
-        if let Some(hash) = uploaded.path_to_ipfs.get(schema_name)
-            && let Some(schema) = value.get_mut("schema")
-            && let Some(file) = schema.get_mut("file")
-        {
-            *file = create_ipfs_link(hash);
-        }
+    // Find the hash for this file
+    if let Some(hash) = uploaded.path_to_ipfs.get(schema_name)
+        && let Some(schema) = value.get_mut("schema")
+        && let Some(file) = schema.get_mut("file")
+    {
+        *file = create_ipfs_link(hash);
     }
 
     // Update data source paths
@@ -752,9 +742,8 @@ fn write_output_manifest(
     // Update schema path
     if let Some(schema) = value.get_mut("schema")
         && let Some(file) = schema.get_mut("file")
-        && let Some(schema_path) = manifest.schema.as_ref()
     {
-        let schema_name = Path::new(schema_path)
+        let schema_name = Path::new(&manifest.schema)
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("schema.graphql");

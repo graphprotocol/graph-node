@@ -16,7 +16,7 @@ pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 use crate::{cheap_clone::CheapClone, components::store::BLOCK_NUMBER_MAX, object};
 use anyhow::{Context, Error, anyhow};
-use futures03::future::try_join_all;
+use futures03::{TryStreamExt as _, future::try_join, stream::FuturesOrdered};
 use itertools::Itertools;
 use semver::Version;
 use serde::{
@@ -1091,7 +1091,8 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             ).into());
         }
 
-        if data_sources.len() + templates.len() > u32::MAX as usize {
+        let ds_count = data_sources.len();
+        if ds_count + templates.len() > u32::MAX as usize {
             return Err(
                 anyhow!("subgraph has too many declared data sources and templates").into(),
             );
@@ -1107,21 +1108,31 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             )
             .await?;
 
-        let data_sources = try_join_all(data_sources.into_iter().enumerate().map(|(idx, ds)| {
-            ds.resolve(deployment_hash, resolver, logger, idx as u32, &spec_version)
-        }))
-        .await?;
-
-        let templates = try_join_all(templates.into_iter().enumerate().map(|(idx, template)| {
-            template.resolve(
-                &id,
-                resolver,
-                &schema,
-                logger,
-                data_sources.len() as u32 + idx as u32,
-                &spec_version,
-            )
-        }))
+        let (data_sources, templates) = try_join(
+            data_sources
+                .into_iter()
+                .enumerate()
+                .map(|(idx, ds)| {
+                    ds.resolve(deployment_hash, resolver, logger, idx as u32, &spec_version)
+                })
+                .collect::<FuturesOrdered<_>>()
+                .try_collect::<Vec<_>>(),
+            templates
+                .into_iter()
+                .enumerate()
+                .map(|(idx, template)| {
+                    template.resolve(
+                        deployment_hash,
+                        resolver,
+                        &schema,
+                        logger,
+                        ds_count as u32 + idx as u32,
+                        &spec_version,
+                    )
+                })
+                .collect::<FuturesOrdered<_>>()
+                .try_collect::<Vec<_>>(),
+        )
         .await?;
 
         for ds in &data_sources {

@@ -40,7 +40,7 @@ type GraphManifest = UnresolvedSubgraphManifest<Chain>;
 #[derive(Debug)]
 pub struct Manifest {
     pub spec_version: Version,
-    pub schema: Option<String>,
+    pub schema: String,
     pub features: Vec<String>,
     pub graft: Option<GraftConfig>,
     /// All data sources, including both contract-style sources and subgraph sources.
@@ -185,7 +185,7 @@ pub fn load_manifest(path: &Path) -> Result<Manifest> {
 fn convert_manifest(m: GraphManifest) -> Manifest {
     let spec_version = m.spec_version;
 
-    let schema = Some(m.schema.file.link);
+    let schema = m.schema.file.link;
 
     let features = m.features.into_iter().map(|f| f.to_string()).collect();
 
@@ -506,7 +506,7 @@ templates:
 
         let manifest = load_manifest(&manifest_path).unwrap();
         assert_eq!(manifest.spec_version, Version::new(0, 0, 4));
-        assert_eq!(manifest.schema, Some("./schema.graphql".to_string()));
+        assert_eq!(manifest.schema, "./schema.graphql");
         assert_eq!(manifest.data_sources.len(), 1);
         assert_eq!(manifest.data_sources[0].name, "Token");
         assert_eq!(manifest.data_sources[0].kind, "ethereum/contract");
