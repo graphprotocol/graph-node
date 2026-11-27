@@ -1,7 +1,7 @@
 #! /bin/bash
 
 # This file is only here to ease testing/development. Official images are
-# built using the 'cloudbuild.yaml' file
+# built by the .github/workflows/docker.yml workflow
 
 type -p podman > /dev/null && docker=podman || docker=docker
 

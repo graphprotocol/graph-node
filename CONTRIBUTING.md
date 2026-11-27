@@ -104,3 +104,19 @@ the changes since the last release to `CHANGELOG.md`. To release:
 To release a version other than the one release-please proposes, put
 `Release-As: X.Y.Z` in the body of a commit on master (for example in the
 squash-merge description of a pull request).
+
+## Docker images
+
+`.github/workflows/docker.yml` publishes `graphprotocol/graph-node` and
+`graphprotocol/graph-node-debug` to Docker Hub and to `ghcr.io`, with build
+provenance:
+
+- every push to master: the short commit SHA (7 characters) and `nightly`;
+- every push to a `hotfix/**` branch: the short SHA;
+- a release: `vX.Y.Z` and `latest`.
+
+To get an image of a commit that isn't on master (a canary), push a tag
+named `canary-<anything>` pointing at it, for example
+`t=canary-$(git rev-parse --short HEAD); git tag "$t" && git push origin "$t"`.
+The image is tagged with the tag's name and the short SHA; the tag can be
+deleted once the image is published.
