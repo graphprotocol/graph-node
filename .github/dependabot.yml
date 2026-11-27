@@ -2,10 +2,19 @@ version: 2
 updates:
 
 - package-ecosystem: npm
-  directory: tests/integration-tests
+  # The pnpm workspace root; the integration test packages are its members.
+  directory: "/"
   schedule:
     interval: weekly
+  # Commit messages become `build(deps): ...`, a Conventional Commits title.
+  commit-message:
+    prefix: build
+    include: scope
   open-pull-requests-limit: 10
+  groups:
+    graph-tooling:
+      patterns:
+        - "*"
   allow:
     # We always want to test against the latest Graph CLI tooling: `graph-cli`,
     # `graph-ts`.
@@ -16,7 +25,23 @@ updates:
   directory: "/"
   schedule:
     interval: weekly
+  commit-message:
+    prefix: build
+    include: scope
   open-pull-requests-limit: 10
+  # Wait a week after a release before proposing it: most malicious or broken
+  # releases are yanked within days.
+  cooldown:
+    default-days: 7
+  # One PR for all crate updates. wasmtime keeps its own PR: it ships a major
+  # version monthly and some need code changes in runtime/, which would hold
+  # the rest back.
+  groups:
+    dependencies:
+      patterns:
+        - "*"
+      exclude-patterns:
+        - "wasmtime*"
   ignore:
   - dependency-name: hyper
     versions:
@@ -124,3 +149,40 @@ updates:
   - dependency-name: jsonrpc-core
     versions:
     - 17.0.0
+
+- package-ecosystem: github-actions
+  directory: "/"
+  schedule:
+    interval: weekly
+  commit-message:
+    prefix: build
+    include: scope
+  cooldown:
+    default-days: 7
+  groups:
+    actions:
+      patterns:
+        - "*"
+
+# The base images in docker/Dockerfile, pinned by digest.
+- package-ecosystem: docker
+  directory: "/docker"
+  schedule:
+    interval: weekly
+  commit-message:
+    prefix: build
+    include: scope
+  cooldown:
+    default-days: 7
+  groups:
+    base-images:
+      patterns:
+        - "*"
+
+- package-ecosystem: rust-toolchain
+  directory: "/"
+  schedule:
+    interval: weekly
+  commit-message:
+    prefix: build
+    include: scope
