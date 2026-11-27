@@ -1,10 +1,7 @@
 use graph::{
     anyhow::Error,
     blockchain::BlockchainKind,
-    components::{
-        network_provider::{AmpChainNames, ChainName},
-        store::BLOCK_CACHE_SIZE,
-    },
+    components::{network_provider::ChainName, store::BLOCK_CACHE_SIZE},
     env::ENV_VARS,
     firehose::{SUBGRAPHS_PER_CONN, SubgraphLimit},
     itertools::Itertools,
@@ -27,7 +24,7 @@ use graph_store_postgres::{DeploymentPlacer, PRIMARY_SHARD, Shard as ShardName};
 use graph::http::{HeaderMap, Uri};
 use serde::Serialize;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet},
     fmt,
 };
 use std::{fs::read_to_string, time::Duration};
@@ -126,24 +123,6 @@ impl Config {
             .keys()
             .map(|k| k.as_str().into())
             .collect()
-    }
-
-    /// Build an `AmpChainNames` mapping from the config. Chains with an
-    /// explicit `amp` name map that name to the chain name; chains without
-    /// use identity mapping.
-    pub fn amp_chain_names(&self) -> AmpChainNames {
-        let mapping: HashMap<ChainName, ChainName> = self
-            .chains
-            .chains
-            .iter()
-            .map(|(chain_name, chain)| {
-                let amp_name: ChainName =
-                    chain.amp.as_deref().unwrap_or(chain_name.as_str()).into();
-                let internal_name: ChainName = chain_name.as_str().into();
-                (amp_name, internal_name)
-            })
-            .collect();
-        AmpChainNames::new(mapping)
     }
 
     /// Check that the config is valid.
@@ -578,39 +557,6 @@ impl ChainSection {
             }
         }
 
-        // Validate that effective AMP names are unique and don't collide
-        // with other chain names.
-        let mut amp_names: BTreeMap<String, String> = BTreeMap::new();
-        for (chain_name, chain) in &self.chains {
-            let effective = chain.amp.as_deref().unwrap_or(chain_name.as_str());
-            if let Some(prev_chain) = amp_names.get(effective) {
-                return Err(anyhow!(
-                    "duplicate AMP name `{}`: used by chains `{}` and `{}`",
-                    effective,
-                    prev_chain,
-                    chain_name
-                ));
-            }
-            // Check that an explicit amp alias doesn't collide with
-            // another chain's own name (which would be ambiguous).
-            if chain.amp.is_some()
-                && let Some(other) = self.chains.get(effective)
-            {
-                // Only a collision if the other chain doesn't also
-                // set the same amp alias (which is covered by the
-                // duplicate check above).
-                if other.amp.as_deref() != Some(effective) {
-                    return Err(anyhow!(
-                        "AMP alias `{}` on chain `{}` collides with chain `{}`",
-                        effective,
-                        chain_name,
-                        effective,
-                    ));
-                }
-            }
-            amp_names.insert(effective.to_string(), chain_name.clone());
-        }
-
         Ok(())
     }
 
@@ -702,7 +648,6 @@ impl ChainSection {
                     shard: PRIMARY_SHARD.to_string(),
                     protocol: BlockchainKind::Ethereum,
                     providers: vec![],
-                    amp: None,
                     cache_size: 0,
                     settings: ChainSettings::default(),
                 });
@@ -826,10 +771,6 @@ pub struct Chain {
     pub protocol: BlockchainKind,
     #[serde(rename = "provider")]
     pub providers: Vec<Provider>,
-    /// AMP network name alias. When set, AMP manifests using this name will
-    /// resolve to this chain. Defaults to the chain name.
-    #[serde(default)]
-    pub amp: Option<String>,
     /// Number of blocks from chain head for which to keep block data
     /// cached. When `GRAPH_STORE_IGNORE_BLOCK_CACHE` is set, blocks
     /// older than this are treated as if they have no data.
@@ -1637,7 +1578,6 @@ mod tests {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Ethereum,
                 providers: vec![],
-                amp: None,
                 cache_size: 0,
                 settings: ChainSettings::default(),
             },
@@ -1661,7 +1601,6 @@ mod tests {
                 shard: "primary".to_string(),
                 protocol: BlockchainKind::Near,
                 providers: vec![],
-                amp: None,
                 cache_size: 0,
                 settings: ChainSettings::default(),
             },
@@ -2306,137 +2245,6 @@ fdw_pool_size = [
         assert_eq!(shard.fdw_pool_size.size_for(&index, "ashard").unwrap(), 10);
         assert_eq!(shard.fdw_pool_size.size_for(&query, "ashard").unwrap(), 5);
         assert_eq!(shard.fdw_pool_size.size_for(&other, "ashard").unwrap(), 5);
-    }
-
-    #[test]
-    fn amp_chain_names_parsed_from_toml() {
-        let actual: Chain = toml::from_str(
-            r#"
-            shard = "primary"
-            provider = []
-            amp = "ethereum-mainnet"
-        "#,
-        )
-        .unwrap();
-
-        assert_eq!(actual.amp, Some("ethereum-mainnet".to_string()));
-    }
-
-    #[test]
-    fn amp_chain_names_default_when_absent() {
-        let actual: Chain = toml::from_str(
-            r#"
-            shard = "primary"
-            provider = []
-        "#,
-        )
-        .unwrap();
-
-        assert_eq!(actual.amp, None);
-    }
-
-    #[test]
-    fn amp_chain_names_validation_rejects_duplicate_effective_names() {
-        let mut section = toml::from_str::<ChainSection>(
-            r#"
-            ingestor = "block_ingestor_node"
-            [mainnet]
-            shard = "primary"
-            provider = []
-            amp = "eth"
-            [sepolia]
-            shard = "primary"
-            provider = []
-            amp = "eth"
-            "#,
-        )
-        .unwrap();
-
-        let err = section.validate();
-        assert!(err.is_err());
-        assert!(
-            err.unwrap_err().to_string().contains("duplicate AMP name"),
-            "expected duplicate AMP name error"
-        );
-    }
-
-    #[test]
-    fn amp_chain_names_validation_rejects_alias_colliding_with_chain_name() {
-        let mut section = toml::from_str::<ChainSection>(
-            r#"
-            ingestor = "block_ingestor_node"
-            [mainnet]
-            shard = "primary"
-            provider = []
-            [sepolia]
-            shard = "primary"
-            provider = []
-            amp = "mainnet"
-            "#,
-        )
-        .unwrap();
-
-        let err = section.validate();
-        assert!(err.is_err());
-        let msg = err.unwrap_err().to_string();
-        // The alias "mainnet" on sepolia collides with the chain named
-        // "mainnet" whose effective AMP name is also "mainnet".
-        assert!(
-            msg.contains("duplicate AMP name") || msg.contains("collides with chain"),
-            "expected collision/duplicate error, got: {msg}"
-        );
-    }
-
-    #[test]
-    fn amp_chain_names_builds_correct_mapping() {
-        let section = toml::from_str::<ChainSection>(
-            r#"
-            ingestor = "block_ingestor_node"
-            [mainnet]
-            shard = "primary"
-            provider = []
-            amp = "ethereum-mainnet"
-            [sepolia]
-            shard = "primary"
-            provider = []
-            "#,
-        )
-        .unwrap();
-
-        let config = Config {
-            node: NodeId::new("test").unwrap(),
-            disable_block_ingestor: false,
-            general: None,
-            stores: {
-                let mut s = std::collections::BTreeMap::new();
-                s.insert(
-                    "primary".to_string(),
-                    toml::from_str::<Shard>(r#"connection = "postgresql://u:p@h/db""#).unwrap(),
-                );
-                s
-            },
-            chains: section,
-            deployment: toml::from_str("[[rule]]\nshards = [\"primary\"]\nindexers = [\"test\"]")
-                .unwrap(),
-            log_store: None,
-        };
-
-        let amp = config.amp_chain_names();
-        // Explicit alias resolves
-        assert_eq!(
-            amp.resolve(&"ethereum-mainnet".into()),
-            graph::components::network_provider::ChainName::from("mainnet")
-        );
-        // Identity for chain without alias
-        assert_eq!(
-            amp.resolve(&"sepolia".into()),
-            graph::components::network_provider::ChainName::from("sepolia")
-        );
-        // Unknown name passes through
-        assert_eq!(
-            amp.resolve(&"unknown".into()),
-            graph::components::network_provider::ChainName::from("unknown")
-        );
     }
 
     #[test]

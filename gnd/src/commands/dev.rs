@@ -11,7 +11,6 @@ use graph::{
 use graph_core::polling_monitor::ipfs_service;
 use graph_node::{launcher, opt::Opt};
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
 use crate::watcher::{deploy_all_subgraphs, parse_manifest_args, watch_subgraphs};
 
@@ -147,7 +146,6 @@ async fn run_graph_node(
     opt: Opt,
     link_resolver: Arc<dyn LinkResolver>,
     subgraph_updates_channel: mpsc::Receiver<(DeploymentHash, SubgraphName)>,
-    cancel_token: CancellationToken,
 ) -> Result<()> {
     let env_vars = Arc::new(EnvVars::from_env().context("Failed to load environment variables")?);
 
@@ -173,7 +171,6 @@ async fn run_graph_node(
         Some(subgraph_updates_channel),
         prometheus_registry,
         metrics_registry,
-        cancel_token,
     )
     .await;
     Ok(())
@@ -220,11 +217,7 @@ fn get_database_url(
 }
 
 /// Run the dev command
-pub async fn run_dev(
-    dev_opt: DevOpt,
-    logger: Logger,
-    cancel_token: CancellationToken,
-) -> Result<()> {
+pub async fn run_dev(dev_opt: DevOpt, logger: Logger) -> Result<()> {
     let database_dir = Path::new(&dev_opt.database_dir);
 
     info!(logger, "Starting Graph Node Dev");
@@ -245,16 +238,8 @@ pub async fn run_dev(
     let (tx, rx) = mpsc::channel(1);
 
     let logger_clone = logger.clone();
-    let cancel_token_clone = cancel_token.clone();
     graph::spawn(async move {
-        let _ = run_graph_node(
-            &logger_clone,
-            opt,
-            file_link_resolver,
-            rx,
-            cancel_token_clone,
-        )
-        .await;
+        let _ = run_graph_node(&logger_clone, opt, file_link_resolver, rx).await;
     });
 
     let deploy_result: anyhow::Result<()> =

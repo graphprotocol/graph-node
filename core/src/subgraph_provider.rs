@@ -1,12 +1,9 @@
 use std::{collections::HashMap, sync::Arc, time::Instant};
 
 use graph::{
-    amp,
     cheap_clone::CheapClone as _,
     components::{
-        link_resolver::LinkResolver,
-        metrics::subgraph::SubgraphCountMetric,
-        store::{DeploymentLocator, SubgraphStore},
+        metrics::subgraph::SubgraphCountMetric, store::DeploymentLocator,
         subgraph::SubgraphInstanceManager,
     },
     log::factory::LoggerFactory,
@@ -16,28 +13,19 @@ use parking_lot::RwLock;
 use slog::{debug, error};
 use tokio_util::sync::CancellationToken;
 
-use super::subgraph_manifest;
-
 /// Starts and stops subgraph deployments.
 ///
-/// For each subgraph deployment, checks the subgraph processing kind
-/// and finds the appropriate subgraph instance manager to handle the
-/// processing of the subgraph deployment.
-///
-/// This is required to support both trigger-based subgraphs and Amp-powered subgraphs,
-/// which have separate runners.
+/// For each subgraph deployment, finds the appropriate subgraph instance manager
+/// for its subgraph processing kind to handle the processing of the subgraph deployment.
 pub struct SubgraphProvider {
     logger_factory: LoggerFactory,
     count_metrics: Arc<SubgraphCountMetric>,
-    subgraph_store: Arc<dyn SubgraphStore>,
-    link_resolver: Arc<dyn LinkResolver>,
 
     /// Stops active subgraph start request tasks.
     ///
     /// When a subgraph deployment start request is processed, a background task is created
-    /// to load the subgraph manifest and determine the subgraph processing kind. The processing
-    /// kind is then used to find the appropriate subgraph instance manager. This token stops
-    /// all tasks that are still loading manifests or waiting for subgraphs to start.
+    /// to find the appropriate subgraph instance manager. This token stops all tasks that
+    /// are still waiting for subgraphs to start.
     cancel_token: CancellationToken,
 
     /// Contains the enabled subgraph instance managers.
@@ -57,15 +45,11 @@ impl SubgraphProvider {
     /// # Arguments
     /// - `logger_factory`: Creates loggers for each subgraph deployment start/stop request
     /// - `count_metrics`: Tracks the number of started subgraph deployments
-    /// - `subgraph_store`: Loads subgraph manifests to determine the subgraph processing kinds
-    /// - `link_resolver`: Loads subgraph manifests to determine the subgraph processing kinds
     /// - `cancel_token`: Stops active subgraph start request tasks
     /// - `instance_managers`: Contains the enabled subgraph instance managers
     pub fn new(
         logger_factory: &LoggerFactory,
         count_metrics: Arc<SubgraphCountMetric>,
-        subgraph_store: Arc<dyn SubgraphStore>,
-        link_resolver: Arc<dyn LinkResolver>,
         cancel_token: CancellationToken,
         instance_managers: SubgraphInstanceManagers,
     ) -> Self {
@@ -79,8 +63,6 @@ impl SubgraphProvider {
         Self {
             logger_factory,
             count_metrics,
-            subgraph_store,
-            link_resolver,
             cancel_token,
             instance_managers,
             assignments: SubgraphAssignments::new(),
@@ -89,8 +71,7 @@ impl SubgraphProvider {
 
     /// Starts a subgraph deployment with the appropriate subgraph instance manager.
     ///
-    /// Loads the subgraph manifest for the specified deployment locator, determines
-    /// the subgraph processing kind, finds the required instance manager, and forwards
+    /// Finds the required instance manager for the subgraph processing kind and forwards
     /// the start request to that instance manager. Keeps the subgraph processing kind
     /// in memory for handling the stop requests.
     async fn assign_and_start_subgraph(
@@ -98,21 +79,7 @@ impl SubgraphProvider {
         loc: DeploymentLocator,
         stop_block: Option<i32>,
     ) -> Result<(), Error> {
-        let logger = self.logger_factory.subgraph_logger(&loc);
-
-        let raw_manifest = subgraph_manifest::load_raw_subgraph_manifest(
-            &logger,
-            &*self.subgraph_store,
-            &*self.link_resolver,
-            &loc.hash,
-        )
-        .await
-        .map_err(|e| Error::LoadManifest {
-            loc: loc.cheap_clone(),
-            source: e,
-        })?;
-
-        let subgraph_kind = SubgraphProcessingKind::from_manifest(&raw_manifest);
+        let subgraph_kind = SubgraphProcessingKind::Trigger;
         self.assignments.set_subgraph_kind(&loc, subgraph_kind);
 
         let Some(instance_manager) = self.instance_managers.get(&subgraph_kind) else {
@@ -213,12 +180,6 @@ impl SubgraphInstanceManager for SubgraphProvider {
 /// Enumerates all possible errors of the subgraph provider.
 #[derive(Debug, thiserror::Error)]
 enum Error {
-    #[error("failed to load manifest for '{loc}': {source:#}")]
-    LoadManifest {
-        loc: DeploymentLocator,
-        source: subgraph_manifest::Error,
-    },
-
     #[error("failed to get instance manager for '{loc}' with kind '{subgraph_kind}'")]
     GetManager {
         loc: DeploymentLocator,
@@ -228,8 +189,7 @@ enum Error {
 
 /// Contains a mapping of enabled subgraph instance managers by subgraph processing kinds.
 ///
-/// Before starting a subgraph, its processing kind is determined from the subgraph manifest.
-/// Then, the appropriate instance manager is loaded from this mapping.
+/// Before starting a subgraph, the appropriate instance manager is loaded from this mapping.
 #[derive(Default)]
 pub struct SubgraphInstanceManagers(
     HashMap<SubgraphProcessingKind, Arc<dyn SubgraphInstanceManager>>,
@@ -270,34 +230,6 @@ impl SubgraphInstanceManagers {
 pub enum SubgraphProcessingKind {
     /// Represents trigger-based subgraphs.
     Trigger,
-
-    /// Represents Amp-powered subgraphs.
-    Amp,
-}
-
-impl SubgraphProcessingKind {
-    /// Determines the subgraph processing kind from the subgraph manifest.
-    fn from_manifest(raw_manifest: &serde_yaml::Mapping) -> Self {
-        use serde_yaml::Value;
-
-        let is_amp_manifest = raw_manifest
-            .get("dataSources")
-            .and_then(Value::as_sequence)
-            .and_then(|seq| {
-                seq.iter()
-                    .filter_map(Value::as_mapping)
-                    .filter_map(|map| map.get("kind"))
-                    .filter_map(Value::as_str)
-                    .find(|kind| *kind == amp::manifest::DataSource::KIND)
-            })
-            .is_some();
-
-        if is_amp_manifest {
-            return Self::Amp;
-        }
-
-        Self::Trigger
-    }
 }
 
 /// Maintains a list of started subgraph deployments with details required for stopping them.
@@ -341,6 +273,6 @@ struct SubgraphAssignment {
     ///
     /// Used to get the appropriate subgraph instance manager to forward the stop request to.
     ///
-    /// Set to `None` until the subgraph manifest is loaded and parsed.
+    /// Set to `None` until the start request task runs.
     subgraph_kind: Option<SubgraphProcessingKind>,
 }

@@ -185,7 +185,7 @@ pub fn load_manifest(path: &Path) -> Result<Manifest> {
 fn convert_manifest(m: GraphManifest) -> Manifest {
     let spec_version = m.spec_version;
 
-    let schema = m.schema.map(|s| s.file.link);
+    let schema = Some(m.schema.file.link);
 
     let features = m.features.into_iter().map(|f| f.to_string()).collect();
 
@@ -300,21 +300,6 @@ fn convert_data_source(ds: GraphUnresolvedDS<Chain>) -> DataSource {
             source_abi: None,
             start_block: 0, // Offchain data sources don't have start_block
             end_block: None,
-            event_handlers: vec![],
-            call_handlers: vec![],
-            block_handlers: vec![],
-        },
-        GraphUnresolvedDS::Amp(amp) => DataSource {
-            name: amp.name.clone(),
-            kind: amp.kind.clone(),
-            network: Some(amp.network.clone()),
-            mapping_file: None,
-            api_version: None,
-            abis: vec![],
-            source_address: None,
-            source_abi: None,
-            start_block: amp.source.start_block.unwrap_or(0),
-            end_block: amp.source.end_block,
             event_handlers: vec![],
             call_handlers: vec![],
             block_handlers: vec![],

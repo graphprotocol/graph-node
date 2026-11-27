@@ -581,7 +581,7 @@ impl FromStr for BlockchainKind {
             "ethereum" => Ok(BlockchainKind::Ethereum),
             "near" => Ok(BlockchainKind::Near),
             "subgraph" => Ok(BlockchainKind::Ethereum), // TODO(krishna): We should detect the blockchain kind from the source subgraph
-            "amp" => Ok(BlockchainKind::Ethereum),      // TODO: Maybe get this from the Amp server
+            "amp" => Ok(BlockchainKind::Ethereum), // Refused when the manifest is parsed, see `data_source::AMP_KIND`
             _ => Err(anyhow!("unknown blockchain kind {}", s)),
         }
     }

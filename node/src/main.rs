@@ -3,7 +3,6 @@ use git_testament::git_testament;
 use graph::{env::EnvVars, log::logger, prelude::*};
 use graph_core::polling_monitor::ipfs_service;
 use graph_node::{launcher, opt};
-use tokio_util::sync::CancellationToken;
 
 git_testament!(TESTAMENT);
 
@@ -27,7 +26,6 @@ fn main() {
 async fn main_inner() {
     env_logger::init();
 
-    let cancel_token = CancellationToken::new();
     let env_vars = Arc::new(EnvVars::from_env().unwrap());
     let opt = opt::Opt::parse();
 
@@ -62,7 +60,6 @@ async fn main_inner() {
         None,
         prometheus_registry,
         metrics_registry,
-        cancel_token,
     )
     .await;
 }
