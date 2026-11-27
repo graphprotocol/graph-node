@@ -141,6 +141,10 @@ pub struct EnvVarsStore {
     /// Whether to create GIN indexes for array attributes. Set by
     /// `GRAPH_STORE_CREATE_GIN_INDEXES`. The default is `false`
     pub create_gin_indexes: bool,
+    /// Whether copies and grafts take the indexes created with their tables
+    /// from their source instead of their own layout. Set by
+    /// `GRAPH_STORE_COPY_MIRROR_INDEXES`. The default is `true`.
+    pub copy_mirror_indexes: bool,
     /// Temporary env var in case we need to quickly rollback PR #5010
     pub use_brin_for_all_query_types: bool,
     /// Temporary env var to disable certain lookups in the chain store
@@ -239,6 +243,7 @@ impl TryFrom<InnerStore> for EnvVarsStore {
             write_batch_duration: Duration::from_secs(x.write_batch_duration_in_secs),
             write_batch_size: x.write_batch_size * 1_000,
             create_gin_indexes: x.create_gin_indexes,
+            copy_mirror_indexes: x.copy_mirror_indexes,
             use_brin_for_all_query_types: x.use_brin_for_all_query_types,
             disable_block_cache_for_lookup: x.disable_block_cache_for_lookup,
             ignore_block_cache: x.ignore_block_cache,
@@ -346,6 +351,8 @@ pub struct InnerStore {
     write_batch_memoize: bool,
     #[envconfig(from = "GRAPH_STORE_CREATE_GIN_INDEXES", default = "false")]
     create_gin_indexes: bool,
+    #[envconfig(from = "GRAPH_STORE_COPY_MIRROR_INDEXES", default = "true")]
+    copy_mirror_indexes: bool,
     #[envconfig(from = "GRAPH_STORE_USE_BRIN_FOR_ALL_QUERY_TYPES", default = "false")]
     use_brin_for_all_query_types: bool,
     #[envconfig(from = "GRAPH_STORE_DISABLE_BLOCK_CACHE_FOR_LOOKUP", default = "false")]

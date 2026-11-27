@@ -29,10 +29,10 @@ use graph::{
     },
     internal_error,
     prelude::{
-        ApiVersion, BlockNumber, BlockPtr, ChainStore, DeploymentHash, EntityOperation, Logger,
-        MetricsRegistry, NodeId, PartialBlockPtr, StoreError, StoreEvent, SubgraphDeploymentEntity,
-        SubgraphName, SubgraphStore as SubgraphStoreTrait, SubgraphVersionSwitchingMode, anyhow,
-        lazy_static, o,
+        ApiVersion, BlockNumber, BlockPtr, ChainStore, DeploymentHash, ENV_VARS, EntityOperation,
+        Logger, MetricsRegistry, NodeId, PartialBlockPtr, StoreError, StoreEvent,
+        SubgraphDeploymentEntity, SubgraphName, SubgraphStore as SubgraphStoreTrait,
+        SubgraphVersionSwitchingMode, anyhow, lazy_static, o,
     },
     schema::{ApiSchema, InputSchema},
     url::Url,
@@ -341,7 +341,7 @@ impl SubgraphStore {
         self.evict(schema.id())?;
         let graft_base = deployment.graft_base.as_ref();
 
-        let (site, deployment_store, node_id) = {
+        let (site, deployment_store, node_id, base_layout) = {
             // We need to deal with two situations:
             //   (1) We are really creating a new subgraph; it therefore needs
             //       to go in the shard and onto the node that the placement
@@ -366,6 +366,7 @@ impl SubgraphStore {
                 .get(&site.shard)
                 .ok_or_else(|| StoreError::UnknownShard(site.shard.to_string()))?;
 
+            let mut validated_base = None;
             if let Some(graft_base) = graft_base {
                 // Perform schema compatibility validation when:
                 // - the site was just created (first-time deployment), or
@@ -406,15 +407,35 @@ impl SubgraphStore {
                     pconn
                         .record_active_copy(base_layout.site.as_ref(), site.as_ref())
                         .await?;
+                    validated_base = Some(base_layout);
                 }
             }
 
-            (site, deployment_store, node_id)
+            (site, deployment_store, node_id, validated_base)
+        };
+
+        let src = match base_layout {
+            Some(base_layout) if ENV_VARS.store.copy_mirror_indexes => {
+                let indexes = self
+                    .load_copy_source(base_layout.site.cheap_clone())
+                    .await?
+                    .list;
+                Some((base_layout, indexes))
+            }
+            _ => None,
         };
 
         // Create the actual databases schema and metadata entries
         deployment_store
-            .create_deployment(schema, deployment, site.clone(), replace, OnSync::None)
+            .create_deployment(
+                schema,
+                deployment,
+                site.clone(),
+                replace,
+                OnSync::None,
+                src.as_ref()
+                    .map(|(layout, indexes)| (layout.as_ref(), indexes)),
+            )
             .await?;
 
         // FIXME: This simultaneously holds a `primary_conn` and a shard connection, which can
@@ -898,6 +919,11 @@ impl Inner {
             .get(&shard)
             .ok_or_else(|| StoreError::UnknownShard(shard.to_string()))?;
 
+        let src_indexes = if ENV_VARS.store.copy_mirror_indexes {
+            Some(src_store.load_copy_source(src.cheap_clone()).await?.list)
+        } else {
+            None
+        };
         deployment_store
             .create_deployment(
                 &src_layout.input_schema,
@@ -905,6 +931,9 @@ impl Inner {
                 dst.clone(),
                 false,
                 on_sync,
+                src_indexes
+                    .as_ref()
+                    .map(|indexes| (src_layout.as_ref(), indexes)),
             )
             .await?;
 
@@ -1420,10 +1449,13 @@ impl Inner {
         name: &str,
         table: &str,
         expr: &str,
+        unique: bool,
     ) -> Result<(), StoreError> {
         let site = self.find_site(deployment.id.into()).await?;
         let store = self.for_site(&site)?;
-        store.create_btree_index(&site, name, table, expr).await
+        store
+            .create_btree_index(&site, name, table, expr, unique)
+            .await
     }
 
     pub async fn drop_index_for_deployment(

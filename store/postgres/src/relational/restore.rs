@@ -309,6 +309,7 @@ pub async fn create_schema(
         site.clone(),
         &input_schema,
         entities_with_causality_region,
+        None,
     )
     .await?;
 

@@ -53,7 +53,7 @@ use crate::deployment::{self, OnSync};
 use crate::detail::ErrorDetail;
 use crate::dynds::DataSourcesTable;
 use crate::primary::{DeploymentId, Primary};
-use crate::relational::index::{CreateIndex, IndexCreator, IndexList, Method};
+use crate::relational::index::{CreateIndex, IndexCreator, IndexList, Method, SourceIndex};
 use crate::relational::{self, Layout, LayoutCache, STATEMENT_TIMEOUT, SqlName, Table};
 use crate::relational_queries::{FromEntityData, JSONData};
 use crate::{AsyncPgConnection, advisory_lock, catalog, retry};
@@ -177,6 +177,8 @@ impl DeploymentStore {
         DeploymentStore(Arc::new(store))
     }
 
+    /// For a copy or graft that mirrors its source, `src` is the source's
+    /// layout and indexes.
     pub(crate) async fn create_deployment(
         &self,
         schema: &InputSchema,
@@ -184,7 +186,9 @@ impl DeploymentStore {
         site: Arc<Site>,
         replace: bool,
         on_sync: OnSync,
+        src: Option<(&Layout, &IndexList)>,
     ) -> Result<(), StoreError> {
+        let logger = self.logger.cheap_clone();
         let mut conn = self.pool.get_permitted().await?;
         conn.transaction::<_, StoreError, _>(async |conn| {
             let exists = deployment::exists(conn, &site).await?;
@@ -211,13 +215,17 @@ impl DeploymentStore {
                 let query = format!("create schema {}", &site.namespace);
                 conn.batch_execute(&query).await?;
 
-                let _ = Layout::create_relational_schema(
+                let layout = Layout::create_relational_schema(
                     conn,
                     site.clone(),
                     schema,
                     entities_with_causality_region.into_iter().collect(),
+                    src,
                 )
                 .await?;
+                if let Some(src) = src {
+                    copy_source_indexes(&logger, conn, &layout, src).await?;
+                }
 
                 // Create data sources table
                 if site.schema_version.private_data_sources() {
@@ -725,7 +733,9 @@ impl DeploymentStore {
         let postponed_indexes_created =
             deployment::postponed_indexes_created(&mut conn, &site).await?;
         let layout = self.layout(&mut conn, site).await?;
-        let list = IndexList::load(&mut conn, &layout).await?;
+        // Invalid indexes are leftovers of interrupted concurrent drops or
+        // builds.
+        let list = IndexList::load(&mut conn, &layout, true).await?;
         Ok(CopySource {
             list,
             postponed_indexes_created,
@@ -756,11 +766,13 @@ impl DeploymentStore {
         name: &str,
         table: &str,
         expr: &str,
+        unique: bool,
     ) -> Result<(), StoreError> {
         let mut conn = self.pool.get_permitted().await?;
+        let unique = if unique { "unique " } else { "" };
         let query = format!(
-            "create index \"{}\" on \"{}\".\"{}\" using btree ({})",
-            name, site.namespace, table, expr
+            "create {}index concurrently \"{}\" on \"{}\".\"{}\" using btree ({})",
+            unique, name, site.namespace, table, expr
         );
         sql_query(query).execute(&mut conn).await?;
         Ok(())
@@ -930,7 +942,7 @@ impl DeploymentStore {
         // Layout and index list are schema metadata — safe to load outside
         // the snapshot transaction
         let layout = self.layout(&mut conn, site.cheap_clone()).await?;
-        let index_list = IndexList::load(&mut conn, &layout).await?;
+        let index_list = IndexList::load(&mut conn, &layout, false).await?;
 
         // Use REPEATABLE READ to get a consistent MVCC snapshot for the
         // entire dump. All queries inside see the same database state,
@@ -2115,6 +2127,37 @@ impl DeploymentStore {
         let mut conn = self.pool.get_permitted().await?;
         deployment::load_raw_manifest(&mut conn, &site).await
     }
+}
+
+/// Create the indexes of the copy source `src` that `layout` doesn't create
+/// itself. Each runs in its own savepoint, so one that fails is skipped.
+async fn copy_source_indexes(
+    logger: &Logger,
+    conn: &mut AsyncPgConnection,
+    layout: &Layout,
+    src: (&Layout, &IndexList),
+) -> Result<(), StoreError> {
+    for (defn, action) in layout.source_indexes(src)? {
+        match action {
+            SourceIndex::Copy(sql) => {
+                let res = conn
+                    .transaction::<_, StoreError, _>(async |conn| {
+                        sql_query(&sql).execute(conn).await?;
+                        Ok(())
+                    })
+                    .await;
+                if let Err(e) = res {
+                    warn!(logger, "Could not copy an index of the source";
+                        "index" => &defn, "error" => e.to_string());
+                }
+            }
+            SourceIndex::Skip(reason) => {
+                warn!(logger, "Not copying an index of the source";
+                    "index" => &defn, "reason" => reason);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Tries to fetch a [`Table`] either by its Entity name or its SQL name.

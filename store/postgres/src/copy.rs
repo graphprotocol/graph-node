@@ -32,7 +32,10 @@ use crate::{
     dynds::DataSourcesTable,
     pool::TxnCallback,
     primary::{DeploymentId, Primary, Site},
-    relational::{Layout, Table, index::IndexList},
+    relational::{
+        Layout, Table,
+        index::{IndexList, mirrored_table},
+    },
     relational_queries as rq,
     vid_batcher::{VidBatcher, VidRange},
 };
@@ -318,19 +321,7 @@ impl CopyState {
         for dst_table in self.dst.tables.values() {
             // May already hold postponed indexes from an interrupted run or an older version's copy.
             let existing = dst_table.valid_indexes(conn).await?;
-            let src = self
-                .src
-                .table_for_entity(&dst_table.object)
-                .ok()
-                .map(|src_table| {
-                    let indexes = source
-                        .list
-                        .indexes
-                        .get(src_table.name.as_str())
-                        .map(Vec::as_slice)
-                        .unwrap_or(&[]);
-                    (src_table.as_ref(), indexes)
-                });
+            let src = mirrored_table(dst_table, (self.src.as_ref(), &source.list));
             let idxs =
                 dst_table.postponed_indexes_to_create(&self.dst.input_schema, &existing, src)?;
             creat.execute_many(conn, &idxs).await?;
