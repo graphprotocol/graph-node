@@ -4,7 +4,7 @@
 # by running something like the following
 #   docker build --target STAGE -f docker/Dockerfile .
 
-FROM golang:bookworm AS envsubst
+FROM golang:trixie@sha256:f18c3d73a184fb0582828510722e723b63a93f7188d11dd223d9be6f6880e65d AS envsubst
 
 # v1.2.0
 ARG ENVSUBST_COMMIT_SHA=16035fe3571ad42c7796bf554f978bb2df64231b
@@ -13,7 +13,7 @@ ARG ENVSUBST_COMMIT_SHA=16035fe3571ad42c7796bf554f978bb2df64231b
 RUN go install github.com/a8m/envsubst/cmd/envsubst@$ENVSUBST_COMMIT_SHA \
     && strip -g /go/bin/envsubst
 
-FROM rust:bookworm AS graph-node-build
+FROM rust:trixie@sha256:223cc32ddca8f3ee90c436dbc94b6b5f052ea7f9653c5201e9612f08ad7d21b8 AS graph-node-build
 
 ARG COMMIT_SHA=unknown
 ARG REPO_NAME=unknown
@@ -42,7 +42,7 @@ RUN echo "REPO_NAME='$REPO_NAME'" > /etc/image-info \
     && echo "CARGO_DEV_BUILD='$CARGO_DEV_BUILD'" >> /etc/image-info
 
 # The graph-node runtime image with only the executable
-FROM debian:bookworm-20241111-slim AS graph-node
+FROM debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS graph-node
 ENV RUST_LOG=""
 ENV GRAPH_LOG=""
 ENV EARLY_LOG_CHUNK_SIZE=""
@@ -86,8 +86,11 @@ EXPOSE 8020
 # Indexing status port
 EXPOSE 8030
 
+# graph-node and graphman do not link libpq (check with `ldd`), and OpenSSL
+# is vendored, so the runtime only needs CA roots and `nc` for `wait_for`
 RUN apt-get update \
-    && apt-get install -y libpq-dev ca-certificates netcat-openbsd
+    && apt-get install -y --no-install-recommends ca-certificates netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/*
 
 ADD docker/wait_for docker/start /usr/local/bin/
 COPY --from=graph-node-build /usr/local/bin/graph-node /usr/local/bin/graphman /usr/local/bin/
