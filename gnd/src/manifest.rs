@@ -698,6 +698,47 @@ dataSources:
     }
 
     #[test]
+    fn test_load_manifest_error_chain_includes_parse_context_and_cause() {
+        let temp_dir = TempDir::new().unwrap();
+        let manifest_path = temp_dir.path().join("subgraph.yaml");
+
+        let manifest_content = r#"
+specVersion: 0.0.4
+schema: {}
+dataSources:
+  - kind: ethereum/contract
+    name: Token
+    network: mainnet
+    source:
+      abi: ERC20
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.6
+      language: wasm/assemblyscript
+      file: ./src/mapping.ts
+      entities:
+        - MyEntity
+      abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
+"#;
+
+        fs::write(&manifest_path, manifest_content).unwrap();
+
+        let err_chain = format!("{:#}", load_manifest(&manifest_path).unwrap_err());
+        assert!(
+            err_chain.contains("Failed to parse manifest"),
+            "Error chain should include manifest parse context, got: {}",
+            err_chain
+        );
+        assert!(
+            err_chain.contains("missing field") && err_chain.contains("file"),
+            "Error chain should include the underlying serde_yaml cause, got: {}",
+            err_chain
+        );
+    }
+
+    #[test]
     fn test_load_manifest_missing_mapping_abis_fails() {
         let temp_dir = TempDir::new().unwrap();
         let manifest_path = temp_dir.path().join("subgraph.yaml");
