@@ -994,3 +994,57 @@ fn graft_new_table_gets_postponed_indexes() {
         Ok(())
     })
 }
+
+/// Set `indisvalid` of the index `name` of `loc`, as an interrupted
+/// `create index concurrently` leaves it.
+async fn set_index_valid(loc: &DeploymentLocator, name: &str, valid: bool) {
+    use diesel_async::RunQueryDsl;
+
+    let mut conn = PRIMARY_POOL.get().await.unwrap();
+    let rows = diesel::sql_query(format!(
+        "update pg_index set indisvalid = {valid} \
+          where indexrelid = '\"sgd{}\".\"{name}\"'::regclass",
+        loc.id
+    ))
+    .execute(&mut conn)
+    .await
+    .unwrap();
+    assert_eq!(1, rows);
+}
+
+/// Whether the index `name` of `loc` is valid.
+async fn index_is_valid(loc: &DeploymentLocator, name: &str) -> bool {
+    use diesel_async::RunQueryDsl;
+
+    #[derive(diesel::QueryableByName)]
+    struct Valid {
+        #[diesel(sql_type = diesel::sql_types::Bool)]
+        indisvalid: bool,
+    }
+
+    let mut conn = PRIMARY_POOL.get().await.unwrap();
+    diesel::sql_query(format!(
+        "select indisvalid from pg_index \
+          where indexrelid = '\"sgd{}\".\"{name}\"'::regclass",
+        loc.id
+    ))
+    .get_result::<Valid>(&mut conn)
+    .await
+    .unwrap()
+    .indisvalid
+}
+
+// The build drops and rebuilds an index that an interrupted run left
+// invalid, rather than counting it as present.
+#[test]
+fn late_build_rebuilds_invalid_index() {
+    run_test(|store, src| async move {
+        build_postponed_indexes(&store, &src).await?;
+        set_index_valid(&src, "attr_0_3_user_email", false).await;
+        store.set_postponed_indexes_created(&src, false).await?;
+
+        build_postponed_indexes(&store, &src).await?;
+        assert!(index_is_valid(&src, "attr_0_3_user_email").await);
+        Ok(())
+    })
+}
