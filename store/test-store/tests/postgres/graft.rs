@@ -666,7 +666,87 @@ fn prune() {
             for block in 2..=5 {
                 check_at_block(&store, &src, strategy, block, vec!["1", "2", "3"]).await;
             }
+
+            assert_eq!(store.earliest_block_number(&src.hash).await?, 3);
+            let err = store
+                .get_proof_of_indexing(&src.hash, &None, BLOCKS[2].clone())
+                .await
+                .expect_err("POI for a pruned block must be an error");
+            assert!(
+                err.to_string().contains("starting at block number 3"),
+                "{err}"
+            );
+            assert!(
+                store
+                    .get_proof_of_indexing(&src.hash, &None, BLOCKS[3].clone())
+                    .await?
+                    .is_some()
+            );
             Ok(())
         })
     }
+}
+
+/// A POI below the earliest block (`startBlock - 1`) is an error, also
+/// without pruning
+#[test]
+fn poi_below_start_block() {
+    run_test(|store, _| async move {
+        let id = DeploymentHash::new("startblocksubgraph").unwrap();
+        let schema = InputSchema::parse_latest(USER_GQL, id.clone()).unwrap();
+        let manifest = SubgraphManifest::<graph_chain_ethereum::Chain> {
+            id: id.clone(),
+            spec_version: Version::new(1, 3, 0),
+            features: Default::default(),
+            description: None,
+            repository: None,
+            schema: schema.clone(),
+            data_sources: vec![],
+            graft: None,
+            templates: vec![],
+            chain: PhantomData,
+            indexer_hints: None,
+        };
+        let mut yaml = serde_yaml::Mapping::new();
+        yaml.insert("dataSources".into(), Vec::<serde_yaml::Value>::new().into());
+        let yaml = serde_yaml::to_string(&yaml).unwrap();
+        // The registrar passes the block before the manifest's startBlock
+        let start = BLOCKS[4].clone();
+        let deployment = DeploymentCreate::new(yaml, &manifest, Some(start.clone()));
+        let loc = store
+            .create_subgraph_deployment(
+                SubgraphName::new("test/startblock").unwrap(),
+                &schema,
+                deployment,
+                NodeId::new("test").unwrap(),
+                "fake_network".to_string(),
+                SubgraphVersionSwitchingMode::Instant,
+            )
+            .await?;
+        store
+            .cheap_clone()
+            .writable(LOGGER.clone(), loc.id, Arc::new(Vec::new()))
+            .await?
+            .start_subgraph_deployment(&LOGGER)
+            .await?;
+
+        assert_eq!(store.earliest_block_number(&id).await?, start.number);
+
+        let err = store
+            .get_proof_of_indexing(&id, &None, BLOCKS[2].clone())
+            .await
+            .expect_err("POI below the earliest block must be an error");
+        assert!(
+            err.to_string()
+                .contains(&format!("starting at block number {}", start.number)),
+            "{err}"
+        );
+        assert!(
+            store
+                .get_proof_of_indexing(&id, &None, start)
+                .await?
+                .is_some()
+        );
+        Ok(())
+    })
 }

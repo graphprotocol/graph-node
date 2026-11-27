@@ -842,6 +842,7 @@ impl DeploymentStore {
                 return Ok(reporter);
             }
 
+            // Committed before rows are deleted; get_proof_of_indexing relies on this order
             conn.transaction(async |conn| {
                 deployment::set_earliest_block(conn, site.as_ref(), req.earliest_block).await
             })
@@ -1014,10 +1015,22 @@ impl DeploymentStore {
                 )]),
             );
             let entities = store
-                .execute_query::<Entity>(&mut conn, site, query)
+                .execute_query::<Entity>(&mut conn, site.cheap_clone(), query)
                 .await
                 .map(|(entities, _)| entities)
                 .map_err(StoreError::from)?;
+
+            // Checked after the query: pruning raises earliest_block_number before deleting rows
+            let earliest = deployment::state(&mut conn, &site)
+                .await?
+                .earliest_block_number;
+            if block_ptr.number < earliest {
+                return Err(StoreError::QueryExecutionError(format!(
+                    "subgraph {} only has data starting at block number {} \
+                     and data for block number {} is therefore not available",
+                    site.deployment, earliest, block_ptr.number
+                )));
+            }
             Some((entities, block_ptr))
         };
         let (entities, block_ptr) = if let Some((entities, bp)) = entities {
