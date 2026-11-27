@@ -845,10 +845,14 @@ impl Batch {
             ));
         }
 
+        // The row groups are the only part that can refuse this batch, so they
+        // go first: a batch whose append fails must keep describing the blocks
+        // it already holds, and advancing the pointer before the rows are
+        // accepted would leave it naming a block it has no changes for.
+        self.mods.append(batch.mods)?;
         self.block_ptr = batch.block_ptr;
         self.block_times.append(&mut batch.block_times);
         self.firehose_cursor = batch.firehose_cursor;
-        self.mods.append(batch.mods)?;
         self.data_sources.append(batch.data_sources);
         self.deterministic_errors
             .append(&mut batch.deterministic_errors);
@@ -860,14 +864,12 @@ impl Batch {
     /// same effect as writing `self` first and then `batch` in separate
     /// transactions.
     ///
-    /// When this method returns an `Err`, the batch is marked as not
-    /// healthy by setting `self.error` to `Some(_)` and must not be written
-    /// as it will be in an indeterminate state.
+    /// When this method returns an `Err`, nothing of `batch` is held: the row
+    /// groups are appended before any other field moves, so a refused batch
+    /// leaves this one exactly as it was and it can still be written. The
+    /// caller reports the failure and stops feeding this batch.
     pub fn append(&mut self, batch: Batch) -> Result<(), StoreError> {
         let res = self.append_inner(batch);
-        if let Err(e) = &res {
-            self.error = Some(e.clone());
-        }
         self.weigh();
         res
     }
@@ -1054,8 +1056,10 @@ mod test {
     use std::sync::Arc;
 
     use crate::{
+        blockchain::{BlockPtr, BlockTime, block_stream::FirehoseCursor},
         components::store::{
-            BlockNumber, EntityType, StoreError, write::EntityModification, write::EntityOp,
+            BlockHash, BlockNumber, EntityType, StoreError, write::EntityModification,
+            write::EntityOp,
         },
         data::{store::Id, value::Word},
         entity,
@@ -1063,8 +1067,9 @@ mod test {
         schema::InputSchema,
     };
     use lazy_static::lazy_static;
+    use slog::Logger;
 
-    use super::{LastMod, RowGroup};
+    use super::{Batch, LastMod, RowGroup};
 
     #[track_caller]
     fn check_runs(values: &[usize], blocks: &[BlockNumber], exp: &[(BlockNumber, &[usize])]) {
@@ -1339,6 +1344,46 @@ mod test {
             key: entity_type.parse_key(id).unwrap(),
             block,
         }
+    }
+
+    fn make_batch(number: BlockNumber, mods: Vec<EntityModification>) -> Batch {
+        let hash = BlockHash(vec![number as u8].into());
+
+        Batch::new(
+            BlockPtr::new(hash, number),
+            BlockTime::NONE,
+            FirehoseCursor::None,
+            mods,
+            vec![],
+            vec![],
+            vec![],
+            false,
+            Logger::root(slog::Discard, slog::o!()),
+        )
+        .unwrap()
+    }
+
+    // A failed append must leave the batch describing the last block it actually
+    // holds. Its blocks are valid and must still be written; moving the pointer to
+    // the block whose append failed would make it claim changes it does not have.
+    #[test]
+    fn failed_append_keeps_the_block_pointer() {
+        let mut batch = make_batch(1, vec![make_insert(&IMM_THING_TYPE, "imm", 1)]);
+        assert_eq!(1, batch.block_ptr.number);
+
+        // Same immutable entity at block 2, which append_row refuses across blocks
+        let refused = make_batch(2, vec![make_insert(&IMM_THING_TYPE, "imm", 2)]);
+        assert!(batch.append(refused).is_err());
+
+        assert_eq!(
+            1, batch.block_ptr.number,
+            "the batch still holds block 1's changes, so its pointer must stay at 1"
+        );
+        assert!(
+            batch.error.is_none(),
+            "a batch that holds only valid blocks must stay writable: carrying an \
+             error makes the write queue poison itself instead of writing them"
+        );
     }
 
     #[test]
