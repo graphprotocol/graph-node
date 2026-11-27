@@ -1,0 +1,109 @@
+[graph]
+all-features = false
+no-default-features = false
+
+[advisories]
+version = 2
+yanked = "warn"
+ignore = [
+    # Unmaintained, no drop-in replacement
+    { id = "RUSTSEC-2022-0061", reason = "parity-wasm is unmaintained; graph-runtime-wasm uses it directly to parse modules and inject gas, replacing it needs a code change" },
+    { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; compile-time proc macro pulled in by alloy-primitives and syn-solidity, latest alloy-core still depends on it" },
+    { id = "RUSTSEC-2024-0449", reason = "unsafe-libyaml is unmaintained; pulled in by serde_yaml 0.9, replacing it is a code change across several crates" },
+    { id = "RUSTSEC-2026-0542", reason = "humantime is unmaintained; pulled in by object_store 0.14.2, the latest release" },
+    { id = "RUSTSEC-2026-0543", reason = "chrono is unmaintained (informational, no vulnerability); a direct dependency used throughout the codebase" },
+    # Not applicable
+    { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5 timing side channels only matter for secret operands; graph-node holds no private keys (signature recovery on public chain data only); the fix needs crypto-bigint 0.7, which alloy does not support yet" },
+    # wasmtime: fixed only in 48.x+, whose cranelift needs rustc 1.95; rust-toolchain.toml pins 1.94 for rust-lang/rust#152942.
+    # graph-node runs core wasm modules only (parity_wasm parse, then wasmtime::Module, runtime/wasm/src/mapping.rs),
+    # never wasmtime::component, and does not depend on wasmtime-wasi or wasmtime-wasi-http.
+    { id = "RUSTSEC-2026-0316", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0327", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0353", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0354", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0355", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0356", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0357", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0358", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0361", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0363", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0378", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0424", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0572", reason = "wasmtime component model only; not used" },
+    { id = "RUSTSEC-2026-0566", reason = "wasmtime-wasi only; not a dependency" },
+    { id = "RUSTSEC-2026-0571", reason = "wasmtime-wasi-http only; not a dependency" },
+    { id = "RUSTSEC-2026-0567", reason = "only builds without the wasmtime `threads` feature abort; graph-node builds with default features" },
+    { id = "RUSTSEC-2026-0569", reason = "Caller::get_module_export is not used" },
+    { id = "RUSTSEC-2026-0362", reason = "needs mixed sync and async calls into wasm on one Store; graph-node only uses call_async" },
+    { id = "RUSTSEC-2026-0359", reason = "needs long GC rec-group type chains; parity_wasm parses modules first and accepts MVP types only" },
+    { id = "RUSTSEC-2026-0379", reason = "AFFECTS aarch64 builds (Cranelift br_table); accepted until the toolchain pin moves and wasmtime can go to 48.7+" },
+]
+
+[licenses]
+version = 2
+private = { ignore = true }
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CDLA-Permissive-2.0",
+    "CC0-1.0",
+    "MPL-2.0",
+    "Zlib",
+    "0BSD",
+    "BSL-1.0",
+    "Unlicense",
+    "PostgreSQL",
+]
+confidence-threshold = 0.8
+
+# The workspace crates do not inherit the workspace license (only graph_derive
+# sets `license.workspace`) and are not `publish = false`, so the private
+# exemption above does not reach them. They carry the workspace license.
+clarify = [
+    { crate = "gnd", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-chain-common", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-chain-ethereum", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-chain-near", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-core", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-graphql", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-node", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-runtime-derive", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-runtime-test", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-runtime-wasm", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-server-http", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-server-index-node", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-server-json-rpc", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-server-metrics", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-store-postgres", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-tests", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graphman", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graphman-server", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graphman-store", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "test-store", expression = "MIT OR Apache-2.0", license-files = [] },
+]
+
+[bans]
+multiple-versions = "warn"
+# Path dependencies between workspace crates count as wildcards because the
+# crates are not `publish = false`; the upstream manifests are left as they are.
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    "https://github.com/graphprotocol/pgtemp",
+    "https://github.com/graphprotocol/stable-hash",
+    "https://github.com/tower-rs/tower",
+]
