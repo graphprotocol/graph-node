@@ -37,9 +37,9 @@ use tokio::select;
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 
+use crate::copy::CopySource;
 use crate::deployment_store::DeploymentStore;
 use crate::primary::DeploymentId;
-use crate::relational::index::IndexList;
 use crate::{NotificationSender, retry};
 use crate::{SubgraphStore, primary, primary::Site, relational::Layout};
 
@@ -74,8 +74,8 @@ impl WritableSubgraphStore {
         self.0.find_site(id).await
     }
 
-    async fn load_indexes(&self, site: Arc<Site>) -> Result<IndexList, StoreError> {
-        self.0.load_indexes(site).await
+    async fn load_copy_source(&self, site: Arc<Site>) -> Result<CopySource, StoreError> {
+        self.0.load_copy_source(site).await
     }
 }
 
@@ -219,7 +219,7 @@ impl SyncStore {
                 Some((base_id, base_ptr)) => {
                     let src = self.store.layout(&base_id).await?;
                     let deployment_entity = self.store.load_deployment(src.site.clone()).await?;
-                    let indexes = self.store.load_indexes(src.site.clone()).await?;
+                    let indexes = self.store.load_copy_source(src.site.clone()).await?;
                     Some((src, base_ptr, deployment_entity, indexes))
                 }
                 None => None,

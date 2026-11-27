@@ -73,6 +73,25 @@ type User @entity(immutable: true) {
 }
 ";
 
+const GRAFT_NEW_TABLE_GQL: &str = "
+enum Color { yellow, red, blue, green }
+
+type User @entity {
+    id: ID!,
+    name: String,
+    email: String,
+    age: Int,
+    favorite_color: Color,
+}
+
+# An entity type in the dst schema that does not exist in the src schema
+type Pet @entity {
+    id: ID!,
+    name: String,
+    age: Int,
+}
+";
+
 const USER: &str = "User";
 
 lazy_static! {
@@ -669,4 +688,309 @@ fn prune() {
             Ok(())
         })
     }
+}
+
+/// Sorted names of the postponed indexes on `entity` in `loc`.
+async fn postponed_attr_indexes(
+    store: &DieselSubgraphStore,
+    loc: &DeploymentLocator,
+    entity: &str,
+) -> Result<Vec<String>, StoreError> {
+    let mut names: Vec<String> = store
+        .indexes_for_entity(loc, entity)
+        .await?
+        .into_iter()
+        .filter(|idx| idx.to_postpone())
+        .filter_map(|idx| idx.name().map(str::to_string))
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+/// Run the postponed index build of `loc` and wait for it to finish.
+async fn build_postponed_indexes(
+    store: &Arc<DieselSubgraphStore>,
+    loc: &DeploymentLocator,
+) -> Result<(), StoreError> {
+    store
+        .cheap_clone()
+        .writable(LOGGER.clone(), loc.id, Arc::new(Vec::new()))
+        .await?
+        .create_postponed_indexes()
+        .await?;
+    for _ in 0..60 {
+        if store.postponed_indexes_created(loc).await? {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    panic!(
+        "postponed indexes for {} were not created within 30s",
+        loc.hash
+    );
+}
+
+// The build skips a column that is indexed under another name.
+#[test]
+fn late_build_skips_columns_indexed_under_other_names() {
+    run_test(|store, _src| async move {
+        let dst_id = DeploymentHash::new("grafted_renamed").unwrap();
+        let base = Some((
+            DeploymentHash::new(TEST_SUBGRAPH_ID.as_str()).unwrap(),
+            BLOCKS[1].clone(),
+        ));
+        let dst = test_store::create_subgraph_unstarted(&dst_id, GRAFT_GQL, base).await?;
+        store
+            .create_btree_index_for_deployment(&dst, "attr_9_9_user_age", "user", "age")
+            .await?;
+        test_store::start_subgraph(&dst).await?;
+        store.set_postponed_indexes_created(&dst, false).await?;
+
+        build_postponed_indexes(&store, &dst).await?;
+        let names = postponed_attr_indexes(&store, &dst, USER).await?;
+        // One index each on name, email, age, favorite_color and added.
+        assert_eq!(5, names.len(), "{names:?}");
+        assert!(names.iter().any(|name| name == "attr_9_9_user_age"));
+        Ok(())
+    })
+}
+
+// A copy replaces a set flag on the graft with the source's unset one.
+#[test]
+fn graft_clears_flag_set_before_interrupted_copy() {
+    run_test(|store, _src| async move {
+        let dst_id = DeploymentHash::new("grafted_interrupted").unwrap();
+        let base = Some((
+            DeploymentHash::new(TEST_SUBGRAPH_ID.as_str()).unwrap(),
+            BLOCKS[1].clone(),
+        ));
+        let dst = test_store::create_subgraph_unstarted(&dst_id, GRAFT_GQL, base).await?;
+        store.set_postponed_indexes_created(&dst, true).await?;
+
+        test_store::start_subgraph(&dst).await?;
+        assert!(!store.postponed_indexes_created(&dst).await?);
+        Ok(())
+    })
+}
+
+// A copy skips a column that the graft already indexes under the source's
+// name.
+#[test]
+fn graft_resumes_after_indexes_copied_under_source_names() {
+    run_test(|store, src| async move {
+        build_postponed_indexes(&store, &src).await?;
+
+        let dst_id = DeploymentHash::new("grafted_resumed").unwrap();
+        let base = Some((
+            DeploymentHash::new(TEST_SUBGRAPH_ID.as_str()).unwrap(),
+            BLOCKS[1].clone(),
+        ));
+        let dst = test_store::create_subgraph_unstarted(&dst_id, GRAFT_GQL, base).await?;
+        // `email` is column 3 in the source but column 2 in the graft.
+        store
+            .create_btree_index_for_deployment(
+                &dst,
+                "attr_0_3_user_email",
+                "user",
+                r#"left("email", 256)"#,
+            )
+            .await?;
+
+        test_store::start_subgraph(&dst).await?;
+        assert_eq!(
+            vec![
+                "attr_0_1_user_name",
+                "attr_0_3_user_age",
+                "attr_0_3_user_email",
+                "attr_0_4_user_favorite_color",
+                "attr_0_5_user_added",
+            ],
+            postponed_attr_indexes(&store, &dst, USER).await?
+        );
+        Ok(())
+    })
+}
+
+// A graft of an unbuilt source isn't marked as built and builds its own
+// indexes (#6749).
+#[test]
+fn graft_before_postponed_indexes() {
+    run_test(|store, src| async move {
+        assert!(!store.postponed_indexes_created(&src).await?);
+        assert_eq!(
+            Vec::<String>::new(),
+            postponed_attr_indexes(&store, &src, USER).await?
+        );
+
+        let dst_id = DeploymentHash::new("grafted_postponed").unwrap();
+        let dst = create_grafted_subgraph(
+            &dst_id,
+            GRAFT_GQL,
+            TEST_SUBGRAPH_ID.as_str(),
+            BLOCKS[1].clone(),
+        )
+        .await?;
+
+        assert!(!store.postponed_indexes_created(&dst).await?);
+        assert_eq!(
+            vec!["attr_0_5_user_added"],
+            postponed_attr_indexes(&store, &dst, USER).await?
+        );
+
+        build_postponed_indexes(&store, &src).await?;
+        build_postponed_indexes(&store, &dst).await?;
+        assert_eq!(
+            vec![
+                "attr_0_1_user_name",
+                "attr_0_2_user_email",
+                "attr_0_3_user_age",
+                "attr_0_4_user_favorite_color",
+                "attr_0_5_user_added",
+            ],
+            postponed_attr_indexes(&store, &dst, USER).await?
+        );
+        Ok(())
+    })
+}
+
+// A graft gets the indexes an unbuilt source has, under the graft's names,
+// and its own build doesn't duplicate them.
+#[test]
+fn graft_copies_postponed_indexes_of_unbuilt_source() {
+    run_test(|store, src| async move {
+        build_postponed_indexes(&store, &src).await?;
+        store.set_postponed_indexes_created(&src, false).await?;
+
+        let dst_id = DeploymentHash::new("grafted_unbuilt").unwrap();
+        let dst = create_grafted_subgraph(
+            &dst_id,
+            GRAFT_GQL,
+            TEST_SUBGRAPH_ID.as_str(),
+            BLOCKS[1].clone(),
+        )
+        .await?;
+
+        let all = vec![
+            "attr_0_1_user_name",
+            "attr_0_2_user_email",
+            "attr_0_3_user_age",
+            "attr_0_4_user_favorite_color",
+            "attr_0_5_user_added",
+        ];
+        assert!(!store.postponed_indexes_created(&dst).await?);
+        assert_eq!(all, postponed_attr_indexes(&store, &dst, USER).await?);
+
+        build_postponed_indexes(&store, &dst).await?;
+        assert_eq!(all, postponed_attr_indexes(&store, &dst, USER).await?);
+        Ok(())
+    })
+}
+
+// Same as `graft_before_postponed_indexes`, for a copy to another shard.
+// Needs a test configuration with at least two shards.
+#[test]
+fn copy_before_postponed_indexes() {
+    run_test(|store, src| async move {
+        let Some(dst_shard) = other_shard(&store, &src).await? else {
+            return Ok(());
+        };
+        assert!(!store.postponed_indexes_created(&src).await?);
+
+        let dst = store
+            .copy_deployment(
+                &src,
+                dst_shard,
+                NODE_ID.clone(),
+                BLOCKS[1].clone(),
+                OnSync::None,
+            )
+            .await?;
+        store
+            .cheap_clone()
+            .writable(LOGGER.clone(), dst.id, Arc::new(Vec::new()))
+            .await?
+            .start_subgraph_deployment(&LOGGER)
+            .await?;
+        // `indexes_for_entity` looks up the active deployment for a hash.
+        store.activate(&dst).await?;
+
+        assert!(!store.postponed_indexes_created(&dst).await?);
+        assert_eq!(
+            Vec::<String>::new(),
+            postponed_attr_indexes(&store, &dst, USER).await?
+        );
+
+        build_postponed_indexes(&store, &dst).await?;
+        assert_eq!(
+            vec![
+                "attr_0_1_user_name",
+                "attr_0_2_user_bin_name",
+                "attr_0_3_user_email",
+                "attr_0_4_user_age",
+                "attr_0_5_user_seconds_age",
+                "attr_0_6_user_weight",
+                "attr_0_7_user_coffee",
+                "attr_0_8_user_favorite_color",
+            ],
+            postponed_attr_indexes(&store, &dst, USER).await?
+        );
+        Ok(())
+    })
+}
+
+// An index dropped on a built source stays dropped on a graft (#6583).
+#[test]
+fn graft_keeps_dropped_postponed_index() {
+    run_test(|store, src| async move {
+        build_postponed_indexes(&store, &src).await?;
+        store
+            .drop_index_for_deployment(&src, "attr_0_3_user_email")
+            .await?;
+
+        let dst_id = DeploymentHash::new("grafted_dropped").unwrap();
+        let dst = create_grafted_subgraph(
+            &dst_id,
+            GRAFT_GQL,
+            TEST_SUBGRAPH_ID.as_str(),
+            BLOCKS[1].clone(),
+        )
+        .await?;
+
+        assert!(store.postponed_indexes_created(&dst).await?);
+        assert_eq!(
+            vec![
+                "attr_0_1_user_name",
+                "attr_0_3_user_age",
+                "attr_0_4_user_favorite_color",
+                "attr_0_5_user_added",
+            ],
+            postponed_attr_indexes(&store, &dst, USER).await?
+        );
+        Ok(())
+    })
+}
+
+// A graft builds the postponed indexes of entity types its source lacks.
+#[test]
+fn graft_new_table_gets_postponed_indexes() {
+    run_test(|store, src| async move {
+        build_postponed_indexes(&store, &src).await?;
+
+        let dst_id = DeploymentHash::new("grafted_new_table").unwrap();
+        let dst = create_grafted_subgraph(
+            &dst_id,
+            GRAFT_NEW_TABLE_GQL,
+            TEST_SUBGRAPH_ID.as_str(),
+            BLOCKS[1].clone(),
+        )
+        .await?;
+
+        assert!(store.postponed_indexes_created(&dst).await?);
+        // Table positions in index names depend on the schema's type order.
+        let pet = postponed_attr_indexes(&store, &dst, "Pet").await?;
+        assert_eq!(2, pet.len(), "{pet:?}");
+        assert!(pet.iter().any(|n| n.ends_with("_pet_name")), "{pet:?}");
+        assert!(pet.iter().any(|n| n.ends_with("_pet_age")), "{pet:?}");
+        Ok(())
+    })
 }

@@ -12,6 +12,7 @@ use graph::prelude::{
     BlockNumber, lazy_static,
     regex::{Captures, Regex},
 };
+use graph::schema::InputSchema;
 
 use crate::block_range::{BLOCK_COLUMN, BLOCK_RANGE_COLUMN};
 use crate::relational::{BYTE_ARRAY_PREFIX_SIZE, STRING_PREFIX_SIZE};
@@ -591,7 +592,7 @@ impl CreateIndex {
         self.is_attribute_index() || self.is_default_non_attr_index()
     }
 
-    fn is_same_index(&self, other: &CreateIndex) -> bool {
+    pub(crate) fn is_same_index(&self, other: &CreateIndex) -> bool {
         match (self, other) {
             (CreateIndex::Unknown { .. }, _) | (_, CreateIndex::Unknown { .. }) => false,
             (
@@ -673,75 +674,18 @@ impl CreateIndex {
         }
     }
 
-    /// Return `true` if any of the attribute columns (user-defined columns,
-    /// not infrastructure columns like `vid`, `block$`, etc.) referenced by
-    /// this index are NOT in `columns`.
-    pub fn references_column_not_in(&self, columns: &std::collections::HashSet<&str>) -> bool {
+    /// The user-defined columns this index covers.
+    pub fn attribute_columns(&self) -> Vec<&str> {
         match self {
-            CreateIndex::Unknown { .. } => false,
-            CreateIndex::Parsed { columns: exprs, .. } => exprs.iter().any(|expr| match expr {
-                Expr::Column(name) | Expr::Prefix(name, _) => !columns.contains(name.as_str()),
-                _ => false,
-            }),
-        }
-    }
-
-    pub fn fields_exist_in_dest(&self, dest_table: &Table) -> bool {
-        fn column_exists(dest_table: &Table, column_name: &str) -> bool {
-            dest_table
-                .columns
+            CreateIndex::Unknown { .. } => vec![],
+            CreateIndex::Parsed { columns, .. } => columns
                 .iter()
-                .any(|c| c.name.as_str() == column_name)
+                .filter_map(|expr| match expr {
+                    Expr::Column(name) | Expr::Prefix(name, _) => Some(name.as_str()),
+                    _ => None,
+                })
+                .collect(),
         }
-
-        match self {
-            CreateIndex::Unknown { defn: _ } => return true,
-            CreateIndex::Parsed {
-                columns: parsed_cols,
-                ..
-            } => {
-                for c in parsed_cols {
-                    match c {
-                        Expr::Column(column_name) => {
-                            if !column_exists(dest_table, column_name) {
-                                return false;
-                            }
-                        }
-                        Expr::Prefix(column_name, _) => {
-                            if !column_exists(dest_table, column_name) {
-                                return false;
-                            }
-                        }
-                        Expr::BlockRange | Expr::BlockRangeLower | Expr::BlockRangeUpper => {
-                            if dest_table.immutable {
-                                return false;
-                            }
-                        }
-                        Expr::Vid => (),
-                        Expr::Block => {
-                            if !dest_table.immutable {
-                                return false;
-                            }
-                        }
-                        Expr::Unknown(expression) => {
-                            if expression.contains("block_range") && dest_table.immutable {
-                                return false;
-                            }
-                            if !dest_table
-                                .columns
-                                .iter()
-                                .any(|c| expression.contains(c.name.as_str()))
-                                && !expression.contains("block_range")
-                                && !expression.contains("vid")
-                            {
-                                return false;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        true
     }
 
     /// Generate a SQL statement that creates this index. If `concurrent` is
@@ -898,6 +842,55 @@ impl Layout {
     }
 }
 
+impl Table {
+    /// The valid indexes on this table.
+    pub(crate) async fn valid_indexes(
+        &self,
+        conn: &mut AsyncPgConnection,
+    ) -> Result<Vec<CreateIndex>, StoreError> {
+        let defs =
+            catalog::indexes_for_table(conn, self.nsp.as_str(), self.name.as_str(), true).await?;
+        Ok(defs.into_iter().map(CreateIndex::parse).collect())
+    }
+
+    /// The postponed indexes this table still needs. Leaves out an index if
+    /// `existing` has one of the same shape, or if the copy source `src` has
+    /// its columns but no postponed index on them.
+    pub(crate) fn postponed_indexes_to_create(
+        &self,
+        schema: &InputSchema,
+        existing: &[CreateIndex],
+        src: Option<(&Table, &[CreateIndex])>,
+    ) -> Result<Vec<CreateIndex>, StoreError> {
+        let indexes = self.indexes(schema).map_err(|e| {
+            StoreError::ConstraintViolation(format!("failed to generate indexes: {}", e))
+        })?;
+        Ok(indexes
+            .into_iter()
+            .filter(|idx| idx.to_postpone())
+            .filter(|idx| {
+                if existing
+                    .iter()
+                    .any(|e| e.to_postpone() && e.is_same_index(idx))
+                {
+                    return false;
+                }
+                let Some((src_table, src_indexes)) = src else {
+                    return true;
+                };
+                let columns = idx.attribute_columns();
+                let src_has_columns = columns
+                    .iter()
+                    .all(|col| src_table.columns.iter().any(|c| c.name.as_str() == *col));
+                !src_has_columns
+                    || src_indexes
+                        .iter()
+                        .any(|s| s.to_postpone() && s.attribute_columns() == columns)
+            })
+            .collect())
+    }
+}
+
 #[derive(Debug)]
 pub struct IndexList {
     pub(crate) indexes: HashMap<String, Vec<CreateIndex>>,
@@ -913,7 +906,7 @@ impl IndexList {
         let schema_name = layout.site.namespace.clone();
         for table in layout.tables.values() {
             let indexes_from_table =
-                catalog::indexes_for_table(conn, schema_name.as_str(), table.name.as_str())
+                catalog::indexes_for_table(conn, schema_name.as_str(), table.name.as_str(), false)
                     .await?
                     .into_iter()
                     .map(CreateIndex::parse)
@@ -921,30 +914,6 @@ impl IndexList {
             indexes.insert(table.name.to_string(), indexes_from_table);
         }
         Ok(Self::new(indexes))
-    }
-
-    /// Return all indexes for `table` from this list. Only indexes that are
-    /// for columns that actually exist on `table` are returned. In
-    /// addition, indexes that are always created when a deployment is
-    /// created independent of the configuration are also not returned.
-    pub fn indexes_for_table<'a>(
-        &'a self,
-        table: &'a Table,
-    ) -> impl Iterator<Item = &'a CreateIndex> {
-        static EMPTY: Vec<CreateIndex> = vec![];
-        let indexes = self.indexes.get(table.name.as_str()).unwrap_or(&EMPTY);
-
-        indexes.iter().filter(move |ci| {
-            // First we check if the fields do exist in the destination subgraph.
-            // In case of grafting that is not given.
-            ci.fields_exist_in_dest(table)
-                // Then we check if the index is one of the default indexes not based on
-                // the attributes. Those will be created anyway and we should skip them.
-                && !ci.is_default_non_attr_index()
-                // Then ID based indexes in the immutable tables are also created initially
-                // and should be skipped.
-                && !(ci.is_id() && table.immutable)
-        })
     }
 }
 
@@ -1310,42 +1279,137 @@ mod tests {
         parse_many(sqls, exp);
     }
 
-    #[test]
-    fn fields_exist_in_dest_out_of_order() {
-        let gql = "type Thing @entity {
-            id: Bytes!
-            early: String!
-            mid: String!
-            late: String!
-        }";
-        let layout = test_layout(gql);
-        let table = layout
+    fn thing_table(layout: &Layout) -> &Table {
+        layout
             .table_for_entity(&layout.input_schema.entity_type("Thing").unwrap())
-            .unwrap();
+            .unwrap()
+    }
 
-        // Index references columns in reverse order vs the table definition.
-        // Table columns: id, early, mid, late
-        // Index columns: late, mid, early
-        // The consuming iterator finds 'late', advances past 'mid' and 'early',
-        // then can't find 'mid' because the iterator is already past it.
-        let index = CreateIndex::Parsed {
-            unique: false,
-            name: "test_reverse".to_string(),
-            nsp: "sgd0815".to_string(),
-            table: "thing".to_string(),
-            method: Method::BTree,
-            columns: vec![
-                Expr::Column("late".to_string()),
-                Expr::Column("mid".to_string()),
-                Expr::Column("early".to_string()),
-            ],
-            cond: None,
-            with: None,
-        };
-
-        assert!(
-            index.fields_exist_in_dest(table),
-            "index columns exist in table regardless of order"
+    #[test]
+    fn postponed_shapes_round_trip() {
+        let layout = test_layout(
+            "type Thing @entity(immutable: true) {
+                id: ID!
+                name: String!
+                data: Bytes!
+                age: Int!
+                owner: Owner!
+            }
+            type Owner @entity {
+                id: ID!
+            }",
         );
+        let generated: Vec<_> = thing_table(&layout)
+            .indexes(&layout.input_schema)
+            .unwrap()
+            .into_iter()
+            .filter(|idx| idx.to_postpone())
+            .collect();
+
+        // As Postgres prints them.
+        let printed = [
+            (
+                r#"CREATE INDEX attr_9_1_thing_name ON sgd0815.thing USING btree ("left"(name, 256))"#,
+                "name",
+            ),
+            (
+                r#"CREATE INDEX attr_9_2_thing_data ON sgd0815.thing USING btree ("substring"(data, 1, 64))"#,
+                "data",
+            ),
+            (
+                r#"CREATE INDEX attr_9_3_thing_age ON sgd0815.thing USING btree (age)"#,
+                "age",
+            ),
+            (
+                r#"CREATE INDEX attr_9_4_thing_owner ON sgd0815.thing USING btree (owner, "block$")"#,
+                "owner",
+            ),
+        ];
+        assert_eq!(printed.len(), generated.len(), "{generated:?}");
+        for (defn, column) in printed {
+            let idx = CreateIndex::parse(defn.to_string());
+            assert!(idx.to_postpone(), "{defn}");
+            assert_eq!(vec![column], idx.attribute_columns(), "{defn}");
+            assert!(generated.iter().any(|g| idx.is_same_index(g)), "{defn}");
+        }
+    }
+
+    const POSTPONED_GQL: &str = "type Thing @entity {
+        id: ID!
+        name: String!
+        email: String!
+        age: Int!
+        data: Bytes!
+    }";
+
+    fn sorted_columns(indexes: &[CreateIndex]) -> Vec<String> {
+        let mut columns: Vec<_> = indexes
+            .iter()
+            .map(|idx| idx.attribute_columns().join(","))
+            .collect();
+        columns.sort();
+        columns
+    }
+
+    #[test]
+    fn postponed_indexes_to_create_skips_same_shape() {
+        let layout = test_layout(POSTPONED_GQL);
+        let table = thing_table(&layout);
+        let schema = &layout.input_schema;
+
+        let all = table
+            .postponed_indexes_to_create(schema, &[], None)
+            .unwrap();
+        assert_eq!(vec!["age", "data", "email", "name"], sorted_columns(&all));
+
+        // Only `email` is covered: the `data` index has another shape, and
+        // manual indexes don't count.
+        let existing = [
+            r#"CREATE INDEX attr_9_9_thing_email ON sgd0815.thing USING btree ("left"(email, 256))"#,
+            r#"CREATE INDEX attr_9_9_thing_data ON sgd0815.thing USING btree (data)"#,
+            r#"CREATE INDEX manual_thing_age ON sgd0815.thing USING btree (age)"#,
+        ]
+        .map(|defn| CreateIndex::parse(defn.to_string()));
+        let missing = table
+            .postponed_indexes_to_create(schema, &existing, None)
+            .unwrap();
+        assert_eq!(vec!["age", "data", "name"], sorted_columns(&missing));
+    }
+
+    #[test]
+    fn postponed_indexes_to_create_from_source() {
+        // The source indexes `email` with a different shape and doesn't
+        // index `name`.
+        let src_layout = test_layout(
+            "type Thing @entity {
+                id: ID!
+                email: String!
+                name: String!
+            }",
+        );
+        let src_indexes = [CreateIndex::parse(
+            r#"CREATE INDEX attr_0_1_thing_email ON sgd0815.thing USING btree (email)"#.to_string(),
+        )];
+        let layout = test_layout(POSTPONED_GQL);
+        let table = thing_table(&layout);
+
+        let to_create = table
+            .postponed_indexes_to_create(
+                &layout.input_schema,
+                &[],
+                Some((thing_table(&src_layout), &src_indexes)),
+            )
+            .unwrap();
+        assert_eq!(vec!["age", "data", "email"], sorted_columns(&to_create));
+        let email = to_create
+            .iter()
+            .find(|idx| idx.attribute_columns() == ["email"])
+            .unwrap();
+        let expected = CreateIndex::parse(
+            r#"CREATE INDEX attr_0_2_thing_email ON sgd0815.thing USING btree ("left"(email, 256))"#
+                .to_string(),
+        );
+        assert_eq!(Some("attr_0_2_thing_email"), email.name());
+        assert!(expected.is_same_index(email));
     }
 }
