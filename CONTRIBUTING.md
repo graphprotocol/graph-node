@@ -50,47 +50,57 @@ detailed instructions about how to run the sharded integrations tests.
 
 ## Commit messages and pull requests
 
-We use the following format for commit messages:
-`{crate-name}: {Brief description of changes}`, for example: `store: Support 'Or' filters`.
+Pull requests are squash-merged: the pull request's title becomes the
+commit on master, and its description the commit body. release-please
+derives versions and the changelog from those commits, so the title must
+follow [Conventional Commits](https://www.conventionalcommits.org) with
+the crate as scope: `{type}({crate-name}): {Brief description of changes}`,
+for example: `feat(store): Support 'Or' filters`. The types are `feat`,
+`fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore` and
+`revert`; mark breaking changes with `!` (`feat(store)!: ...`). The
+Semantic PR check verifies the title.
 
-If multiple crates are being changed list them all like this: `core,
-graphql: Add event source to store` If all (or most) crates are affected
-by the commit, start the message with `all: `.
+If multiple crates are being changed list them all like this:
+`feat(core,graphql): Add event source to store`. If all (or most) crates
+are affected by the commit, use the scope `all`.
 
-The body of the message can be terse, with just enough information to
-explain what the commit does overall. In a lot of cases, more extensive
-explanations of _how_ the commit achieves its goal are better as comments
-in the code.
+Only `feat`, `fix`, `perf` and breaking changes appear in the changelog;
+while the version is below 1.0, `feat` and breaking changes bump the
+minor version, `fix` and `perf` the patch version.
 
-Commits in a pull request should be structured in such a way that each
-commit consists of a small logical step towards the overall goal of the
-pull request. Your pull request should make it as easy as possible for the
-reviewer to follow each change you are making. For example, it is a good
-idea to separate simple mechanical changes like renaming a method that
-touches many files from logic changes. Your pull request should not be
-structured into commits according to how you implemented your feature,
-often indicated by commit messages like 'Fix problem' or 'Cleanup'. Flex a
-bit, and make the world think that you implemented your feature perfectly,
-in small logical steps, in one sitting without ever having to touch up
-something you did earlier in the pull request. (In reality, that means
-you'll use `git rebase -i` a lot)
+The description can be terse, with just enough information to explain
+what the change does overall. In a lot of cases, more extensive
+explanations of _how_ it achieves its goal are better as comments in the
+code.
+
+Commits in a pull request should still be structured in such a way that
+each commit consists of a small logical step towards the overall goal of
+the pull request, so that the reviewer can follow each change you are
+making. For example, it is a good idea to separate simple mechanical
+changes like renaming a method that touches many files from logic changes.
 
 Please do not merge master into your branch as you develop your pull
 request; instead, rebase your branch on top of the latest master if your
 pull request branch is long-lived.
 
-We try to keep the history of the `master` branch linear, and avoid merge
-commits. Once your pull request is approved, merge it following these
-steps:
-```
-git checkout master
-git pull master
-git rebase master my/branch
-git push -f
-git checkout master
-git merge my/branch
-git push
-```
+Once your pull request is approved, merge it with the `Squash and merge`
+button, checking that the title is the commit message you want on master.
+Changes reach master only through pull requests.
 
-Allegedly, clicking on the `Rebase and merge` button in the Github UI has
-the same effect.
+## Releases
+
+release-please keeps a release pull request open, `chore(master): release
+X.Y.Z`, that bumps the version in `Cargo.toml` and `Cargo.lock` and adds
+the changes since the last release to `CHANGELOG.md`. To release:
+
+1. Add the release's notes to `NEWS.md` in a pull request of its own and
+   merge it. (Don't edit the release pull request: release-please
+   rewrites it on every push to master.)
+2. Merge the release pull request. release-please tags `vX.Y.Z` and
+   creates the GitHub release, which publishes the graph-node binaries
+   and Docker images (`release.yml`) and the gnd binaries and npm
+   packages (`gnd-binary-build.yml`).
+
+To release a version other than the one release-please proposes, put
+`Release-As: X.Y.Z` in the body of a commit on master (for example in the
+squash-merge description of a pull request).

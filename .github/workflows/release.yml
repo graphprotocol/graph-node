@@ -1,0 +1,60 @@
+name: Release Please
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # release-please acts as the organisation's release App, not as
+      # GITHUB_TOKEN: what GITHUB_TOKEN creates triggers no workflows, so the
+      # release would not run `gnd-binary-build.yml` (on: release: published)
+      # and the release PR would get no CI. The App is the organisation's
+      # release identity, used by the repositories it makes releases for (org
+      # variable RELEASE_APP_CLIENT_ID, org secret RELEASE_APP_PRIVATE_KEY, both
+      # granted to selected repositories); the token is limited to this
+      # repository and to what release-please needs.
+      - name: Mint app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Summarise
+        env:
+          RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
+          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          PRS_CREATED: ${{ steps.release.outputs.prs_created }}
+        run: |
+          if [ "$RELEASE_CREATED" = "true" ]; then
+            echo "Released $TAG_NAME" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$PRS_CREATED" = "true" ]; then
+            echo "Release PR created/updated" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Nothing to release" >> "$GITHUB_STEP_SUMMARY"
+          fi
