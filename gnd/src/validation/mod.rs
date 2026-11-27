@@ -362,14 +362,12 @@ fn validate_file_existence(
     let mut errors = Vec::new();
 
     // Check schema file
-    if let Some(schema_path) = &manifest.schema {
-        let full_path = manifest_dir.join(schema_path.as_str());
-        if !full_path.exists() {
-            errors.push(ManifestValidationError::FileNotFound {
-                path: schema_path.to_string(),
-                description: "Schema file".to_string(),
-            });
-        }
+    let full_path = manifest_dir.join(manifest.schema.as_str());
+    if !full_path.exists() {
+        errors.push(ManifestValidationError::FileNotFound {
+            path: manifest.schema.clone(),
+            description: "Schema file".to_string(),
+        });
     }
 
     // Check data source files
@@ -1159,7 +1157,7 @@ type Post @entity {
     fn create_test_manifest(data_sources: Vec<DataSource>, templates: Vec<Template>) -> Manifest {
         Manifest {
             spec_version: Version::new(0, 0, 4),
-            schema: Some("schema.graphql".to_string()),
+            schema: "schema.graphql".to_string(),
             features: vec![],
             graft: None,
             data_sources,
@@ -1238,7 +1236,7 @@ type Post @entity {
         )];
         let manifest = Manifest {
             spec_version: Version::new(1, 0, 0),
-            schema: Some("schema.graphql".to_string()),
+            schema: "schema.graphql".to_string(),
             features: vec![],
             graft: None,
             data_sources,

@@ -23,15 +23,12 @@ use super::schema::{TestFile, TestResult};
 use super::trigger::build_blocks_with_triggers;
 use crate::manifest::{Manifest, load_manifest};
 use anyhow::{Context, Result, anyhow, ensure};
-use graph::amp::FlightClient;
 use graph::blockchain::block_stream::BlockWithTriggers;
 use graph::blockchain::{BlockPtr, BlockchainMap, ChainIdentifier};
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::FileLinkResolver;
 use graph::components::metrics::MetricsRegistry;
-use graph::components::network_provider::{
-    AmpChainNames, ChainName, ProviderCheckStrategy, ProviderManager,
-};
+use graph::components::network_provider::{ChainName, ProviderCheckStrategy, ProviderManager};
 use graph::components::store::DeploymentLocator;
 use graph::components::subgraph::{Settings, SubgraphInstanceManager as _};
 use graph::data::graphql::load_manager::LoadManager;
@@ -734,7 +731,6 @@ async fn setup_context(
 
     let subgraph_instance_manager = Arc::new(graph_core::subgraph::SubgraphInstanceManager::<
         SubgraphStore,
-        FlightClient,
     >::new(
         &logger_factory,
         env_vars.cheap_clone(),
@@ -745,24 +741,13 @@ async fn setup_context(
         link_resolver.cheap_clone(),
         ipfs_service,
         arweave_service,
-        None,
         static_filters,
     ));
-
-    let mut subgraph_instance_managers =
-        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
-    subgraph_instance_managers.add(
-        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
-        subgraph_instance_manager.cheap_clone(),
-    );
 
     let subgraph_provider = Arc::new(graph_core::subgraph_provider::SubgraphProvider::new(
         &logger_factory,
         sg_count.cheap_clone(),
-        subgraph_store.clone(),
-        link_resolver.cheap_clone(),
-        tokio_util::sync::CancellationToken::new(),
-        subgraph_instance_managers,
+        subgraph_instance_manager.cheap_clone(),
     ));
 
     let load_manager = LoadManager::new(logger, Vec::new(), Vec::new(), mock_registry.clone());
@@ -782,12 +767,10 @@ async fn setup_context(
         subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
-        Option::<Arc<graph::amp::FlightClient>>::None,
         blockchain_map.clone(),
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
         Arc::new(Settings::default()),
-        Arc::new(AmpChainNames::default()),
     ));
 
     SubgraphRegistrar::create_subgraph(subgraph_registrar.as_ref(), subgraph_name.clone()).await?;

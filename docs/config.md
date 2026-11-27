@@ -123,9 +123,6 @@ The configuration for a chain `name` is specified in the section
 - `shard`: where chain data is stored
 - `protocol`: the protocol type being indexed, default `ethereum`
   (alternatively `near`, `cosmos`,`arweave`,`starknet`)
-- `amp`: the network name used by AMP for this chain; defaults to the chain name.
-  Set this when AMP uses a different name than graph-node (e.g., `amp = "ethereum-mainnet"`
-  on a chain named `mainnet`).
 - `cache_size`: number of blocks from the chain head for which to keep
   block data cached. Defaults to the section-level `cache_size`.
 - `provider`: a list of providers for that chain
@@ -209,7 +206,6 @@ ingestor = "block_ingestor_node"
 cache_size = 500
 [chains.mainnet]
 shard = "vip"
-amp = "ethereum-mainnet"
 # Per-chain RPC tuning (all optional — omitted fields use env var defaults)
 json_rpc_timeout = 300
 request_retries = 15

@@ -7,7 +7,6 @@ use crate::config::Config;
 use crate::manager::PanicSubscriptionManager;
 use crate::network_setup::Networks;
 use crate::store_builder::StoreBuilder;
-use graph::amp;
 use graph::anyhow::bail;
 use graph::cheap_clone::CheapClone;
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
@@ -23,7 +22,6 @@ use graph::prelude::{
 };
 use graph::slog::{Logger, debug, info};
 use graph_core::polling_monitor::{arweave_service, ipfs_service};
-use tokio_util::sync::CancellationToken;
 
 async fn locate(store: &dyn SubgraphStore, hash: &str) -> Result<DeploymentLocator, anyhow::Error> {
     let mut locators = store.locators(hash).await?;
@@ -40,7 +38,6 @@ pub async fn run(
     _network_name: String,
     ipfs_url: Vec<String>,
     arweave_url: String,
-    amp_flight_service_address: Option<String>,
     config: Config,
     metrics_ctx: MetricsContext,
     node_id: NodeId,
@@ -52,7 +49,6 @@ pub async fn run(
         subgraph, stop_block
     );
 
-    let cancel_token = CancellationToken::new();
     let env_vars = Arc::new(EnvVars::from_env().unwrap());
     let metrics_registry = metrics_ctx.registry.clone();
     let logger_factory = LoggerFactory::new(logger.clone(), None, metrics_ctx.registry.clone());
@@ -141,44 +137,6 @@ pub async fn run(
     let static_filters = ENV_VARS.experimental_static_filters;
     let sg_metrics = Arc::new(SubgraphCountMetric::new(metrics_registry.clone()));
 
-    let mut subgraph_instance_managers =
-        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
-
-    let amp_client = match amp_flight_service_address {
-        Some(amp_flight_service_address) => {
-            let addr = amp_flight_service_address
-                .parse()
-                .expect("Invalid Amp Flight service address");
-
-            let mut amp_client = amp::FlightClient::new(addr)
-                .await
-                .expect("Failed to connect to Amp Flight service");
-
-            if let Some(auth_token) = &env_vars.amp.flight_service_token {
-                amp_client.set_auth_token(auth_token);
-            }
-
-            let amp_client = Arc::new(amp_client);
-            let amp_instance_manager = graph_core::amp_subgraph::Manager::new(
-                &logger_factory,
-                metrics_registry.cheap_clone(),
-                env_vars.cheap_clone(),
-                &cancel_token,
-                network_store.subgraph_store(),
-                link_resolver.cheap_clone(),
-                amp_client.cheap_clone(),
-            );
-
-            subgraph_instance_managers.add(
-                graph_core::subgraph_provider::SubgraphProcessingKind::Amp,
-                Arc::new(amp_instance_manager),
-            );
-
-            Some(amp_client)
-        }
-        None => None,
-    };
-
     let subgraph_instance_manager = graph_core::subgraph::SubgraphInstanceManager::new(
         &logger_factory,
         env_vars.cheap_clone(),
@@ -189,39 +147,27 @@ pub async fn run(
         link_resolver.cheap_clone(),
         ipfs_service,
         arweave_service,
-        amp_client.cheap_clone(),
         static_filters,
-    );
-
-    subgraph_instance_managers.add(
-        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
-        Arc::new(subgraph_instance_manager),
     );
 
     let subgraph_provider = Arc::new(graph_core::subgraph_provider::SubgraphProvider::new(
         &logger_factory,
         sg_metrics.cheap_clone(),
-        subgraph_store.clone(),
-        link_resolver.cheap_clone(),
-        cancel_token.clone(),
-        subgraph_instance_managers,
+        Arc::new(subgraph_instance_manager),
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
 
-    let amp_chain_names = Arc::new(config.amp_chain_names());
     let subgraph_registrar = Arc::new(graph_core::subgraph::SubgraphRegistrar::new(
         &logger_factory,
         link_resolver.cheap_clone(),
         subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
-        amp_client,
         blockchain_map,
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
         Arc::new(Settings::default()),
-        amp_chain_names,
     ));
 
     let (name, hash) = if subgraph.contains(':') {

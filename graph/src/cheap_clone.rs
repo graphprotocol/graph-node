@@ -120,5 +120,3 @@ cheap_clone_is_copy!(
     std::time::Duration
 );
 cheap_clone_is_copy!(alloy::primitives::Address);
-
-cheap_clone_is_clone!(tokio_util::sync::CancellationToken);

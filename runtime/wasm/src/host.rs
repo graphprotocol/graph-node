@@ -269,7 +269,6 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
             DataSource::Onchain(_) => None,
             DataSource::Offchain(ds) => ds.done_at(),
             DataSource::Subgraph(_) => None,
-            DataSource::Amp(_) => None,
         }
     }
 
@@ -278,7 +277,6 @@ impl<C: Blockchain> RuntimeHostTrait<C> for RuntimeHost<C> {
             DataSource::Onchain(_) => {}
             DataSource::Offchain(ds) => ds.set_done_at(block),
             DataSource::Subgraph(_) => {}
-            DataSource::Amp(_) => {}
         }
     }
 

@@ -1,11 +1,9 @@
 use std::collections::HashSet;
 
 use async_trait::async_trait;
-use graph::amp;
 use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::{
     link_resolver::LinkResolverContext,
-    network_provider::AmpChainNames,
     store::{DeploymentId, DeploymentLocator, SubscriptionManager},
     subgraph::Settings,
 };
@@ -18,28 +16,25 @@ use graph::prelude::{CreateSubgraphResult, SubgraphRegistrar as SubgraphRegistra
 use graph::util::futures::{RETRY_DEFAULT_LIMIT, retry_strategy};
 use tokio_retry::Retry;
 
-pub struct SubgraphRegistrar<P, S, SM, AC> {
+pub struct SubgraphRegistrar<P, S, SM> {
     logger: Logger,
     logger_factory: LoggerFactory,
     resolver: Arc<dyn LinkResolver>,
     provider: Arc<P>,
     store: Arc<S>,
     subscription_manager: Arc<SM>,
-    amp_client: Option<Arc<AC>>,
     chains: Arc<BlockchainMap>,
     node_id: NodeId,
     version_switching_mode: SubgraphVersionSwitchingMode,
     assignment_event_stream_cancel_guard: CancelGuard, // cancels on drop
     settings: Arc<Settings>,
-    amp_chain_names: Arc<AmpChainNames>,
 }
 
-impl<P, S, SM, AC> SubgraphRegistrar<P, S, SM, AC>
+impl<P, S, SM> SubgraphRegistrar<P, S, SM>
 where
     P: graph::components::subgraph::SubgraphInstanceManager,
     S: SubgraphStore,
     SM: SubscriptionManager,
-    AC: amp::Client + Send + Sync + 'static,
 {
     pub fn new(
         logger_factory: &LoggerFactory,
@@ -47,12 +42,10 @@ where
         provider: Arc<P>,
         store: Arc<S>,
         subscription_manager: Arc<SM>,
-        amp_client: Option<Arc<AC>>,
         chains: Arc<BlockchainMap>,
         node_id: NodeId,
         version_switching_mode: SubgraphVersionSwitchingMode,
         settings: Arc<Settings>,
-        amp_chain_names: Arc<AmpChainNames>,
     ) -> Self {
         let logger = logger_factory.component_logger("SubgraphRegistrar", None);
         let logger_factory = logger_factory.with_parent(logger.clone());
@@ -66,13 +59,11 @@ where
             provider,
             store,
             subscription_manager,
-            amp_client,
             chains,
             node_id,
             version_switching_mode,
             assignment_event_stream_cancel_guard: CancelGuard::new(),
             settings,
-            amp_chain_names,
         }
     }
 
@@ -226,12 +217,11 @@ where
 }
 
 #[async_trait]
-impl<P, S, SM, AC> SubgraphRegistrarTrait for SubgraphRegistrar<P, S, SM, AC>
+impl<P, S, SM> SubgraphRegistrarTrait for SubgraphRegistrar<P, S, SM>
 where
     P: graph::components::subgraph::SubgraphInstanceManager,
     S: SubgraphStore,
     SM: SubscriptionManager,
-    AC: amp::Client + Send + Sync + 'static,
 {
     async fn create_subgraph(
         &self,
@@ -303,7 +293,7 @@ where
 
         let deployment_locator = match kind {
             BlockchainKind::Ethereum => {
-                create_subgraph_version::<graph_chain_ethereum::Chain, _, _>(
+                create_subgraph_version::<graph_chain_ethereum::Chain, _>(
                     &logger,
                     self.store.clone(),
                     self.chains.cheap_clone(),
@@ -316,14 +306,12 @@ where
                     debug_fork,
                     self.version_switching_mode,
                     &resolver,
-                    self.amp_client.cheap_clone(),
                     history_blocks,
-                    &self.amp_chain_names,
                 )
                 .await?
             }
             BlockchainKind::Near => {
-                create_subgraph_version::<graph_chain_near::Chain, _, _>(
+                create_subgraph_version::<graph_chain_near::Chain, _>(
                     &logger,
                     self.store.clone(),
                     self.chains.cheap_clone(),
@@ -336,9 +324,7 @@ where
                     debug_fork,
                     self.version_switching_mode,
                     &resolver,
-                    self.amp_client.cheap_clone(),
                     history_blocks,
-                    &self.amp_chain_names,
                 )
                 .await?
             }
@@ -454,7 +440,7 @@ async fn resolve_graft_block(
         })
 }
 
-async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Client>(
+async fn create_subgraph_version<C: Blockchain, S: SubgraphStore>(
     logger: &Logger,
     store: Arc<S>,
     chains: Arc<BlockchainMap>,
@@ -467,9 +453,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
     debug_fork: Option<DeploymentHash>,
     version_switching_mode: SubgraphVersionSwitchingMode,
     resolver: &Arc<dyn LinkResolver>,
-    amp_client: Option<Arc<AC>>,
     history_blocks_override: Option<i32>,
-    amp_chain_names: &AmpChainNames,
 ) -> Result<DeploymentLocator, SubgraphRegistrarError> {
     let raw_string = serde_yaml::to_string(&raw).unwrap();
 
@@ -477,7 +461,6 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
         deployment.clone(),
         raw,
         resolver,
-        amp_client,
         logger,
         ENV_VARS.max_spec_version.clone(),
     )
@@ -498,10 +481,9 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
         .map_err(SubgraphRegistrarError::ManifestValidationError)?;
 
     let network_name: Word = manifest.network_name().into();
-    let resolved_name = amp_chain_names.resolve(&network_name);
 
     let chain = chains
-        .get::<C>(resolved_name.clone())
+        .get::<C>(network_name.clone())
         .map_err(SubgraphRegistrarError::NetworkNotSupported)?
         .cheap_clone();
 
@@ -581,7 +563,7 @@ async fn create_subgraph_version<C: Blockchain, S: SubgraphStore, AC: amp::Clien
             &manifest.schema,
             deployment,
             node_id,
-            resolved_name.into(),
+            network_name.into(),
             version_switching_mode,
         )
         .await

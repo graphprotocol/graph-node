@@ -253,9 +253,3 @@ impl From<std::fmt::Error> for StoreError {
         StoreError::Unknown(anyhow!("{}", e))
     }
 }
-
-impl crate::amp::error::IsDeterministic for StoreError {
-    fn is_deterministic(&self) -> bool {
-        StoreError::is_deterministic(self)
-    }
-}

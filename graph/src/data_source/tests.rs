@@ -88,3 +88,57 @@ fn new_datasource() -> offchain::DataSource {
         CausalityRegion::ONCHAIN.next(),
     )
 }
+
+#[crate::test]
+async fn amp_manifest_is_refused() {
+    use crate::components::link_resolver::{FileLinkResolver, LinkResolver};
+    use crate::data::subgraph::{
+        DeploymentHash, LATEST_VERSION, SubgraphManifest, SubgraphManifestResolveError,
+    };
+
+    // An Amp manifest as stored for an existing deployment; Amp manifests
+    // have no schema because it was generated from the SQL tables.
+    const MANIFEST: &str = "
+specVersion: 1.5.0
+dataSources:
+  - kind: amp
+    name: Transfers
+    network: ethereum-mainnet
+    source:
+      dataset: edgeandnode/ethereum_mainnet
+      tables:
+        - logs
+    transformer:
+      apiVersion: 0.0.1
+      tables:
+        - name: Transfer
+          query: SELECT block_num, tx_hash FROM eth.logs
+";
+
+    let id = DeploymentHash::new("QmAmpManifest").unwrap();
+    let raw: serde_yaml::Mapping = serde_yaml::from_str(MANIFEST).unwrap();
+    let resolver: Arc<dyn LinkResolver> = Arc::new(FileLinkResolver::default());
+    let logger = crate::log::logger(false);
+
+    let Err(err) = SubgraphManifest::<MockBlockchain>::resolve_from_raw(
+        id,
+        raw,
+        &resolver,
+        &logger,
+        LATEST_VERSION.clone(),
+    )
+    .await
+    else {
+        panic!("the Amp manifest was accepted");
+    };
+
+    assert!(
+        matches!(err, SubgraphManifestResolveError::ParseError(_)),
+        "unexpected error: {err:#}"
+    );
+    assert!(
+        err.to_string()
+            .contains("Amp-powered subgraphs are no longer supported"),
+        "unexpected error: {err:#}"
+    );
+}

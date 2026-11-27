@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::Result;
 use git_testament::{git_testament, render_testament};
+use graph::blockchain::{Blockchain, BlockchainKind, BlockchainMap};
 use graph::components::link_resolver::{ArweaveClient, FileSizeLimit};
 use graph::components::subgraph::Settings;
 use graph::data::graphql::load_manager::LoadManager;
@@ -15,11 +16,6 @@ use graph::futures03::future::TryFutureExt;
 use graph::prelude::*;
 use graph::prometheus::Registry;
 use graph::url::Url;
-use graph::{
-    amp,
-    blockchain::{Blockchain, BlockchainKind, BlockchainMap},
-    components::network_provider::AmpChainNames,
-};
 use graph_core::polling_monitor::{ArweaveService, IpfsService, arweave_service};
 use graph_graphql::prelude::GraphQlRunner;
 use graph_server_http::GraphQLServer as GraphQLQueryServer;
@@ -33,7 +29,6 @@ use graph_store_postgres::{
 use graphman_server::GraphmanServer;
 use graphman_server::GraphmanServerConfig;
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
 use crate::config::Config;
 use crate::helpers::watch_subgraph_updates;
@@ -263,7 +258,7 @@ fn deploy_subgraph_from_flag(
     );
 }
 
-fn build_subgraph_registrar<AC>(
+fn build_subgraph_registrar(
     metrics_registry: Arc<MetricsRegistry>,
     network_store: &Arc<Store>,
     logger_factory: &LoggerFactory,
@@ -275,42 +270,15 @@ fn build_subgraph_registrar<AC>(
     subscription_manager: Arc<SubscriptionManager>,
     arweave_service: ArweaveService,
     ipfs_service: IpfsService,
-    amp_client: Option<Arc<AC>>,
-    cancel_token: CancellationToken,
-    amp_chain_names: Arc<AmpChainNames>,
 ) -> Arc<
     graph_core::subgraph::SubgraphRegistrar<
         graph_core::subgraph_provider::SubgraphProvider,
         SubgraphStore,
         SubscriptionManager,
-        AC,
     >,
->
-where
-    AC: amp::Client + Send + Sync + 'static,
-{
+> {
     let static_filters = ENV_VARS.experimental_static_filters;
     let sg_count = Arc::new(SubgraphCountMetric::new(metrics_registry.cheap_clone()));
-
-    let mut subgraph_instance_managers =
-        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
-
-    if let Some(amp_client) = amp_client.cheap_clone() {
-        let amp_instance_manager = graph_core::amp_subgraph::Manager::new(
-            logger_factory,
-            metrics_registry.cheap_clone(),
-            env_vars.cheap_clone(),
-            &cancel_token,
-            network_store.subgraph_store(),
-            link_resolver.cheap_clone(),
-            amp_client,
-        );
-
-        subgraph_instance_managers.add(
-            graph_core::subgraph_provider::SubgraphProcessingKind::Amp,
-            Arc::new(amp_instance_manager),
-        );
-    }
 
     let subgraph_instance_manager = graph_core::subgraph::SubgraphInstanceManager::new(
         logger_factory,
@@ -322,22 +290,13 @@ where
         link_resolver.clone(),
         ipfs_service,
         arweave_service,
-        amp_client.cheap_clone(),
         static_filters,
-    );
-
-    subgraph_instance_managers.add(
-        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
-        Arc::new(subgraph_instance_manager),
     );
 
     let subgraph_provider = graph_core::subgraph_provider::SubgraphProvider::new(
         logger_factory,
         sg_count.cheap_clone(),
-        network_store.subgraph_store(),
-        link_resolver.cheap_clone(),
-        tokio_util::sync::CancellationToken::new(),
-        subgraph_instance_managers,
+        Arc::new(subgraph_instance_manager),
     );
 
     // Check version switching mode environment variable
@@ -351,12 +310,10 @@ where
         Arc::new(subgraph_provider),
         network_store.subgraph_store(),
         subscription_manager,
-        amp_client,
         blockchain_map,
         node_id.clone(),
         version_switching_mode,
         Arc::new(subgraph_settings),
-        amp_chain_names,
     ))
 }
 
@@ -406,7 +363,6 @@ pub async fn run(
     dev_updates: Option<mpsc::Receiver<(DeploymentHash, SubgraphName)>>,
     prometheus_registry: Arc<Registry>,
     metrics_registry: Arc<MetricsRegistry>,
-    cancel_token: CancellationToken,
 ) {
     // Log version information
     info!(
@@ -539,37 +495,6 @@ pub async fn run(
         &logger_factory,
     );
 
-    let amp_client = match opt.amp_flight_service_address.as_deref() {
-        Some(amp_flight_service_address) => {
-            let addr: graph::http::Uri = amp_flight_service_address
-                .parse()
-                .expect("Invalid Amp Flight service address");
-
-            debug!(logger, "Connecting to Amp Flight service";
-                "host" => ?addr.host(),
-                "port" => ?addr.port()
-            );
-
-            let mut amp_client = amp::FlightClient::new(addr.clone())
-                .await
-                .expect("Failed to connect to Amp Flight service");
-
-            if let Some(auth_token) = &env_vars.amp.flight_service_token {
-                amp_client.set_auth_token(auth_token);
-            }
-
-            info!(logger, "Amp-powered subgraphs enabled";
-                "amp_flight_service_host" => ?addr.host()
-            );
-
-            Some(Arc::new(amp_client))
-        }
-        None => {
-            warn!(logger, "Amp-powered subgraphs disabled");
-            None
-        }
-    };
-
     start_graphman_server(opt.graphman_port, graphman_server_config).await;
 
     let launch_services = |logger: Logger, env_vars: Arc<EnvVars>| async move {
@@ -615,7 +540,6 @@ pub async fn run(
             blockchain_map.clone(),
             network_store.clone(),
             link_resolver.clone(),
-            amp_client.cheap_clone(),
         );
 
         if config.is_block_ingestor() {
@@ -629,7 +553,6 @@ pub async fn run(
             .await;
         }
 
-        let amp_chain_names = Arc::new(config.amp_chain_names());
         let subgraph_registrar = build_subgraph_registrar(
             metrics_registry.clone(),
             &network_store,
@@ -642,9 +565,6 @@ pub async fn run(
             subscription_manager,
             arweave_service,
             ipfs_service,
-            amp_client,
-            cancel_token,
-            amp_chain_names,
         );
 
         graph::spawn(

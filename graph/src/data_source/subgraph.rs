@@ -28,7 +28,6 @@ use super::{
         AbiJson, CallDecls, FindMappingABI, MappingABI, UnresolvedCallDecls, UnresolvedMappingABI,
     },
 };
-use crate::amp;
 
 pub const SUBGRAPH_DS_KIND: &str = "subgraph";
 
@@ -293,11 +292,10 @@ impl UnresolvedDataSource {
         Ok(())
     }
 
-    async fn resolve_source_manifest<C: Blockchain, AC: amp::Client>(
+    async fn resolve_source_manifest<C: Blockchain>(
         &self,
         deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
-        amp_client: Option<Arc<AC>>,
         logger: &Logger,
     ) -> Result<Arc<SubgraphManifest<C>>, Error> {
         let resolver: Arc<dyn LinkResolver> =
@@ -331,13 +329,7 @@ impl UnresolvedDataSource {
         let resolver: Arc<dyn LinkResolver> =
             Arc::from(resolver.for_manifest(&self.source.address.to_string())?);
         source_manifest
-            .resolve(
-                &deployment_hash,
-                &resolver,
-                amp_client,
-                logger,
-                LATEST_VERSION.clone(),
-            )
+            .resolve(&deployment_hash, &resolver, logger, LATEST_VERSION.clone())
             .await
             .context(format!(
                 "Failed to resolve source subgraph [{}] manifest",
@@ -347,10 +339,9 @@ impl UnresolvedDataSource {
     }
 
     /// Recursively verifies that all grafts in the chain meet the minimum spec version requirement for a subgraph source
-    async fn verify_graft_chain_sourcable<C: Blockchain, AC: amp::Client>(
+    async fn verify_graft_chain_sourcable<C: Blockchain>(
         manifest: Arc<SubgraphManifest<C>>,
         resolver: &Arc<dyn LinkResolver>,
-        amp_client: Option<Arc<AC>>,
         logger: &Logger,
         graft_chain: &mut Vec<String>,
     ) -> Result<(), Error> {
@@ -383,20 +374,13 @@ impl UnresolvedDataSource {
             let graft_manifest =
                 UnresolvedSubgraphManifest::<C>::parse(graft.base.clone(), graft_raw)
                     .context("Failed to parse graft base manifest")?
-                    .resolve(
-                        &manifest.id,
-                        resolver,
-                        amp_client.cheap_clone(),
-                        logger,
-                        LATEST_VERSION.clone(),
-                    )
+                    .resolve(&manifest.id, resolver, logger, LATEST_VERSION.clone())
                     .await
                     .context("Failed to resolve graft base manifest")?;
 
             Box::pin(Self::verify_graft_chain_sourcable(
                 Arc::new(graft_manifest),
                 resolver,
-                amp_client,
                 logger,
                 graft_chain,
             ))
@@ -406,12 +390,10 @@ impl UnresolvedDataSource {
         Ok(())
     }
 
-    #[allow(dead_code)]
-    pub(super) async fn resolve<C: Blockchain, AC: amp::Client>(
+    pub(super) async fn resolve<C: Blockchain>(
         self,
         deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
-        amp_client: Option<Arc<AC>>,
         logger: &Logger,
         manifest_idx: u32,
         spec_version: &semver::Version,
@@ -424,12 +406,7 @@ impl UnresolvedDataSource {
 
         let kind = self.kind.clone();
         let source_manifest = self
-            .resolve_source_manifest::<C, AC>(
-                deployment_hash,
-                resolver,
-                amp_client.cheap_clone(),
-                logger,
-            )
+            .resolve_source_manifest::<C>(deployment_hash, resolver, logger)
             .await?;
         let source_spec_version = &source_manifest.spec_version;
         if source_spec_version < &SPEC_VERSION_1_3_0 {
@@ -446,7 +423,6 @@ impl UnresolvedDataSource {
         Self::verify_graft_chain_sourcable(
             source_manifest.clone(),
             resolver,
-            amp_client,
             logger,
             &mut graft_chain,
         )

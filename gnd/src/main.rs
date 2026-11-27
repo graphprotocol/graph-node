@@ -8,7 +8,6 @@ use clap_complete::{Shell, generate};
 use git_testament::{git_testament, render_testament};
 use graph::log::logger;
 use lazy_static::lazy_static;
-use tokio_util::sync::CancellationToken;
 
 use gnd::commands::{
     AddOpt, AuthOpt, BuildOpt, CleanOpt, CodegenOpt, CreateOpt, DeployOpt, DevOpt, InitOpt,
@@ -123,42 +122,6 @@ pub enum CompletionShell {
     Zsh,
 }
 
-fn shutdown_token() -> CancellationToken {
-    use tokio::signal;
-
-    let cancel_token = CancellationToken::new();
-    let cancel_token_clone = cancel_token.clone();
-
-    async fn shutdown_signal_handler() {
-        let ctrl_c = async {
-            signal::ctrl_c().await.unwrap();
-        };
-
-        #[cfg(unix)]
-        let terminate = async {
-            signal::unix::signal(signal::unix::SignalKind::terminate())
-                .unwrap()
-                .recv()
-                .await;
-        };
-
-        #[cfg(not(unix))]
-        let terminate = std::future::pending::<()>();
-
-        tokio::select! {
-            _ = ctrl_c => {},
-            _ = terminate => {},
-        };
-    }
-
-    tokio::spawn(async move {
-        shutdown_signal_handler().await;
-        cancel_token_clone.cancel();
-    });
-
-    cancel_token
-}
-
 fn generate_completions(completions_opt: CompletionsOpt) -> Result<()> {
     let shell = match completions_opt.shell {
         CompletionShell::Bash => Shell::Bash,
@@ -233,11 +196,10 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
     let logger = logger(true);
-    let cancel_token = shutdown_token();
 
     let res = match cli.command {
         Commands::Dev(dev_opt) => {
-            run_dev(dev_opt, logger, cancel_token).await?;
+            run_dev(dev_opt, logger).await?;
             Ok(())
         }
         Commands::Codegen(codegen_opt) => run_codegen(codegen_opt).await,

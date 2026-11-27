@@ -16,7 +16,7 @@ pub use features::{SubgraphFeature, SubgraphFeatureValidationError};
 
 use crate::{cheap_clone::CheapClone, components::store::BLOCK_NUMBER_MAX, object};
 use anyhow::{Context, Error, anyhow};
-use futures03::future::try_join_all;
+use futures03::{TryStreamExt as _, future::try_join, stream::FuturesOrdered};
 use itertools::Itertools;
 use semver::Version;
 use serde::{
@@ -35,7 +35,7 @@ use thiserror::Error;
 use wasmparser;
 
 use crate::{
-    amp, bail,
+    bail,
     blockchain::{BlockPtr, Blockchain},
     components::{
         link_resolver::{LinkResolver, LinkResolverContext},
@@ -371,8 +371,6 @@ pub enum SubgraphManifestValidationError {
     FeatureValidationError(#[from] SubgraphFeatureValidationError),
     #[error("data source {0} is invalid: {1}")]
     DataSourceValidation(String, Error),
-    #[error("failed to validate Amp subgraph: {0:#}")]
-    Amp(#[source] Error),
 }
 
 #[derive(Error, Debug)]
@@ -759,7 +757,7 @@ impl<'de> de::Deserialize<'de> for Prune {
 /// SubgraphManifest with IPFS links unresolved
 pub type UnresolvedSubgraphManifest<C> = BaseSubgraphManifest<
     C,
-    Option<UnresolvedSchema>,
+    UnresolvedSchema,
     UnresolvedDataSource<C>,
     UnresolvedDataSourceTemplate<C>,
 >;
@@ -841,24 +839,15 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
     /// Right now the only supported links are of the form:
     /// `/ipfs/QmUmg7BZC1YP1ca66rRtWKxpXp77WgVHrnv263JtDuvs2k`
-    pub async fn resolve<AC: amp::Client>(
+    pub async fn resolve(
         id: DeploymentHash,
         raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
-        amp_client: Option<Arc<AC>>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         Ok(Self(
-            SubgraphManifest::resolve_from_raw(
-                id,
-                raw,
-                resolver,
-                amp_client,
-                logger,
-                max_spec_version,
-            )
-            .await?,
+            SubgraphManifest::resolve_from_raw(id, raw, resolver, logger, max_spec_version).await?,
         ))
     }
 
@@ -916,8 +905,6 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
             &self.0.spec_version,
         ));
 
-        errors.append(&mut Self::validate_amp_subgraph(&self.0));
-
         match errors.is_empty() {
             true => Ok(self.0),
             false => Err(errors),
@@ -927,79 +914,20 @@ impl<C: Blockchain> UnvalidatedSubgraphManifest<C> {
     pub fn spec_version(&self) -> &Version {
         &self.0.spec_version
     }
-
-    fn validate_amp_subgraph(
-        manifest: &SubgraphManifest<C>,
-    ) -> Vec<SubgraphManifestValidationError> {
-        use api_version::SPEC_VERSION_1_5_0;
-
-        let BaseSubgraphManifest {
-            id: _,
-            spec_version,
-            features,
-            description: _,
-            repository: _,
-            schema: _,
-            data_sources,
-            graft,
-            templates,
-            chain: _,
-            indexer_hints: _,
-        } = manifest;
-
-        let amp_data_sources = data_sources
-            .iter()
-            .filter_map(|data_source| match data_source {
-                DataSource::Amp(amp_data_source) => Some(amp_data_source),
-                _ => None,
-            })
-            .collect_vec();
-
-        if amp_data_sources.is_empty() {
-            // Not an Amp subgraph
-            return Vec::new();
-        }
-
-        let mut errors = Vec::new();
-        let err = |msg: &str| SubgraphManifestValidationError::Amp(anyhow!(msg.to_owned()));
-
-        if data_sources.len() != amp_data_sources.len() {
-            errors.push(err("multiple data source kinds are not supported"));
-        }
-
-        if *spec_version < SPEC_VERSION_1_5_0 {
-            errors.push(err("spec version is not supported"));
-        }
-
-        if !features.is_empty() {
-            errors.push(err("manifest features are not supported"));
-        }
-
-        if graft.is_some() {
-            errors.push(err("grafting is not supported"));
-        }
-
-        if !templates.is_empty() {
-            errors.push(err("data source templates are not supported"));
-        }
-
-        errors
-    }
 }
 
 impl<C: Blockchain> SubgraphManifest<C> {
     /// Entry point for resolving a subgraph definition.
-    pub async fn resolve_from_raw<AC: amp::Client>(
+    pub async fn resolve_from_raw(
         id: DeploymentHash,
         raw: serde_yaml::Mapping,
         resolver: &Arc<dyn LinkResolver>,
-        amp_client: Option<Arc<AC>>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<Self, SubgraphManifestResolveError> {
         let unresolved = UnresolvedSubgraphManifest::parse(id.cheap_clone(), raw)?;
         let resolved = unresolved
-            .resolve(&id, resolver, amp_client, logger, max_spec_version)
+            .resolve(&id, resolver, logger, max_spec_version)
             .await?;
         Ok(resolved)
     }
@@ -1132,11 +1060,10 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
         serde_yaml::from_value(raw.into()).map_err(Into::into)
     }
 
-    pub async fn resolve<AC: amp::Client>(
+    pub async fn resolve(
         self,
         deployment_hash: &DeploymentHash,
         resolver: &Arc<dyn LinkResolver>,
-        amp_client: Option<Arc<AC>>,
         logger: &Logger,
         max_spec_version: semver::Version,
     ) -> Result<SubgraphManifest<C>, SubgraphManifestResolveError> {
@@ -1164,79 +1091,48 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             ).into());
         }
 
-        if data_sources.len() + templates.len() > u32::MAX as usize {
+        let ds_count = data_sources.len();
+        if ds_count + templates.len() > u32::MAX as usize {
             return Err(
                 anyhow!("subgraph has too many declared data sources and templates").into(),
             );
         }
 
-        let schema = match unresolved_schema {
-            Some(unresolved_schema) => Some(
-                unresolved_schema
-                    .resolve(
-                        deployment_hash,
-                        &spec_version,
-                        id.cheap_clone(),
-                        resolver,
-                        logger,
-                    )
-                    .await?,
-            ),
-            None => {
-                // It is attempted to be auto-generated after data sources are resolved.
-                None
-            }
-        };
-
-        let data_sources = try_join_all(data_sources.into_iter().enumerate().map(|(idx, ds)| {
-            ds.resolve(
+        let schema = unresolved_schema
+            .resolve(
                 deployment_hash,
-                resolver,
-                amp_client.cheap_clone(),
-                logger,
-                idx as u32,
                 &spec_version,
-                schema.as_ref(),
-            )
-        }))
-        .await?;
-
-        let amp_data_sources = data_sources
-            .iter()
-            .filter_map(|data_source| match data_source {
-                DataSource::Amp(amp_data_source) => Some(amp_data_source),
-                _ => None,
-            })
-            .collect_vec();
-
-        let schema = match schema {
-            Some(schema) => schema,
-            None if amp_data_sources.len() == data_sources.len() => {
-                let table_schemas = amp_data_sources.iter().flat_map(|data_source| {
-                    data_source
-                        .transformer
-                        .tables
-                        .iter()
-                        .map(|table| (table.name.clone(), table.schema.clone()))
-                });
-
-                amp::schema::generate_subgraph_schema(&id, table_schemas)?
-            }
-            None => {
-                return Err(anyhow!("subgraph schema is required").into());
-            }
-        };
-
-        let templates = try_join_all(templates.into_iter().enumerate().map(|(idx, template)| {
-            template.resolve(
-                &id,
+                id.cheap_clone(),
                 resolver,
-                &schema,
                 logger,
-                data_sources.len() as u32 + idx as u32,
-                &spec_version,
             )
-        }))
+            .await?;
+
+        let (data_sources, templates) = try_join(
+            data_sources
+                .into_iter()
+                .enumerate()
+                .map(|(idx, ds)| {
+                    ds.resolve(deployment_hash, resolver, logger, idx as u32, &spec_version)
+                })
+                .collect::<FuturesOrdered<_>>()
+                .try_collect::<Vec<_>>(),
+            templates
+                .into_iter()
+                .enumerate()
+                .map(|(idx, template)| {
+                    template.resolve(
+                        deployment_hash,
+                        resolver,
+                        &schema,
+                        logger,
+                        ds_count as u32 + idx as u32,
+                        &spec_version,
+                    )
+                })
+                .collect::<FuturesOrdered<_>>()
+                .try_collect::<Vec<_>>(),
+        )
         .await?;
 
         for ds in &data_sources {
@@ -1303,7 +1199,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             );
         }
 
-        let manifest = SubgraphManifest {
+        Ok(SubgraphManifest {
             id,
             spec_version,
             features,
@@ -1315,16 +1211,7 @@ impl<C: Blockchain> UnresolvedSubgraphManifest<C> {
             templates,
             chain,
             indexer_hints,
-        };
-
-        if let Some(e) = UnvalidatedSubgraphManifest::<C>::validate_amp_subgraph(&manifest)
-            .into_iter()
-            .next()
-        {
-            return Err(anyhow::Error::from(e).into());
-        }
-
-        Ok(manifest)
+        })
     }
 }
 

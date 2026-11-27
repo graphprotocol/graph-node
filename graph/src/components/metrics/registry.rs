@@ -3,8 +3,7 @@ use std::sync::Arc;
 
 use crate::parking_lot::RwLock;
 
-use prometheus::{Histogram, IntCounterVec, labels};
-use prometheus::{IntCounter, IntGauge};
+use prometheus::{Histogram, IntCounterVec, IntGauge, labels};
 use slog::debug;
 
 use crate::components::metrics::{counter_with_labels, gauge_with_labels};
@@ -338,23 +337,6 @@ impl MetricsRegistry {
         let counter = Box::new(Counter::with_opts(opts)?);
         self.register(name, counter.clone());
         Ok(counter)
-    }
-
-    pub fn new_int_counter(
-        &self,
-        name: impl AsRef<str>,
-        help: impl AsRef<str>,
-        const_labels: impl IntoIterator<Item = (impl ToString, impl ToString)>,
-    ) -> Result<IntCounter, PrometheusError> {
-        let opts = Opts::new(name.as_ref(), help.as_ref()).const_labels(
-            const_labels
-                .into_iter()
-                .map(|(key, value)| (key.to_string(), value.to_string()))
-                .collect(),
-        );
-        let int_counter = IntCounter::with_opts(opts)?;
-        self.register(name.as_ref(), Box::new(int_counter.clone()));
-        Ok(int_counter)
     }
 
     pub fn new_counter_with_labels(

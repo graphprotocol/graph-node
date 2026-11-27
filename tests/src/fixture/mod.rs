@@ -9,7 +9,6 @@ use std::time::{Duration, Instant};
 use anyhow::Error;
 use async_stream::stream;
 use async_trait::async_trait;
-use graph::amp;
 use graph::blockchain::block_stream::{
     BlockRefetcher, BlockStream, BlockStreamBuilder, BlockStreamError, BlockStreamEvent,
     BlockWithTriggers, FirehoseCursor,
@@ -147,18 +146,14 @@ pub struct TestContext {
     pub store: Arc<SubgraphStore>,
     pub deployment: DeploymentLocator,
     pub subgraph_name: SubgraphName,
-    pub instance_manager: Arc<
-        graph_core::subgraph::SubgraphInstanceManager<
-            graph_store_postgres::SubgraphStore,
-            amp::FlightClient,
-        >,
-    >,
+    pub instance_manager:
+        Arc<graph_core::subgraph::SubgraphInstanceManager<graph_store_postgres::SubgraphStore>>,
     pub link_resolver: Arc<dyn graph::components::link_resolver::LinkResolver>,
     pub arweave_resolver: Arc<dyn ArweaveResolver>,
     pub env_vars: Arc<EnvVars>,
     pub ipfs: Arc<dyn IpfsClient>,
     graphql_runner: Arc<GraphQlRunner>,
-    indexing_status_service: Arc<IndexNodeService<graph_store_postgres::Store, amp::FlightClient>>,
+    indexing_status_service: Arc<IndexNodeService<graph_store_postgres::Store>>,
 }
 
 #[derive(Deserialize)]
@@ -587,25 +582,13 @@ pub async fn setup_inner<C: Blockchain>(
         link_resolver.cheap_clone(),
         ipfs_service,
         arweave_service,
-        None,
         static_filters,
     ));
-
-    let mut subgraph_instance_managers =
-        graph_core::subgraph_provider::SubgraphInstanceManagers::new();
-
-    subgraph_instance_managers.add(
-        graph_core::subgraph_provider::SubgraphProcessingKind::Trigger,
-        subgraph_instance_manager.cheap_clone(),
-    );
 
     let subgraph_provider = Arc::new(graph_core::subgraph_provider::SubgraphProvider::new(
         &logger_factory,
         sg_count.cheap_clone(),
-        subgraph_store.clone(),
-        link_resolver.cheap_clone(),
-        tokio_util::sync::CancellationToken::new(),
-        subgraph_instance_managers,
+        subgraph_instance_manager.cheap_clone(),
     ));
 
     // Graphql runner
@@ -623,7 +606,6 @@ pub async fn setup_inner<C: Blockchain>(
         blockchain_map.cheap_clone(),
         stores.network_store.cheap_clone(),
         link_resolver.cheap_clone(),
-        None,
     ));
 
     let panicking_subscription_manager = Arc::new(PanicSubscriptionManager {});
@@ -634,12 +616,10 @@ pub async fn setup_inner<C: Blockchain>(
         subgraph_provider.cheap_clone(),
         subgraph_store.clone(),
         panicking_subscription_manager,
-        Option::<Arc<amp::FlightClient>>::None,
         blockchain_map.clone(),
         node_id.clone(),
         SubgraphVersionSwitchingMode::Instant,
         Arc::new(Settings::default()),
-        Arc::new(graph::components::network_provider::AmpChainNames::default()),
     ));
 
     SubgraphRegistrar::create_subgraph(
