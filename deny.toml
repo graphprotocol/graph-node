@@ -1,0 +1,77 @@
+[graph]
+all-features = false
+no-default-features = false
+
+[advisories]
+version = 2
+yanked = "warn"
+ignore = []
+
+[licenses]
+version = 2
+private = { ignore = true }
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "CDLA-Permissive-2.0",
+    "CC0-1.0",
+    "MPL-2.0",
+    "Zlib",
+    "0BSD",
+    "BSL-1.0",
+    "Unlicense",
+    "PostgreSQL",
+]
+confidence-threshold = 0.8
+
+# The workspace crates do not inherit the workspace license (only graph_derive
+# sets `license.workspace`) and are not `publish = false`, so the private
+# exemption above does not reach them. They carry the workspace license.
+clarify = [
+    { crate = "gnd", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-chain-common", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-chain-ethereum", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-chain-near", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-core", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-graphql", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-node", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-runtime-derive", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-runtime-test", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-runtime-wasm", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-server-http", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-server-index-node", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-server-json-rpc", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-server-metrics", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-store-postgres", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graph-tests", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graphman", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graphman-server", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "graphman-store", expression = "MIT OR Apache-2.0", license-files = [] },
+    { crate = "test-store", expression = "MIT OR Apache-2.0", license-files = [] },
+]
+
+[bans]
+multiple-versions = "warn"
+# Path dependencies between workspace crates count as wildcards because the
+# crates are not `publish = false`; the upstream manifests are left as they are.
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = [
+    "https://github.com/graphprotocol/pgtemp",
+    "https://github.com/graphprotocol/stable-hash",
+    "https://github.com/tower-rs/tower",
+]
