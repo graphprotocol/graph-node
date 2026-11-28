@@ -235,3 +235,37 @@ fn test_trigger_dedup() {
 
     assert_eq!(block_with_triggers.trigger_data, expected);
 }
+
+#[test]
+fn test_trigger_ordering_is_transitive() {
+    // Regression test: `EthereumTrigger::cmp` compared `Call` triggers (and `Call`/`Log` pairs)
+    // by `transaction_index`, but compared `Log`/`Log` pairs by `log_index` alone, ignoring
+    // `transaction_index`. Those two comparisons only agree when `log_index` happens to increase
+    // in lockstep with `transaction_index`, which does not hold for every trigger source (for
+    // example log/call triggers that were fetched independently and merged). When it doesn't
+    // hold, the combined ordering isn't transitive, which crashes Rust's sort with "user-provided
+    // comparison function does not correctly implement a total order".
+    //
+    // Here, `log_a` is in an earlier transaction than `log_c` but has a higher `log_index`:
+    let log_a = EthereumTrigger::Log(LogRef::FullLog(create_log(5, 50), None));
+    let call_b = EthereumTrigger::Call(Arc::new(EthereumCall {
+        transaction_index: 5,
+        ..Default::default()
+    }));
+    let log_c = EthereumTrigger::Log(LogRef::FullLog(create_log(6, 10), None));
+
+    // `log_a` and `call_b` share a transaction, so `log_a < call_b` (events before calls in the
+    // same transaction). `call_b` is in an earlier transaction than `log_c`, so `call_b < log_c`.
+    // Transitivity requires `log_a < log_c`.
+    assert_eq!(log_a.cmp(&call_b), std::cmp::Ordering::Less);
+    assert_eq!(call_b.cmp(&log_c), std::cmp::Ordering::Less);
+    assert_eq!(
+        log_a.cmp(&log_c),
+        std::cmp::Ordering::Less,
+        "transitivity violated: log_a < call_b < log_c but log_a is not < log_c"
+    );
+
+    // The actual regression: sorting a `Vec` containing this combination used to panic.
+    let mut triggers = vec![log_c, call_b, log_a];
+    triggers.sort();
+}
