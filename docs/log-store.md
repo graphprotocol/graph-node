@@ -12,11 +12,9 @@ This guide explains how to configure subgraph indexing logs storage in graph-nod
   - [Loki](#loki)
   - [Disabled](#disabled)
 - [Configuration](#configuration)
-  - [Environment Variables](#environment-variables)
-  - [CLI Arguments](#cli-arguments)
-  - [Configuration Precedence](#configuration-precedence)
+  - [The `[log_store]` section](#the-log_store-section)
+  - [Migrating from earlier configuration](#migrating-from-earlier-configuration)
 - [Querying Logs](#querying-logs)
-- [Migrating from Deprecated Configuration](#migrating-from-deprecated-configuration)
 - [Choosing the Right Backend](#choosing-the-right-backend)
 - [Best Practices](#best-practices)
 - [Troubleshooting](#troubleshooting)
@@ -130,22 +128,13 @@ File-based logs stream through files line-by-line with bounded memory usage.
 
 #### Configuration
 
-**Minimum configuration (CLI):**
-```bash
-graph-node \
-  --postgres-url postgresql://graph:pass@localhost/graph-node \
-  --ethereum-rpc mainnet:https://... \
-  --ipfs 127.0.0.1:5001 \
-  --log-store-backend file \
-  --log-store-file-dir ./graph-logs
-```
+Add a `[log_store]` section to the `graph-node.toml` file passed with `--config`:
 
-**Full configuration (environment variables):**
-```bash
-export GRAPH_LOG_STORE_BACKEND=file
-export GRAPH_LOG_STORE_FILE_DIR=/var/log/graph-node
-export GRAPH_LOG_STORE_FILE_MAX_SIZE=104857600      # 100MB
-export GRAPH_LOG_STORE_FILE_RETENTION_DAYS=30
+```toml
+[log_store]
+backend = "file"
+directory = "./graph-logs"
+retention_hours = 72   # optional; 0 (the default) keeps logs forever
 ```
 
 #### Features
@@ -160,7 +149,7 @@ export GRAPH_LOG_STORE_FILE_RETENTION_DAYS=30
 **Limitations:**
 - Not suitable for production with high log volume
 - No indexing (O(n) query time scales with file size)
-- No automatic log rotation or retention management
+- No log rotation; the only cleanup is the optional `retention_hours`
 - Single file per subgraph (no sharding)
 
 #### When to Use
@@ -202,36 +191,22 @@ graph-node → Elasticsearch HTTP API → Elasticsearch cluster
 
 #### Configuration
 
-**Minimum configuration (CLI):**
-```bash
-graph-node \
-  --postgres-url postgresql://graph:pass@localhost/graph-node \
-  --ethereum-rpc mainnet:https://... \
-  --ipfs 127.0.0.1:5001 \
-  --log-store-backend elasticsearch \
-  --log-store-elasticsearch-url http://localhost:9200
+**Minimum configuration:**
+```toml
+[log_store]
+backend = "elasticsearch"
+url = "http://localhost:9200"
 ```
 
 **Full configuration with authentication:**
-```bash
-graph-node \
-  --postgres-url postgresql://graph:pass@localhost/graph-node \
-  --ethereum-rpc mainnet:https://... \
-  --ipfs 127.0.0.1:5001 \
-  --log-store-backend elasticsearch \
-  --log-store-elasticsearch-url https://es.example.com:9200 \
-  --log-store-elasticsearch-user elastic \
-  --log-store-elasticsearch-password secret \
-  --log-store-elasticsearch-index subgraph-logs
-```
-
-**Environment variables:**
-```bash
-export GRAPH_LOG_STORE_BACKEND=elasticsearch
-export GRAPH_LOG_STORE_ELASTICSEARCH_URL=http://localhost:9200
-export GRAPH_LOG_STORE_ELASTICSEARCH_USER=elastic
-export GRAPH_LOG_STORE_ELASTICSEARCH_PASSWORD=secret
-export GRAPH_LOG_STORE_ELASTICSEARCH_INDEX=subgraph-logs
+```toml
+[log_store]
+backend = "elasticsearch"
+url = "https://es.example.com:9200"
+username = "elastic"
+password = "secret"
+index = "subgraph-logs"   # default: "subgraph"
+timeout_secs = 10         # default: 10
 ```
 
 #### Index Configuration
@@ -300,32 +275,21 @@ graph-node → Loki HTTP API → Loki
 
 #### Configuration
 
-**Minimum configuration (CLI):**
-```bash
-graph-node \
-  --postgres-url postgresql://graph:pass@localhost/graph-node \
-  --ethereum-rpc mainnet:https://... \
-  --ipfs 127.0.0.1:5001 \
-  --log-store-backend loki \
-  --log-store-loki-url http://localhost:3100
+**Minimum configuration:**
+```toml
+[log_store]
+backend = "loki"
+url = "http://localhost:3100"
 ```
 
-**With multi-tenancy:**
-```bash
-graph-node \
-  --postgres-url postgresql://graph:pass@localhost/graph-node \
-  --ethereum-rpc mainnet:https://... \
-  --ipfs 127.0.0.1:5001 \
-  --log-store-backend loki \
-  --log-store-loki-url http://localhost:3100 \
-  --log-store-loki-tenant-id my-graph-node
-```
-
-**Environment variables:**
-```bash
-export GRAPH_LOG_STORE_BACKEND=loki
-export GRAPH_LOG_STORE_LOKI_URL=http://localhost:3100
-export GRAPH_LOG_STORE_LOKI_TENANT_ID=my-graph-node
+**With multi-tenancy and authentication:**
+```toml
+[log_store]
+backend = "loki"
+url = "http://localhost:3100"
+tenant_id = "my-graph-node"
+username = "loki"       # optional
+password = "secret"     # optional
 ```
 
 #### Labels
@@ -364,25 +328,19 @@ When log storage is disabled (the default), subgraph logs are **still written to
 **Important:** "Disabled" does NOT mean logs are discarded. It means:
 - Logs appear in stdout/stderr (traditional behavior)
 - Logs are not stored in a separate queryable backend
-- The `_logs` GraphQL query returns empty results
+- The `_logs` GraphQL query returns a "not supported" error
 
 This is the default behavior - logs continue to work exactly as they did before this feature was added.
 
 #### Configuration
 
 **Explicitly disable:**
-```bash
-export GRAPH_LOG_STORE_BACKEND=disabled
+```toml
+[log_store]
+backend = "disabled"
 ```
 
-**Or simply don't configure a backend** (defaults to disabled):
-```bash
-# No log store configuration = disabled
-graph-node \
-  --postgres-url postgresql://graph:pass@localhost/graph-node \
-  --ethereum-rpc mainnet:https://... \
-  --ipfs 127.0.0.1:5001
-```
+**Or simply omit the `[log_store]` section** (defaults to disabled).
 
 #### Features
 
@@ -393,7 +351,7 @@ graph-node \
 - Logs still appear in stdout/stderr for debugging
 
 **Limitations:**
-- Cannot query logs via GraphQL (`_logs` returns empty results)
+- Cannot query logs via GraphQL (`_logs` returns a "not supported" error)
 - No separation of subgraph logs from other graph-node logs in stdout
 - Logs mixed with system logs (harder to filter programmatically)
 - No structured querying or filtering capabilities
@@ -407,82 +365,27 @@ Use disabled log storage when:
 
 ## Configuration
 
-### Environment Variables
+### The `[log_store]` section
 
-Environment variables are the recommended way to configure log stores, especially in containerized deployments.
+The log store is configured in the `[log_store]` section of the TOML configuration file passed to `graph-node` with `--config` (see [config.md](config.md)). There are no command-line flags or environment variables for it.
 
-#### Backend Selection
+| Key | Backends | Required | Default | Description |
+|-----|----------|----------|---------|-------------|
+| `backend` | all | yes | | `disabled` (or `none`), `elasticsearch` (or `elastic`, `es`), `loki`, `file` (or `files`) |
+| `url` | elasticsearch, loki | yes | | Endpoint URL |
+| `username` | elasticsearch, loki | no | | Basic-auth user name |
+| `password` | elasticsearch, loki | no | | Basic-auth password |
+| `index` | elasticsearch | no | `subgraph` | Index name |
+| `timeout_secs` | elasticsearch | no | `10` | Request timeout in seconds |
+| `tenant_id` | loki | no | | Loki tenant ID (`X-Scope-OrgID`) |
+| `directory` | file | yes | | Directory for the `.jsonl` files |
+| `retention_hours` | file | no | `0` | Delete entries older than this many hours; `0` keeps them forever |
 
-```bash
-GRAPH_LOG_STORE_BACKEND=<backend>
-```
-Valid values: `disabled`, `elasticsearch`, `loki`, `file`
+If the section is missing, the log store is disabled. An invalid section (for example, a missing `url`) is logged as a warning at startup, and the log store is disabled.
 
-#### Elasticsearch
+### Migrating from earlier configuration
 
-```bash
-GRAPH_LOG_STORE_ELASTICSEARCH_URL=http://localhost:9200
-GRAPH_LOG_STORE_ELASTICSEARCH_USER=elastic          # Optional
-GRAPH_LOG_STORE_ELASTICSEARCH_PASSWORD=secret       # Optional
-GRAPH_LOG_STORE_ELASTICSEARCH_INDEX=subgraph        # Default: "subgraph"
-```
-
-#### Loki
-
-```bash
-GRAPH_LOG_STORE_LOKI_URL=http://localhost:3100
-GRAPH_LOG_STORE_LOKI_TENANT_ID=my-tenant           # Optional
-```
-
-#### File
-
-```bash
-GRAPH_LOG_STORE_FILE_DIR=/var/log/graph-node
-GRAPH_LOG_STORE_FILE_MAX_SIZE=104857600            # Default: 100MB
-GRAPH_LOG_STORE_FILE_RETENTION_DAYS=30             # Default: 30
-```
-
-### CLI Arguments
-
-CLI arguments provide the same functionality as environment variables and the two can be mixed together.
-
-#### Backend Selection
-
-```bash
---log-store-backend <backend>
-```
-
-#### Elasticsearch
-
-```bash
---log-store-elasticsearch-url <URL>
---log-store-elasticsearch-user <USER>
---log-store-elasticsearch-password <PASSWORD>
---log-store-elasticsearch-index <INDEX>
-```
-
-#### Loki
-
-```bash
---log-store-loki-url <URL>
---log-store-loki-tenant-id <TENANT_ID>
-```
-
-#### File
-
-```bash
---log-store-file-dir <DIR>
---log-store-file-max-size <BYTES>
---log-store-file-retention-days <DAYS>
-```
-
-### Configuration Precedence
-
-When multiple configuration methods are used:
-
-1. **CLI arguments** take highest precedence
-2. **Environment variables** are used if no CLI args provided
-3. **Defaults** are used if neither is set
+The `--elasticsearch-url`, `--elasticsearch-user` and `--elasticsearch-password` flags and the matching `ELASTICSEARCH_*` / `GRAPH_ELASTICSEARCH_*` environment variables have been removed. Move those settings into a `[log_store]` section with `backend = "elasticsearch"`, as shown above.
 
 ## Querying Logs
 
@@ -792,23 +695,23 @@ cat graph-logs/QmExample.jsonl | jq 'select(.text | contains("timeout"))'
 ### File-based Logs
 
 **Problem: Log file doesn't exist**
-- Check `GRAPH_LOG_STORE_FILE_DIR` is set correctly
+- Check `directory` in the `[log_store]` section is set correctly
 - Verify directory is writable by graph-node
 
 **Problem: Queries are slow**
 - Subgraph logs file may be very large
-- Consider archiving old logs or implementing retention
+- Consider archiving old logs or setting `retention_hours`
 - For high-volume production use, switch to Elasticsearch or Loki
 
 **Problem: Disk filling up**
-- Implement log rotation
+- Set `retention_hours` in the `[log_store]` section
 - Reduce log verbosity in subgraph code
 - Set up monitoring for disk usage
 
 ### Elasticsearch
 
 **Problem: Cannot connect to Elasticsearch**
-- Verify `GRAPH_LOG_STORE_ELASTICSEARCH_URL` is correct
+- Verify `url` in the `[log_store]` section is correct
 - Check Elasticsearch is running: `curl http://localhost:9200`
 - Verify authentication credentials if using security features
 - Check network connectivity and firewall rules
@@ -828,7 +731,7 @@ cat graph-logs/QmExample.jsonl | jq 'select(.text | contains("timeout"))'
 ### Loki
 
 **Problem: Cannot connect to Loki**
-- Verify `GRAPH_LOG_STORE_LOKI_URL` is correct
+- Verify `url` in the `[log_store]` section is correct
 - Check Loki is running: `curl http://localhost:3100/ready`
 - Verify tenant ID if using multi-tenancy
 - Check network connectivity
@@ -847,7 +750,6 @@ cat graph-logs/QmExample.jsonl | jq 'select(.text | contains("timeout"))'
 
 ## Further Reading
 
-- [Environment Variables Reference](environment-variables.md)
 - [Graph Node Configuration](config.md)
 - [Elasticsearch Documentation](https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html)
 - [Grafana Loki Documentation](https://grafana.com/docs/loki/latest/)
