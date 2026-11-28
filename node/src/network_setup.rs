@@ -165,6 +165,12 @@ impl Networks {
         chain_filter: &dyn ChainFilter,
     ) -> Result<Networks> {
         if config.query_only(&config.node) {
+            info!(
+                logger,
+                "Node is query-only, so it has no chains";
+                "node_id" => &config.node,
+            );
+
             return Ok(Networks::noop());
         }
 
