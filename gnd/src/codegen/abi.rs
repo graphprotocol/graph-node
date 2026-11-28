@@ -13,18 +13,11 @@ use graph::abi::{
 use regex::Regex;
 
 use super::typescript::{self as ts, Class, ClassMember, Method, ModuleImports, Param as TsParam};
+use crate::abi::{indexed_input_type, resolve_event_param_type};
 use crate::shared::{capitalize, handle_reserved_word};
 
 /// Resolve a `Param`'s type to `DynSolType`.
 fn resolve_param_type(param: &Param) -> DynSolType {
-    param
-        .selector_type()
-        .parse::<DynSolType>()
-        .expect("valid ABI type")
-}
-
-/// Resolve an `EventParam`'s type to `DynSolType`.
-fn resolve_event_param_type(param: &EventParam) -> DynSolType {
     param
         .selector_type()
         .parse::<DynSolType>()
@@ -1360,16 +1353,6 @@ fn is_tuple_matrix_type(param_type: &DynSolType) -> bool {
     match param_type {
         DynSolType::Array(inner) | DynSolType::FixedArray(inner, _) => is_tuple_array_type(inner),
         _ => false,
-    }
-}
-
-/// Handle indexed input type conversion.
-fn indexed_input_type(param_type: &DynSolType) -> DynSolType {
-    // Strings, bytes, and arrays are encoded and hashed to bytes32
-    match param_type {
-        DynSolType::String | DynSolType::Bytes | DynSolType::Tuple(_) => DynSolType::FixedBytes(32),
-        DynSolType::Array(_) | DynSolType::FixedArray(_, _) => DynSolType::FixedBytes(32),
-        _ => param_type.clone(),
     }
 }
 
