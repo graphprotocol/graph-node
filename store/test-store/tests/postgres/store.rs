@@ -1004,6 +1004,39 @@ fn revert_block_basic_user() {
 }
 
 #[test]
+fn rewind_and_truncate_refuse_to_move_forward() {
+    run_test(|store, _, deployment| async move {
+        let subgraph_store = store.subgraph_store();
+        let count = get_entity_count(store.clone(), &deployment.hash).await;
+        let state = deployment_state(store.as_ref(), &deployment.hash).await;
+        assert_eq!(2, state.latest_block.number);
+
+        let res = subgraph_store
+            .rewind(deployment.id.into(), TEST_BLOCK_4_PTR.clone())
+            .await;
+        assert!(res.is_err(), "rewind to a later block must fail");
+
+        let res = subgraph_store
+            .truncate(deployment.id.into(), TEST_BLOCK_4_PTR.clone())
+            .await;
+        assert!(res.is_err(), "truncate to a later block must fail");
+
+        // Rewinding to the current head is still allowed
+        subgraph_store
+            .rewind(deployment.id.into(), TEST_BLOCK_2_PTR.clone())
+            .await
+            .unwrap();
+
+        let state = deployment_state(store.as_ref(), &deployment.hash).await;
+        assert_eq!(2, state.latest_block.number);
+        assert_eq!(
+            count,
+            get_entity_count(store.clone(), &deployment.hash).await
+        );
+    })
+}
+
+#[test]
 fn revert_block_with_delete() {
     run_test(|store, _, deployment| async move {
         let this_query = user_query()
