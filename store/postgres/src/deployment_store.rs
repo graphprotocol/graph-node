@@ -1422,12 +1422,12 @@ impl DeploymentStore {
 
         // Sanity check on block numbers
         let from_number = block_ptr_from.map(|ptr| ptr.number);
-        if from_number <= Some(block_ptr_to.number) {
-            internal_error!(
-                "truncate must go backwards, but would go from block {} to block {}",
+        if from_number < Some(block_ptr_to.number) {
+            return Err(internal_error!(
+                "truncate must not go forward, but would go from block {} to block {}",
                 from_number.unwrap_or(0),
                 block_ptr_to.number
-            );
+            ));
         }
 
         // When rewinding, we reset the firehose cursor. That way, on resume, Firehose will start
@@ -1453,12 +1453,12 @@ impl DeploymentStore {
 
         // Sanity check on block numbers
         let from_number = block_ptr_from.map(|ptr| ptr.number);
-        if from_number <= Some(block_ptr_to.number) {
-            internal_error!(
-                "rewind must go backwards, but would go from block {} to block {}",
+        if from_number < Some(block_ptr_to.number) {
+            return Err(internal_error!(
+                "rewind must not go forward, but would go from block {} to block {}",
                 from_number.unwrap_or(0),
                 block_ptr_to.number
-            );
+            ));
         }
 
         // When rewinding, we reset the firehose cursor. That way, on resume, Firehose will start
