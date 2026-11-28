@@ -80,6 +80,11 @@ indicatif = "0.18"
 Inflector = "0.11.3"
 itertools = "0.15.0"
 lazy_static = "1.5.0"
+# Default features off: no metrics, no logs, no `tracing`-based internal logging.
+opentelemetry = { version = "0.33.1", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.33.1", default-features = false, features = ["trace"] }
+opentelemetry-http = { version = "0.33.1", default-features = false }
+opentelemetry-otlp = { version = "0.33.1", default-features = false, features = ["http-proto", "reqwest-blocking-client", "trace"] }
 prost = "0.14"
 prost-types = "0.14"
 redis = { version = "1.2.2", features = [

@@ -167,6 +167,43 @@ those.
   value will not be cached. The default is 3. A value of 0 means that there
   is no limit on the size of a cache entry.
 
+## OpenTelemetry tracing
+
+Tracing is off by default and adds one atomic load per instrumented
+section when off. [tracing.md](./tracing.md) describes what is traced and
+how to set up a collector.
+
+- `GRAPH_OTEL_TRACING`: set to `true` to export spans over OTLP. Defaults to
+  `false`.
+- `GRAPH_OTEL_SPANS`: comma-separated list of the span groups to emit:
+  `block` (one trace per processed block and the runner sections under it),
+  `handler` (one span per trigger handler), `host_fn` (one span per WASM host
+  function call, which can be thousands per handler), `store` (write batches
+  and the SQL queries that serve GraphQL) and `graphql` (one trace per
+  GraphQL request). `all` and `none` are accepted. Defaults to
+  `block,handler,store,graphql`.
+
+The exporter speaks OTLP over `http/protobuf` and is configured with the
+standard OpenTelemetry variables, which the SDK reads directly:
+
+- `OTEL_EXPORTER_OTLP_ENDPOINT`: base URL of the collector; traces go to
+  `<endpoint>/v1/traces`. Defaults to `http://localhost:4318`.
+  `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` overrides the full traces URL.
+- `OTEL_EXPORTER_OTLP_PROTOCOL`: only `http/protobuf`, the default, is
+  supported.
+- `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_EXPORTER_OTLP_TIMEOUT`: passed to the
+  collector as described in the OpenTelemetry specification.
+- `OTEL_SERVICE_NAME`: the `service.name` resource attribute. Defaults to
+  `graph-node`.
+- `OTEL_TRACES_SAMPLER` and `OTEL_TRACES_SAMPLER_ARG`: sampling is decided
+  once per trace at its root span. Use `parentbased_traceidratio` with an
+  argument between 0 and 1 to sample a fraction of blocks and requests.
+  Defaults to `parentbased_always_on`.
+
+Spans are exported in batches. On SIGINT or SIGTERM, graph-node flushes the
+buffered spans before exiting; on SIGKILL the last few seconds of spans are
+lost.
+
 ## Miscellaneous
 
 - `GRAPH_NODE_ID`: sets the node ID, allowing to run multiple Graph Nodes
