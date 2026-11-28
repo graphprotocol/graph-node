@@ -219,22 +219,6 @@ fn build_list_filter_from_value(
     }
 }
 
-/// build a filter which has list of nested filters
-fn build_list_filter_from_object(
-    entity: &ObjectOrInterface,
-    object: &Object,
-    schema: &InputSchema,
-) -> Result<Vec<EntityFilter>, QueryExecutionError> {
-    Ok(object
-        .iter()
-        .map(|(_, value)| build_list_filter_from_value(entity, schema, value))
-        .collect::<Result<Vec<Vec<EntityFilter>>, QueryExecutionError>>()?
-        .into_iter()
-        // We iterate an object so all entity filters are flattened into one list
-        .flatten()
-        .collect::<Vec<EntityFilter>>())
-}
-
 /// Parses a GraphQL input object into an EntityFilter, if present.
 fn build_filter_from_object(
     entity: &ObjectOrInterface,
@@ -289,8 +273,8 @@ fn build_filter_from_object(
                         ));
                     }
 
-                    return Ok(EntityFilter::And(build_list_filter_from_object(
-                        entity, object, schema,
+                    return Ok(EntityFilter::And(build_list_filter_from_value(
+                        entity, schema, value,
                     )?));
                 }
                 Or => {
@@ -300,8 +284,8 @@ fn build_filter_from_object(
                         ));
                     }
 
-                    return Ok(EntityFilter::Or(build_list_filter_from_object(
-                        entity, object, schema,
+                    return Ok(EntityFilter::Or(build_list_filter_from_value(
+                        entity, schema, value,
                     )?));
                 }
                 Child => match value {
@@ -1165,6 +1149,69 @@ mod tests {
             }
             _ => panic!("Expected AND filter with OR inside"),
         }
+    }
+
+    fn eq_list(pairs: &[(&str, &str)]) -> r::Value {
+        r::Value::List(
+            pairs
+                .iter()
+                .map(|(k, v)| {
+                    r::Value::Object(Object::from_iter(vec![(
+                        (*k).into(),
+                        r::Value::String(v.to_string()),
+                    )]))
+                })
+                .collect(),
+        )
+    }
+
+    fn eq_and(k: &str, v: &str) -> EntityFilter {
+        EntityFilter::And(vec![EntityFilter::Equal(
+            k.to_string(),
+            Value::String(v.to_string()),
+        )])
+    }
+
+    #[test]
+    fn build_query_builds_and_and_or_from_their_own_lists() {
+        let query_field = default_field_with(
+            "where",
+            r::Value::Object(Object::from_iter(vec![
+                ("and".into(), eq_list(&[("name", "A1"), ("email", "A2")])),
+                ("or".into(), eq_list(&[("name", "B1"), ("email", "B2")])),
+            ])),
+        );
+        assert_eq!(
+            query(&query_field).filter,
+            Some(EntityFilter::And(vec![
+                EntityFilter::And(vec![eq_and("name", "A1"), eq_and("email", "A2")]),
+                EntityFilter::Or(vec![eq_and("name", "B1"), eq_and("email", "B2")]),
+            ]))
+        );
+    }
+
+    #[test]
+    fn build_query_allows_change_block_next_to_or() {
+        let query_field = default_field_with(
+            "where",
+            r::Value::Object(Object::from_iter(vec![
+                (
+                    "_change_block".into(),
+                    r::Value::Object(Object::from_iter(vec![(
+                        "number_gte".into(),
+                        r::Value::Int(10),
+                    )])),
+                ),
+                ("or".into(), eq_list(&[("name", "B1"), ("email", "B2")])),
+            ])),
+        );
+        assert_eq!(
+            query(&query_field).filter,
+            Some(EntityFilter::And(vec![
+                EntityFilter::ChangeBlockGte(10),
+                EntityFilter::Or(vec![eq_and("name", "B1"), eq_and("email", "B2")]),
+            ]))
+        );
     }
 
     #[test]
